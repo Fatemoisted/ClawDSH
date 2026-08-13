@@ -6,7 +6,7 @@
 
 **接缝**：**新增** `ctx.channels`（设计见 docs/adr/0002-channel-seam.md）。上游 dsh 没有消息渠道概念，这是本项目的核心增量；契约设计必须 upstream-first（先向上游提 PR，本地用 patch 过渡）。
 
-**规格**：docs/adr/0002-channel-seam.md · **状态**：planning
+**规格**：docs/adr/0002-channel-seam.md · **状态**：implemented
 
 ## 设计要点（详见 ADR-0002）
 
