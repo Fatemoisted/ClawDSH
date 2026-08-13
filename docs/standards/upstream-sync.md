@@ -4,20 +4,15 @@
 
 ```
 upstream → https://github.com/deepseek-ai/deepseek-harness.git   （官方，只拉不推）
-origin   → 你的私有远程（暂未创建）                              （只推不拉）
+origin   → https://github.com/Fatemoisted/ClawDSH.git            （私有，只推不拉）
 master   → 上游镜像：只允许 fast-forward，禁止直接提交
-clawdsh  → 我们的开发分支：全部自有改动提交在这里，定期 rebase
+clawdsh  → 我们的开发分支（已推送并跟踪 origin/clawdsh）：全部自有改动提交在这里，定期 rebase
 ```
 
-> 本项目**不是 GitHub Fork**（发起人要求可设 Private）：直接 clone + 推送到自建私有仓库。创建私有远程：
->
-> ```bash
-> # 在 GitHub/GitLab 上新建一个空私有仓库 ClawDSH（不要勾选初始化任何文件）
-> git remote add origin git@github.com:<you>/ClawDSH.git
-> git branch clawdsh          # 若尚未创建
-> git checkout clawdsh && git commit ...   # 提交自有改动
-> git push -u origin clawdsh
-> ```
+> 本项目**不是 GitHub Fork**（发起人要求可设 Private）：直接 clone + 推送到自建私有仓库（2026-08-14 已完成）。
+> GitHub 凭据存储在 macOS 钥匙串（`git credential-osxkeychain`），日常 `git push`/`git fetch origin` 免输 token；
+> 移除凭据：`git credential-osxkeychain erase`（输入 host=github.com 后回车两次）。
+> 注意：GitHub 个人访问 token 需含 `workflow` scope，否则推送含 `.github/workflows/` 的分支会被拒。
 
 ## 基线钉死
 
