@@ -32,3 +32,25 @@
 ## 变更说明
 
 - 0.1.0：Spike 初始实现（replace/append 双模式 + 文件加载 + 契约测试）。
+
+## Model Experience
+
+### The soul section
+
+#### What the model sees
+
+The soul text (from `source` file or inline `text`) is added as an ordered system-prompt section through `ctx.systemPrompt.section(...)`. In `replace` mode the model sees only the soul text as the system prompt; in `append` mode it appears as a section alongside the deployment persona.
+
+#### Token effect
+
+Fixed per mounted scope: the soul's own tokens appear on every request an agent in that scope makes, and none for agents outside it. Empty text contributes nothing.
+
+#### KV Cache effect
+
+Prefix-stable for the life of an agent — the text is read once at mount, before the first request, and never changes while the agent runs.
+
+## Known Limitations and Deferred Work
+
+- **挂载即定格**：灵魂文本在挂载时读取一次，运行期不变；换灵魂需重新挂载 + 会话重启。
+- **scope-only**：无作用域挂载直接报错，避免发布进程级灵魂（与上游 persona 约束一致）。
+- **真实 e2e**：系统提示装配的组装测试需真 key，当前以契约测试（10 例）覆盖。

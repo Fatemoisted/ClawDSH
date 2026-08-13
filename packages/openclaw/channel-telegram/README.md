@@ -12,3 +12,24 @@
 
 - 选它做第一个渠道：API 简单、webhook 与轮询双模式都成熟，能最快跑通"消息进 → 人格化 agent → 回复出"的垂直切片；
 - WhatsApp / Email / Web Chat 后续按同一模板新增（见 packages/openclaw/README.md）。
+
+## Model Experience
+
+### Inbound message text
+
+#### What the model sees
+
+The adapter maps a Telegram update to a `channel/inbound` message; the channel-core router writes that message's `text` into the session log as a user message. The adapter registers no prompt or tool schema of its own.
+
+#### Token effect
+
+Only the relayed message text reaches the model, through channel-core's session write.
+
+#### KV Cache effect
+
+Append-only through channel-core's user-message write.
+
+## Known Limitations and Deferred Work
+
+- **真实 e2e**：需真 `botToken` + key 才能跑通真实闭环，当前以契约测试（协议映射 + `send` 载荷 + 幂等）覆盖。
+- **引用回复/附件**：`reply_parameters` 引用、图片/富文本一律推迟（阶段 3 渠道扩展）。

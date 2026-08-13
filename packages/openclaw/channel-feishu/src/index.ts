@@ -88,7 +88,10 @@ export interface WebhookState {
   seen: Set<string>
 }
 
-/** Create a fresh, empty webhook state. */
+/**
+ * Create a fresh, empty webhook state.
+ * @returns A state with an empty reply-target map and an empty de-dup set.
+ */
 export function createWebhookState(): WebhookState {
   return { receiveByThread: new Map(), seen: new Set() }
 }

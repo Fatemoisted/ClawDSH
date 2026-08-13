@@ -1,6 +1,6 @@
 # ADR-0002：渠道网关 seam（`ctx.channels`）——ClawDSH 唯一新增接缝
 
-- **状态**：Proposed（Spike 验证后转 Accepted）
+- **状态**：Accepted（阶段 2 双渠道验证通过，2026-08-14）
 - **日期**：2026-08-14
 - **依赖**：ADR-0001
 
@@ -20,24 +20,35 @@ OpenClaw 的核心价值是"个人助手活在消息渠道里"（WhatsApp/Telegr
 3. **契约继承 dsh 不变式**：一切入站消息与出站回复必须写进 session log（"model-visible means logged"），否则不得触达模型。
 4. **上游化策略**：契约设计完成后先向 `deepseek-ai/deepseek-harness` 提 PR；被接受则删除本地 patch 实现，只保留 `channel-core` 作为薄装配层；被拒绝则保留本地实现并把差异写进本 ADR。
 
-## 契约草图（待 Spike 细化）
+## 契约（阶段 2 定稿）
 
 ```ts
-interface ChannelAdapter {
-  id: string                        // 如 'telegram'
-  capabilities: { receive: boolean; send: boolean }
-  start(ctx: Context): Disposable   // 订阅渠道事件，emit 到 ctx.channels
-  send(msg: ChannelMessage): Promise<void>
-}
-interface ChannelMessage {
-  channel: string
+// channel-core/src/types.ts（仅类型，无运行时代码）
+import type { Context } from '@deepseek-ai/cordis'
+
+export interface ChannelCapabilities { receive: boolean; send: boolean }
+
+export interface ChannelMessage {
+  channel: string                    // 适配器 id，如 'telegram' | 'feishu'
   direction: 'in' | 'out'
-  threadId?: string                 // 渠道侧会话线索（群/话题）
-  sender?: string
+  threadId?: string                  // 渠道侧会话线索（群 chat_id / p2p open_chat_id / TG chat.id）
+  sender?: string                    // 发送者身份（open_id / from.id）
   text: string
-  // 附件、引用等渠道特性后续按需扩展，先保持最小面
+}
+
+export interface ChannelAdapter {
+  id: string
+  capabilities: ChannelCapabilities
+  start(ctx: Context): () => void           // 订阅平台事件，emit 'channel/inbound'；返回 disposer
+  send(msg: ChannelMessage): Promise<void>  // 出站投递
 }
 ```
+
+**事件名定稿**：`channel/inbound`（入站，adapter → core）、`channel/outbound`（出站，core 投递回复后）。
+
+**入站链路**：adapter `start()` 收到平台消息 → `ctx.emit('channel/inbound', msg)` → `channel-core` 监听 → 路由到 per-thread agent 会话（`ctx.agents.create` + `followup` + `whenIdle` + `sessions.flush`）→ 扫 `assistant/message` 读回复 → `adapter.send(outMsg)` + `emit('channel/outbound', outMsg)`。per-thread 会话按 `${channel}\0${threadId ?? ''}` 键复用，入站 turn 以 per-thread tail-chain 串行化，避免并发交错。
+
+**最小面**：附件/引用/富文本/交互卡片一律推迟（阶段 3 渠道扩展）。
 
 ## 后果
 
@@ -49,3 +60,7 @@ interface ChannelMessage {
 
 - **每个渠道各自直连 `ctx.sessions`（被否决）**：路由/绑定逻辑会在每个渠道重复，重蹈 OpenClaw 覆辙。
 - **外部网关进程（sidecar）对接 dsh API（暂缓）**：更解耦但引入跨进程状态与部署复杂度，作为阶段 3 之后的联邦/多机形态再评估。
+
+## 结论（阶段 2 验证，2026-08-14）
+
+`ctx.channels` 契约已同时通过 **Telegram（getUpdates 长轮询）** 与 **飞书（node:http webhook + im OpenAPI）** 两个形态差异足够大的适配器验证：两者都只实现 `ChannelAdapter` 契约，路由/会话绑定/回复回投由 `channel-core` 统一承担，核心无渠道特判。契约测试（MockAdapter 验证「入站 → 真 agent turn → 回复出」闭环）+ 全量 typecheck + `--dump-config` 冒烟全绿。真实 e2e（真 key + 真 bot）留待凭证到位后的收尾项。上游 PR 提案草稿见 `docs/upstream-proposal/ctx-channels.md`。

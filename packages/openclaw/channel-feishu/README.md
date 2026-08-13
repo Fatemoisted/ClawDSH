@@ -14,6 +14,22 @@
 - **出站**：`tenant_access_token`（`auth/v3/tenant_access_token/internal`，缓存到 expire）→ `im/v1/messages`（群 `receive_id_type=chat_id`，p2p = `open_id`）。
 - **凭证**：`appId`/`appSecret` 经 Config 进入，不私存密钥；接入 `ctx.credentials` 留待真实 e2e 收尾。
 
+## Model Experience
+
+### Inbound message text
+
+#### What the model sees
+
+The adapter parses a Feishu `im.message.receive_v1` event and emits a `channel/inbound` message; the channel-core router writes that message's `text` into the session log as a user message. The adapter registers no prompt or tool schema of its own.
+
+#### Token effect
+
+Only the relayed message text reaches the model, through channel-core's session write.
+
+#### KV Cache effect
+
+Append-only through channel-core's user-message write.
+
 ## Known Limitations and Deferred Work
 
 - **webhook 加密**：`encryptKey` 配置存在但未实现，配置即 fail-loud；当前仅明文模式。

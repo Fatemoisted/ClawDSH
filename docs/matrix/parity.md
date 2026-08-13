@@ -35,8 +35,8 @@
 | 定时 / 自动化 | `src/cron/` | `ctx.schedule` / `ctx.jobs` | 插件 | `automation` | planning |
 | 人格（Soul） | `src/agents/` 的 identity 机制（具体形态阶段 2 深读） | system-prompt 装配 | 插件 | `soul` | **implemented**（阶段 0 ✅） |
 | 记忆（Memory） | 基线无 → 参考 v2026.1.15 `src/agents/memory-search.ts`、`memory-tool.ts` | `ctx.spillStore` / session-persistence | 插件 | `memory` | planning |
-| **渠道网关（Gateway）** | `src/gateway/` | **无** | **新 seam** | `channel-core` | planning（ADR-0002） |
-| 渠道：Telegram | `src/telegram/` | `ctx.channels` | 插件 | `channel-telegram` | planning |
+| **渠道网关（Gateway）** | `src/gateway/` | **无** | **新 seam** | `channel-core` | **implemented**（阶段 2 ✅） |
+| 渠道：Telegram | `src/telegram/` | `ctx.channels` | 插件 | `channel-telegram` | **implemented**（阶段 2 ✅） |
 | 渠道：Discord | `src/discord/` | `ctx.channels` | 插件 | `channel-discord`（待建） | planning |
 | 渠道：iMessage / Signal / Slack | `src/imessage/` 等 | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
 | 渠道：WhatsApp | 参考 v2026.1.15 `src/whatsapp/` | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
@@ -59,7 +59,7 @@
 
 | 功能域 | 出处 | dsh 接缝 | 分类 | 落地包 | 状态 |
 |---|---|---|---|---|---|
-| 渠道：飞书（Lark） | OpenClaw `extensions/feishu`（v2026.2.12 起；引入提交 `0223416c61`） | `ctx.channels` | 插件 | `channel-feishu` | planning（**阶段 2**：发起人第一优先 + ADR-0002 seam 验证备选渠道） |
+| 渠道：飞书（Lark） | OpenClaw `extensions/feishu`（v2026.2.12 起；引入提交 `0223416c61`） | `ctx.channels` | 插件 | `channel-feishu` | **implemented**（阶段 2 ✅） |
 
 微信系不落矩阵（不实现），决策记录见 `packages/openclaw/channel-wechat/README.md`。
 

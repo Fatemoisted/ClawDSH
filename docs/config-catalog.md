@@ -9,6 +9,74 @@ This file is GENERATED from source (`scripts/gen-config-catalog.ts`) and verifie
 
 A `Requires:` line lists the service keys the plugin `inject`s: its `cordis.yml` tree must also load providers for those services. Scope is the harness tier (`packages/`); the vendored cordis plugins a config tree may also load (`hmr`, the console logger, …) are pinned upstream source ([vendoring policy](../vendor/README.md)) and not catalogued here.
 
+<a id="clawdshdsh-channel-feishu"></a>
+
+## `@clawdsh/dsh-channel-feishu`
+
+Requires: `channels`
+
+```ts config-catalog
+/** Plugin config: app identity plus webhook and credential tuning. */
+export interface Config {
+  /** Feishu app ID (from the developer console); must not be committed. */
+  appId: string
+  /** Feishu app secret; must not be committed. */
+  appSecret: string
+  /** Webhook listen port. */
+  port?: number
+  /** Webhook request path. */
+  path?: string
+  /** When set, the adapter fails to load: encrypted webhooks are not yet supported. */
+  encryptKey?: string
+  /** When set, inbound events whose token does not match are dropped. */
+  verificationToken?: string
+}
+```
+
+Source: [`packages/openclaw/channel-feishu/src/index.ts:35`](../packages/openclaw/channel-feishu/src/index.ts)
+
+<a id="clawdshdsh-channel-telegram"></a>
+
+## `@clawdsh/dsh-channel-telegram`
+
+Requires: `channels`
+
+```ts config-catalog
+/** Plugin config: the bot token plus long-polling tuning. */
+export interface Config {
+  /** Bot token from `@BotFather`; must not be committed. */
+  botToken: string
+  /** When `false`, the adapter is send-only and does not poll for inbound messages. */
+  polling?: boolean
+  /** Long-poll hold timeout in seconds (Telegram clamps to 1–60). */
+  timeout?: number
+}
+```
+
+Source: [`packages/openclaw/channel-telegram/src/index.ts:26`](../packages/openclaw/channel-telegram/src/index.ts)
+
+<a id="clawdshdsh-soul"></a>
+
+## `@clawdsh/dsh-soul`
+
+Requires: `systemPrompt`
+
+```ts config-catalog
+/** Plugin config: where the soul text comes from and how it lands. */
+export interface Config {
+  /** Path to a soul file (markdown). Resolved against process.cwd(). Wins over `text`. */
+  source?: string
+  /** Inline soul text; used when `source` is absent or empty. */
+  text?: string
+  /** `replace` makes the soul the complete system prompt; `append` (default) adds it as a section. */
+  mode?: 'replace' | 'append'
+  /** Suppress dynamic runtime-context snapshots for this agent scope. */
+  includeRuntimeContext?: boolean
+}
+```
+
+Source: [`packages/openclaw/soul/src/index.ts:44`](../packages/openclaw/soul/src/index.ts)
+
 <a id="deepseek-aidsh-acp"></a>
 
 ## `@deepseek-ai/dsh-acp`
@@ -3025,6 +3093,7 @@ Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
 
+- `@clawdsh/dsh-channel-core` — requires `agents` · `sessions` · `agentDefaultModel` ([`packages/openclaw/channel-core/src/index.ts`](../packages/openclaw/channel-core/src/index.ts))
 - `@deepseek-ai/dsh-agent` ([`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts))
 - `@deepseek-ai/dsh-api-gateway` — requires `typert` ([`packages/api/gateway/src/index.ts`](../packages/api/gateway/src/index.ts))
 - `@deepseek-ai/dsh-api-remotes` ([`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts))
