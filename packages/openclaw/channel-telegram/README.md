@@ -6,7 +6,7 @@
 
 **接缝**：`ctx.channels`（@clawdsh/dsh-channel-core）。
 
-**规格**：阶段 2 交付物 · **状态**：planning
+**规格**：阶段 2 交付物 · **状态**：implemented
 
 ## 备注
 

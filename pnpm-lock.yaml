@@ -5537,6 +5537,22 @@ importers:
         specifier: workspace:^
         version: link:../../core/tools
 
+  packages/openclaw/channel-telegram:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@clawdsh/dsh-channel-core':
+        specifier: workspace:^
+        version: link:../channel-core
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+
   packages/openclaw/soul:
     dependencies:
       '@deepseek-ai/schemastery':

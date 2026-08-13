@@ -276,6 +276,7 @@
     // ClawDSH: 自有插件域（packages/openclaw/*）的新包在此注册 host 聚合。
     { "path": "./packages/openclaw/soul" },
     { "path": "./packages/openclaw/channel-core" },
+    { "path": "./packages/openclaw/channel-telegram" },
     { "path": "./packages/guard/repeat-tool-reminder" },
     { "path": "./packages/extensions/cordis-host-runner" },
     { "path": "./packages/extensions/tool-cordis" },
