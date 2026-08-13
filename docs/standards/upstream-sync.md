@@ -31,7 +31,8 @@ dsh 处于 developer preview，上游改动频繁：**基线只向前移动，�
 3. `git checkout master && git merge --ff-only upstream/master`；
 4. `git checkout clawdsh && git rebase master`——冲突时按优先级解决：
    - `README.md` / `AGENTS.md`（含 CLAUDE.md 符号链接）/ 根 `package.json`：**取上游版本，再把品牌段重新置顶**（品牌段以 `<!-- ════ ClawDSH` 标记为界）；
-   - `tsdown.config.ts`：取上游版本后，重新添加 `packages/openclaw/**` 排除（带 ClawDSH 注释标记，见 ADR-0001 决策 4）；
+   - `tsdown.config.ts`：取上游版本后，重新添加 `packages/openclaw/*` 骨架排除（带 ClawDSH 注释标记，见 ADR-0001 决策 4）；
+   - `tsconfig.base.json` / `tsconfig.host.json`：取上游版本后，重新追加 `@clawdsh/*` 的 paths 与 references 条目（只追加，不改既有条目）；
    - `packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal}/`、`tools/`：这些目录上游不动，理论上零冲突；若上游恰好新增同名文件，人工合并并记入 `docs/journal/`；
 5. 全量验证：`pnpm install && pnpm typecheck`，以及 profile 冒烟（阶段 2 起）；
 6. 更新本文件的基线表 + `docs/journal/` 记录。

@@ -15,11 +15,12 @@
 
 ## 接入流程（实现某个插件时）
 
-1. 复制 `_template/` 到目标包目录，把 `*.tpl` 后缀去掉并填空；
+1. 复制 `_template/` 到目标包目录，把 `*.tpl` 后缀去掉并填空（参照已实现的 `soul/` 包，它是完整范例）；
 2. 写 `docs/specs/feature-<name>.md`（功能规格）；
 3. 更新 `docs/matrix/parity.md`（对齐矩阵状态列）；
-4. 注册到 `tsconfig.host.json`（或 client 聚合，见 `docs/development.md`）与 tsdown 构建链；
-5. 新增 seam 必须先在 `docs/adr/` 立项（见 `docs/standards/plugin-contract.md`）。
+4. 注册构建链：`tsconfig.base.json` paths 条目 + `tsconfig.host.json` references（或 client 聚合，见 `docs/development.md`），并从根 `tsdown.config.ts` 的排除名单移出；
+5. **必须配套 `src/invariant.ts`**（vitest 的 test-invariants 强制要求，参照 soul 包），package.json 的 exports/files 带上 `./invariant`；
+6. 新增 seam 必须先在 `docs/adr/` 立项（见 `docs/standards/plugin-contract.md`）。
 
 ## 包清单
 
@@ -28,7 +29,7 @@
 | `preset-openclaw/` | openclaw profile + bundles + patches | 整体组装 | profile/patch 机制 | planning |
 | `channel-core/` | 渠道网关 seam（唯一新 seam） | 渠道网关 Gateway | **新增** `ctx.channels`（待 ADR-0002） | planning |
 | `channel-telegram/` | Telegram 渠道 | 渠道适配器 | `ctx.channels` | planning |
-| `soul/` | 人格 / Soul | Soul 系统 | system-prompt 装配 | planning |
+| `soul/` | 人格 / Soul | Soul 系统 | system-prompt 装配 | **implemented**（阶段 0 ✅） |
 | `memory/` | 记忆后端 | Memory | `ctx.spillStore` / session-persistence | planning |
 | `skills-hub/` | ClawHub 兼容技能加载 | Skills/ClawHub | `ctx.skills` | planning |
 | `automation/` | 定时任务 / 自动化 | Cron/Automation | `ctx.schedule` / `ctx.jobs` | planning |

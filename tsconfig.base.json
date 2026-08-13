@@ -41,6 +41,7 @@
       "@deepseek-ai/dsh-invariants": ["./packages/runtime-diagnostics/invariants/src/index.ts"],
       "@deepseek-ai/dsh-tool-call-timeout-policy": ["./packages/guard/timeout-policy/src"],
       "@deepseek-ai/dsh-tool-call-timeout-policy/invariant": ["./packages/guard/timeout-policy/src/invariant.ts"],
+      "@clawdsh/dsh-soul": ["./packages/openclaw/soul/src"],
       "@deepseek-ai/dsh-typert-registry": ["./packages/typert/registry/src/index.ts"],
       "@deepseek-ai/dsh-typert-registry/client": ["./packages/typert/registry/src/client/index.ts"],
       "@deepseek-ai/dsh-api-gateway": ["./packages/api/gateway/src/index.ts"],

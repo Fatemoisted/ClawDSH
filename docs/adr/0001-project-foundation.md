@@ -17,7 +17,7 @@
 1. **仓库形态**：直接 `git clone` 官方仓库到本地 `/Users/mac/ClawDSH`，将 `origin` 改名为 `upstream`；未来用户自建私有远程时再添加为 `origin`（`git remote add origin <私有仓库> && git push -u origin <分支>`——非 fork 的克隆推送到新建空仓库完全合法且可设 Private）。
 2. **分支策略**：`master` 仅做上游镜像（fast-forward，禁止直接提交）；我们的全部工作提交在 `clawdsh` 分支，定期 `rebase upstream/master`。这样上游同步永远是快进，冲突只出现在我们自己的分支上。
 3. **物理隔离**：自有代码只出现在 `packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal}/`、`tools/`、`.github/workflows/clawdsh-*`。上游其余文件只读。
-4. **品牌层 overlay + 构建编排最小豁免**：上游文件仅允许两类改动——① 置顶品牌段（README/CLAUDE.md→AGENTS.md 符号链接）；② 根级元数据与构建编排（根 `package.json` 的 name 改为 `clawdsh`；`tsdown.config.ts` 的 workspace 排除名单加 `packages/openclaw/**`，因 tsdown 以目录粒度扫描、骨架包会被误扫）。rebase 冲突时取上游版本、再重放品牌段。上游内部包名保持 `@deepseek-ai/*` 不动（改名会摧毁同步能力）。
+4. **品牌层 overlay + 构建编排最小豁免**：上游文件仅允许两类改动——① 置顶品牌段（README/CLAUDE.md→AGENTS.md 符号链接）；② 根级元数据与构建编排：根 `package.json` 的 name 改为 `clawdsh`；`tsdown.config.ts` 的 workspace 排除名单管理 `packages/openclaw/*`（tsdown 以目录粒度扫描、骨架包会被误扫）；**新包接入的注册点**（`tsconfig.base.json` 的 paths 映射、`tsconfig.host.json` 的 references）只允许追加 `@clawdsh/*` 条目、不得改动既有条目。以上改动均为附加性/替换性最小豁免，rebase 冲突时取上游版本、再重放品牌段与注册条目。上游内部包名保持 `@deepseek-ai/*` 不动（改名会摧毁同步能力）。
 5. **基线钉死**：记录当前上游基线 commit（2026-08-14：`47f943859b`，v0.1.0-rc.5），每次同步更新基线记录（见 `docs/standards/upstream-sync.md`）。
 6. **骨架阶段不接入 workspace**：`packages/openclaw/*` 骨架不含 `package.json`（模板以 `.tpl` 存放），保证上游 `pnpm install/build/typecheck` 全绿；实现时再按模板接入。
 

@@ -20,11 +20,11 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 
 ## 三、实施阶段
 
-### 阶段 0 · 可行性 Spike（目标：1~2 周）
+### 阶段 0 · 可行性 Spike ✅（2026-08-14 完成）
 
-- 产出：功能对齐矩阵 v1；一个最小插件（Soul）验证接缝假设。
-- 退出标准：Soul 插件能替换 agent 系统提示词、可热插拔、不改上游源码。
-- **如果这一步做不通，就说明整体方向错误，止损成本极低。**
+- 产出：功能对齐矩阵 v1；`@clawdsh/dsh-soul` 插件（replace/append 双模式 + 灵魂文件加载）。
+- 退出标准**全部达成**：soul 能替换/叠加 agent 系统提示词（契约测试 10/10）、热插拔（卸载即回卷）、未改上游一行源码（仅构建注册豁免，见 ADR-0001 决策 4）；全量 typecheck 绿；`--profile openclaw --dump-config` 冒烟通过。
+- **结论：接缝假设成立，项目继续。** 验证细节见 docs/specs/feature-soul.md 的验收标准节。
 
 ### 阶段 1 · 基线选型 + 矩阵定稿
 
@@ -58,6 +58,6 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 ## 五、待定事项
 
 - [ ] OpenClaw 基线 commit（阶段 1 首个任务）
-- [ ] Soul Spike 结论（决定是否继续）
+- [x] Soul Spike 结论（✅ 可行，继续）
 - [ ] `ctx.channels` seam 是否被 dsh 上游接受（影响 patch 层厚度）
-- [ ] 项目官方名称确认（ClawDSH 为暂定名）与私有远程仓库创建
+- [x] 私有远程仓库创建（Fatemoisted/ClawDSH，2026-08-14 完成）

@@ -19,7 +19,7 @@
 | 工具执行（bash/文件/浏览器…） | `ctx.tools` / `ctx.shell` / `ctx.fs` / `ctx.web` | 复用 | — | 直接可用 |
 | 技能（Skill） | `ctx.skills`（provider 合并） | 插件 | `skills-hub` | planning |
 | 定时 / 自动化 | `ctx.schedule` / `ctx.jobs` | 插件 | `automation` | planning |
-| 人格（Soul） | system-prompt 装配 | 插件 | `soul` | planning（Spike 候选 #1） |
+| 人格（Soul） | system-prompt 装配 | 插件 | `soul` | **implemented**（阶段 0 Spike ✅） |
 | 记忆（Memory） | `ctx.spillStore` / session-persistence | 插件 | `memory` | planning |
 | **渠道网关（Gateway）** | **无** | **新 seam** | `channel-core` | planning（ADR-0002） |
 | 渠道：Telegram | `ctx.channels` | 插件 | `channel-telegram` | planning（Spike 候选 #2） |

@@ -1,0 +1,9 @@
+# ClawDSH「openclaw」profile 层（复制到 $DSH_HOME/profiles/openclaw/ 后生效）。
+# 格式：顶层 YAML 数组的 loader patch entries（覆盖既有行 / insert 新行）。
+# 阶段 0：把部署级默认人格换成 OpenClaw 的中性开场——验证 profile 层叠机制。
+# 阶段 2 在此 insert：agent-spine + openclaw preset 挂载 + 渠道行（channel-core 等）。
+
+- id: system-prompt
+  config:
+    persona: >-
+      You are a personal AI assistant.
