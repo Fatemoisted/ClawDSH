@@ -10,7 +10,9 @@
  *   every other section is suppressed after cooperative assembly.
  * - `append` (default) — the soul lands as an additional `clawdsh:soul`
  *   section right after the deployment persona, ahead of tool guidance, so
- *   the harness guidance stays while the identity comes from the soul.
+ *   the harness guidance stays while the identity comes from the soul. A
+ *   precedence note ({@link SOUL_PRECEDENCE_NOTE}) is baked in ahead of the
+ *   soul text unless `precedenceNote: false`; `replace` never adds it.
  *
  * Scope-only, like `dsh-persona`: an unscoped mount would publish a
  * process-global soul and rejects at mount. Mount it inside an agent preset
@@ -34,6 +36,14 @@ export const SOUL_SECTION = 'clawdsh:soul'
 /** Order band: right after the order-0 deployment persona, before tool guidance (100–199). */
 export const SOUL_ORDER = 10
 
+/**
+ * Precedence note baked into append-mode soul sections, mirroring OpenClaw's
+ * soul.md injection ("SOUL.md: persona/tone. Follow it unless higher-priority
+ * instructions override."). Model-visible text; keep it verbatim-pinned by the
+ * soul tests and the README Model Experience section.
+ */
+export const SOUL_PRECEDENCE_NOTE = 'Soul: persona and tone. Follow it unless higher-priority instructions (such as direct user instructions) override it.'
+
 /** Cordis plugin name. */
 export const name = 'soul'
 
@@ -48,6 +58,8 @@ export interface Config {
   text?: string
   /** `replace` makes the soul the complete system prompt; `append` (default) adds it as a section. */
   mode?: 'replace' | 'append'
+  /** Prepend the {@link SOUL_PRECEDENCE_NOTE} declaration to append-mode souls (default true); never in replace mode. */
+  precedenceNote?: boolean
   /** Suppress dynamic runtime-context snapshots for this agent scope. */
   includeRuntimeContext?: boolean
 }
@@ -57,13 +69,14 @@ export const Config: z<Config> = z.object({
   source: z.string().default(''),
   text: z.string().default(''),
   mode: z.union([z.const('replace'), z.const('append')]).default('append'),
+  precedenceNote: z.boolean().default(true),
   includeRuntimeContext: z.boolean().default(true),
 })
 
 /**
  * Mount the soul row for the calling context's agent scope.
  * @param ctx - an agent scope context; an unscoped context rejects.
- * @param config - soul source, mode, and runtime-context policy.
+ * @param config - soul source, mode, precedence-note policy, and runtime-context policy.
  */
 export function apply(ctx: Context, config: Config): void {
   if (scopeOf(ctx) === undefined) {
@@ -77,10 +90,13 @@ export function apply(ctx: Context, config: Config): void {
   if (text === '') {
     throw new Error('soul: config requires a non-empty "source" file path or inline "text"')
   }
+  const sectionText = mode === 'append' && (config.precedenceNote ?? true)
+    ? `${SOUL_PRECEDENCE_NOTE}\n\n${text}`
+    : text
   ctx.effect(() => ctx.systemPrompt.section({
     name: mode === 'replace' ? PERSONA_SECTION : SOUL_SECTION,
     order: mode === 'replace' ? PERSONA_ORDER : SOUL_ORDER,
-    text,
+    text: sectionText,
     ...(mode === 'replace' ? { complete: true } : {}),
   }), 'soul.section()')
   if (!(config.includeRuntimeContext ?? true)) ctx.systemPrompt.suppressRuntimeContext()

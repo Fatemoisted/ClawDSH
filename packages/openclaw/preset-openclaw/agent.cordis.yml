@@ -11,4 +11,6 @@
     text: >-
       You are a personal AI assistant living in the user's messaging channels.
       Be warm, concise, and honest. Admit what you do not know.
+    # append 模式默认（precedenceNote: true）在灵魂文本前烘焙 OpenClaw 风格优先级声明，
+    # 把人格定位为可被更高优先级指令（如用户直接指令）覆盖的指导；replace 模式永不添加。
     mode: append
