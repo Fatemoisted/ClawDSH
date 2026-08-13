@@ -8,7 +8,7 @@
 
 OpenClaw 的核心价值是"个人助手活在消息渠道里"（WhatsApp/Telegram/Email/Web Chat…），而 dsh 是编码代理形态：有 `ctx.sessions`（append-only log）、`ctx.tools`、`ctx.llm` 等接缝，但**没有消息渠道概念**。要把 OpenClaw 搬上 dsh，渠道接入是唯一必须新增的 seam——其余功能域都能挂到既有接缝上（见 `docs/matrix/parity.md`）。
 
-新增 seam 是最高成本的变更，因此必须 upstream-first：先在 dsh 上游提 PR，本地以 patch 过渡。
+新增 seam 是最高成本的变更。项目早期纪律原拟 upstream-first（先向上游提 PR、本地 patch 过渡），但发起人 2026-08-14 决定**跳过上游 PR、快速推进**——`ctx.channels` 作为 ClawDSH 自有 seam 直接落地（决策见下）。上游 `packages/`/`vendor/` 等文件仍保持只读，本 seam 只落在 `packages/openclaw/`。
 
 ## 决策
 
@@ -18,7 +18,7 @@ OpenClaw 的核心价值是"个人助手活在消息渠道里"（WhatsApp/Telegr
    - 出站投递：agent 回复 → 对应渠道推送（含消息分组/引用等渠道特性映射）。
 2. **渠道插件只实现适配器**：`receive`（入站事件）与 `send`（出站投递）两个能力面，路由、会话绑定、重试策略全部归 `channel-core`。
 3. **契约继承 dsh 不变式**：一切入站消息与出站回复必须写进 session log（"model-visible means logged"），否则不得触达模型。
-4. **上游化策略**：契约设计完成后先向 `deepseek-ai/deepseek-harness` 提 PR；被接受则删除本地 patch 实现，只保留 `channel-core` 作为薄装配层；被拒绝则保留本地实现并把差异写进本 ADR。
+4. **长期自有 seam**：`ctx.channels` 作为 ClawDSH 自有 seam 长期保留，**不向上游提 PR**（发起人 2026-08-14 决定——快速开发优先，上游无暇回应）。`channel-core` 即该 seam 的实现，不视为临时 patch；未来若上游自建等价能力再评估去留，差异记录回本 ADR。
 
 ## 契约（阶段 2 定稿）
 
@@ -63,4 +63,4 @@ export interface ChannelAdapter {
 
 ## 结论（阶段 2 验证，2026-08-14）
 
-`ctx.channels` 契约已同时通过 **Telegram（getUpdates 长轮询）** 与 **飞书（node:http webhook + im OpenAPI）** 两个形态差异足够大的适配器验证：两者都只实现 `ChannelAdapter` 契约，路由/会话绑定/回复回投由 `channel-core` 统一承担，核心无渠道特判。契约测试（MockAdapter 验证「入站 → 真 agent turn → 回复出」闭环）+ 全量 typecheck + `--dump-config` 冒烟全绿。真实 e2e（真 key + 真 bot）留待凭证到位后的收尾项。上游 PR 提案草稿见 `docs/upstream-proposal/ctx-channels.md`。
+`ctx.channels` 契约已同时通过 **Telegram（getUpdates 长轮询）** 与 **飞书（node:http webhook + im OpenAPI）** 两个形态差异足够大的适配器验证：两者都只实现 `ChannelAdapter` 契约，路由/会话绑定/回复回投由 `channel-core` 统一承担，核心无渠道特判。契约测试（MockAdapter 验证「入站 → 真 agent turn → 回复出」闭环）+ 全量 typecheck + `--dump-config` 冒烟全绿。真实 e2e（真 key + 真 bot）留待凭证到位后的收尾项。seam 契约与装配语义的内部设计记录见 `docs/upstream-proposal/ctx-channels.md`（不再作为待提交 PR）。

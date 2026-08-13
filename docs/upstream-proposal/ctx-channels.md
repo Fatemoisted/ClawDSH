@@ -1,6 +1,6 @@
-# 上游提案草稿：给 dsh 增加 `ctx.channels` 消息渠道 seam
+# `ctx.channels` seam 设计记录（ClawDSH 自有，不再向上游提 PR）
 
-> 本文是向 `deepseek-ai/deepseek-harness` 提交的 PR 提案草稿（ClawDSH 自有，属 `docs/upstream-proposal/`）。契约已在本地以 `channel-core` + 双渠道适配器验证（阶段 2，见 docs/adr/0002-channel-seam.md）。上游接受后，本地 `channel-core` 退化为薄装配层（或删掉重写），差异记录回 ADR。
+> 本文是 `ctx.channels` 消息渠道 seam 的内部设计记录（属 `docs/upstream-proposal/`，目录名沿用，内容不再作为待提交 PR）。契约已在本地以 `channel-core` + 双渠道适配器验证（阶段 2，见 docs/adr/0002-channel-seam.md）。发起人 2026-08-14 决定跳过上游 PR、快速推进——本 seam 作为 ClawDSH 自有能力长期保留，本文仅记录契约与装配语义。
 
 ## 动机
 
