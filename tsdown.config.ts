@@ -16,7 +16,21 @@ function isBuildFaceClient(value: unknown): boolean {
 export default defineConfig(({ env }) => {
   const client = isBuildFaceClient(env?.DSH_BUILD_FACE)
   return {
-    workspace: ['vendor/*', 'packages/*/*', 'apps/cli'],
+    // ClawDSH: workspace 扫描以"目录"为粒度（不要求有 package.json），
+    // packages/openclaw/ 的骨架包会被误扫而报 Cannot find entry，
+    // 故显式排除。exclude 会整体替换 tsdown 内置默认值，因此上面四条
+    // 默认模式必须原样保留。插件包实现并接入构建时，再逐个移出排除名单
+    //（见 docs/adr/0001-project-foundation.md 决策 4 与 packages/openclaw/README.md）。
+    workspace: {
+      include: ['vendor/*', 'packages/*/*', 'apps/cli'],
+      exclude: [
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/test?(s)/**',
+        '**/t?(e)mp/**',
+        'packages/openclaw/**',
+      ],
+    },
     entry: client ? '' : ['lib/types/{index,invariant,startup}.js'],
     outDir: 'lib',
     format: ['esm'],

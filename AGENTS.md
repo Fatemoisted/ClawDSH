@@ -1,3 +1,28 @@
+<!-- ══════════════════════════════════════════════════════════════
+     ClawDSH 项目规范（本仓库自有段落，置于上游内容之前）
+     rebase 上游冲突时：取上游版本，再把本段重新置顶
+     ══════════════════════════════════════════════════════════════ -->
+# ClawDSH — OpenClaw 的个人助手能力，跑在 dsh 的 Cordis 底盘上
+
+**项目目的**：用 DeepSeek Harness 的插件架构（Cordis：everything is a plugin）重建 OpenClaw 的个人助手功能集，让每个社区功能以独立插件存在，摆脱 OpenClaw 因架构无接缝而无法维护的困境。实施方案见 [docs/specs/roadmap.md](docs/specs/roadmap.md)。
+
+**上游纪律（最高优先级）**：
+- 本仓库跟踪上游 `deepseek-ai/deepseek-harness`（远程 `upstream`）。上游 `vendor/`、`packages/*`（`openclaw/` 除外）、`apps/`、`website/` 及其 `docs/` 中的上游文件一律只读。
+- 上游文件仅允许两类改动：① 置顶本品牌段（README/CLAUDE/AGENTS）；② 通过 profile/bundle/patch 覆盖配置。
+- 缺接缝（seam）时：先写 ADR → 向上游提 PR → 本地用 profile patch 过渡。见 [docs/standards/upstream-sync.md](docs/standards/upstream-sync.md)。
+
+**自有代码只允许出现在**：`packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal}/`、`tools/`、`.github/workflows/clawdsh-*`。
+
+**新增插件流程**：复制 `packages/openclaw/_template/` → 写 `docs/specs/feature-*.md` → 更新 `docs/matrix/parity.md` → 接入 workspace/tsconfig → 过契约测试。规范见 [docs/standards/plugin-contract.md](docs/standards/plugin-contract.md) 与 [docs/standards/pr-policy.md](docs/standards/pr-policy.md)。
+
+**当前阶段**：阶段 0（Spike 前）。插件骨架尚未接入 workspace（有意为之，见 [packages/openclaw/README.md](packages/openclaw/README.md)）。
+
+**文档索引**：决策 `docs/adr/` · 规格 `docs/specs/` · 对齐矩阵 `docs/matrix/parity.md` · 规范 `docs/standards/` · 开发日志 `docs/journal/`
+
+---
+
+<!-- ⬇ 以下为上游原文（勿改） -->
+
 # AGENTS.md
 
 DeepSeek Harness is a plugin-based agent harness on vendored Cordis: **everything is a plugin**. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`; follow [docs/AGENTS.md](docs/AGENTS.md) for documentation.
