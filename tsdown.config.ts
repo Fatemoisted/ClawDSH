@@ -30,7 +30,6 @@ export default defineConfig(({ env }) => {
         '**/t?(e)mp/**',
         'packages/openclaw/_template/**',
         'packages/openclaw/automation/**',
-        'packages/openclaw/channel-feishu/**',
         'packages/openclaw/channel-wechat/**',
         'packages/openclaw/memory/**',
         'packages/openclaw/preset-openclaw/**',
