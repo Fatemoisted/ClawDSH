@@ -17,8 +17,8 @@ export const inject = ['invariants']
 /**
  * No runtime invariant: the adapter owns no authoritative event stream or mutable runtime data — it
  * emits `channel/inbound`, and routing plus reply logging are the channel-core registry's and
- * `dsh-agent`'s invariants. Its only mutable state is the polling offset, which is protocol
- * bookkeeping verified by unit tests rather than a runtime invariant.
+ * `dsh-agent`'s invariants. The polling offset is owned by grammY's long-poll loop, not this
+ * adapter, so there is no package-owned mutable state to assert over.
  */
 const install: InvariantInstaller = () => {}
 

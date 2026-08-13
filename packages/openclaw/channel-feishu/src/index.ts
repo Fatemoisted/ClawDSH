@@ -1,28 +1,27 @@
 /**
- * A Feishu (Lark) channel adapter over the `ctx.channels` seam.
+ * A Feishu (Lark) channel adapter over the `ctx.channels` seam, backed by the
+ * official `@larksuiteoapi/node-sdk`.
  *
- * Inbound messages arrive through a `node:http` webhook: the adapter ACKs the
- * platform within its confirmation window, echoes the URL-verification
- * challenge, parses both the classic v1 (`event_callback`) and v2
- * (`schema: "2.0"`) event formats, de-duplicates at-least-once delivery by
- * `uuid`/`event_id`, and maps `im.message.receive_v1` onto `channel/inbound`.
- * Outbound replies post through `im/v1/messages` with a cached
- * `tenant_access_token`.
+ * Inbound messages arrive through the SDK's WebSocket long-connection: the
+ * adapter registers an `im.message.receive_v1` handler on a `Lark.EventDispatcher`,
+ * starts a `Lark.WSClient` (which authenticates the connection and ACKs delivery
+ * at-least-once), de-duplicates by `message_id`, and maps each text message onto
+ * `channel/inbound`. Outbound replies post through `Lark.Client.im.message.create`
+ * with the tenant token the SDK caches and refreshes on its own.
  *
- * Webhook encryption (`encryptKey`), rich-text cards, and attachments are out
- * of scope for this first cut; the webhook is plaintext only.
+ * Long-connection mode replaces the earlier `node:http` webhook: no
+ * `verificationToken`/`encryptKey`, no inbound HTTP surface, no URL-verification
+ * challenge. Rich-text cards, attachments, and `reply_in_thread` quoting are out
+ * of scope for this cut; only text messages are relayed.
  * @module @clawdsh/dsh-channel-feishu
  */
 
-import { createServer } from 'node:http'
+import * as Lark from '@larksuiteoapi/node-sdk'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { ChannelAdapter, ChannelMessage } from '@clawdsh/dsh-channel-core'
 
-/** Feishu OpenAPI base URL. */
-const BASE = 'https://open.feishu.cn/open-apis'
-
-/** Cap on retained de-duplication ids before the oldest is evicted. */
+/** Cap on retained de-duplication message ids before the oldest is evicted. */
 const SEEN_CAP = 10000
 
 /** Cordis plugin name. */
@@ -31,298 +30,210 @@ export const name = 'channel-feishu'
 /** The channel registry this adapter contributes to. */
 export const inject = ['channels']
 
-/** Plugin config: app identity plus webhook and credential tuning. */
+/** Feishu API domain: mainland Feishu or international Lark. */
+export type FeishuDomain = 'feishu' | 'lark'
+
+/** Plugin config: app identity plus which Open Platform region to dial. */
 export interface Config {
   /** Feishu app ID (from the developer console); must not be committed. */
   appId: string
   /** Feishu app secret; must not be committed. */
   appSecret: string
-  /** Webhook listen port. */
-  port?: number
-  /** Webhook request path. */
-  path?: string
-  /** When set, the adapter fails to load: encrypted webhooks are not yet supported. */
-  encryptKey?: string
-  /** When set, inbound events whose token does not match are dropped. */
-  verificationToken?: string
+  /** Open Platform region; `feishu` (default) or `lark`. */
+  domain?: FeishuDomain
 }
 
 /** Runtime schema for the Feishu adapter. */
 export const Config: z<Config> = z.object({
   appId: z.string().required(),
   appSecret: z.string().required(),
-  port: z.number().default(8080),
-  path: z.string().default('/feishu/webhook'),
-  encryptKey: z.string().default(''),
-  verificationToken: z.string().default(''),
+  domain: z.union([z.const('feishu'), z.const('lark')]).default('feishu'),
 })
 
-/** The `im.message.receive_v1` message fields this adapter consumes. */
-interface FeishuMessage {
-  chat_id?: string
-  open_chat_id?: string
-  chat_type?: string
-  message_type?: string
-  content?: string
+/** The `im.message.receive_v1` event fields this adapter consumes. */
+interface FeishuReceiveEvent {
+  sender?: {
+    sender_id?: { open_id?: string; user_id?: string; union_id?: string }
+  }
+  message?: {
+    message_id?: string
+    chat_id?: string
+    chat_type?: string
+    message_type?: string
+    content?: string
+  }
 }
 
-/** A normalized inbound event, independent of the v1/v2 wire format. */
-interface FeishuEvent {
-  dedupKey: string | undefined
-  token: string | undefined
-  senderOpenId: string | undefined
-  message: FeishuMessage | undefined
-}
-
-/** Cached tenant token plus its expiry in epoch milliseconds. */
-interface TokenCache {
-  token: string
-  expiresAt: number
-}
-
-/** Mutable bookkeeping shared between the webhook and the sender. */
-export interface WebhookState {
+/** Mutable bookkeeping shared between the inbound handler and the sender. */
+export interface AdapterState {
   /** Per-thread reply target (`receive_id` + its type), keyed by inbound thread id. */
   receiveByThread: Map<string, { id: string; type: 'chat_id' | 'open_id' }>
-  /** Recently seen event ids, for at-least-once de-duplication. */
+  /** Recently seen message ids, for at-least-once de-duplication. */
   seen: Set<string>
 }
 
+/** Dependency injection seam so tests can substitute the API client. */
+export interface AdapterDeps {
+  /** Lark API client; when omitted, one is built from the app credentials. */
+  client?: Lark.Client
+}
+
 /**
- * Create a fresh, empty webhook state.
+ * Create a fresh, empty adapter state.
  * @returns A state with an empty reply-target map and an empty de-dup set.
  */
-export function createWebhookState(): WebhookState {
+export function createAdapterState(): AdapterState {
   return { receiveByThread: new Map(), seen: new Set() }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+/** Resolve the SDK `Domain` enum from the plugin's `domain` string. */
+function resolveDomain(domain: FeishuDomain | undefined): Lark.Domain {
+  return domain === 'lark' ? Lark.Domain.Lark : Lark.Domain.Feishu
 }
 
-/** Read the sender's `open_id` from a v1/v2 event payload. */
-function readSender(event: Record<string, unknown> | undefined): string | undefined {
-  if (event === undefined) return undefined
-  const sender = isRecord(event.sender) ? event.sender : undefined
-  const senderId = isRecord(sender?.sender_id) ? sender.sender_id : undefined
-  return typeof senderId?.open_id === 'string' ? senderId.open_id : undefined
-}
-
-/** Read the narrowed message fields from a v1/v2 event payload. */
-function readMessage(event: Record<string, unknown> | undefined): FeishuMessage | undefined {
-  if (event === undefined) return undefined
-  const message = isRecord(event.message) ? event.message : undefined
-  if (message === undefined) return undefined
-  return {
-    ...(typeof message.chat_id === 'string' ? { chat_id: message.chat_id } : {}),
-    ...(typeof message.open_chat_id === 'string' ? { open_chat_id: message.open_chat_id } : {}),
-    ...(typeof message.chat_type === 'string' ? { chat_type: message.chat_type } : {}),
-    ...(typeof message.message_type === 'string' ? { message_type: message.message_type } : {}),
-    ...(typeof message.content === 'string' ? { content: message.content } : {}),
-  }
-}
-
-/** Normalize a v1 (`event_callback`) or v2 (`schema: "2.0"`) event body. */
-function normalizeEvent(body: unknown): FeishuEvent | undefined {
-  if (!isRecord(body)) return undefined
-  if (body.type === 'event_callback') {
-    const inner = isRecord(body.event) ? body.event : undefined
-    if (inner?.type !== 'im.message.receive_v1') return undefined
-    return {
-      dedupKey: typeof body.uuid === 'string' ? body.uuid : undefined,
-      token: typeof body.token === 'string' ? body.token : undefined,
-      senderOpenId: readSender(inner),
-      message: readMessage(inner),
-    }
-  }
-  if (body.schema === '2.0') {
-    const header = isRecord(body.header) ? body.header : undefined
-    if (header?.event_type !== 'im.message.receive_v1') return undefined
-    const inner = isRecord(body.event) ? body.event : undefined
-    return {
-      dedupKey: typeof header.event_id === 'string' ? header.event_id : undefined,
-      token: typeof header.token === 'string' ? header.token : undefined,
-      senderOpenId: readSender(inner),
-      message: readMessage(inner),
-    }
-  }
-  return undefined
-}
-
-/** Extract the text from a `message.content` JSON string such as `{"text":"hi"}`. */
-function extractText(content: string | undefined): string {
+/**
+ * Extract the text from a `message.content` JSON string such as `{"text":"hi"}`.
+ * @param content - the raw message content, or `undefined` when absent.
+ * @returns the decoded `text` field, or the raw content when it is not the expected JSON envelope.
+ */
+export function extractText(content: string | undefined): string {
   if (content === undefined) return ''
   try {
     const parsed: unknown = JSON.parse(content)
-    if (isRecord(parsed) && typeof parsed.text === 'string') return parsed.text
+    if (typeof parsed === 'object' && parsed !== null && 'text' in parsed) {
+      const text = (parsed as { text?: unknown }).text
+      if (typeof text === 'string') return text
+    }
   } catch {
     // Fall back to the raw content when it is not the expected JSON envelope.
   }
   return content
 }
 
-/** Map a normalized event to `channel/inbound`, with token check and de-duplication. */
-function handleInbound(ctx: Context, config: Config, state: WebhookState, event: FeishuEvent): void {
-  if (config.verificationToken !== undefined && config.verificationToken !== '' && event.token !== config.verificationToken) {
-    return
-  }
-  if (event.dedupKey !== undefined) {
-    if (state.seen.has(event.dedupKey)) return
-    state.seen.add(event.dedupKey)
-    if (state.seen.size > SEEN_CAP) {
-      const oldest = state.seen.values().next().value
-      if (oldest !== undefined) state.seen.delete(oldest)
-    }
-  }
+/**
+ * Map an `im.message.receive_v1` event to a normalized inbound message, or
+ * `undefined` when it is not a non-empty text message.
+ * @param event - the SDK-delivered receive event.
+ * @returns the inbound thread id, optional sender, and text, or `undefined`.
+ */
+export function toInbound(event: FeishuReceiveEvent): { threadId: string; sender?: string; text: string } | undefined {
   const message = event.message
-  if (message === undefined || message.message_type !== 'text') return
+  if (message === undefined || message.message_type !== 'text') return undefined
   const text = extractText(message.content)
-  if (text === '') return
-  const senderOpenId = event.senderOpenId
-  const isP2p = message.chat_type === 'p2p'
-  const threadId = isP2p
-    ? (senderOpenId ?? message.open_chat_id ?? message.chat_id ?? 'p2p')
-    : (message.chat_id ?? message.open_chat_id ?? 'group')
-  state.receiveByThread.set(threadId, {
-    id: isP2p ? (senderOpenId ?? threadId) : threadId,
-    type: isP2p ? 'open_id' : 'chat_id',
+  if (text === '') return undefined
+  const senderOpenId = event.sender?.sender_id?.open_id
+  const isDirect = message.chat_type === 'p2p' || message.chat_type === 'private'
+  const threadId = isDirect
+    ? (senderOpenId ?? message.chat_id ?? 'p2p')
+    : (message.chat_id ?? 'group')
+  return {
+    threadId,
+    ...(senderOpenId === undefined ? {} : { sender: senderOpenId }),
+    text,
+  }
+}
+
+/** Deduplicate by message id, evicting the oldest past the cap. */
+function dedup(state: AdapterState, messageId: string | undefined): boolean {
+  if (messageId === undefined) return false
+  if (state.seen.has(messageId)) return true
+  state.seen.add(messageId)
+  if (state.seen.size > SEEN_CAP) {
+    const oldest = state.seen.values().next().value
+    if (oldest !== undefined) state.seen.delete(oldest)
+  }
+  return false
+}
+
+/**
+ * Handle one SDK-delivered receive event: de-duplicate, normalize, remember the
+ * reply target, and emit `channel/inbound`.
+ * @param ctx - Cordis context to emit `channel/inbound` on.
+ * @param state - shared adapter bookkeeping (reply targets and de-dup set).
+ * @param event - the SDK-delivered `im.message.receive_v1` event.
+ */
+export function handleReceiveEvent(ctx: Context, state: AdapterState, event: FeishuReceiveEvent): void {
+  const message = event.message
+  if (dedup(state, message?.message_id)) return
+  const inbound = toInbound(event)
+  if (inbound === undefined) return
+  const isDirect = message?.chat_type === 'p2p' || message?.chat_type === 'private'
+  state.receiveByThread.set(inbound.threadId, {
+    id: isDirect ? (inbound.sender ?? inbound.threadId) : inbound.threadId,
+    type: isDirect ? 'open_id' : 'chat_id',
   })
   ctx.emit('channel/inbound', {
     channel: 'feishu',
     direction: 'in',
-    threadId,
-    ...(senderOpenId === undefined ? {} : { sender: senderOpenId }),
-    text,
+    threadId: inbound.threadId,
+    ...(inbound.sender === undefined ? {} : { sender: inbound.sender }),
+    text: inbound.text,
   })
 }
 
-/**
- * Process one parsed webhook body, returning the response to ACK back and, for
- * an inbound message, mapping it onto `channel/inbound`.
- * @param ctx - Cordis context to emit `channel/inbound` on.
- * @param config - validated plugin config.
- * @param state - shared webhook bookkeeping (reply targets and de-dup set).
- * @param body - the parsed JSON request body.
- * @returns the HTTP status and body to write to the webhook response.
- */
-export function processWebhook(ctx: Context, config: Config, state: WebhookState, body: unknown): { status: number; body: unknown } {
-  if (isRecord(body) && typeof body.challenge === 'string') {
-    return { status: 200, body: { challenge: body.challenge } }
-  }
-  const event = normalizeEvent(body)
-  if (event !== undefined) handleInbound(ctx, config, state, event)
-  return { status: 200, body: {} }
-}
-
-/** Start the plaintext webhook server and return its disposer. */
-function startWebhook(ctx: Context, config: Config, state: WebhookState): () => void {
-  const server = createServer((req, res) => {
-    if (req.method !== 'POST' || req.url !== (config.path ?? '/feishu/webhook')) {
-      res.statusCode = 404
-      res.end()
-      return
-    }
-    let raw = ''
-    req.setEncoding('utf8')
-    req.on('data', (chunk: string) => { raw += chunk })
-    req.on('end', () => {
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(raw)
-      } catch {
-        res.statusCode = 400
-        res.end()
-        return
-      }
-      const result = processWebhook(ctx, config, state, parsed)
-      res.statusCode = result.status
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify(result.body))
-    })
+/** Build a Lark API client from validated config. */
+function buildClient(config: Config): Lark.Client {
+  return new Lark.Client({
+    appId: config.appId,
+    appSecret: config.appSecret,
+    appType: Lark.AppType.SelfBuild,
+    domain: resolveDomain(config.domain),
   })
-  server.listen(config.port ?? 8080)
-  return () => { server.close() }
 }
 
-/** `tenant_access_token` response fields. */
-interface TenantTokenResponse {
-  code: number
-  msg?: string
-  tenant_access_token?: string
-  expire?: number
-}
-
-/** `im/v1/messages` response fields. */
-interface SendResponse {
-  code: number
-  msg?: string
-}
-
-/** Obtain a cached tenant token, refreshing it near expiry. */
-async function getTenantToken(config: Config, token: TokenCache): Promise<string> {
-  const now = Date.now()
-  if (token.token !== '' && token.expiresAt > now) return token.token
-  const response = await fetch(`${BASE}/auth/v3/tenant_access_token/internal`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ app_id: config.appId, app_secret: config.appSecret }),
+/** Start the WebSocket long-connection and return its disposer. */
+function startLongConnection(ctx: Context, config: Config, state: AdapterState): () => void {
+  const dispatcher = new Lark.EventDispatcher({})
+  dispatcher.register({
+    'im.message.receive_v1': (event) => {
+      handleReceiveEvent(ctx, state, event)
+    },
   })
-  if (!response.ok) {
-    throw new Error(`feishu: tenant_access_token failed with status ${response.status}`)
-  }
-  const body = (await response.json()) as TenantTokenResponse
-  if (body.code !== 0 || body.tenant_access_token === undefined) {
-    throw new Error(`feishu: tenant_access_token failed: ${body.msg ?? 'unknown error'}`)
-  }
-  token.token = body.tenant_access_token
-  token.expiresAt = now + ((body.expire ?? 7200) - 60) * 1000
-  return token.token
+  const wsClient = new Lark.WSClient({
+    appId: config.appId,
+    appSecret: config.appSecret,
+    domain: resolveDomain(config.domain),
+    loggerLevel: Lark.LoggerLevel.info,
+  })
+  void wsClient.start({ eventDispatcher: dispatcher }).catch((error: unknown) => {
+    ctx.logger.warn(`channel-feishu: WebSocket start failed: ${error instanceof Error ? error.message : String(error)}`)
+  })
+  return () => { wsClient.close({ force: true }) }
 }
 
-/** Post an outbound text message through `im/v1/messages`. */
-async function sendMessage(config: Config, token: TokenCache, state: WebhookState, message: ChannelMessage): Promise<void> {
+/** Post an outbound text message through `im.message.create`. */
+async function sendMessage(client: Lark.Client, state: AdapterState, message: ChannelMessage): Promise<void> {
   if (message.threadId === undefined) {
     throw new Error('feishu: send requires a threadId')
   }
-  const accessToken = await getTenantToken(config, token)
   const receive = state.receiveByThread.get(message.threadId) ?? { id: message.threadId, type: 'chat_id' as const }
-  const response = await fetch(`${BASE}/im/v1/messages?receive_id_type=${receive.type}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  const response = await client.im.message.create({
+    params: { receive_id_type: receive.type },
+    data: {
       receive_id: receive.id,
       msg_type: 'text',
       content: JSON.stringify({ text: message.text }),
-    }),
+    },
   })
-  if (!response.ok) {
-    throw new Error(`feishu: im/v1/messages failed with status ${response.status}`)
-  }
-  const body = (await response.json()) as SendResponse
-  if (body.code !== 0) {
-    throw new Error(`feishu: im/v1/messages failed: ${body.msg ?? 'unknown error'}`)
+  if (response.code !== 0) {
+    throw new Error(`feishu: im.message.create failed: ${response.msg ?? 'unknown error'}`)
   }
 }
 
 /**
  * Build the Feishu adapter from validated config.
- * @param config - validated plugin config carrying app identity and webhook tuning.
+ * @param config - validated plugin config carrying app identity and region.
+ * @param deps - optional dependency injection (test-only API client).
  * @returns the adapter to register with `ctx.channels`.
  */
-export function createAdapter(config: Config): ChannelAdapter {
-  if (config.encryptKey !== undefined && config.encryptKey !== '') {
-    throw new Error('feishu: encrypted webhooks (encryptKey) are not yet supported; omit encryptKey for plaintext mode')
-  }
-  const token: TokenCache = { token: '', expiresAt: 0 }
-  const state = createWebhookState()
+export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAdapter {
+  const client = deps.client ?? buildClient(config)
+  const state = createAdapterState()
   return {
     id: 'feishu',
     capabilities: { receive: true, send: true },
-    start: ctx => startWebhook(ctx, config, state),
-    send: message => sendMessage(config, token, state, message),
+    start: ctx => startLongConnection(ctx, config, state),
+    send: message => sendMessage(client, state, message),
   }
 }
 

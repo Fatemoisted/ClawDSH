@@ -16,24 +16,21 @@ A `Requires:` line lists the service keys the plugin `inject`s: its `cordis.yml`
 Requires: `channels`
 
 ```ts config-catalog
-/** Plugin config: app identity plus webhook and credential tuning. */
+/** Plugin config: app identity plus which Open Platform region to dial. */
 export interface Config {
   /** Feishu app ID (from the developer console); must not be committed. */
   appId: string
   /** Feishu app secret; must not be committed. */
   appSecret: string
-  /** Webhook listen port. */
-  port?: number
-  /** Webhook request path. */
-  path?: string
-  /** When set, the adapter fails to load: encrypted webhooks are not yet supported. */
-  encryptKey?: string
-  /** When set, inbound events whose token does not match are dropped. */
-  verificationToken?: string
+  /** Open Platform region; `feishu` (default) or `lark`. */
+  domain?: FeishuDomain
 }
+
+/** Feishu API domain: mainland Feishu or international Lark. */
+export type FeishuDomain = 'feishu' | 'lark'
 ```
 
-Source: [`packages/openclaw/channel-feishu/src/index.ts:35`](../packages/openclaw/channel-feishu/src/index.ts)
+Source: [`packages/openclaw/channel-feishu/src/index.ts:37`](../packages/openclaw/channel-feishu/src/index.ts)
 
 <a id="clawdshdsh-channel-telegram"></a>
 
@@ -53,7 +50,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/openclaw/channel-telegram/src/index.ts:26`](../packages/openclaw/channel-telegram/src/index.ts)
+Source: [`packages/openclaw/channel-telegram/src/index.ts:28`](../packages/openclaw/channel-telegram/src/index.ts)
 
 <a id="clawdshdsh-soul"></a>
 

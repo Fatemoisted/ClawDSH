@@ -63,4 +63,4 @@ export interface ChannelAdapter {
 
 ## 结论（阶段 2 验证，2026-08-14）
 
-`ctx.channels` 契约已同时通过 **Telegram（getUpdates 长轮询）** 与 **飞书（node:http webhook + im OpenAPI）** 两个形态差异足够大的适配器验证：两者都只实现 `ChannelAdapter` 契约，路由/会话绑定/回复回投由 `channel-core` 统一承担，核心无渠道特判。契约测试（MockAdapter 验证「入站 → 真 agent turn → 回复出」闭环）+ 全量 typecheck + `--dump-config` 冒烟全绿。真实 e2e（真 key + 真 bot）留待凭证到位后的收尾项。seam 契约与装配语义的内部设计记录见 `docs/upstream-proposal/ctx-channels.md`（不再作为待提交 PR）。
+`ctx.channels` 契约已同时通过 **Telegram（grammY `Bot` 长轮询）** 与 **飞书（`@larksuiteoapi/node-sdk` 长连接 + `im.message.create`）** 两个形态差异足够大的适配器验证：两者都只实现 `ChannelAdapter` 契约（各自用官方 SDK 封装协议，见 §8 移植原则），路由/会话绑定/回复回投由 `channel-core` 统一承担，核心无渠道特判。契约测试（MockAdapter 验证「入站 → 真 agent turn → 回复出」闭环）+ 全量 typecheck + `--dump-config` 冒烟全绿。真实 e2e（真 key + 真 bot）留待凭证到位后的收尾项。seam 契约与装配语义的内部设计记录见 `docs/upstream-proposal/ctx-channels.md`（不再作为待提交 PR）。

@@ -60,6 +60,6 @@ per-thread 入站 turn 以 tail-chain 串行化，避免并发交错。**一切�
 
 ## 本地验证状态（阶段 2）
 
-- `channel-core` + `channel-telegram`（getUpdates 长轮询）+ `channel-feishu`（webhook 明文入站 + im 出站）已实现；
+- `channel-core` + `channel-telegram`（grammY `Bot` 长轮询）+ `channel-feishu`（`@larksuiteoapi/node-sdk` 长连接 + `im.message.create`）已实现；
 - 契约测试（MockAdapter 验证「入站 → 真 agent turn → 回复出」闭环）+ 全量 typecheck + `--dump-config` 冒烟全绿；
 - 真实 e2e（真 key + 真 bot）留待凭证到位后收尾。

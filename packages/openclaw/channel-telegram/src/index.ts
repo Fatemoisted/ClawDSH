@@ -1,17 +1,19 @@
 /**
- * A Telegram channel adapter over the `ctx.channels` seam.
+ * A Telegram channel adapter over the `ctx.channels` seam, backed by grammY.
  *
- * Inbound messages arrive through `getUpdates` long-polling: the adapter
- * loops the Bot API, turns each `message` update into a normalized
- * `channel/inbound` event, and advances the `offset` past every consumed
- * update (idempotent under at-least-once delivery). Outbound replies are
- * posted through `sendMessage`.
+ * Inbound messages arrive through grammY's long polling: the adapter runs a
+ * `Bot` with a `message:text` handler that maps each text message onto
+ * `channel/inbound`, and grammY advances the `offset` past every consumed
+ * update (idempotent under at-least-once delivery). Outbound replies post
+ * through `bot.api.sendMessage`.
  *
  * Webhook delivery, `reply_parameters` quote-replies, and non-text messages
- * (captions, media) are out of scope for this first cut.
+ * (captions, media) are out of scope for this first cut; only text messages
+ * are relayed.
  * @module @clawdsh/dsh-channel-telegram
  */
 
+import { Bot } from 'grammy'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { ChannelAdapter, ChannelMessage } from '@clawdsh/dsh-channel-core'
@@ -39,109 +41,69 @@ export const Config: z<Config> = z.object({
   timeout: z.number().default(30),
 })
 
-/** One `getUpdates` update, narrowed to the fields this adapter consumes. */
-interface TelegramUpdate {
-  update_id: number
-  message?: TelegramMessage
-}
-
-/** One `message` update, narrowed to text plus the routing identity. */
-interface TelegramMessage {
-  text?: string
+/** The grammY `message:text` context fields this adapter consumes. */
+export interface TelegramTextContext {
+  message: { text: string }
   chat: { id: number }
   from?: { id: number }
 }
 
-/** `getUpdates` response envelope. */
-interface GetUpdatesResponse {
-  ok: boolean
-  result?: TelegramUpdate[]
-  description?: string
+/** Dependency injection seam so tests can substitute the bot. */
+export interface AdapterDeps {
+  /** grammY bot; when omitted, one is built from the token. */
+  bot?: Bot
 }
 
-/** Resolve after `ms`, or immediately when the signal aborts. */
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) { resolve(); return }
-    const timer = setTimeout(resolve, ms)
-    signal.addEventListener('abort', () => { clearTimeout(timer); resolve() }, { once: true })
+/**
+ * Map a grammY text-message context to a normalized inbound message.
+ * @param ctx - the grammY text-message context.
+ * @returns the inbound message to emit as `channel/inbound`.
+ */
+export function toInbound(ctx: TelegramTextContext): ChannelMessage {
+  return {
+    channel: 'telegram',
+    direction: 'in',
+    threadId: String(ctx.chat.id),
+    ...(ctx.from === undefined ? {} : { sender: String(ctx.from.id) }),
+    text: ctx.message.text,
+  }
+}
+
+/** Start grammY long polling and return its disposer. */
+function startPolling(ctx: Context, bot: Bot, timeout: number): () => void {
+  bot.catch((error) => {
+    ctx.logger.warn(`channel-telegram: ${error.message ?? String(error)}`)
   })
-}
-
-/** Emit `channel/inbound` for every text message in a `getUpdates` batch. */
-function dispatch(ctx: Context, updates: TelegramUpdate[]): void {
-  for (const update of updates) {
-    const message = update.message
-    if (message === undefined || message.text === undefined) continue
-    ctx.emit('channel/inbound', {
-      channel: 'telegram',
-      direction: 'in',
-      threadId: String(message.chat.id),
-      ...(message.from === undefined ? {} : { sender: String(message.from.id) }),
-      text: message.text,
-    })
-  }
-}
-
-/** Long-poll `getUpdates` until aborted, advancing the offset past every update. */
-function startPolling(ctx: Context, base: string, timeout: number): () => void {
-  const controller = new AbortController()
-  let offset: number | undefined
-  const loop = async (): Promise<void> => {
-    while (!controller.signal.aborted) {
-      try {
-        const params = new URLSearchParams({
-          timeout: String(timeout),
-          allowed_updates: JSON.stringify(['message']),
-        })
-        if (offset !== undefined) params.set('offset', String(offset))
-        const response = await fetch(`${base}getUpdates?${params.toString()}`, { signal: controller.signal })
-        const body = (await response.json()) as GetUpdatesResponse
-        if (!body.ok) throw new Error(`telegram: getUpdates failed: ${body.description ?? 'unknown error'}`)
-        for (const update of body.result ?? []) {
-          offset = update.update_id + 1
-        }
-        dispatch(ctx, body.result ?? [])
-      } catch {
-        // A transient transport failure backs off before the next poll; an
-        // abort settles immediately and the loop condition then exits.
-        await delay(1000, controller.signal)
-      }
-    }
-  }
-  void loop()
-  return () => { controller.abort() }
+  bot.on('message:text', (message) => {
+    ctx.emit('channel/inbound', toInbound(message))
+  })
+  void bot.start({ allowed_updates: ['message'], timeout })
+  return () => { void bot.stop() }
 }
 
 /** Post an outbound reply through `sendMessage`. */
-async function sendMessage(base: string, message: ChannelMessage): Promise<void> {
+async function sendMessage(bot: Bot, message: ChannelMessage): Promise<void> {
   if (message.threadId === undefined) {
     throw new Error('telegram: send requires a threadId (chat id)')
   }
-  const response = await fetch(`${base}sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: message.threadId, text: message.text }),
-  })
-  if (!response.ok) {
-    throw new Error(`telegram: sendMessage failed with status ${response.status}`)
-  }
+  await bot.api.sendMessage(message.threadId, message.text)
 }
 
 /**
  * Build the Telegram adapter from validated config.
  * @param config - validated plugin config carrying the bot token and polling tuning.
+ * @param deps - optional dependency injection (test-only bot).
  * @returns the adapter to register with `ctx.channels`.
  */
-export function createAdapter(config: Config): ChannelAdapter {
-  const base = `https://api.telegram.org/bot${config.botToken}/`
+export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAdapter {
+  const bot = deps.bot ?? new Bot(config.botToken)
   const polling = config.polling ?? true
   const timeout = config.timeout ?? 30
   return {
     id: 'telegram',
     capabilities: { receive: polling, send: true },
-    start: ctx => polling ? startPolling(ctx, base, timeout) : () => {},
-    send: message => sendMessage(base, message),
+    start: ctx => polling ? startPolling(ctx, bot, timeout) : () => {},
+    send: message => sendMessage(bot, message),
   }
 }
 

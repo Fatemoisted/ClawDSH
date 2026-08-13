@@ -26,11 +26,12 @@
   ],
   "peerDependencies": {
     "@clawdsh/dsh-channel-core": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:^"
+    "@deepseek-ai/schemastery": "workspace:^",
+    "@larksuiteoapi/node-sdk": "^1.73.0"
   },
   "devDependencies": {
     "@clawdsh/dsh-channel-core": "workspace:^",

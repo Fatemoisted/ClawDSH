@@ -1,15 +1,10 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { ChannelMessage } from '@clawdsh/dsh-channel-core'
-import { createAdapter, createWebhookState, processWebhook } from '@clawdsh/dsh-channel-feishu'
-
-afterEach(() => { vi.unstubAllGlobals() })
+import type { AdapterDeps } from '@clawdsh/dsh-channel-feishu'
+import { createAdapter, createAdapterState, extractText, handleReceiveEvent, toInbound } from '@clawdsh/dsh-channel-feishu'
 
 const CONFIG = { appId: 'app', appSecret: 'secret' }
-
-function okJson(body: unknown): Response {
-  return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
-}
 
 function nextInbound(ctx: Context): Promise<ChannelMessage> {
   return new Promise((resolve) => {
@@ -20,87 +15,83 @@ function nextInbound(ctx: Context): Promise<ChannelMessage> {
   })
 }
 
-const V1_EVENT = {
-  type: 'event_callback',
-  uuid: 'uuid-1',
-  token: '',
-  event: {
-    type: 'im.message.receive_v1',
-    sender: { sender_id: { open_id: 'ou_1' } },
-    message: { message_type: 'text', chat_type: 'group', chat_id: 'oc_1', content: '{"text":"hi"}' },
-  },
+/** A minimal stand-in for the SDK client's `im.message.create` surface. */
+function mockClient() {
+  const create = vi.fn(async () => ({ code: 0 }))
+  return { client: { im: { message: { create } } } as unknown as NonNullable<AdapterDeps['client']>, create }
+}
+
+const GROUP_EVENT = {
+  sender: { sender_id: { open_id: 'ou_1' } },
+  message: { message_id: 'om_1', chat_id: 'oc_1', chat_type: 'group', message_type: 'text', content: '{"text":"hi"}' },
 }
 
 describe('the feishu channel adapter', () => {
-  it('maps a v1 event_callback into an inbound message', async () => {
+  it('extracts text from the content JSON envelope, falling back to raw content', () => {
+    expect(extractText('{"text":"hi"}')).toBe('hi')
+    expect(extractText('plain')).toBe('plain')
+    expect(extractText(undefined)).toBe('')
+  })
+
+  it('normalizes a group text event to an inbound message', () => {
+    expect(toInbound(GROUP_EVENT)).toEqual({ threadId: 'oc_1', sender: 'ou_1', text: 'hi' })
+  })
+
+  it('normalizes a p2p text event to the sender open_id thread', () => {
+    const event = {
+      sender: { sender_id: { open_id: 'ou_2' } },
+      message: { message_id: 'om_2', chat_id: 'oc_2', chat_type: 'p2p', message_type: 'text', content: '{"text":"hey"}' },
+    }
+    expect(toInbound(event)).toEqual({ threadId: 'ou_2', sender: 'ou_2', text: 'hey' })
+  })
+
+  it('drops non-text and empty events', () => {
+    expect(toInbound({ message: { message_type: 'image', content: '{}' } })).toBeUndefined()
+    expect(toInbound({ message: { message_type: 'text', content: '{"text":""}' } })).toBeUndefined()
+  })
+
+  it('emits an inbound message and records the reply target', async () => {
     const ctx = new Context()
+    const state = createAdapterState()
     const inbound = nextInbound(ctx)
-    processWebhook(ctx, CONFIG, createWebhookState(), V1_EVENT)
+    handleReceiveEvent(ctx, state, GROUP_EVENT)
     const message = await inbound
     expect(message).toMatchObject({ channel: 'feishu', direction: 'in', threadId: 'oc_1', sender: 'ou_1', text: 'hi' })
+    expect(state.receiveByThread.get('oc_1')).toEqual({ id: 'oc_1', type: 'chat_id' })
   })
 
-  it('maps a v2 event into an inbound message', async () => {
+  it('de-duplicates at-least-once delivery by message id', () => {
     const ctx = new Context()
-    const inbound = nextInbound(ctx)
-    processWebhook(ctx, CONFIG, createWebhookState(), {
-      schema: '2.0',
-      header: { event_id: 'evt-1', event_type: 'im.message.receive_v1', token: '' },
-      event: {
-        sender: { sender_id: { open_id: 'ou_2' } },
-        message: { message_type: 'text', chat_type: 'group', chat_id: 'oc_2', content: '{"text":"hey"}' },
-      },
-    })
-    const message = await inbound
-    expect(message).toMatchObject({ threadId: 'oc_2', sender: 'ou_2', text: 'hey' })
-  })
-
-  it('echoes the challenge for URL verification', () => {
-    const result = processWebhook(new Context(), CONFIG, createWebhookState(), { type: 'url_verification', challenge: 'abc', token: '' })
-    expect(result).toEqual({ status: 200, body: { challenge: 'abc' } })
-  })
-
-  it('de-duplicates at-least-once delivery by uuid', async () => {
-    const ctx = new Context()
-    const state = createWebhookState()
+    const state = createAdapterState()
     const inbound: ChannelMessage[] = []
     ctx.on('channel/inbound', (message) => { inbound.push(message) })
-    processWebhook(ctx, CONFIG, state, V1_EVENT)
-    processWebhook(ctx, CONFIG, state, V1_EVENT)
+    handleReceiveEvent(ctx, state, GROUP_EVENT)
+    handleReceiveEvent(ctx, state, GROUP_EVENT)
     expect(inbound).toHaveLength(1)
   })
 
-  it('caches the tenant token across sends and posts the message payload', async () => {
-    const fetchMock = vi.fn(async (url: unknown, _init?: { body?: string }): Promise<Response> => {
-      const u = String(url)
-      if (u.includes('tenant_access_token')) {
-        return okJson({ code: 0, tenant_access_token: 't-1', expire: 7200 })
-      }
-      return okJson({ code: 0 })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    const adapter = createAdapter(CONFIG)
+  it('posts a text message through the SDK client', async () => {
+    const { client, create } = mockClient()
+    const adapter = createAdapter(CONFIG, { client })
     await adapter.send({ channel: 'feishu', direction: 'out', threadId: 'oc_1', text: 'reply' })
-    await adapter.send({ channel: 'feishu', direction: 'out', threadId: 'oc_2', text: 'again' })
-
-    const tokenCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('tenant_access_token'))
-    expect(tokenCalls).toHaveLength(1)
-
-    const sendCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('im/v1/messages'))
-    expect(sendCalls).toHaveLength(2)
-    const [url, init] = sendCalls[0]!
-    expect(String(url)).toContain('receive_id_type=chat_id')
-    expect(JSON.parse(init?.body ?? '')).toEqual({ receive_id: 'oc_1', msg_type: 'text', content: '{"text":"reply"}' })
+    expect(create).toHaveBeenCalledWith({
+      params: { receive_id_type: 'chat_id' },
+      data: { receive_id: 'oc_1', msg_type: 'text', content: '{"text":"reply"}' },
+    })
   })
 
   it('rejects a send without a thread id', async () => {
-    const adapter = createAdapter(CONFIG)
+    const { client } = mockClient()
+    const adapter = createAdapter(CONFIG, { client })
     await expect(adapter.send({ channel: 'feishu', direction: 'out', text: 'reply' }))
       .rejects.toThrow(/threadId/)
   })
 
-  it('fails to load when an encryptKey is configured', () => {
-    expect(() => createAdapter({ appId: 'app', appSecret: 'secret', encryptKey: 'k' })).toThrow(/encrypted/)
+  it('fails loud when the SDK reports a non-zero code', async () => {
+    const create = vi.fn(async () => ({ code: 99999, msg: 'boom' }))
+    const client = { im: { message: { create } } } as unknown as NonNullable<AdapterDeps['client']>
+    const adapter = createAdapter(CONFIG, { client })
+    await expect(adapter.send({ channel: 'feishu', direction: 'out', threadId: 'oc_1', text: 'x' }))
+      .rejects.toThrow(/boom/)
   })
 })
