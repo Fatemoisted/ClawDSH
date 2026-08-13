@@ -7,7 +7,7 @@ import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { createScope, type ScopeKey } from '@deepseek-ai/dsh-scope'
 import { describe, expect, it } from 'vitest'
 import * as Soul from '@clawdsh/dsh-soul'
-import { PERSONA_SECTION, SOUL_SECTION } from '@clawdsh/dsh-soul'
+import { PERSONA_SECTION, SOUL_PRECEDENCE_NOTE, SOUL_SECTION } from '@clawdsh/dsh-soul'
 
 async function harness(deploymentPersona: string): Promise<Context> {
   const ctx = new Context()
@@ -17,6 +17,10 @@ async function harness(deploymentPersona: string): Promise<Context> {
 
 function sectionText(assembly: { sections: { name: string; text: string }[] }, name: string): string | undefined {
   return assembly.sections.find(section => section.name === name)?.text
+}
+
+function withNote(text: string): string {
+  return `${SOUL_PRECEDENCE_NOTE}\n\n${text}`
 }
 
 describe('the soul row', () => {
@@ -39,8 +43,8 @@ describe('the soul row', () => {
     expect(names.indexOf(PERSONA_SECTION)).toBeLessThan(names.indexOf(SOUL_SECTION))
     expect(names.indexOf(SOUL_SECTION)).toBeLessThan(names.indexOf('global:guidance'))
     expect(sectionText(assembly, PERSONA_SECTION)).toBe('deployment identity')
-    expect(sectionText(assembly, SOUL_SECTION)).toBe('You are a loyal lobster.')
-    expect(renderPrompt(assembly)).toContain('You are a loyal lobster.')
+    expect(sectionText(assembly, SOUL_SECTION)).toBe(withNote('You are a loyal lobster.'))
+    expect(renderPrompt(assembly)).toContain(withNote('You are a loyal lobster.'))
     // The global scope is untouched by a scoped soul.
     expect(sectionText(await ctx.systemPrompt.assemble(), SOUL_SECTION)).toBeUndefined()
   })
@@ -67,7 +71,7 @@ describe('the soul row', () => {
     const key: ScopeKey = { agent: 'a1' }
     const scope = createScope(ctx, key)
     const fiber = await scope.ctx.plugin(Soul, { text: 'preset identity' })
-    expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBe('preset identity')
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBe(withNote('preset identity'))
 
     await fiber.dispose()
 
@@ -82,7 +86,7 @@ describe('the soul row', () => {
     await createScope(ctx, first).ctx.plugin(Soul, { text: 'first identity' })
     await createScope(ctx, second).ctx.plugin(Soul, { text: 'second identity', mode: 'replace' })
 
-    expect(sectionText(await ctx.systemPrompt.assemble({ scope: first }), SOUL_SECTION)).toBe('first identity')
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: first }), SOUL_SECTION)).toBe(withNote('first identity'))
     const secondAssembly = await ctx.systemPrompt.assemble({ scope: second })
     expect(secondAssembly.sections).toEqual([{ name: PERSONA_SECTION, text: 'second identity' }])
   })
@@ -97,7 +101,7 @@ describe('the soul row', () => {
       const key: ScopeKey = { agent: 'a1' }
       await createScope(ctx, key).ctx.plugin(Soul, { source: path, text: 'inline identity' })
 
-      expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBe('I am the file soul.')
+      expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBe(withNote('I am the file soul.'))
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -144,6 +148,12 @@ describe('the soul row', () => {
 
     await expect(createScope(ctx, key).ctx.plugin(Soul, { text: '' }))
       .rejects.toThrow(/non-empty/)
+    await expect(createScope(ctx, key).ctx.plugin(Soul, { text: '', precedenceNote: false }))
+      .rejects.toThrow(/non-empty/)
+    // A direct apply with no text at all takes the `?? ''` fallback and rejects
+    // before any precedence-note prepend can run.
+    expect(() => Soul.apply(createScope(ctx, key).ctx, {}))
+      .toThrow(/non-empty/)
   })
 
   it('fails loud on an unknown mode', async () => {
@@ -179,5 +189,47 @@ describe('the soul row', () => {
     expect((await ctx.systemPrompt.assemble({ scope: key })).contexts).toEqual([
       { name: 'policy', text: 'global policy' },
     ])
+  })
+
+  it('precedenceNote: false keeps the append-mode soul bare', async () => {
+    const ctx = await harness('deployment identity')
+    const key: ScopeKey = { agent: 'a1' }
+
+    await createScope(ctx, key).ctx.plugin(Soul, { text: 'You are a loyal lobster.', precedenceNote: false })
+
+    const assembly = await ctx.systemPrompt.assemble({ scope: key })
+    expect(sectionText(assembly, SOUL_SECTION)).toBe('You are a loyal lobster.')
+    expect(renderPrompt(assembly)).not.toContain(SOUL_PRECEDENCE_NOTE)
+  })
+
+  it('replace mode never adds the precedence note', async () => {
+    const ctx = await harness('deployment identity')
+    // Scope keys are identity-compared, so each mount and assembly reuse one key object.
+    const first: ScopeKey = { agent: 'a1' }
+    const second: ScopeKey = { agent: 'a2' }
+
+    await createScope(ctx, first).ctx.plugin(Soul, { text: 'Only this.', mode: 'replace' })
+    const defaulted = await ctx.systemPrompt.assemble({ scope: first })
+    expect(defaulted.sections).toEqual([{ name: PERSONA_SECTION, text: 'Only this.' }])
+    expect(renderPrompt(defaulted)).toBe('Only this.')
+
+    await createScope(ctx, second).ctx.plugin(Soul, { text: 'Only this.', mode: 'replace', precedenceNote: false })
+    const disabled = await ctx.systemPrompt.assemble({ scope: second })
+    expect(disabled.sections).toEqual([{ name: PERSONA_SECTION, text: 'Only this.' }])
+    expect(renderPrompt(disabled)).toBe('Only this.')
+  })
+
+  it('apply-level fallback: omitted mode and precedenceNote behave like their schema defaults', async () => {
+    const ctx = await harness('')
+    const key: ScopeKey = { agent: 'a1' }
+
+    // A direct apply() bypasses schema defaulting, so the apply-level `??`
+    // fallbacks run; the wrapper fiber declares systemPrompt so the effect can
+    // resolve the property access (same pattern as dsh-persona's spec).
+    await ctx.plugin(Object.assign((inner: Context) => {
+      Soul.apply(createScope(inner, key).ctx, { text: 'fallback identity' })
+    }, { inject: ['systemPrompt'] }))
+
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBe(withNote('fallback identity'))
   })
 })

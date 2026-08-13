@@ -39,7 +39,9 @@ soul:
   enabled: true
   source: ./souls/<name>.md        # 或远端 URL / ClawHub 引用
   # 叠加模式：replace（替换默认系统提示）| append（追加段落）
-  mode: replace
+  mode: append
+  # append 默认在灵魂文本前加 OpenClaw 风格优先级声明；false 关闭，replace 永不添加
+  precedenceNote: true
 ```
 
 ## 验收标准（阶段 0 结论）
@@ -48,9 +50,10 @@ soul:
 2. ✅ **热插拔**：fiber dispose 后提示恢复默认（测试：`restores the default prompt when its fiber unloads`）；两个作用域人格互不干扰（`gives two scopes independent souls`）；
 3. ✅ **不改上游源码**：仅新增 `packages/openclaw/soul` + 构建注册（tsconfig paths/reference，属 ADR-0001 豁免）；全量 `pnpm typecheck` 绿；
 4. ✅ **日志不变式**：灵魂文本是 prompt section，参与装配即进入 session 事件流（由上游 session 机制保证，"model-visible means logged"）；
-5. ✅ **profile 层叠**：`--profile openclaw --dump-config` 解析出 dsh-base + dsh-headless + 我们的 persona 覆盖（冒烟通过）。
-6. ⏳ `--profile openclaw` 下**真实 agent 挂载 preset**：属阶段 2（headless 形态的 preset 接线），见 preset-openclaw/README.md。
-7. ✅ **identity 映射文档化（阶段 2 深读定稿）**：OpenClaw identity 四层结构到 dsh 接缝的完整映射落于 Agent Note（`.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping`）、本规格与 parity 矩阵三处一致；soul 代码零改动。
-8. ✅ **文件路径随 preset 目录解析（阶段 2 收尾）**：相对 `source` 以挂载树 `ctx.baseUrl` 为锚解析（preset → 组合目录、profile → profile 目录、裸上下文 → cwd 回退）；测试 12 例含 baseUrl 相对解析与 cwd 回退两例。
+5. ✅ **append 优先级声明**：append 模式在灵魂文本前烘焙 OpenClaw 风格优先级声明（`Soul: persona and tone. Follow it unless higher-priority instructions (such as direct user instructions) override it.`），对齐原版 soul.md 注入语义。三态验证（测试：`precedenceNote: false keeps the append-mode soul bare`、`replace mode never adds the precedence note`、`apply-level fallback: omitted mode and precedenceNote behave like their schema defaults`）；renderPrompt 逐字断言钉住模型可见文本；
+6. ✅ **profile 层叠**：`--profile openclaw --dump-config` 解析出 dsh-base + dsh-headless + 我们的 persona 覆盖（冒烟通过）。
+7. ⏳ `--profile openclaw` 下**真实 agent 挂载 preset**：属阶段 2（headless 形态的 preset 接线），见 preset-openclaw/README.md。
+8. ✅ **identity 映射文档化（阶段 2 深读定稿）**：OpenClaw identity 四层结构到 dsh 接缝的完整映射落于 Agent Note（`.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping`）、本规格与 parity 矩阵三处一致；soul 代码零改动。
+9. ✅ **文件路径随 preset 目录解析（阶段 2 收尾）**：相对 `source` 以挂载树 `ctx.baseUrl` 为锚解析（preset → 组合目录、profile → profile 目录、裸上下文 → cwd 回退）；测试 12 例含 baseUrl 相对解析与 cwd 回退两例。
 
 **阶段 0 退出标准达成：接缝假设成立，项目继续。阶段 2 深读定稿：replace/append 形态即最终形态。**

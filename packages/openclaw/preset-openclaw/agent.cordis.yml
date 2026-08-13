@@ -8,4 +8,6 @@
     # 相对 source 按挂载树 baseUrl（本 preset 的组合目录）解析；
     # copyComposition 会把 souls/ 目录随 preset 一起复制。
     source: ./souls/assistant.md
+    # append 模式默认（precedenceNote: true）在灵魂文本前烘焙 OpenClaw 风格优先级声明，
+    # 把人格定位为可被更高优先级指令（如用户直接指令）覆盖的指导；replace 模式永不添加。
     mode: append

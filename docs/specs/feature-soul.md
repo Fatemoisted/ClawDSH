@@ -39,7 +39,9 @@ soul:
   enabled: true
   source: ./souls/<name>.md        # 或远端 URL / ClawHub 引用
   # 叠加模式：replace（替换默认系统提示）| append（追加段落）
-  mode: replace
+  mode: append
+  # append 默认在灵魂文本前加 OpenClaw 风格优先级声明；false 关闭，replace 永不添加
+  precedenceNote: true
 ```
 
 ## Acceptance criteria (Phase 0 conclusion)
@@ -48,9 +50,10 @@ soul:
 2. ✅ **Hot-plug**: prompt restores to default after fiber dispose (test: `restores the default prompt when its fiber unloads`); two scoped personas don't interfere (`gives two scopes independent souls`);
 3. ✅ **No upstream source change**: only adds `packages/openclaw/soul` + build registration (tsconfig paths/reference, ADR-0001 exemption); full `pnpm typecheck` green;
 4. ✅ **Logging invariant**: soul text is a prompt section, participating in assembly enters the session event stream (guaranteed by the upstream session mechanism, "model-visible means logged");
-5. ✅ **Profile layering**: `--profile openclaw --dump-config` resolves dsh-base + dsh-headless + our persona override (smoke passed).
-6. ⏳ **Real agent mounts preset** under `--profile openclaw`: belongs to Phase 2 (preset wiring for the headless form), see preset-openclaw/README.md.
-7. ✅ **Identity mapping documented (Phase 2 deep-read finalization)**: the complete mapping from OpenClaw's four-layer identity to dsh seams lands consistently in three places (Agent Note `.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping`, this spec, and the parity matrix); soul code zero change.
-8. ✅ **File path resolves against preset directory (Phase 2 wrap-up)**: relative `source` resolves anchored at the mount tree `ctx.baseUrl` (preset → composition directory, profile → profile directory, bare context → cwd fallback); 12 test cases include baseUrl relative resolution and cwd fallback.
+5. ✅ **Append precedence note**: append mode bakes an OpenClaw-style precedence note ahead of the soul text (`Soul: persona and tone. Follow it unless higher-priority instructions (such as direct user instructions) override it.`), aligning with the original soul.md injection semantics. Three-state verification (tests: `precedenceNote: false keeps the append-mode soul bare`, `replace mode never adds the precedence note`, `apply-level fallback: omitted mode and precedenceNote behave like their schema defaults`); renderPrompt verbatim assertions pin the model-visible text;
+6. ✅ **Profile layering**: `--profile openclaw --dump-config` resolves dsh-base + dsh-headless + our persona override (smoke passed).
+7. ⏳ **Real agent mounts preset** under `--profile openclaw`: belongs to Phase 2 (preset wiring for the headless form), see preset-openclaw/README.md.
+8. ✅ **Identity mapping documented (Phase 2 deep-read finalization)**: the complete mapping from OpenClaw's four-layer identity to dsh seams lands consistently in three places (Agent Note `.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping`, this spec, and the parity matrix); soul code zero change.
+9. ✅ **File path resolves against preset directory (Phase 2 wrap-up)**: relative `source` resolves anchored at the mount tree `ctx.baseUrl` (preset → composition directory, profile → profile directory, bare context → cwd fallback); 12 test cases include baseUrl relative resolution and cwd fallback.
 
 **Phase 0 exit criteria met: the seam hypothesis holds, the project continues. Phase 2 deep-read finalization: the replace/append form is the final form.**
