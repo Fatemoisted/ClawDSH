@@ -26,10 +26,10 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 - 退出标准**全部达成**：soul 能替换/叠加 agent 系统提示词（契约测试 10/10）、热插拔（卸载即回卷）、未改上游一行源码（仅构建注册豁免，见 ADR-0001 决策 4）；全量 typecheck 绿；`--profile openclaw --dump-config` 冒烟通过。
 - **结论：接缝假设成立，项目继续。** 验证细节见 docs/specs/feature-soul.md 的验收标准节。
 
-### 阶段 1 · 基线选型 + 矩阵定稿
+### 阶段 1 · 基线选型 + 矩阵定稿 ✅（2026-08-14 完成）
 
-- 选 OpenClaw 基线：目标窗口 2025-12 ~ 2026-01（"网关+渠道+人格+记忆已稳定、功能未爆炸"），按**功能集合边界**选 commit，不按日期拍脑袋；对比代码量后定稿。
-- 每个功能域四分类：`复用 dsh` / `新 seam` / `纯插件` / `暂缓`，写进 `docs/matrix/parity.md`。
+- **基线定稿：`v2026.1.5`（`197b8f7c3b`）**——首个发布 tag，网关+5 渠道+cron+sessions 核心体验完整，所有 tag 中代码量最瘦（1537 文件/1.6MB），无 bloat 迹象；v2026.1.15 起文件数翻倍、extensions/plugins/部署矩阵出现。功能补全参考：whatsapp/memory/channels → v2026.1.15（`9c4c9c5edd`）。
+- 功能域四分类定稿，见 `docs/matrix/parity.md`（矩阵 v2，含每个功能域的基线出处路径）。
 
 ### 阶段 2 · 核心骨架（垂直切片）
 

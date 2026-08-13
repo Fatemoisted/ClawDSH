@@ -2,7 +2,7 @@
 
 - **状态**：implemented（阶段 0 Spike ✅，2026-08-14）
 - **实现包**：`packages/openclaw/soul`（`@clawdsh/dsh-soul`）
-- **OpenClaw 对应**：Soul 系统（人格、口吻、行为准则）。基线出处：待阶段 1 基线定稿后补 PR/文档链接。
+- **OpenClaw 对应**：Soul 系统（人格、口吻、行为准则）。基线出处：OpenClaw `v2026.1.5`（`197b8f7c3b`）的 `src/agents/` identity 机制——具体形态待阶段 2 深读后补细节（见 docs/matrix/parity.md）。
 
 ## 目标
 
