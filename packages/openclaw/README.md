@@ -29,6 +29,8 @@
 | `preset-openclaw/` | openclaw profile + bundles + patches | 整体组装 | profile/patch 机制 | planning |
 | `channel-core/` | 渠道网关 seam（唯一新 seam） | 渠道网关 Gateway | **新增** `ctx.channels`（待 ADR-0002） | planning |
 | `channel-telegram/` | Telegram 渠道 | 渠道适配器 | `ctx.channels` | planning |
+| `channel-feishu/` | 飞书渠道（**发起人第一优先**） | OpenClaw `extensions/feishu`（v2026.2.12 起） | `ctx.channels` | planning（阶段 2，ADR-0002 seam 验证备选） |
+| `channel-wechat/` | 微信系——**决策记录：不实现**（上游无对应） | — | — | 原则性排除 |
 | `soul/` | 人格 / Soul | Soul 系统 | system-prompt 装配 | **implemented**（阶段 0 ✅） |
 | `memory/` | 记忆后端 | Memory | `ctx.spillStore` / session-persistence | planning |
 | `skills-hub/` | ClawHub 兼容技能加载 | Skills/ClawHub | `ctx.skills` | planning |

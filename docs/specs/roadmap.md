@@ -33,12 +33,13 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 
 ### 阶段 2 · 核心骨架（垂直切片）
 
-- `channel-core`（新 seam，按 ADR-0002 设计）+ `channel-telegram`（第一个渠道）+ `soul` + `memory` + `preset-openclaw`。
-- 退出标准：`pnpm dsh --profile openclaw` 启动，Telegram 消息进 → 人格化 agent 跑 → 回复出。
+- `channel-core`（新 seam，按 ADR-0002 设计）+ `channel-telegram`（第一个渠道）+ **`channel-feishu`（发起人第一优先，ADR-0002 seam 验证备选渠道）** + `soul` + `memory` + `preset-openclaw`。
+- 退出标准：`pnpm dsh --profile openclaw` 启动，Telegram 消息进 → 人格化 agent 跑 → 回复出；`ctx.channels` 契约同时通过 Telegram 与飞书两个适配器的验证（飞书出处：OpenClaw `extensions/feishu`，v2026.2.12）。
 
 ### 阶段 3 · 渠道铺开 + 自动化
 
 - 每个渠道一个包（WhatsApp/Email/Web Chat…），互不阻塞；`automation`（schedule 桥接）、`skills-hub`（ClawHub provider）。
+- **渠道范围原则**：只做 OpenClaw 上游有出处的渠道（见 docs/matrix/parity.md「国内平台」节）——微信系/钉钉/QQ 上游无对应，不实现。
 - 联邦节点（clawd）走 `ctx.subagents` transport，作为独立里程碑评估。
 
 ### 阶段 4 · 生态化
