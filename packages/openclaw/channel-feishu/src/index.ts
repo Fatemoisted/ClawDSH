@@ -19,6 +19,7 @@
 import * as Lark from '@larksuiteoapi/node-sdk'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { registerChannelAdapter, stripZeroWidth } from '@clawdsh/dsh-channel-core'
 import type { ChannelAdapter, ChannelMessage } from '@clawdsh/dsh-channel-core'
 
 /** Cap on retained de-duplication message ids before the oldest is evicted. */
@@ -61,6 +62,10 @@ interface FeishuReceiveEvent {
     chat_type?: string
     message_type?: string
     content?: string
+    mentions?: Array<{
+      name?: string
+      id?: { open_id?: string; user_id?: string; union_id?: string }
+    }>
   }
 }
 
@@ -76,6 +81,8 @@ export interface AdapterState {
 export interface AdapterDeps {
   /** Lark API client; when omitted, one is built from the app credentials. */
   client?: Lark.Client
+  /** Identity-derived mention patterns for group-mention detection. */
+  mentionPatterns?: readonly RegExp[]
 }
 
 /**
@@ -114,9 +121,14 @@ export function extractText(content: string | undefined): string {
  * Map an `im.message.receive_v1` event to a normalized inbound message, or
  * `undefined` when it is not a non-empty text message.
  * @param event - the SDK-delivered receive event.
+ * @param mentionPatterns - identity-derived mention patterns; absent means the
+ *   adapter cannot evaluate mentions and `wasMentioned` stays absent (fail-open).
  * @returns the inbound thread id, optional sender, and text, or `undefined`.
  */
-export function toInbound(event: FeishuReceiveEvent): { threadId: string; sender?: string; messageId?: string; text: string } | undefined {
+export function toInbound(
+  event: FeishuReceiveEvent,
+  mentionPatterns: readonly RegExp[] = [],
+): { threadId: string; sender?: string; messageId?: string; isGroup?: boolean; wasMentioned?: boolean; text: string } | undefined {
   const message = event.message
   if (message === undefined || message.message_type !== 'text') return undefined
   const text = extractText(message.content)
@@ -126,10 +138,19 @@ export function toInbound(event: FeishuReceiveEvent): { threadId: string; sender
   const threadId = isDirect
     ? (senderOpenId ?? message.chat_id ?? 'p2p')
     : (message.chat_id ?? 'group')
+  // Minimal mention mapping: Feishu text does not inline @-tokens; mention
+  // entries carry the app's display name, matched against the identity
+  // patterns. Without patterns `wasMentioned` stays absent (fail-open).
+  const wasMentioned = (message.mentions ?? []).some(mention =>
+    mention.name !== undefined && mentionPatterns.some(pattern => pattern.test(stripZeroWidth(mention.name ?? ''))))
   return {
     threadId,
     ...(senderOpenId === undefined ? {} : { sender: senderOpenId }),
     ...(message.message_id === undefined ? {} : { messageId: message.message_id }),
+    ...(message.chat_type === undefined ? {} : { isGroup: message.chat_type === 'group' }),
+    // Presence is the detection-capability signal: without patterns the adapter
+    // cannot evaluate mentions, so `wasMentioned` stays absent (fail-open).
+    ...(!isDirect && mentionPatterns.length > 0 ? { wasMentioned } : {}),
     text,
   }
 }
@@ -152,11 +173,17 @@ function dedup(state: AdapterState, messageId: string | undefined): boolean {
  * @param ctx - Cordis context to emit `channel/inbound` on.
  * @param state - shared adapter bookkeeping (reply targets and de-dup set).
  * @param event - the SDK-delivered `im.message.receive_v1` event.
+ * @param mentionPatterns - identity-derived mention patterns for group-mention detection.
  */
-export function handleReceiveEvent(ctx: Context, state: AdapterState, event: FeishuReceiveEvent): void {
+export function handleReceiveEvent(
+  ctx: Context,
+  state: AdapterState,
+  event: FeishuReceiveEvent,
+  mentionPatterns: readonly RegExp[] = [],
+): void {
   const message = event.message
   if (dedup(state, message?.message_id)) return
-  const inbound = toInbound(event)
+  const inbound = toInbound(event, mentionPatterns)
   if (inbound === undefined) return
   const isDirect = message?.chat_type === 'p2p' || message?.chat_type === 'private'
   state.receiveByThread.set(inbound.threadId, {
@@ -184,11 +211,16 @@ function buildClient(config: Config): Lark.Client {
 }
 
 /** Start the WebSocket long-connection and return its disposer. */
-function startLongConnection(ctx: Context, config: Config, state: AdapterState): () => void {
+function startLongConnection(
+  ctx: Context,
+  config: Config,
+  state: AdapterState,
+  mentionPatterns: readonly RegExp[],
+): () => void {
   const dispatcher = new Lark.EventDispatcher({})
   dispatcher.register({
     'im.message.receive_v1': (event) => {
-      handleReceiveEvent(ctx, state, event)
+      handleReceiveEvent(ctx, state, event, mentionPatterns)
     },
   })
   const wsClient = new Lark.WSClient({
@@ -222,6 +254,18 @@ async function sendMessage(client: Lark.Client, state: AdapterState, message: Ch
   }
 }
 
+/** Attach an ack emoji reaction to an inbound message through `im.message.reaction.create`. */
+async function react(client: Lark.Client, message: ChannelMessage, emoji: string): Promise<void> {
+  if (message.messageId === undefined) return
+  const response = await client.im.messageReaction.create({
+    path: { message_id: message.messageId },
+    data: { reaction_type: { emoji_type: emoji } },
+  })
+  if (response.code !== 0) {
+    throw new Error(`feishu: im.messageReaction.create failed: ${response.msg ?? 'unknown error'}`)
+  }
+}
+
 /**
  * Build the Feishu adapter from validated config.
  * @param config - validated plugin config carrying app identity and region.
@@ -231,13 +275,13 @@ async function sendMessage(client: Lark.Client, state: AdapterState, message: Ch
 export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAdapter {
   const client = deps.client ?? buildClient(config)
   const state = createAdapterState()
+  const mentionPatterns = deps.mentionPatterns ?? []
   return {
     id: 'feishu',
-    // Ack reactions are not wired yet: the node-sdk's `im.message.reaction.create`
-    // surface is unverified in this workspace (Known Limitation, channel-feishu README).
-    capabilities: { receive: true, send: true, react: false },
-    start: ctx => startLongConnection(ctx, config, state),
+    capabilities: { receive: true, send: true, react: true },
+    start: ctx => startLongConnection(ctx, config, state, mentionPatterns),
     send: message => sendMessage(client, state, message),
+    react: (message, emoji) => react(client, message, emoji),
   }
 }
 
@@ -247,6 +291,5 @@ export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAd
  * @param config - validated plugin config.
  */
 export function apply(ctx: Context, config: Config): void {
-  const adapter = createAdapter(config)
-  ctx.effect(() => ctx.channels.registerAdapter(adapter), 'channel-feishu.register()')
+  registerChannelAdapter(ctx, mentionPatterns => createAdapter(config, { mentionPatterns }))
 }

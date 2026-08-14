@@ -23,6 +23,9 @@
         #   emoji: 🐚
         responsePrefix: auto
         ackReaction: '👀'
+        # ack 门控：仅群聊且提及机器人时打 ack 表情（OpenClaw 默认 group-mentions）。
+        ackReactionScope: group-mentions
+        requireMention: true
 
     - id: channel-telegram
       name: '@clawdsh/dsh-channel-telegram'

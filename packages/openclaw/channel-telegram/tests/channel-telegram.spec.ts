@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { ChannelMessage } from '@clawdsh/dsh-channel-core'
 import type { AdapterDeps } from '@clawdsh/dsh-channel-telegram'
-import { createAdapter, toInbound } from '@clawdsh/dsh-channel-telegram'
+import { createAdapter, detectBotMention, toInbound } from '@clawdsh/dsh-channel-telegram'
 
 /** A minimal stand-in for the grammY bot surface this adapter touches. */
 function mockBot() {
@@ -103,5 +103,39 @@ describe('the telegram channel adapter', () => {
     const adapter = createAdapter({ botToken: 't' }, { bot })
     await adapter.react?.({ channel: 'telegram', direction: 'in', threadId: '42', text: 'hi' }, '👀')
     expect(setMessageReaction).not.toHaveBeenCalled()
+  })
+
+  it('detects the bot mention by @username text, case-insensitive', () => {
+    expect(detectBotMention('hey @mybot do it', undefined, 'mybot', [])).toBe(true)
+    expect(detectBotMention('hey @MYBOT do it', undefined, 'mybot', [])).toBe(true)
+    expect(detectBotMention('hey @other do it', undefined, 'mybot', [])).toBe(false)
+  })
+
+  it('detects the bot mention from a mention entity slice', () => {
+    // Text carries an @username the substring check would miss (offsets are UTF-16).
+    expect(detectBotMention('@mybot', [{ type: 'mention', offset: 0, length: 6 }], 'mybot', [])).toBe(true)
+    expect(detectBotMention('hi', [{ type: 'mention', offset: 0, length: 2 }], 'mybot', [])).toBe(false)
+  })
+
+  it('detects the bot mention by identity pattern when the username is unknown', () => {
+    expect(detectBotMention('hey Clawd please', undefined, undefined, [/Clawd/i])).toBe(true)
+    expect(detectBotMention('nothing here', undefined, undefined, [/Clawd/i])).toBe(false)
+  })
+
+  it('returns undefined when mention detection is impossible', () => {
+    expect(detectBotMention('hey there', undefined, undefined, [])).toBeUndefined()
+  })
+
+  it('maps isGroup and wasMentioned onto the inbound message', () => {
+    const group = toInbound(
+      { message: { text: '@mybot hi', message_id: 11 }, chat: { id: 42, type: 'group' }, from: { id: 7 } },
+      'mybot',
+    )
+    expect(group.isGroup).toBe(true)
+    expect(group.wasMentioned).toBe(true)
+
+    const dm = toInbound({ message: { text: 'hi', message_id: 12 }, chat: { id: 43, type: 'private' }, from: { id: 8 } })
+    expect(dm.isGroup).toBe(false)
+    expect(dm.wasMentioned).toBeUndefined()
   })
 })

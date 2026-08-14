@@ -38,13 +38,52 @@ export const DEFAULT_ACK_REACTION = '👀'
 /** Sentinel prefix value meaning "render `[name]`". */
 export const AUTO_RESPONSE_PREFIX = 'auto'
 
+/** Where the ack emoji reaction applies (OpenClaw's `messages.ackReactionScope`). */
+export type AckReactionScope = 'all' | 'direct' | 'group-all' | 'group-mentions'
+
+/** Default ack scope: groups only, and only when the bot was mentioned. */
+export const DEFAULT_ACK_REACTION_SCOPE: AckReactionScope = 'group-mentions'
+
 /**
- * Resolve the ack reaction: explicit `ackReaction`, else `identity.emoji`, else `👀`.
+ * Decide whether an inbound message gets an ack reaction, porting OpenClaw
+ * v2026.1.15 `shouldAckReaction` verbatim (without the control-command bypass,
+ * which is deferred): `all` acks everything; `direct` acks non-group chats;
+ * `group-all` acks groups unconditionally; `group-mentions` acks groups only
+ * when `requireMention` is on, mention detection is possible, and the bot was
+ * mentioned. When detection is impossible the caller passes
+ * `canDetectMention: false`, which fails open (no ack, no blocked message).
+ * @param scope - the configured scope.
+ * @param isGroup - whether the message arrived in a group chat.
+ * @param requireMention - whether groups demand a mention.
+ * @param canDetectMention - whether the adapter could evaluate mentions at all.
+ * @param wasMentioned - whether the message mentioned the bot.
+ * @returns whether to attach the ack emoji.
+ */
+export function shouldAckReaction(
+  scope: AckReactionScope,
+  isGroup: boolean,
+  requireMention: boolean,
+  canDetectMention: boolean,
+  wasMentioned: boolean,
+): boolean {
+  if (scope === 'all') return true
+  if (scope === 'direct') return !isGroup
+  if (scope === 'group-all') return isGroup
+  if (!isGroup) return false
+  if (!requireMention) return false
+  if (!canDetectMention) return false
+  return wasMentioned
+}
+
+/**
+ * Resolve the ack reaction: an explicit `ackReaction` is used as-is — an
+ * explicit empty string disables acks entirely (OpenClaw semantics) — then
+ * `identity.emoji`, then `👀`.
  * @param config - presentation config.
- * @returns the ack emoji, never empty.
+ * @returns the ack emoji, or `''` when acks are disabled.
  */
 export function resolveAckReaction(config: PresentationConfig): string {
-  if (config.ackReaction !== undefined && config.ackReaction.length > 0) return config.ackReaction
+  if (config.ackReaction !== undefined) return config.ackReaction
   const emoji = config.identity?.emoji
   if (emoji !== undefined && emoji.length > 0) return emoji
   return DEFAULT_ACK_REACTION
@@ -75,6 +114,19 @@ export function resolveMessagePrefix(config: PresentationConfig): string {
   return name === undefined || name.length === 0 ? '' : `[${name}]`
 }
 
+/** Zero-width and bidi characters removed before mention matching (OpenClaw's workaround). */
+const ZERO_WIDTH_RE = /[​-‏‪-‮⁠-⁯]/g
+
+/**
+ * Strip zero-width and bidi characters so mention patterns match text that
+ * platforms render invisibly decorated.
+ * @param text - the raw message text.
+ * @returns the stripped text.
+ */
+export function stripZeroWidth(text: string): string {
+  return text.replace(ZERO_WIDTH_RE, '')
+}
+
 /** Escape a literal for use inside a `RegExp` body. */
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -92,7 +144,7 @@ function escapeRegExp(text: string): string {
 export function deriveMentionPatterns(name?: string, emoji?: string): RegExp[] {
   const patterns: RegExp[] = []
   if (name !== undefined && name.trim().length > 0) {
-    const joined = name.trim().split(/\s+/).map(escapeRegExp).join('\\s+').replace(//g, '\\b')
+    const joined = stripZeroWidth(name).trim().split(/\s+/).map(escapeRegExp).join('\\s+').replace(//g, '\\b')
     patterns.push(new RegExp(`\\b@?${joined}\\b`, 'i'))
   }
   if (emoji !== undefined && emoji.length > 0) {

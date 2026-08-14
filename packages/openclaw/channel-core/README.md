@@ -20,7 +20,9 @@ English | [中文](README.zh.md)
     #   name: ClawDSH
     #   emoji: 🐚
     responsePrefix: auto       # 'auto' → [name]；无名字时为空
-    ackReaction: '👀'          # 缺省回退 identity.emoji → 👀
+    ackReaction: '👀'          # 缺省回退 identity.emoji → 👀；显式 '' 禁用 ack
+    ackReactionScope: group-mentions  # all | direct | group-all | group-mentions
+    requireMention: true       # group-mentions 下群聊须提及才 ack
 ```
 
 ## Design notes (see ADR-0002)
@@ -51,5 +53,4 @@ Append-only; each inbound turn appends a user message to the reusable request pr
 - **real e2e**: the assembly test running a real agent turn inside the Loader needs a real key; currently covered by MockAdapter contract tests + `--dump-config` smoke.
 - **concurrency**: per-thread tail-chain serialization as the fallback; cross-message interleaving and multi-sender merging deferred to stage 3.
 - **channel features**: attachments/quotes/rich text/interactive cards all deferred (stage 3 channel extensions).
-- **ack scope is always-on**: OpenClaw's `ackReactionScope` (group-mentions gating) needs group-chat mention detection; until then every inbound with a platform message id gets the ack (feishu declares `react: false` until its reaction API is verified).
-- **`deriveMentionPatterns` has no consumer yet**: shipped with contract tests per the ported utility; the future owner is ack scope gating and adapter mention detection.
+- **ack gate control-command bypass deferred**: OpenClaw's `shouldBypassMention` (control commands ack even without a mention) depends on a command concept the channel seam does not model yet; until then `group-mentions` requires a detected mention. `removeAckAfterReply` (delete the ack once the reply lands) is deferred too — it needs a list-then-delete reaction round-trip that does not warrant an asymmetric seam.
