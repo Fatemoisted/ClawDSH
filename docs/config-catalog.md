@@ -194,6 +194,12 @@ export interface Config {
   timeoutMs?: number
   /** Maximum lines one memory_get call reads. Defaults to 1000. */
   maxReadLines?: number
+  /** Whether host changes to memory files are watched for proactive invalidation. Defaults to true. */
+  watch?: boolean
+  /** Milliseconds a changed memory file must remain stable before it is observed. Defaults to 200. */
+  watchStabilityThresholdMs?: number
+  /** Milliseconds between Chokidar stability probes. Defaults to 100. */
+  watchPollIntervalMs?: number
   /** Pre-compaction memory flush turn; enabled by default, thresholds OpenClaw's 20000/4000. */
   flush?: FlushConfig
 }
@@ -211,7 +217,7 @@ export interface FlushConfig {
 }
 ```
 
-Source: [`packages/openclaw/memory/src/index.ts:58`](../packages/openclaw/memory/src/index.ts)
+Source: [`packages/openclaw/memory/src/index.ts:59`](../packages/openclaw/memory/src/index.ts)
 
 <a id="clawdshdsh-skills-hub"></a>
 

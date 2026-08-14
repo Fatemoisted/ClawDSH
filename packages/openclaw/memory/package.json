@@ -38,7 +38,8 @@
     "@deepseek-ai/cordis": "workspace:^"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:^"
+    "@deepseek-ai/schemastery": "workspace:^",
+    "chokidar": "^5.0.0"
   },
   "devDependencies": {
     "@clawdsh/dsh-embeddings": "workspace:^",

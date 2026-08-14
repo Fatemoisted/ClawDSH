@@ -5645,6 +5645,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
+      chokidar:
+        specifier: ^5.0.0
+        version: 5.0.0
     devDependencies:
       '@clawdsh/dsh-embeddings':
         specifier: workspace:^

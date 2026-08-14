@@ -95,6 +95,20 @@ export class MemoryIndex {
   }
 
   /**
+   * Drop one file's indexed entry (chunks and any cached vectors) so the next
+   * sync re-reads it from disk. `add` needs no invalidation — the sync
+   * seen-set picks new files up — but a `change`/`unlink` must force a re-read
+   * because a same-size edit is invisible to the `(version, size)` freshness
+   * check and a delete-then-recreate with an identical size would otherwise
+   * keep stale chunks. Dropping a single file preserves every other file's
+   * cached embedding (one embed request per text, so a full clear is costly).
+   * @param rel - the memory-root-relative path to drop; unknown paths are a no-op.
+   */
+  invalidateFile(rel: string): void {
+    this.files.delete(rel)
+  }
+
+  /**
    * Rank memory chunks against one query: syncs first, embeds the query plus
    * any un-embedded chunks in one batch, ranks by cosine similarity, and keeps
    * the strongest hits above the score floor.

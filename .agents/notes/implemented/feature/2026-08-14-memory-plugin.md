@@ -15,7 +15,7 @@ The memory row ships as a function plugin on existing seams only, with the seman
 - **Storage = Markdown files via `ctx.fs`** — `MEMORY.md` for durable facts, `memory/YYYY-MM-DD.md` for append-style running notes. The plugin itself never writes; the model writes through the fs tools under the recall-section convention (OpenClaw's own shape — no dedicated write tool). Append-only idempotence rides the fs observation policy's version guards.
 - **Recall = on-demand tools, no per-request injection** — `memory_search` (embedding cosine ranking, `minScore` 0.35 / `maxResults` 6 defaults, snippet with source lines) and `memory_get` (line-slice read with `isMemoryPath` whitelist + `FileSystem.contains` enforcement). Nothing is auto-injected; recalled content enters the transcript as tool results, so "model-visible means logged" holds without a new session event.
 - **Index = derived data, in memory only** — rebuilt incrementally per search from `(version, size)` file stamps; chunking (`chunkMarkdown`, sentence-aligned overlap) and cosine are package-local pure functions. One `embed` batch per search covers the query plus any not-yet-embedded chunks.
-- **Fail-loud without an embeddings provider** — `memory_search` errors naming `@clawdsh/dsh-embeddings-ark` when `ctx.get('embeddings')` is absent; a lexical fallback is deferred because two scoring spaces with different semantics would silently mislead the model.
+- **Fail-loud without an embeddings provider** — `memory_search` errors naming `@clawdsh/dsh-embeddings-ark` when `ctx.get('embeddings')` is absent; a lexical fallback is rejected because two scoring spaces with different semantics would silently mislead the model (see the [rejected note](../../rejected/feature/2026-08-14-memory-lexical-fallback.md)).
 - **Static guidance section** — `clawdsh:memory-recall` at order 115 (tool-guidance band), fixed text teaching recall workflow and the append-only write convention, mirroring OpenClaw's `## Memory Recall` section.
 
 ## Alternatives considered
@@ -26,7 +26,7 @@ The memory row ships as a function plugin on existing seams only, with the seman
 
 **Persist the index on disk (sqlite, like OpenClaw).** Rejected: a durable index is a second copy of the truth that can drift; OpenClaw's sqlite index exists because its files are the only other copy and it watches them. Here the files alone are authoritative and small, so in-memory incremental rebuild is simpler and drift-free. Rebuild cost is bounded by changed files only.
 
-**Lexical keyword fallback when no provider is loaded.** Deferred, not shipped: two scoring spaces would silently change result semantics depending on deployment, which contradicts fail-loud; stage 3 evaluates it for offline deployments.
+**Lexical keyword fallback when no provider is loaded.** Rejected, not shipped: two scoring spaces would silently change result semantics depending on deployment, which contradicts fail-loud (see the [rejected note](../../rejected/feature/2026-08-14-memory-lexical-fallback.md)).
 
 **Auto-inject recalled memories per request.** Rejected: OpenClaw deliberately does on-demand recall; per-request injection costs tokens and diverges from the ported capability category.
 
@@ -34,5 +34,5 @@ The memory row ships as a function plugin on existing seams only, with the seman
 
 - Memory is fully recoverable from the session log: guidance rides `request/header.header.system`, recalls ride tool results. No new session event type was needed.
 - The memory root is deployment-owned (`root` required, fail-loud) — cross-session retrieval works because the files live in one configured place, and multi-agent isolation means separate roots.
-- Recall depends on an external embedding provider (Ark); offline deployments have no retrieval until the deferred lexical fallback lands.
+- Recall depends on an external embedding provider (Ark); offline deployments have no retrieval — a lexical fallback is rejected, not deferred (see the [rejected note](../../rejected/feature/2026-08-14-memory-lexical-fallback.md)).
 - OpenClaw's pre-compaction memory flush turn (the "store durable memories now" driver) is deferred to stage 3 on dsh compaction hooks; until then writes depend on the model following the convention.
