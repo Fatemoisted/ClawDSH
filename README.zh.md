@@ -1,3 +1,15 @@
+# ClawDSH
+
+> **OpenClaw 的个人助手功能集，重建于 DeepSeek Harness (dsh) 的 Cordis 插件底盘之上。**
+>
+> 项目目的与实施方案：[docs/specs/roadmap.md](docs/specs/roadmap.md) · 架构决策：[docs/adr/](docs/adr/) · 功能对齐矩阵：[docs/matrix/parity.md](docs/matrix/parity.md)
+>
+> 本仓库跟踪上游 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（git 远程 `upstream`），上游代码只读；自有代码仅位于 `packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal}/`、`tools/`、`.github/workflows/clawdsh-*`。
+
+---
+
+<!-- ⬇ 以下为上游 README 原文（勿改；rebase 冲突时以 upstream 为准） -->
+
 # DeepSeek Harness
 
 [English](README.md) | 中文
