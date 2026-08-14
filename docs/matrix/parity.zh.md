@@ -33,7 +33,7 @@
 | 会话 / 消息历史 | `src/sessions/` | `ctx.sessions`（append-only log） | 复用 | — | 直接可用 |
 | 会话追溯 / 回放 / 分叉 | —（dsh 原生） | Trajectory 视图 / replay | 复用 | — | 直接可用 |
 | 工具执行（bash/文件/浏览器…） | `src/agents/*-tools.ts` | `ctx.tools` / `ctx.shell` / `ctx.fs` / `ctx.web` | 复用 | — | 直接可用 |
-| 技能（Skill） | 顶层 `skills/` | `ctx.skills`（provider 合并） | 插件 | `skills-hub` | planning |
+| 技能（Skill） | 顶层 `skills/` | `ctx.skills`（provider 合并） | 插件 | `skills-hub` | **implemented**（阶段 3 ✅） |
 | 定时 / 自动化 | `src/cron/` | `ctx.schedule` / `ctx.jobs` | 插件 | `automation` | planning |
 | 人格（Soul） | `src/agents/system-prompt.ts` 首行 + workspace 六文件（AGENTS/SOUL/TOOLS/IDENTITY/USER/BOOTSTRAP.md） | system-prompt 装配（persona 首行 / soul append / complete 段 / 工具指引带）+ 渠道呈现（IDENTITY，Deferred） | 插件 | `soul` | **implemented**（阶段 0 ✅ + 阶段 2 深读定稿 ✅） |
 | 记忆（Memory） | 基线无 → 参考 v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`、`memory-tool.ts` | `ctx.fs` 文件事实源 + `ctx.tools` + system-prompt 段 + `ctx.get('embeddings')`（新 seam，ADR-0003） | 插件 | `memory` + `embeddings` + `embeddings-ark` | **implemented**（阶段 2 补漏 ✅） |
