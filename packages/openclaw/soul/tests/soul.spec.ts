@@ -117,7 +117,8 @@ describe('the soul row', () => {
       // baseUrl is a constructor-owned property: define it on an extended child
       // (the proxy set trap rejects plain assignment under a running fiber).
       const scope = createScope(ctx, key).ctx.extend({ baseUrl: pathToFileURL(join(dir, '')).href + '/' })
-      await scope.plugin(Soul, { source: './assistant.md' })
+      // precedenceNote: false isolates resolution semantics from the note prefix.
+      await scope.plugin(Soul, { source: './assistant.md', precedenceNote: false })
 
       expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBe('Preset soul text.')
     } finally {

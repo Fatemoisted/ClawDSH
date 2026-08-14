@@ -12,16 +12,16 @@ English | [中文](README.zh.md)
 
 ## Usage
 
-Mounted within an agent scope (i.e. inside the agent preset's `agent.cordis.yml`; see `../preset-openclaw/`):
+Mounted within an agent scope (i.e. inside the agent preset's `agent.cordis.yml`; see `../../../tools/openclaw-preset-openclaw/`):
 
 ```yaml
 - id: soul
   name: '@clawdsh/dsh-soul'
   config:
-    source: ./souls/assistant.md   # relative to the mount tree's ctx.baseUrl; takes precedence over text
+    source: ./souls/assistant.md   # 相对挂载树 ctx.baseUrl；优先于 text
     # text: 也可以直接内联
     mode: replace                  # replace=灵魂即完整系统提示；append（默认）=叠加段落
-    precedenceNote: true           # append default: precedence note baked ahead of the soul text; never in replace
+    precedenceNote: true           # append 默认：灵魂文本前烘焙优先级声明；replace 永不添加
     includeRuntimeContext: true    # false 时抑制该作用域的运行时上下文快照
 ```
 

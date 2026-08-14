@@ -12,7 +12,7 @@
 
 ## 使用
 
-挂载在 agent 作用域内（即 agent preset 的 `agent.cordis.yml` 里，见 `../preset-openclaw/`）：
+挂载在 agent 作用域内（即 agent preset 的 `agent.cordis.yml` 里，见 `../../../tools/openclaw-preset-openclaw/`）：
 
 ```yaml
 - id: soul

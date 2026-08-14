@@ -16,7 +16,7 @@
  *
  * Scope-only, like `dsh-persona`: an unscoped mount would publish a
  * process-global soul and rejects at mount. Mount it inside an agent preset
- * (see packages/openclaw/preset-openclaw). The soul text is read once at
+ * (see tools/openclaw-preset-openclaw). The soul text is read once at
  * mount — swap souls by re-mounting (patch + session restart), which keeps
  * the prompt prefix stable for KV-cache reuse, matching the upstream design.
  * @module @clawdsh/dsh-soul

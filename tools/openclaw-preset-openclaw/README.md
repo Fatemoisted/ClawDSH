@@ -15,7 +15,7 @@ English | [中文](README.zh.md)
 
 ## Phase 0 verified / Phase 2 pending
 
-- ✅ (phase 0) soul row mount semantics in agent scope — covered by 10 contract tests in `../soul/tests/soul.spec.ts`;
+- ✅ (phase 0) soul row mount semantics in agent scope — covered by 10 contract tests in `../../packages/openclaw/soul/tests/soul.spec.ts`;
 - ✅ (phase 0) profile parsing and layering — `pnpm dsh --profile openclaw --dump-config` resolves once `DSH_HOME` points at a directory containing this template profile;
 - ✅ (phase 2) channel-row wiring — `profile/cordis.patch.yml` `insert`s the `channel-core` + `channel-telegram` + `channel-feishu` rows; `channel-core` + `channel-feishu` enabled (Feishu credentials via env), `channel-telegram` stays `disabled: true` (no account);
 - ✅ (phase 2) Feishu real e2e — `channel-feishu` (long-connection inbound) → `channel-core` (per-thread agent turn) → DeepSeek agent reply → `im.message.create` outbound, user confirmed receipt in Feishu;

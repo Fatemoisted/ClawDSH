@@ -27,3 +27,9 @@ jobs:
 
       - name: Typecheck
         run: pnpm run typecheck
+
+      - name: Build openclaw packages
+        run: pnpm exec tsc -b packages/openclaw/tsconfig.json
+
+      - name: Typecheck openclaw tests
+        run: pnpm exec tsc -p packages/openclaw/tsconfig.check.json

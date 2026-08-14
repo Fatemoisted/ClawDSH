@@ -1,8 +1,8 @@
-# @clawdsh/dsh-channel-wechat (decision record: not implemented)
+# Feature spec: WeChat-family channels (decision record: not implemented)
 
-English | [中文](README.zh.md)
+English | [中文](feature-channel-wechat.zh.md)
 
-**Positioning**: decision-record package for WeChat-family channels. **This project does not implement any WeChat-family channel core package.**
+**Positioning**: decision record for WeChat-family channels. **This project does not implement any WeChat-family channel core package.**
 
 **Decision (2026-08-14, established by the initiator)**: the project principle is "implement only what upstream OpenClaw has". Upon verification (2026-08-14, surveyed OpenClaw's latest main), upstream has **no WeChat-family channels at all**:
 - `extensions/` has no wecom / wechat / Official Account / personal-WeChat related extension;

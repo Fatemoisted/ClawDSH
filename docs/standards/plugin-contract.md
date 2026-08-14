@@ -8,7 +8,7 @@ English | [中文](plugin-contract.zh.md)
 
 - One feature = one package (`packages/openclaw/<pkg>/`), named `@clawdsh/dsh-<kebab-case>`;
 - A plugin = one Cordis plugin: `inject` declares dependencies + `apply(ctx)` mounts; manual bootstrapping order is forbidden;
-- Start by copying `packages/openclaw/_template/`, then register following the onboarding flow in `packages/openclaw/README.md`.
+- Start by copying `tools/openclaw-plugin-template/`, then register following the onboarding flow in `packages/openclaw/README.md`.
 
 ## 2. Dependency declaration (inject)
 

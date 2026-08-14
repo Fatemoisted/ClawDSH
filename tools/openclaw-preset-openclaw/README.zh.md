@@ -15,7 +15,7 @@
 
 ## 阶段 0 已验证 / 阶段 2 待办
 
-- ✅（阶段 0）soul 行在 agent 作用域内的挂载语义——由 `../soul/tests/soul.spec.ts` 的 10 个契约测试覆盖；
+- ✅（阶段 0）soul 行在 agent 作用域内的挂载语义——由 `../../packages/openclaw/soul/tests/soul.spec.ts` 的 10 个契约测试覆盖；
 - ✅（阶段 0）profile 解析与层叠机制——`DSH_HOME` 指向含本模板 profile 的目录后 `pnpm dsh --profile openclaw --dump-config` 可解析；
 - ✅（阶段 2）渠道行接线——`profile/cordis.patch.yml` 已 `insert` `channel-core` + `channel-telegram` + `channel-feishu` 三条行；`channel-core` + `channel-feishu` 启用（飞书凭证走 env），`channel-telegram` 保持 `disabled: true`（无账号）；
 - ✅（阶段 2）飞书真实 e2e——`channel-feishu`（长连接入站）→ `channel-core`（per-thread agent turn）→ DeepSeek agent 回复 → `im.message.create` 出站，用户已在飞书确认收到；

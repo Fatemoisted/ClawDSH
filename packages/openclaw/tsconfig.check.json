@@ -1,0 +1,40 @@
+{
+  // ClawDSH 自有测试检查程序（tsc -p，无引用边界）。
+  // openclaw 测试不能进 tsconfig.host.json 的程序（src 不是 host 引用项目
+  // 会触发 TS6307），也不能进 tsconfig.json 聚合（部分引用闭包盖不住
+  // paths 拉入的整个上游导入图）。纯检查程序没有 project references，
+  // paths 解析的上游 src 直接并入文件列表 —— 与 scripts/doc-typecheck.ts
+  // 的派生程序同模式。
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "noEmit": true,
+    "rewriteRelativeImportExtensions": false,
+    // 纯检查程序没有 project references，vendor 包经 base paths 会以 src 并入
+    // 文件列表并被本程序继承的 strict 旗标检查 —— 但 vendor 包是在自身宽松
+    // tsconfig 下编译的（host 程序经 references 只看其声明输出）。这里把 9 个
+    // vendor paths 重定向到 tsc -b 产物 lib/types，与 host 程序的可见面等价
+    //（skipLibCheck 已继承，d.ts 不深检）。相对本文件（packages/openclaw/）
+    // 解析，故用 ../../ 前缀。前提：先执行
+    // tsc -b packages/openclaw/tsconfig.json（或全量 build）。
+    // 另有 3 个测试专用依赖在 base paths 里没有条目（聚合里走 project
+    // references 解析，纯检查程序无 references），这里补到各自 src：
+    // dsh-agent-loop / dsh-system-prompt / dsh-tools（上游严格包，src 可直接入程序）。
+    "paths": {
+      "@deepseek-ai/cordis": ["../../vendor/cordis/lib/types"],
+      "@deepseek-ai/cosmokit": ["../../vendor/cosmokit/lib/types"],
+      "@deepseek-ai/schemastery": ["../../vendor/schemastery/lib/types"],
+      "@deepseek-ai/cordis-plugin-loader": ["../../vendor/loader/lib/types"],
+      "@deepseek-ai/cordis-plugin-include": ["../../vendor/include/lib/types"],
+      "@deepseek-ai/cordis-plugin-group": ["../../vendor/group/lib/types"],
+      "@deepseek-ai/cordis-plugin-timer": ["../../vendor/timer/lib/types"],
+      "@deepseek-ai/cordis-plugin-hmr": ["../../vendor/hmr/lib/types"],
+      "@deepseek-ai/cordis-plugin-logger-console": ["../../vendor/logger-console/lib/types"],
+      "@deepseek-ai/dsh-agent-loop": ["../../packages/core/agent-loop/src"],
+      "@deepseek-ai/dsh-system-prompt": ["../../packages/core/system-prompt/src"],
+      "@deepseek-ai/dsh-tools": ["../../packages/core/tools/src"]
+    }
+  },
+  "include": ["*/src/**/*.ts", "*/tests/**/*.ts"]
+}

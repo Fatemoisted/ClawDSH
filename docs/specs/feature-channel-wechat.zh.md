@@ -1,8 +1,8 @@
-# @clawdsh/dsh-channel-wechat（决策记录：不实现）
+# 功能规格：微信系渠道（决策记录：不实现）
 
-[English](README.md) | 中文
+[English](feature-channel-wechat.md) | 中文
 
-**定位**：微信系渠道的决策记录包。**本项目不实现微信系渠道核心包**。
+**定位**：微信系渠道的决策记录。**本项目不实现微信系渠道核心包**。
 
 **决策（2026-08-14，发起人确立）**：项目原则是"OpenClaw 上游有的才实现"。经核实（2026-08-14 调研 OpenClaw 最新 main），上游**没有任何微信系渠道**：
 - `extensions/` 无 wecom / wechat / 公众号 / 个人微信 相关扩展；
