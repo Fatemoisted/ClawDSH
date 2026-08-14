@@ -10,6 +10,13 @@
       You are a personal AI assistant.
 
 - insert:
+    # 复用 Harness 的 agent-presets 事务化组合：渠道 Agent 创建/恢复时均挂载
+    # openclaw preset，且 preset id 写入 session header，避免重启后人格漂移。
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: openclaw
+
     # ctx.channels 注册表 + 双适配器。飞书凭证走环境变量（FEISHU_APP_ID / FEISHU_APP_SECRET），
     # 不落盘；未设置时 boot 会 fail-loud（appId/appSecret required）。适配器 inject 'channels'，
     # 启用时须与 channel-core 同启。
@@ -18,6 +25,9 @@
     - id: channel-core
       name: '@clawdsh/dsh-channel-core'
       config:
+        agentPreset: openclaw
+        groupMode: mention
+        ackReactionScope: group-mentions
         # identity:
         #   name: ClawDSH
         #   emoji: 🐚

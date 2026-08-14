@@ -1,0 +1,155 @@
+# Pack and publish the downstream ClawDSH package family under packages/openclaw/.
+# The family has one version and one clawdsh-v* tag, independently of the dsh,
+# vendored framework, and native release lines.
+#
+# Pack runs without registry credentials on every pull request and clawdsh push.
+# Publication is a manual dispatch from a clawdsh-v* tag and consumes exactly
+# the ClawDSH tarballs produced by the unprivileged pack job.
+name: Release (ClawDSH)
+
+on:
+  pull_request:
+    branches: [clawdsh]
+  push:
+    branches: [clawdsh]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the packed tarballs to npm. Must run from a clawdsh-v* tag.
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # Pack runs per ref; the protected publish job serializes shared npm state.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PRIMARY_NODE_VERSION: '24'
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  pack:
+    name: Pack ClawDSH npm tarballs
+    runs-on: ubuntu-24.04
+    steps:
+      # Complete history: release verification reads tags.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+
+      - name: Configure pnpm store path
+        id: pnpm-store
+        run: |
+          store_root="$HOME/.local/share/pnpm/store"
+          echo "PNPM_CONFIG_STORE_DIR=$store_root" >> "$GITHUB_ENV"
+          store_path=$(PNPM_CONFIG_STORE_DIR="$store_root" pnpm store path --silent)
+          echo "path=$store_path" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-
+
+      - name: Install (immutable)
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify ClawDSH release version
+        env:
+          RELEASE_PUBLISH: ${{ inputs.publish }}
+        run: pnpm run release:verify --family clawdsh
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Pack ClawDSH release tarballs
+        run: pnpm run release:pack --family clawdsh --out dist/npm-clawdsh
+
+      # ClawDSH packages peer-depend on the Harness and vendored framework.
+      # Supply workspace tarballs so verification never depends on matching
+      # versions already existing in the registry. These helpers are verified
+      # inputs only and are not uploaded or published by this workflow.
+      - name: Pack the dsh family for verification
+        run: pnpm run release:pack --family dsh --out dist/npm-dsh
+
+      - name: Pack the vendored framework for verification
+        run: pnpm run release:pack --family vendor --out dist/npm-vendor
+
+      # dsh-sandbox-local pulls in the Landlock entry at runtime. Platform
+      # packages remain optional and are intentionally omitted by the consumer.
+      - name: Pack the Landlock entry for verification
+        run: |
+          pnpm --dir native/landlock-run run build:ts
+          pnpm --dir native/landlock-run/packages/entry pack --pack-destination "$PWD/dist/npm-landlock"
+
+      - name: Verify packed install
+        run: >-
+          pnpm run release:verify-packed-install --family clawdsh
+          --from dist/npm-clawdsh
+          --from dist/npm-dsh
+          --from dist/npm-vendor
+          --from dist/npm-landlock
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clawdsh-npm-tarballs
+          path: dist/npm-clawdsh/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish ClawDSH to npm
+    if: inputs.publish
+    needs: pack
+    runs-on: ubuntu-24.04
+    # Required reviewers and allowed tags live on this environment; this is the
+    # only job in the workflow that receives npm credentials.
+    environment: npm-publish
+    concurrency:
+      group: Release-publish
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      # Checkout and install provide release scripts only; publication uploads
+      # the exact artifact produced by the pack job and never rebuilds it.
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+
+      - name: Install (immutable, no package scripts)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: clawdsh-npm-tarballs
+          path: dist/npm-clawdsh
+
+      - name: Publish ClawDSH tarballs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm run release:publish --family clawdsh --from dist/npm-clawdsh

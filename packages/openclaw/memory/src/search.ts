@@ -11,6 +11,7 @@
  */
 
 import type { Embeddings, EmbeddingVector } from '@clawdsh/dsh-embeddings'
+import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FileSystem, FsDirEntry, FsTarget, FsVersion } from '@deepseek-ai/dsh-fs'
 import { chunkMarkdown } from './chunk.ts'
 import type { MemoryChunk } from './chunk.ts'
@@ -157,7 +158,17 @@ export class MemoryIndex {
 
   private async doSync(signal?: AbortSignal): Promise<void> {
     const seen = new Set<string>()
-    const rootEntries = await this.fs.listDir(this.root, signal)
+    let rootEntries: FsDirEntry[]
+    try {
+      rootEntries = await this.fs.listDir(this.root, signal)
+    } catch (error) {
+      if (!(error instanceof FsError) || error.code !== 'FS_NOT_FOUND') throw error
+      // A first-run profile has no memory root yet. Treat it as an empty
+      // source of truth; `memory_append` will create parent directories using
+      // the filesystem's guarded atomic-write primitive.
+      this.files.clear()
+      return
+    }
     for (const entry of rootEntries) {
       if (entry.name === 'MEMORY.md' && entry.type === 'file') {
         seen.add('MEMORY.md')

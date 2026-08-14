@@ -81,9 +81,15 @@ export class TypeScriptProject {
   /** The checker shared by every semantic query in this project. */
   readonly checker: ts.TypeChecker
 
-  constructor(private readonly projectRoot: string) {
+  constructor(
+    private readonly projectRoot: string,
+    additionalRootNames: readonly string[] = [],
+  ) {
     const graph = loadProjectGraph(projectRoot)
-    this.program = ts.createProgram(graph.rootNames, semanticCompilerOptions(graph.options))
+    this.program = ts.createProgram(
+      [...new Set([...graph.rootNames, ...additionalRootNames])],
+      semanticCompilerOptions(graph.options),
+    )
     this.checker = this.program.getTypeChecker()
   }
 

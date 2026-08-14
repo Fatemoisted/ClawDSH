@@ -7,7 +7,7 @@
 > 分类含义：
 > - **复用**：dsh 原生能力，直接用，不写代码；
 > - **插件**：挂到 dsh 既有接缝上的增量包（`packages/openclaw/*`）；
-> - **新 seam**：dsh 没有对应接缝，需要新增（必须 ADR + upstream-first）；
+> - **新 seam**：dsh 没有对应接缝，需要新增（必须有 ADR；除非 ADR 明确记录项目另行决策，否则 upstream-first）；
 > - **暂缓**：本轮不做，记录原因。
 
 ## 基线（阶段 1 定稿，2026-08-14）
@@ -36,9 +36,9 @@
 | 技能（Skill） | 顶层 `skills/` | `ctx.skills`（provider 合并） | 插件 | `skills-hub` | **implemented**（阶段 3 ✅） |
 | 定时 / 自动化 | `src/cron/` | 自有 unref'd croner timer + `agent.followup`/`whenIdle`/`sessions.flush` 回合桥（`ctx.schedule` 否决：session-local + 300s 下限 + 仅工具面 API） | 插件 | `automation` | **implemented**（阶段 3 ✅） |
 | 人格（Soul） | `src/agents/system-prompt.ts` 首行 + workspace 六文件（AGENTS/SOUL/TOOLS/IDENTITY/USER/BOOTSTRAP.md） | system-prompt 装配（persona 首行 / soul append / complete 段 / 工具指引带）+ 渠道呈现（IDENTITY ✅） | 插件 | `soul` | **implemented**（阶段 0 ✅ + 阶段 2 深读定稿 ✅） |
-| 记忆（Memory） | 基线无 → 参考 v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`、`memory-tool.ts` | `ctx.fs` 文件事实源 + `ctx.tools` + system-prompt 段 + `ctx.get('embeddings')`（新 seam，ADR-0003） | 插件 | `memory` + `embeddings` + `embeddings-ark` | **implemented**（阶段 2 补漏 ✅） |
-| **渠道网关（Gateway）** | `src/gateway/` | **无** | **新 seam** | `channel-core` | **implemented**（阶段 2 ✅） |
-| 渠道：Telegram | `src/telegram/` | `ctx.channels` | 插件 | `channel-telegram` | **implemented**（阶段 2 ✅） |
+| 记忆（Memory） | 基线无 → 参考 v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`、`memory-tool.ts` | Harness `ctx.fs`/sandbox + tools/system prompt + embeddings | 插件 | `memory` + `embeddings` + `embeddings-ark` | **implemented**（三工具、配置默认、缺失 root 启动、持久 flush 周期 ✅） |
+| **渠道网关（Gateway）** | `src/gateway/` | **无** | **新 seam** | `channel-core` | **implemented**（可等待持久化、确定性恢复/preset/FIFO、legacy thread-only 兼容、策略 ✅） |
+| 渠道：Telegram | `src/telegram/` | `ctx.channels` | 插件 | `channel-telegram` | **implemented**（command/mention/caption/topic/引用/reaction、Unicode-safe 4096 分片、生命周期 catch ✅） |
 | 渠道：Discord | `src/discord/` | `ctx.channels` | 插件 | `channel-discord`（待建） | planning |
 | 渠道：iMessage / Signal / Slack | `src/imessage/` 等 | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
 | 渠道：WhatsApp | 参考 v2026.1.15 `src/whatsapp/` | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
@@ -61,9 +61,13 @@
 
 | 功能域 | 出处 | dsh 接缝 | 分类 | 落地包 | 状态 |
 |---|---|---|---|---|---|
-| 渠道：飞书（Lark） | OpenClaw `extensions/feishu`（v2026.2.12 起；引入提交 `0223416c61`） | `ctx.channels` | 插件 | `channel-feishu` | **implemented**（阶段 2 ✅） |
+| 渠道：飞书（Lark） | OpenClaw `extensions/feishu`（v2026.2.12 起；引入提交 `0223416c61`） | `ctx.channels` + 官方 SDK 1.73 `LarkChannel` | 插件 | `channel-feishu` | **implemented**（富消息归一化、身份退避、topic-safe 3500 引用、失败握手清理、reaction ✅） |
 
 微信系不落矩阵（不实现），决策记录见 `docs/specs/feature-channel-wechat.md`。
+
+## 分发状态（不属于功能对齐）
+
+9 个 `packages/openclaw/*` 成员现已组成独立、共享版本的 `clawdsh` release family，使用 `clawdsh-v*` tag。bump/verify/pack/publish、workspace 约束、packed-install 验证及受保护的 `.github/workflows/release-clawdsh.yml` 路径均已实现。当前工作树尚未执行 ClawDSH npm 发布；本地 profile 组装仍使用 `tools/link-openclaw.sh` symlink。
 
 ## 维护规则
 

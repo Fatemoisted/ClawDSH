@@ -2,9 +2,9 @@
 
 English | [中文](README.zh.md)
 
-**Purpose**: Feishu (Lark) channel adapter — implements `ChannelAdapter`, wrapped with the official `@larksuiteoapi/node-sdk`: WebSocket long-connection inbound (`WSClient` + `EventDispatcher`) + `im.message.create` outbound. **The initiator's first-priority channel** (established 2026-08-14).
+**Purpose**: Feishu (Lark) channel adapter — a thin `ctx.channels` bridge over the official `@larksuiteoapi/node-sdk` 1.73 high-level `LarkChannel`. **The initiator's first-priority channel** (established 2026-08-14).
 
-**OpenClaw correspondence**: ✅ upstream's official `extensions/feishu` — introduced 2026-02-03 (commit `2483f26c23` "Channels: add Feishu/Lark support" → `0223416c61` "finish Feishu/Lark integration"), shipped since v2026.2.12. Use that extension as the functional reference for the port: it likewise uses `@larksuiteoapi/node-sdk`'s long-connection mode (`Lark.Client` + `Lark.WSClient` + `Lark.EventDispatcher` registering `im.message.receive_v1`).
+**OpenClaw correspondence**: ✅ upstream's official `extensions/feishu`, shipped since v2026.2.12. ClawDSH delegates the platform machinery to the SDK's own channel component instead of copying that machinery into this package.
 
 **Seam**: `ctx.channels` (@clawdsh/dsh-channel-core, ADR-0002). Complements Telegram's (polling) form, jointly validating the seam.
 
@@ -12,8 +12,12 @@ English | [中文](README.zh.md)
 
 ## Design notes
 
-- **inbound**: `Lark.EventDispatcher` registers `im.message.receive_v1`, `Lark.WSClient` starts the long connection (the SDK performs auth and ACK internally, at-least-once delivery); idempotent dedup by `message_id`; text message → `channel/inbound` (group `threadId` = chat_id, p2p/private = sender open_id, `sender` = open_id, text decoded from the `content` JSON string `{"text":"…"}`).
-- **outbound**: `Lark.Client.im.message.create` (`params.receive_id_type` group = `chat_id`, p2p = `open_id`, `data.receive_id` + `msg_type:'text'` + `content` JSON); `tenant_access_token` is cached and refreshed by the SDK's `tokenManager`, the adapter does not manage it itself.
+- **SDK-owned platform layer**: `createLarkChannel` owns bot `open_id` discovery before accepting traffic, WebSocket reconnect, stale-event rejection, TTL de-duplication, in-flight locks, structured mention removal, rich-message normalization, token refresh, ordinary outbound chunking/retry, reply fallback, and reactions;
+- **thin translation**: the adapter maps `NormalizedMessage` to `ChannelMessage` (`conversationId` = group `chatId` or p2p sender id, optional `threadId`, structured `mention`, and SDK-rendered text), and its callback awaits `ctx.parallel('channel/inbound', inbound)` through the FIFO turn, `sessions.flush`, and outbound send. SDK 1.73's queue-disabled safety dispatcher launches that callback asynchronously, so the WebSocket ingress acknowledgement itself is not a durability barrier;
+- **no cross-topic batching**: SDK `chatQueue` batching is disabled because its scope is the chat id while Harness sessions additionally separate Feishu topics. Mention policy is also disabled in the SDK and owned centrally by channel-core;
+- **pre-WebSocket identity retry**: the SDK still owns reconnect once a WebSocket client exists. Only transient failures while discovering bot identity before the WebSocket are retried by the adapter through the Harness timer, with exponential backoff from 1 to 30 seconds; permanent SDK errors fail without a retry loop;
+- **topic-safe outbound**: SDK 1.73 normally splits text at 3500 UTF-16 units, but applies `replyTo` only to its first chunk, which can move later chunks out of a topic. For a topic reply, the adapter pre-splits without cutting surrogate pairs and calls `LarkChannel.send` for every chunk with the same `replyTo`/`replyInThread`; all authentication, retry, and vanished-target fallback still remain in the SDK. Other sends use the SDK's own chunking directly; `addReaction` owns the Feishu reaction API;
+- **drain and failed-handshake cleanup**: disposal first unsubscribes ingress and waits every adapter-tracked message callback before disconnecting. SDK 1.73's public `disconnect()` returns early if a connection never reached `connected=true`. On that path only, disposal force-closes `rawWsClient`, drains the SDK safety timers, then calls the public disconnect; successful connections stay entirely on the public lifecycle;
 - **credentials**: `appId`/`appSecret` enter via Config, no secret is stored privately; wiring into `ctx.credentials` is left for the real-e2e wrap-up.
 - **long connection instead of webhook**: no `verificationToken`/`encryptKey`, no inbound HTTP port, no URL-verification challenge (these are only needed in webhook mode; the long connection performs auth via the SDK). `domain` selects Feishu (default) or international Lark.
 
@@ -23,11 +27,11 @@ English | [中文](README.zh.md)
 
 #### What the model sees
 
-The adapter parses a Feishu `im.message.receive_v1` event (delivered over the SDK's WebSocket long-connection) and emits a `channel/inbound` message; the channel-core router writes that message's `text` into the session log as a user message. The adapter registers no prompt or tool schema of its own.
+The SDK converts text, post, image/file/audio/video/sticker/card/share/location/calendar and other supported Feishu message shapes into stable normalized text; this adapter relays that text as `channel/inbound` to channel-core. The adapter registers no prompt or tool schema of its own.
 
 #### Token effect
 
-Only the relayed message text reaches the model, through channel-core's session write.
+Only the relayed message text reaches the model, through channel-core's durable session write.
 
 #### KV Cache effect
 
@@ -35,9 +39,9 @@ Append-only through channel-core's user-message write.
 
 ## Known Limitations and Deferred Work
 
-- **rich text / interactive cards / attachments**: text messages only; rich-text, interactive cards, images, and `reply_in_thread` quoted replies all belong to stage 3 channel extensions.
-- **p2p session thread**: p2p/private uses the sender's `open_id` as the thread id, with `chat_id` as the fallback only when the sender is missing.
-- **real e2e**: the assembly test running a real agent turn inside the Loader needs a real key (see the stage 2 summary for the credential list); currently covered by contract tests (protocol mapping + `send` payload + idempotent dedup) + dump-config smoke.
-- **dedup set**: `seen` evicts the oldest entry past 10000, so a long-running bot does not grow without bound.
-- **send failure throws**: an error is thrown when `im.message.create` returns a non-zero `code`; retry/rate-limit policy deferred to stage 3.
-- **no ack reaction yet**: the adapter declares `react: false`; wiring `POST /open-apis/im/v1/messages/:message_id/reactions` (im v1 message reaction create) waits on confirming the node-sdk schema in this workspace.
+- **binary attachments**: the SDK recognizes and textifies resource messages, but the shared `ChannelMessage` contract does not yet download their bytes into Harness `ctx.attachments`; the model sees the SDK's resource marker rather than image/file bytes.
+- **interactive actions**: inbound card-action/comment/reaction events and outbound streaming cards are supported by `LarkChannel` but are not yet projected onto the text-only `ctx.channels` contract.
+- **credentialed e2e**: keyless tests cover normalized mapping, awaited inbound, pre-WebSocket backoff, failed-handshake cleanup, Unicode-safe topic chunking, native replies, and reactions. Live app permissions, event subscriptions, and WebSocket behavior still require a Feishu/Lark deployment.
+- **async readiness**: adapter disposal is asynchronous and drains connection cleanup, but `start` still has no ready promise; SDK identity/handshake failures are logged asynchronously rather than rejecting daemon boot.
+- **SDK ingress acknowledgement**: SDK 1.73 marks an accepted event seen after its callback settles even when that callback ultimately fails. SDK outbound retry handles transient sends, but there is no durable ingress/outbox replay after a final failure.
+- **SDK 1.73 compatibility shim**: failed-handshake cleanup must reach the SDK's `rawWsClient` and safety component because the public lifecycle is incomplete on that path. Revalidate or remove this narrow shim when upgrading the Lark SDK.

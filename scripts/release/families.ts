@@ -1,8 +1,8 @@
 /**
- * The three independent publish sequences this repository releases from
- * (`packages/` + `apps/`, `vendor/`, and `native/`) and the two this module
- * owns: `dsh` and `vendor`. Each family carries its own version baseline, tag
- * naming, and publish set, so releasing one never republishes another
+ * The independent publish sequences this repository releases from. This
+ * module owns `dsh`, `clawdsh`, and `vendor`; the native sequence is managed
+ * separately. Each family carries its own version baseline, tag naming, and
+ * publish set, so releasing one never republishes another
  * ([rationale](../../.agents/notes/implemented/process/2026-08-10-npm-release-sequences.md)).
  *
  * The family dimension lives here only. A new sequence adds a subclass and a
@@ -29,6 +29,18 @@ export interface ReleaseMember {
   readonly version: string
   /** The parsed manifest, for payload policy and publication checks. */
   readonly manifest: Readonly<Record<string, unknown>>
+}
+
+/** One dependency range outside the publish set that follows a family's shared version. */
+export interface PlannedDependencyRange {
+  /** Repository-relative manifest path. */
+  readonly manifestPath: string
+  /** Release member named by the dependency. */
+  readonly packageName: string
+  /** Range the manifest currently carries. */
+  readonly from: string
+  /** Range required by the target family version. */
+  readonly to: string
 }
 
 /**
@@ -65,6 +77,9 @@ export interface InstalledEntry {
   readonly binPath: string
 }
 
+/** How a release bump advances a family's manifests. */
+export type ReleaseVersioning = 'shared-with-root' | 'shared' | 'per-package'
+
 /** A release sequence: its members, its version baseline, and its tag naming. */
 export abstract class ReleaseFamily {
   /** Workflow-facing identifier, also the `--family` argument. */
@@ -76,28 +91,53 @@ export abstract class ReleaseFamily {
   /** Git tag prefix this family publishes from. */
   abstract readonly tagPrefix: string
 
+  /** Whether members share a version, and whether the workspace root shares it too. */
+  abstract readonly versioning: ReleaseVersioning
+
+  /** Branch a completed bump must merge to before its release tag is created. */
+  readonly releaseBranch: string = 'master'
+
+  /** Package-name prefix every selected manifest must use. */
+  protected abstract readonly packageNamePrefix: string
+
+  /** Non-published manifests whose dependency ranges follow every family member. */
+  protected readonly synchronizedDependencyManifests: readonly string[] = []
+
+  /**
+   * Decide whether a path selected by {@link patterns} belongs to this family.
+   * @param _manifestPath - normalized repository-relative manifest path.
+   * @returns Whether the manifest is a member.
+   */
+  protected includesManifest(_manifestPath: string): boolean {
+    return true
+  }
+
   /**
    * Discover this family's members.
    * @param root - repository root.
    * @returns Members sorted by directory, with names validated and deduplicated.
    */
   members(root: string): ReleaseMember[] {
-    const manifestPaths = globSync([...this.patterns], { cwd: root }).sort()
+    const manifestPaths = globSync([...this.patterns], { cwd: root })
+      .map(manifestPath => manifestPath.replaceAll('\\', '/'))
+      .filter(manifestPath => this.includesManifest(manifestPath))
+      .sort()
     if (manifestPaths.length === 0) throw new Error(`release family ${this.id} matched no manifests`)
 
     const members: ReleaseMember[] = []
     const seen = new Set<string>()
     for (const manifestPath of manifestPaths) {
-      const normalized = manifestPath.replaceAll('\\', '/')
       const manifest = readManifest(resolve(root, manifestPath))
-      const name = requireString(manifest, 'name', normalized)
-      const version = requireString(manifest, 'version', normalized)
-      if (name === WORKSPACE_ROOT_PACKAGE) throw new Error(`${normalized} selected the workspace root`)
-      if (!name.startsWith('@deepseek-ai/')) throw new Error(`${normalized} must name an @deepseek-ai package`)
+      const name = requireString(manifest, 'name', manifestPath)
+      const version = requireString(manifest, 'version', manifestPath)
+      if (name === WORKSPACE_ROOT_PACKAGE) throw new Error(`${manifestPath} selected the workspace root`)
+      if (!name.startsWith(this.packageNamePrefix)) {
+        throw new Error(`${manifestPath} must name a ${this.packageNamePrefix} package`)
+      }
       if (seen.has(name)) throw new Error(`${name} appears twice in release family ${this.id}`)
       seen.add(name)
       members.push({
-        directory: normalized.slice(0, normalized.length - '/package.json'.length),
+        directory: manifestPath.slice(0, manifestPath.length - '/package.json'.length),
         name,
         version,
         manifest,
@@ -163,6 +203,55 @@ export abstract class ReleaseFamily {
   abstract verifyVersions(members: readonly ReleaseMember[]): void
 
   /**
+   * Plan dependency ranges in non-published consumers that follow this family.
+   * @param root - repository root.
+   * @param members - every family member the consumer must depend on.
+   * @param version - target shared family version.
+   * @returns Every dependency range to rewrite.
+   */
+  planSynchronizedDependencyRanges(
+    root: string,
+    members: readonly ReleaseMember[],
+    version: string,
+  ): PlannedDependencyRange[] {
+    const planned: PlannedDependencyRange[] = []
+    const to = `^${version}`
+    for (const manifestPath of this.synchronizedDependencyManifests) {
+      const manifest = readManifest(resolve(root, manifestPath))
+      const dependencies = manifest.dependencies
+      if (dependencies === null || typeof dependencies !== 'object' || Array.isArray(dependencies)) {
+        throw new Error(`${manifestPath} must declare dependencies for release family ${this.id}`)
+      }
+      const ranges = dependencies as Record<string, unknown>
+      for (const member of members) {
+        const from = ranges[member.name]
+        if (typeof from !== 'string') {
+          throw new Error(`${manifestPath} must depend on release member ${member.name}`)
+        }
+        planned.push({ manifestPath, packageName: member.name, from, to })
+      }
+    }
+    return planned
+  }
+
+  /**
+   * Require every synchronized consumer range to select the current family version.
+   * @param root - repository root.
+   * @param members - members whose already-verified version is current.
+   */
+  verifySynchronizedDependencyRanges(root: string, members: readonly ReleaseMember[]): void {
+    const [first] = members
+    if (first === undefined) throw new Error(`release family ${this.id} has no members`)
+    const mismatches = this.planSynchronizedDependencyRanges(root, members, first.version)
+      .filter(entry => entry.from !== entry.to)
+    if (mismatches.length === 0) return
+    const detail = mismatches
+      .map(entry => `${entry.manifestPath}: ${entry.packageName} is ${entry.from}, expected ${entry.to}`)
+      .join('\n')
+    throw new Error(`release family ${this.id} has stale synchronized dependency ranges:\n${detail}`)
+  }
+
+  /**
    * The tag prefix a member's versions are tagged under. Every tag for that
    * member starts with it, which is how the last published version is found.
    * @param member - the member being published.
@@ -191,6 +280,12 @@ export abstract class ReleaseFamily {
    * `undefined` for a family that publishes no executable.
    */
   abstract readonly installedEntry: InstalledEntry | undefined
+
+  /**
+   * Package subpaths every installed family member must expose to plain Node.
+   * An empty string names the package's main export.
+   */
+  abstract readonly installedImportSubpaths: readonly string[]
 }
 
 /** `packages/*` and `apps/*`: one shared version across the whole family. */
@@ -198,6 +293,13 @@ class DshFamily extends ReleaseFamily {
   readonly id = 'dsh'
   readonly patterns = ['packages/*/*/package.json', 'apps/*/package.json'] as const
   readonly tagPrefix = 'dsh-v'
+  readonly versioning = 'shared-with-root'
+  protected readonly packageNamePrefix = '@deepseek-ai/'
+
+  /** Keep the separately versioned ClawDSH packages out of the upstream family. */
+  protected override includesManifest(manifestPath: string): boolean {
+    return !manifestPath.startsWith('packages/openclaw/')
+  }
 
   /**
    * Require one version across the family, the way a single tag can name it.
@@ -229,6 +331,45 @@ class DshFamily extends ReleaseFamily {
   }
 
   readonly installedEntry = { packageName: '@deepseek-ai/dsh', binPath: 'lib/bin.js' }
+  readonly installedImportSubpaths = []
+}
+
+/** `packages/openclaw/*`: one shared version on the downstream ClawDSH line. */
+class ClawdshFamily extends ReleaseFamily {
+  readonly id = 'clawdsh'
+  readonly patterns = ['packages/openclaw/*/package.json'] as const
+  readonly tagPrefix = 'clawdsh-v'
+  readonly versioning = 'shared'
+  override readonly releaseBranch = 'clawdsh'
+  protected readonly packageNamePrefix = '@clawdsh/dsh-'
+  protected override readonly synchronizedDependencyManifests = [
+    'tools/openclaw-preset-openclaw/profile/package.json',
+  ] as const
+
+  /** Require one version so a single ClawDSH tag names the complete family. */
+  verifyVersions(members: readonly ReleaseMember[]): void {
+    const versions = new Set(members.map(member => member.version))
+    if (versions.size !== 1) {
+      const detail = members.map(member => `${member.directory}: ${member.version}`).join('\n')
+      throw new Error(`clawdsh release members must share one version:\n${detail}`)
+    }
+  }
+
+  /** The single prefix shared by every ClawDSH member. */
+  tagPrefixFor(): string {
+    return this.tagPrefix
+  }
+
+  /** Apply the same compiled-output payload policy as the upstream dsh family. */
+  validatePayload(member: ReleaseMember, files: readonly string[]): void {
+    validateTarballPayload(files, member.name)
+  }
+
+  /** ClawDSH currently publishes libraries rather than an executable. */
+  readonly installedEntry = undefined
+
+  /** Import both public runtime surfaces from every installed ClawDSH package. */
+  readonly installedImportSubpaths = ['', '/invariant']
 }
 
 /** `vendor/*`: every package keeps its own version line, so every package has its own tag. */
@@ -236,6 +377,8 @@ class VendorFamily extends ReleaseFamily {
   readonly id = 'vendor'
   readonly patterns = ['vendor/*/package.json'] as const
   readonly tagPrefix = 'vendor-'
+  readonly versioning = 'per-package'
+  protected readonly packageNamePrefix = '@deepseek-ai/'
 
   /**
    * Accept independent versions; only reject a version this repository cannot publish.
@@ -276,11 +419,12 @@ class VendorFamily extends ReleaseFamily {
 
   /** No installed-entry probe: these are libraries a consumer imports, with no executable. */
   readonly installedEntry = undefined
+  readonly installedImportSubpaths = []
 }
 
 /** Every release family this module owns, in workflow order. */
 function releaseFamilies(): readonly ReleaseFamily[] {
-  return [new DshFamily(), new VendorFamily()]
+  return [new DshFamily(), new ClawdshFamily(), new VendorFamily()]
 }
 
 /**

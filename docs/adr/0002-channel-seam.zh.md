@@ -17,8 +17,8 @@ OpenClaw 的核心价值是"个人助手活在消息渠道里"（WhatsApp/Telegr
 1. **新增 `ctx.channels` 服务**，职责：
    - 渠道适配器注册表：每个渠道插件注册一个 `ChannelAdapter`；
    - 入站路由：渠道消息 → 定位/创建 agent 会话 → 写入 session log → 驱动 agent loop；
-   - 出站投递：agent 回复 → 对应渠道推送（含消息分组/引用等渠道特性映射）。
-2. **渠道插件只实现适配器**：`receive`（入站事件）与 `send`（出站投递）两个能力面，路由、会话绑定、重试策略全部归 `channel-core`。
+   - 出站投递：agent 回复 → 携带归一化引用/topic 元数据推送到对应渠道。
+2. **渠道插件只实现适配器**：能力面为 `receive`（入站事件）、`send`（出站投递）与可选 `react`。路由、会话绑定、群聊/ack 策略及 turn 串行归 `channel-core`；provider 传输重试仍归 adapter 及其官方 SDK。
 3. **契约继承 dsh 不变式**：一切入站消息与出站回复必须写进 session log（"model-visible means logged"），否则不得触达模型。
 4. **长期自有 seam**：`ctx.channels` 作为 ClawDSH 自有 seam 长期保留，**不向上游提 PR**（发起人 2026-08-14 决定——快速开发优先，上游无暇回应）。`channel-core` 即该 seam 的实现，不视为临时 patch；未来若上游自建等价能力再评估去留，差异记录回本 ADR。
 
@@ -28,29 +28,37 @@ OpenClaw 的核心价值是"个人助手活在消息渠道里"（WhatsApp/Telegr
 // channel-core/src/types.ts（仅类型，无运行时代码）
 import type { Context } from '@deepseek-ai/cordis'
 
-export interface ChannelCapabilities { receive: boolean; send: boolean }
+export interface ChannelCapabilities { receive: boolean; send: boolean; react: boolean }
 
 export interface ChannelMessage {
   channel: string                    // 适配器 id，如 'telegram' | 'feishu'
   direction: 'in' | 'out'
-  threadId?: string                  // 渠道侧会话线索（群 chat_id / p2p open_chat_id / TG chat.id）
+  conversationId?: string            // 平台会话/发送目标
+  threadId?: string                  // 会话内可选 topic/thread
   sender?: string                    // 发送者身份（open_id / from.id）
+  messageId?: string
+  replyToMessageId?: string
+  chatType?: 'direct' | 'group'
+  mention?: { detectable: boolean; botMentioned: boolean }
   text: string
 }
 
 export interface ChannelAdapter {
   id: string
   capabilities: ChannelCapabilities
-  start(ctx: Context): () => void           // 订阅平台事件，emit 'channel/inbound'；返回 disposer
+  start(ctx: Context): () => void | Promise<void> // subscribe; return a drain-aware disposer
   send(msg: ChannelMessage): Promise<void>  // 出站投递
+  react?(msg: ChannelMessage, emoji: string): Promise<void>
 }
 ```
 
-**事件名定稿**：`channel/inbound`（入站，adapter → core）、`channel/outbound`（出站，core 投递回复后）。
+**事件名定稿**：`channel/inbound`（parallel 入站，adapter → core）、`channel/outbound`（仅 emit 出站，core 投递回复后）。新 adapter 必须等待 `ctx.parallel('channel/inbound', msg)`；listener 仍兼容旧 `ctx.emit` producer，但后者无法观察完成。
 
-**入站链路**：adapter `start()` 收到平台消息 → `ctx.emit('channel/inbound', msg)` → `channel-core` 监听 → 路由到 per-thread agent 会话（`ctx.agents.create` + `followup` + `whenIdle` + `sessions.flush`）→ 扫 `assistant/message` 读回复 → `adapter.send(outMsg)` + `emit('channel/outbound', outMsg)`。per-thread 会话按 `${channel}\0${threadId ?? ''}` 键复用，入站 turn 以 per-thread tail-chain 串行化，避免并发交错。
+**入站链路**：adapter `start()` 接收并结构化归一平台消息 → `await ctx.parallel('channel/inbound', msg)` → `channel-core` 执行群聊/ack 策略 → 从 `(channel, conversationId, threadId)` 生成不透明的确定性 session id → 经 Harness persistence/agent/preset 服务恢复或创建 → `followup` + `whenIdle` + `sessions.flush` → `adapter.send(outMsg)` + `emit('channel/outbound', outMsg)`。返回的 parallel Promise 覆盖持久化检查点与投递，失败会 reject；内部已吸收的 tail 让后续 FIFO 回合仍可运行。adapter teardown 会排空 provider middleware，core teardown 会先排空已准入回合再释放 Agent。首次创建 single-flight；Harness timer 回收空闲 live handle，但不删除持久历史。
 
-**最小面**：附件/引用/富文本/交互卡片一律推迟（阶段 3 渠道扩展）。
+**地址兼容**：`conversationId` 是平台会话/发送目标，`threadId` 是其中可选 topic。仍接受只提供 `threadId` 的 legacy adapter：core 把它当作 conversation id，并在出站 `threadId` 中回填同一值。这种 source 兼容不迁移旧的持久会话；其随机 id 从未记录平台地址。
+
+**当前能力面**：已实现结构化 mention 与 Telegram 定向 bot command、ack reaction、原生引用/topic、caption、Unicode-safe 平台上限分片及平台归一后的富文本；Telegram 使用 grammY 官方有界 auto-retry。二进制附件字节、交互卡片/action 事件及持久 provider outbox 仍不在文本型契约内。飞书 SDK 1.73 关闭 queue 后会异步启动可等待 callback，并把最终失败的 callback 标为 seen，因此其 WebSocket 入站确认本身不是持久化屏障。
 
 ## 后果
 
@@ -65,4 +73,4 @@ export interface ChannelAdapter {
 
 ## 结论（阶段 2 验证，2026-08-14）
 
-`ctx.channels` 契约已同时通过 **Telegram（grammY `Bot` 长轮询）** 与 **飞书（`@larksuiteoapi/node-sdk` 长连接 + `im.message.create`）** 两个形态差异足够大的适配器验证：两者都只实现 `ChannelAdapter` 契约（各自用官方 SDK 封装协议，见 §8 移植原则），路由/会话绑定/回复回投由 `channel-core` 统一承担，核心无渠道特判。契约测试（MockAdapter 验证「入站 → 真 agent turn → 回复出」闭环）+ 全量 typecheck + `--dump-config` 冒烟全绿。真实 e2e（真 key + 真 bot）留待凭证到位后的收尾项。seam 契约与装配语义的内部设计记录见 `docs/upstream-proposal/ctx-channels.md`（不再作为待提交 PR）。
+`ctx.channels` 契约已通过 **Telegram（grammY 长轮询）** 与 **飞书（官方 SDK 1.73 `LarkChannel` WebSocket）** 两种形态验证。核心没有 provider 分支：session、持久化、模型选择、preset/Soul 组合与 timer 生命周期都由 Harness 负责，adapter 只做协议归一化和 SDK 投递。无密钥契约测试覆盖失败传播、停机排空、重启恢复、并发准入、legacy thread-only 输入、command/mention、Unicode-safe 引用/topic、reaction、Telegram 有界 API 重试、飞书 WebSocket 前身份退避与失败握手清理；线上 provider 权限仍是带凭证部署检查。内部 seam 记录见 `docs/upstream-proposal/ctx-channels.md`（不再作为待提交 PR）。

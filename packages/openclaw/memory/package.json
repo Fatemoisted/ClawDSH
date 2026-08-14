@@ -24,6 +24,7 @@
     "lib/types/**/*.d.ts"
   ],
   "peerDependencies": {
+    "@clawdsh/dsh-embeddings": "workspace:^",
     "@deepseek-ai/dsh-agent": "workspace:^",
     "@deepseek-ai/dsh-compaction": "workspace:^",
     "@deepseek-ai/dsh-fs": "workspace:^",
@@ -62,7 +63,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/Fatemoisted/ClawDSH.git",
     "directory": "packages/openclaw/memory"
   }
 }

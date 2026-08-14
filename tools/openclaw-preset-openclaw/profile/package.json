@@ -1,6 +1,18 @@
 {
   "name": "openclaw",
   "private": true,
+  "dependencies": {
+    "@clawdsh/dsh-automation": "^0.1.0",
+    "@clawdsh/dsh-channel-core": "^0.1.0",
+    "@clawdsh/dsh-channel-feishu": "^0.1.0",
+    "@clawdsh/dsh-channel-telegram": "^0.1.0",
+    "@clawdsh/dsh-embeddings": "^0.1.0",
+    "@clawdsh/dsh-embeddings-ark": "^0.1.0",
+    "@clawdsh/dsh-memory": "^0.1.0",
+    "@clawdsh/dsh-skills-hub": "^0.1.0",
+    "@clawdsh/dsh-soul": "^0.1.0",
+    "@deepseek-ai/dsh-agent-presets": "^0.1.0-rc.5"
+  },
   "dsh": {
     "profile": {
       "bundles": [

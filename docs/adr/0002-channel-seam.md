@@ -17,8 +17,8 @@ Adding a seam is the highest-cost change. The project's early-stage discipline o
 1. **Add a `ctx.channels` service**, with responsibilities:
    - Channel adapter registry: each channel plugin registers a `ChannelAdapter`;
    - Inbound routing: channel message → locate/create an agent session → write to the session log → drive the agent loop;
-   - Outbound delivery: agent reply → push to the corresponding channel (including channel-feature mapping such as message grouping/references).
-2. **Channel plugins implement only the adapter**: the two capability surfaces `receive` (inbound events) and `send` (outbound delivery); routing, session binding, and retry policy all belong to `channel-core`.
+   - Outbound delivery: agent reply → push to the corresponding channel with normalized quote/topic metadata.
+2. **Channel plugins implement only the adapter**: the capability surfaces are `receive` (inbound events), `send` (outbound delivery), and optional `react`. Routing, session binding, group/ack policy, and turn serialization belong to `channel-core`; provider transport retry remains with the adapter and its official SDK.
 3. **The contract inherits dsh invariants**: every inbound message and outbound reply must be written into the session log ("model-visible means logged"), otherwise it must not reach the model.
 4. **Long-lived own seam**: `ctx.channels` is kept long-term as ClawDSH's own seam and **no upstream PR is proposed** (initiator's 2026-08-14 decision — fast development first, upstream has no time to respond). `channel-core` is this seam's implementation, not treated as a temporary patch; if upstream later builds an equivalent capability, reevaluate whether to keep it, and record the difference back into this ADR.
 
@@ -28,29 +28,37 @@ Adding a seam is the highest-cost change. The project's early-stage discipline o
 // channel-core/src/types.ts（仅类型，无运行时代码）
 import type { Context } from '@deepseek-ai/cordis'
 
-export interface ChannelCapabilities { receive: boolean; send: boolean }
+export interface ChannelCapabilities { receive: boolean; send: boolean; react: boolean }
 
 export interface ChannelMessage {
   channel: string                    // 适配器 id，如 'telegram' | 'feishu'
   direction: 'in' | 'out'
-  threadId?: string                  // 渠道侧会话线索（群 chat_id / p2p open_chat_id / TG chat.id）
+  conversationId?: string            // 平台会话/发送目标
+  threadId?: string                  // 会话内可选 topic/thread
   sender?: string                    // 发送者身份（open_id / from.id）
+  messageId?: string
+  replyToMessageId?: string
+  chatType?: 'direct' | 'group'
+  mention?: { detectable: boolean; botMentioned: boolean }
   text: string
 }
 
 export interface ChannelAdapter {
   id: string
   capabilities: ChannelCapabilities
-  start(ctx: Context): () => void           // 订阅平台事件，emit 'channel/inbound'；返回 disposer
+  start(ctx: Context): () => void | Promise<void> // subscribe; return a drain-aware disposer
   send(msg: ChannelMessage): Promise<void>  // 出站投递
+  react?(msg: ChannelMessage, emoji: string): Promise<void>
 }
 ```
 
-**Finalized event names**: `channel/inbound` (inbound, adapter → core), `channel/outbound` (outbound, after core delivers the reply).
+**Finalized event names**: `channel/inbound` (parallel inbound, adapter → core), `channel/outbound` (emit-only outbound, after core delivers the reply). New adapters must await `ctx.parallel('channel/inbound', msg)`; the listener remains compatible with legacy `ctx.emit` producers, but those producers cannot observe completion.
 
-**Inbound path**: adapter `start()` receives a platform message → `ctx.emit('channel/inbound', msg)` → `channel-core` listens → routes to a per-thread agent session (`ctx.agents.create` + `followup` + `whenIdle` + `sessions.flush`) → scans `assistant/message` to read the reply → `adapter.send(outMsg)` + `emit('channel/outbound', outMsg)`. Per-thread sessions are reused by the `${channel}\0${threadId ?? ''}` key; inbound turns are serialized via a per-thread tail-chain to avoid concurrent interleaving.
+**Inbound path**: adapter `start()` receives and structurally normalizes a platform message → `await ctx.parallel('channel/inbound', msg)` → `channel-core` applies group/ack policy → derives an opaque deterministic session id from `(channel, conversationId, threadId)` → resumes or creates through Harness persistence/agent/preset services → `followup` + `whenIdle` + `sessions.flush` → `adapter.send(outMsg)` + `emit('channel/outbound', outMsg)`. The returned parallel promise spans the durability checkpoint and delivery and rejects on failure; an absorbed internal tail preserves later FIFO turns. Adapter teardown drains provider middleware and core teardown drains admitted turns before Agent disposal. First creation is single-flighted; the Harness timer releases idle live handles without deleting durable history.
 
-**Minimal surface**: attachments/references/rich text/interactive cards are all deferred (stage 3 channel expansion).
+**Address compatibility**: `conversationId` is the platform conversation/send target and `threadId` is an optional topic inside it. A legacy adapter that supplies only `threadId` is still accepted: core treats it as the conversation id and mirrors it back in outbound `threadId`. This source compatibility does not migrate old persisted sessions whose random ids never recorded a platform address.
+
+**Current surface**: structured mentions and bot-addressed Telegram commands, acknowledgement reactions, native quoted replies/topics, captions, Unicode-safe provider-limit chunking, and provider-normalized rich text are implemented. Telegram uses grammY's official bounded auto-retry. Binary attachment bytes, interactive card/action events, and a durable provider outbox remain outside the text-first contract. Feishu SDK 1.73's queue-disabled dispatcher starts its awaited callback asynchronously and marks a failed callback seen, so its WebSocket ingress acknowledgement is not itself a durability barrier.
 
 ## Consequences
 
@@ -65,4 +73,4 @@ export interface ChannelAdapter {
 
 ## Conclusion (stage 2 validation, 2026-08-14)
 
-The `ctx.channels` contract has been validated by two adapters with sufficiently different forms — **Telegram (grammY `Bot` long polling)** and **Feishu (`@larksuiteoapi/node-sdk` long connection + `im.message.create`)**: both implement only the `ChannelAdapter` contract (each wraps its protocol with the official SDK, see §8 porting principles), while routing/session binding/reply delivery is uniformly carried by `channel-core`, with no channel-specific special-casing in the core. Contract tests (MockAdapter validating the "inbound → real agent turn → reply out" closed loop) + full typecheck + `--dump-config` smoke are all green. Real e2e (real key + real bot) is left as a finishing item once credentials are in place. The internal design record of the seam contract and assembly semantics is `docs/upstream-proposal/ctx-channels.md` (no longer a pending PR).
+The `ctx.channels` contract has been validated by **Telegram (grammY long polling)** and **Feishu (official SDK 1.73 `LarkChannel` WebSocket)**. The core contains no provider branch: Harness owns sessions, persistence, model selection, preset/Soul composition and timer lifecycle; adapters own protocol normalization and SDK delivery. Keyless contract tests cover failure propagation, shutdown drain, restart resume, concurrent admission, legacy thread-only input, commands/mentions, Unicode-safe replies/topics, reactions, Telegram bounded API retry, Feishu pre-WebSocket identity backoff and failed-handshake cleanup; live provider permissions remain a credentialed deployment check. The internal seam record is `docs/upstream-proposal/ctx-channels.md` (not a pending PR).

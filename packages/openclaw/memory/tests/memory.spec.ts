@@ -2,25 +2,29 @@
  * Contract tests for the memory row, keyless: the real fs local backend over a temp root,
  * the real SystemPrompt and ToolRuntime, and a deterministic stub embedding backend
  * (one unique dimension per token, so cosine similarity is exactly shared-token
- * overlap — no hash collisions, no API key). Memory files are written through
- * `ctx.fs.writeText`, simulating the model's fs-tool writes; recall goes through
- * `ctx.tools.execute`. Pinned: chunking, ranked recall with source lines,
- * result bounds, fail-loud without an embeddings provider, incremental rebuild,
- * deletion, path whitelist/containment, the guidance section, and disposal.
+ * overlap — no hash collisions, no API key). Fixtures use `ctx.fs.writeText`;
+ * the model-facing append and recall paths go through `ctx.tools.execute`.
+ * Pinned: chunking, ranked recall with source lines, result bounds, fail-loud
+ * without an embeddings provider, incremental rebuild, append concurrency,
+ * narrow sandbox-root policy, path containment, guidance, and disposal.
  */
 
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { FsError } from '@deepseek-ai/dsh-fs'
+import type { FileSystem, FsTarget, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
+import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { Embeddings } from '@clawdsh/dsh-embeddings'
 import type { EmbeddingVector } from '@clawdsh/dsh-embeddings'
 import * as Memory from '@clawdsh/dsh-memory'
-import { MEMORY_RECALL_SECTION, RECALL_TEXT } from '@clawdsh/dsh-memory'
+import { MEMORY_APPEND_TOOL, MEMORY_RECALL_SECTION, RECALL_TEXT } from '@clawdsh/dsh-memory'
 import { chunkMarkdown } from '../src/chunk.ts'
 import { readLineSlice } from '../src/memory-files.ts'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -69,12 +73,13 @@ let dir: string
 let ctx: Context
 
 let callCounter = 0
-function call(name: string, args: unknown) {
+function call(name: string, args: unknown, agent?: Agent) {
   return ctx.tools.execute({
     signal: testSignal,
     callId: CallId(`memory-${++callCounter}`),
     name,
     arguments: args,
+    ...(agent === undefined ? {} : { agent }),
   })
 }
 
@@ -84,6 +89,76 @@ function text(result: { content: { type: string; text?: string }[] }): string {
 
 async function writeMemoryFile(rel: string, content: string): Promise<void> {
   await ctx.fs.writeText(await ctx.fs.resolve(join(dir, rel)), content)
+}
+
+type SandboxExecutionPolicy = NonNullable<Parameters<FileSystem['writeText']>[4]>
+
+/** Small policy owner proving memory preserves mode while replacing only this call's root. */
+class StubSandboxPolicy extends Service {
+  constructor(ctx: Context, private readonly mode: SandboxExecutionPolicy['mode']) {
+    super(ctx, 'sandboxPolicy')
+  }
+
+  resolve(request: { session?: Session } = {}): SandboxExecutionPolicy {
+    const session = request.session
+    return {
+      mode: this.mode,
+      workspaceRoot: session?.header.cwd ?? process.cwd(),
+      ...(session === undefined ? {} : { sessionId: session.id }),
+    }
+  }
+}
+
+/** Test double for fs-sandbox's policy fence; records every stamped mutation. */
+class ConfiningFileSystem extends LocalFileSystem {
+  readonly stamped: Array<SandboxExecutionPolicy | undefined> = []
+
+  override get sandboxMode() {
+    return 'workspace-write' as const
+  }
+
+  override async writeText(
+    target: FsTarget,
+    content: string,
+    expected?: FsWriteIntent,
+    signal?: AbortSignal,
+    sandboxPolicy?: SandboxExecutionPolicy,
+  ): Promise<FsWriteOutcome> {
+    this.stamped.push(sandboxPolicy)
+    if (sandboxPolicy === undefined) {
+      throw new FsError('test filesystem requires a sandbox policy', 'FS_SANDBOX_DENIED')
+    }
+    if (sandboxPolicy.mode === 'read-only') {
+      throw new FsError('test filesystem denied a read-only write', 'FS_SANDBOX_DENIED')
+    }
+    let checked = target
+    if (sandboxPolicy.mode === 'workspace-write') {
+      const resolveOptions = signal === undefined ? undefined : { signal }
+      const root = await this.resolve(sandboxPolicy.workspaceRoot, resolveOptions)
+      checked = await this.resolve(target.displayPath, resolveOptions)
+      if (!this.contains(root, checked)) {
+        throw new FsError('test filesystem denied an out-of-root write', 'FS_SANDBOX_DENIED')
+      }
+    }
+    return super.writeText(checked, content, expected, signal)
+  }
+}
+
+function fakeAgent(cwd: string): Agent {
+  const id = SessionId(`memory-agent-${++callCounter}`)
+  const session = Session.create(id, undefined, { version: 0, id, createdAt: Date.now(), cwd })
+  return { id, session } as Agent
+}
+
+async function sandboxHarness(mode: SandboxExecutionPolicy['mode'], workspace: string): Promise<ConfiningFileSystem> {
+  ctx = new Context()
+  await ctx.plugin(SystemPrompt)
+  await ctx.plugin(ToolRuntime)
+  await ctx.plugin(StubSandboxPolicy, mode)
+  await ctx.plugin(ConfiningFileSystem, { cwd: workspace })
+  await ctx.plugin(StubEmbeddings)
+  await ctx.plugin(Memory, { root: dir })
+  return ctx.fs as ConfiningFileSystem
 }
 
 beforeEach(async () => {
@@ -163,6 +238,30 @@ describe('memory_search', () => {
     expect(text(filtered)).toBe('No matching memories found.')
   })
 
+  it('uses configured search defaults when tool arguments omit them', async () => {
+    await writeMemoryFile('MEMORY.md', 'banana smoothie breakfast\n')
+    await writeMemoryFile('memory/2026-08-14.md', 'banana smoothie breakfast\n')
+    await ctx.plugin(Memory, { root: dir, maxResults: 1, minScore: 0.9 })
+
+    const limited = await call('memory_search', { query: 'banana smoothie breakfast' })
+    expect(text(limited).split('\n\n')).toHaveLength(1)
+
+    const filtered = await call('memory_search', { query: 'banana' })
+    expect(text(filtered)).toBe('No matching memories found.')
+  })
+
+  it('treats a missing first-run memory root as an empty index', async () => {
+    const freshRoot = join(dir, 'fresh-memory-root')
+    await ctx.plugin(Memory, { root: freshRoot })
+
+    const empty = await call('memory_search', { query: 'anything' })
+    expect(empty.isError).toBe(false)
+    expect(text(empty)).toBe('No matching memories found.')
+
+    const appended = await call(MEMORY_APPEND_TOOL, { path: 'memory/2026-08-14.md', content: 'created lazily' })
+    expect(appended.isError).toBe(false)
+  })
+
   it('fails loudly when no embeddings provider is loaded', async () => {
     ctx = new Context()
     await ctx.plugin(SystemPrompt)
@@ -221,6 +320,119 @@ describe('memory_get', () => {
   })
 })
 
+describe('memory_append', () => {
+  it('creates and appends line-terminated notes without replacing prior content', async () => {
+    await ctx.plugin(Memory, { root: dir })
+
+    const first = await call(MEMORY_APPEND_TOOL, { path: 'MEMORY.md', content: 'first fact' })
+    const second = await call(MEMORY_APPEND_TOOL, { path: 'MEMORY.md', content: 'second fact\n' })
+
+    expect(first.isError).toBe(false)
+    expect(second.isError).toBe(false)
+    expect(await ctx.fs.readText(await ctx.fs.resolve(join(dir, 'MEMORY.md'))))
+      .toBe('first fact\nsecond fact\n')
+  })
+
+  it('rejects empty content and every path outside the memory allowlist', async () => {
+    await ctx.plugin(Memory, { root: dir })
+
+    const empty = await call(MEMORY_APPEND_TOOL, { path: 'MEMORY.md', content: '' })
+    expect(empty.isError).toBe(true)
+    expect(text(empty)).toContain('content must be a non-empty string')
+
+    for (const path of ['../etc/passwd', '/etc/passwd', 'memory/../MEMORY.md', 'notes.txt', 'memory/deep/note.md']) {
+      const result = await call(MEMORY_APPEND_TOOL, { path, content: 'blocked' })
+      expect(result.isError).toBe(true)
+      expect(text(result)).toContain('not a memory path')
+    }
+  })
+
+  it('serializes concurrent appends so no note is lost', async () => {
+    await ctx.plugin(Memory, { root: dir })
+    const notes = Array.from({ length: 12 }, (_, index) => `note-${index}`)
+
+    const results = await Promise.all(notes.map(content =>
+      call(MEMORY_APPEND_TOOL, { path: 'memory/2026-08-14.md', content })))
+
+    expect(results.every(result => !result.isError)).toBe(true)
+    const stored = await ctx.fs.readText(await ctx.fs.resolve(join(dir, 'memory', '2026-08-14.md')))
+    const storedNotes = stored.trimEnd().split('\n')
+    expect(storedNotes).toHaveLength(notes.length)
+    expect(storedNotes.toSorted()).toEqual(notes.toSorted())
+  })
+
+  it('makes appended content immediately available to semantic recall', async () => {
+    await ctx.plugin(Memory, { root: dir })
+    await call(MEMORY_APPEND_TOOL, {
+      path: 'MEMORY.md',
+      content: 'The user prefers cardamom tea in the morning.',
+    })
+
+    const recalled = await call('memory_search', { query: 'cardamom morning tea', minScore: 0.01 })
+    expect(recalled.isError).toBe(false)
+    expect(text(recalled)).toContain('cardamom tea')
+  })
+
+  it('writes outside the session cwd through only the memory-root policy', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dsh-memory-workspace-'))
+    try {
+      const fs = await sandboxHarness('workspace-write', workspace)
+      const agent = fakeAgent(workspace)
+
+      const result = await call(MEMORY_APPEND_TOOL, {
+        path: 'memory/2026-08-14.md',
+        content: 'stored outside the session workspace',
+      }, agent)
+
+      expect(result.isError).toBe(false)
+      expect(await ctx.fs.readText(await ctx.fs.resolve(join(dir, 'memory', '2026-08-14.md'))))
+        .toBe('stored outside the session workspace\n')
+      const canonicalMemoryRoot = ctx.fs.processPath(await ctx.fs.resolve(dir))
+      expect(fs.stamped.at(-1)).toMatchObject({ mode: 'workspace-write', workspaceRoot: canonicalMemoryRoot })
+
+      const ordinaryPolicy = (ctx.get('sandboxPolicy') as StubSandboxPolicy).resolve({ session: agent.session })
+      await expect(ctx.fs.writeText(
+        await ctx.fs.resolve(join(dir, 'ordinary-write.md')),
+        'denied',
+        undefined,
+        undefined,
+        ordinaryPolicy,
+      )).rejects.toMatchObject({ code: 'FS_SANDBOX_DENIED' })
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('preserves read-only mode and refuses to mutate the memory root', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'dsh-memory-readonly-'))
+    try {
+      await sandboxHarness('read-only', workspace)
+
+      const result = await call(MEMORY_APPEND_TOOL, {
+        path: 'MEMORY.md',
+        content: 'must not land',
+      }, fakeAgent(workspace))
+
+      expect(result.isError).toBe(true)
+      expect(result.error).toMatchObject({ info: { code: 'FS_SANDBOX_DENIED' } })
+      expect(await ctx.fs.stat(await ctx.fs.resolve(join(dir, 'MEMORY.md')))).toBeUndefined()
+    } finally {
+      rmSync(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('fails load when a confining filesystem has no shared policy resolver', async () => {
+    ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(ConfiningFileSystem, { cwd: dir })
+    await ctx.plugin(StubEmbeddings)
+
+    await expect(ctx.plugin(Memory, { root: dir }))
+      .rejects.toThrow('mounted filesystem confines but ctx.sandboxPolicy is missing')
+  })
+})
+
 describe('the recall section', () => {
   it('lands in the tool-guidance band with the stable guidance text', async () => {
     // Assembled sections carry name/text only, so pin the band positionally
@@ -239,7 +451,7 @@ describe('the recall section', () => {
 })
 
 describe('disposal', () => {
-  it('rolls back the section and both tools', async () => {
+  it('rolls back the section and all three tools', async () => {
     const fiber = await ctx.plugin(Memory, { root: dir })
     await fiber.dispose()
 
@@ -248,5 +460,7 @@ describe('disposal', () => {
 
     const result = await call('memory_search', { query: 'anything' })
     expect(result.isError).toBe(true)
+    const append = await call(MEMORY_APPEND_TOOL, { path: 'MEMORY.md', content: 'anything' })
+    expect(append.isError).toBe(true)
   })
 })

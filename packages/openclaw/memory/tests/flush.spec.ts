@@ -62,6 +62,7 @@ function textReply(text: string): StreamChunk[] {
 interface Harness {
   ctx: Context
   root: string
+  restartMemory: () => Promise<void>
   dispose: () => Promise<void>
 }
 
@@ -89,10 +90,15 @@ async function harness(options: {
     await ctx.plugin(BasicCompactionEngine, options.compaction)
   }
   ctx.llm.registerAdapter([MODEL], adapter)
-  await ctx.plugin(Memory, { root, flush: options.flush ?? { reserveTokensFloor: 0, softThresholdTokens: 0 } })
+  const memoryConfig = { root, flush: options.flush ?? { reserveTokensFloor: 0, softThresholdTokens: 0 } }
+  let memoryFiber = await ctx.plugin(Memory, memoryConfig)
   return {
     ctx,
     root,
+    restartMemory: async () => {
+      await memoryFiber.dispose()
+      memoryFiber = await ctx.plugin(Memory, memoryConfig)
+    },
     dispose: async () => {
       await ctx.fiber.dispose()
       rmSync(root, { recursive: true, force: true })
@@ -175,6 +181,20 @@ describe('memory flush turn', () => {
 
     await driveTurn(h.ctx, 's-3', BIG_MESSAGE)
     expect(flushMessages(h.ctx, 's-3')).toHaveLength(2)
+    await h.dispose()
+  })
+
+  it('derives the flushed cycle from the session log after plugin state is rebuilt', async () => {
+    const h = await harness({
+      window: 1_000,
+      adapter: new WindowAdapter(1_000, [textReply('main one'), textReply('NO_REPLY'), textReply('main two')]),
+    })
+    await driveTurn(h.ctx, 's-reload', BIG_MESSAGE)
+    expect(flushMessages(h.ctx, 's-reload')).toHaveLength(1)
+
+    await h.restartMemory()
+    await driveTurn(h.ctx, 's-reload', BIG_MESSAGE)
+    expect(flushMessages(h.ctx, 's-reload')).toHaveLength(1)
     await h.dispose()
   })
 

@@ -50,11 +50,13 @@ function main(): void {
     options: { family: { type: 'string' } },
     allowPositionals: false,
   })
-  if (values.family === undefined) throw new Error('usage: verify.ts --family <dsh|vendor>')
+  if (values.family === undefined) throw new Error('usage: verify.ts --family <dsh|clawdsh|vendor>')
 
   const family = releaseFamily(values.family)
-  const members = family.members(process.cwd())
+  const root = process.cwd()
+  const members = family.members(root)
   family.verifyVersions(members)
+  family.verifySynchronizedDependencyRanges(root, members)
 
   const publishing = process.env.RELEASE_PUBLISH === 'true'
   if (publishing) {

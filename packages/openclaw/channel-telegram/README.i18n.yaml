@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/openclaw/channel-telegram/README.md
-README.md: f8e1d600b557db789caefe247e243843190dcae0
-README.zh.md: 01b2e085129ccae6d84af5633af994653293d843
+README.md: cde691baefd3ff3ef4637d2f278f9db70991523a
+README.zh.md: e4e104967608f55854b76a8d2b8c4be6d332d43e

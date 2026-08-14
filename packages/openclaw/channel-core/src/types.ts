@@ -21,12 +21,25 @@ export interface ChannelMessage {
   channel: string
   /** Whether the message enters from or leaves to the platform. */
   direction: 'in' | 'out'
-  /** Platform-side conversation key: group chat id, p2p chat id, or TG chat id. */
+  /** Platform-side conversation/send target: chat id or p2p recipient id. */
+  conversationId?: string
+  /** Optional platform topic/thread id inside `conversationId`. */
   threadId?: string
   /** Sender identity: open_id or `from.id`. */
   sender?: string
   /** Platform-side message id, when the platform exposes one (ack reactions target it). */
   messageId?: string
+  /** Inbound message id an outbound response should quote/reply to. */
+  replyToMessageId?: string
+  /** Conversation shape used by group response and ack policies. */
+  chatType?: 'direct' | 'group'
+  /** Platform-structured bot-mention result; unknown detection fails closed. */
+  mention?: {
+    /** Whether the adapter had enough bot identity/entity data to decide. */
+    detectable: boolean
+    /** Whether the structured platform event mentions this bot. */
+    botMentioned: boolean
+  }
   /** Plain text body. */
   text: string
 }
@@ -37,8 +50,8 @@ export interface ChannelAdapter {
   id: string
   /** What this adapter can receive and send. */
   capabilities: ChannelCapabilities
-  /** Subscribe to platform events and emit `channel/inbound`; returns a disposer. */
-  start(ctx: Context): () => void
+  /** Subscribe to platform events and emit `channel/inbound`; returns a lifecycle-aware disposer. */
+  start(ctx: Context): () => void | Promise<void>
   /** Deliver an outbound message back to the platform. */
   send(message: ChannelMessage): Promise<void>
   /** Attach an ack emoji reaction to an inbound message; required when `capabilities.react` is true. */

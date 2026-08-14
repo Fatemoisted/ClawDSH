@@ -7,6 +7,7 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { hasTypertRemoteNavigation, isForbiddenPublicationFile } from './publication-payload.ts'
 import { collectProjectReferenceFaceViolations } from './project-reference-faces.ts'
 
@@ -47,8 +48,12 @@ const repositoryUrl = 'git+https://github.com/deepseek-harness/deepseek-harness.
  * their trusted publishing against the repository that runs the workflow.
  */
 const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harness.git'
+/** Source home for the independently versioned downstream ClawDSH family. */
+const clawdshRepositoryUrl = 'git+https://github.com/Fatemoisted/ClawDSH.git'
 /** Directories whose packages this repository publishes: one release member each. */
 const releaseMemberDirectory = /^(?:packages\/[^/]+\/[^/]+|apps\/[^/]+|vendor\/[^/]+)$/
+/** Packages versioned and published by ClawDSH rather than the upstream dsh family. */
+const clawdshMemberDirectory = /^packages\/openclaw\/[^/]+$/
 
 const localArtifactDirs = new Set(['node_modules'])
 const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
@@ -59,7 +64,7 @@ const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
 }
 
 /** The subset of package.json fields this constraint check cares about. */
-interface PackageManifest {
+export interface PackageManifest {
   name?: string
   version?: string
   private?: boolean
@@ -87,7 +92,7 @@ interface PackageManifest {
 }
 
 /** One workspace manifest and its repo-relative path. */
-interface WorkspaceManifest {
+export interface WorkspaceManifest {
   dir: string
   manifest: PackageManifest
 }
@@ -219,13 +224,14 @@ function usesEmittedTreeDefaults(manifest: PackageManifest): boolean {
     exportDefault(manifest, subpath)?.startsWith('./lib/types/') === true)
 }
 
-function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
+export function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
   const errors: string[] = []
   const label = manifest.name ?? dir
   const isLandlockPackageDir = dir.startsWith('native/landlock-run/packages/')
   const isPublicLandlockPackage = isLandlockPackageDir
     && manifest.name !== undefined
     && publicLandlockPackages.has(manifest.name)
+  const isClawdshPackage = clawdshMemberDirectory.test(dir)
 
   if (isPublicLandlockPackage) {
     if (manifest.private === true) {
@@ -257,21 +263,28 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
     if (manifest.publishConfig?.access !== 'public') {
       errors.push(`${label}: release member must set publishConfig.access to "public"`)
     }
+    const expectedRepositoryUrl = isClawdshPackage ? clawdshRepositoryUrl : publishedRepositoryUrl
     if (manifest.repository?.type !== 'git'
-      || manifest.repository.url !== publishedRepositoryUrl
+      || manifest.repository.url !== expectedRepositoryUrl
       || manifest.repository.directory !== dir) {
-      errors.push(`${label}: release member repository must use ${publishedRepositoryUrl} with directory ${dir}`)
+      errors.push(`${label}: release member repository must use ${expectedRepositoryUrl} with directory ${dir}`)
     }
   } else if (manifest.private !== true) {
     errors.push(`${label}: package.json must set "private": true`)
+  }
+
+  if (isClawdshPackage && !manifest.name?.startsWith('@clawdsh/dsh-')) {
+    errors.push(`${label}: ClawDSH release member must name an @clawdsh/dsh-* package`)
   }
 
   if (manifest.name && vendoredPackages.has(manifest.name)) {
     return errors
   }
 
-  if (manifest.name?.startsWith('@deepseek-ai/')) {
-    const allowedSources = publicationSourceAllowlist[manifest.name] ?? []
+  if (manifest.name?.startsWith('@deepseek-ai/') || isClawdshPackage) {
+    const allowedSources: readonly string[] = manifest.name === undefined
+      ? []
+      : publicationSourceAllowlist[manifest.name] ?? []
     for (const file of manifest.files ?? []) {
       if (isForbiddenPublicationFile(file) && !allowedSources.includes(file)) {
         errors.push(`${label}: package.json files must not publish ${JSON.stringify(file)}`)
@@ -297,7 +310,9 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
     }
   }
 
-  if (dir.startsWith('packages/') && manifest.name?.startsWith('@deepseek-ai/dsh-')) {
+  const isDshLibraryPackage = dir.startsWith('packages/')
+    && (manifest.name?.startsWith('@deepseek-ai/dsh-') === true || isClawdshPackage)
+  if (isDshLibraryPackage) {
     const peer = manifest.peerDependencies?.['@deepseek-ai/cordis']
     const dev = manifest.devDependencies?.['@deepseek-ai/cordis']
 
@@ -306,7 +321,7 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
     if (peer && dev && peer !== dev) {
       errors.push(`${label}: @deepseek-ai/cordis peer (${peer}) and dev (${dev}) ranges must match`)
     }
-    if (manifest.version !== repositoryVersion) {
+    if (!isClawdshPackage && manifest.version !== repositoryVersion) {
       errors.push(`${label}: package.json version must match root version ${repositoryVersion ?? '(missing)'}`)
     }
     if (manifest.type !== 'module') {
@@ -344,6 +359,31 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
   }
 
   return errors.map(error => `${relative(root, join(root, dir, 'package.json'))}: ${error}`)
+}
+
+/**
+ * Require the independent ClawDSH release members to share one publishable
+ * version without coupling that version to a source-code constant or the dsh
+ * root manifest. The release bump command can therefore advance the family and
+ * immediately pass constraints in the same working tree.
+ * @param manifests - every workspace manifest, or a focused test fixture.
+ * @returns Version-format and cross-member consistency failures.
+ */
+export function checkClawdshVersions(manifests: readonly WorkspaceManifest[]): string[] {
+  const members = manifests.filter(entry => clawdshMemberDirectory.test(entry.dir))
+  if (members.length === 0) return []
+  const errors: string[] = []
+  for (const { dir, manifest } of members) {
+    if (manifest.version === undefined || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(manifest.version)) {
+      errors.push(`${dir}/package.json: ClawDSH version must be X.Y.Z with an optional prerelease segment`)
+    }
+  }
+  const versions = new Set(members.map(entry => entry.manifest.version ?? '(missing)'))
+  if (versions.size !== 1) {
+    const detail = members.map(entry => `${entry.dir}: ${entry.manifest.version ?? '(missing)'}`).join('\n')
+    errors.push(`ClawDSH release members must share one version:\n${detail}`)
+  }
+  return errors
 }
 
 /**
@@ -406,15 +446,24 @@ function checkWorkspaceProtocol(manifests: readonly WorkspaceManifest[]): string
   return errors
 }
 
-const manifests = workspaceManifests()
-const errors = [
-  ...checkRepositoryVersion(),
-  ...manifests.flatMap(checkWorkspace),
-  ...checkWorkspaceProtocol(manifests),
-  ...checkHierarchyShape(),
-  ...collectProjectReferenceFaceViolations(root),
-]
-if (errors.length > 0) {
-  console.error(errors.join('\n'))
-  process.exitCode = 1
+/** Collect every workspace constraint failure without mutating process state. */
+export function workspaceConstraintErrors(): string[] {
+  const manifests = workspaceManifests()
+  return [
+    ...checkRepositoryVersion(),
+    ...manifests.flatMap(checkWorkspace),
+    ...checkClawdshVersions(manifests),
+    ...checkWorkspaceProtocol(manifests),
+    ...checkHierarchyShape(),
+    ...collectProjectReferenceFaceViolations(root),
+  ]
+}
+
+const invokedPath = process.argv[1]
+if (invokedPath !== undefined && resolve(invokedPath) === fileURLToPath(import.meta.url)) {
+  const errors = workspaceConstraintErrors()
+  if (errors.length > 0) {
+    console.error(errors.join('\n'))
+    process.exitCode = 1
+  }
 }

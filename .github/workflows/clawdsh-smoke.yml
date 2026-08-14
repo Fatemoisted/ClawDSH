@@ -4,6 +4,8 @@ name: clawdsh-smoke
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [clawdsh]
   push:
     branches: [clawdsh]
 
@@ -28,8 +30,22 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
-      - name: Build openclaw packages
-        run: pnpm exec tsc -b packages/openclaw/tsconfig.json
-
       - name: Typecheck openclaw tests
         run: pnpm exec tsc -p packages/openclaw/tsconfig.check.json
+
+      - name: Test openclaw packages
+        run: pnpm run test:openclaw
+
+      - name: Smoke-test profile installation
+        env:
+          DSH_HOME: ${{ runner.temp }}/clawdsh-home
+        run: bash tools/link-openclaw.sh
+
+      - name: Resolve installed profile
+        env:
+          DSH_HOME: ${{ runner.temp }}/clawdsh-home
+          # `--dump-config` does not dial Feishu, but the enabled adapter's
+          # required schema still validates its environment-backed fields.
+          FEISHU_APP_ID: cli-smoke-app
+          FEISHU_APP_SECRET: cli-smoke-secret
+        run: pnpm dsh --profile openclaw --dump-config

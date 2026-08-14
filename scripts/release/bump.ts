@@ -3,21 +3,27 @@
  * readable from the repository rather than derived inside CI
  * ([rationale](../../.agents/notes/implemented/process/2026-08-10-npm-release-sequences.md)).
  *
- * The dsh family shares one version across its members and the workspace root:
- * `major`, `minor`, `patch`, or an explicit `x.y.z` (including a prerelease such
- * as `0.0.1-rc.1`). The vendored family has one version line per package, but
- * every release advances and publishes the complete family so the next release
- * never reuses an unchanged member's existing version from a different
- * repository state.
+ * The dsh and ClawDSH families accept `major`, `minor`, `patch`, or an explicit
+ * `x.y.z` (including a prerelease such as `0.0.1-rc.1`). Both share one version
+ * across their members; only dsh also carries that version on the workspace
+ * root. The vendored family has one version line per package, but every release
+ * advances and publishes the complete family so the next release never reuses
+ * an unchanged member's existing version from a different repository state.
  *
- * The version lands in the manifests, the lockfile follows, and a human creates
- * the tag after the commit merges. CI never writes to the repository.
+ * The version lands in the manifests, synchronized consumer ranges and the
+ * lockfile follow, and a human creates the tag after the commit merges. CI
+ * never writes to the repository.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join, matchesGlob } from 'node:path'
 import { parseArgs } from 'node:util'
-import { releaseFamily, type ReleaseFamily, type ReleaseMember } from './families.ts'
+import {
+  releaseFamily,
+  type PlannedDependencyRange,
+  type ReleaseFamily,
+  type ReleaseMember,
+} from './families.ts'
 import { capture, isEntry } from './process.ts'
 
 /** Files npm publishes whether or not `files` lists them. */
@@ -31,14 +37,14 @@ const ALWAYS_PUBLISHED = ['package.json', 'README*', 'LICENSE*', 'LICENCE*'] as 
  */
 const BUILD_INPUTS = ['src/**', 'tsconfig*.json', 'tsdown.config.*', 'build.config.*'] as const
 
-/** Release types the dsh family accepts besides an explicit version. */
+/** Release types the shared-version families accept besides an explicit version. */
 const RELEASE_TYPES = ['major', 'minor', 'patch'] as const
 
 /** The workspace root manifest, which carries the dsh family's version. */
 const ROOT_MANIFEST = 'package.json'
 
 /** One manifest the bump rewrites, and the tag its new version will carry. */
-interface PlannedVersion {
+export interface PlannedVersion {
   /** Repository-relative manifest path. */
   readonly manifestPath: string
   /** Label for the log line. */
@@ -124,15 +130,16 @@ export function compareVersions(left: string, right: string): number {
 }
 
 /**
- * The next dsh version.
+ * The next shared-family version.
  * @param current - the family's current shared version.
  * @param request - `major`, `minor`, `patch`, or an explicit version.
+ * @param familyId - family name for actionable usage errors.
  * @returns The target version.
  */
-function nextSharedVersion(current: string, request: string): string {
+function nextSharedVersion(current: string, request: string, familyId: string): string {
   if (!RELEASE_TYPES.includes(request as typeof RELEASE_TYPES[number])) {
     if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(request)) {
-      throw new Error(`usage: release:dsh <major|minor|patch|x.y.z>, got ${request}`)
+      throw new Error(`usage: release:${familyId} <major|minor|patch|x.y.z>, got ${request}`)
     }
     return request
   }
@@ -224,6 +231,30 @@ function writeVersion(root: string, manifestPath: string, from: string, to: stri
 }
 
 /**
+ * Write synchronized dependency ranges while preserving manifest formatting.
+ * @param root - repository root.
+ * @param planned - dependency ranges grouped by their owning manifest.
+ */
+export function writeDependencyRanges(root: string, planned: readonly PlannedDependencyRange[]): void {
+  const byManifest = new Map<string, PlannedDependencyRange[]>()
+  for (const entry of planned) {
+    const entries = byManifest.get(entry.manifestPath) ?? []
+    entries.push(entry)
+    byManifest.set(entry.manifestPath, entries)
+  }
+  for (const [manifestPath, entries] of byManifest) {
+    const path = join(root, manifestPath)
+    let text = readFileSync(path, 'utf8')
+    for (const entry of entries) {
+      const range = `"${entry.packageName}": "${entry.from}"`
+      if (!text.includes(range)) throw new Error(`${manifestPath}: cannot locate ${range}`)
+      text = text.replace(range, `"${entry.packageName}": "${entry.to}"`)
+    }
+    writeFileSync(path, text)
+  }
+}
+
+/**
  * Read the workspace root version.
  * @param root - repository root.
  * @returns The root manifest version.
@@ -236,14 +267,15 @@ function rootVersion(root: string): string {
 }
 
 /**
- * Plan the dsh family's rewrite: one version for every member and the root.
- * @param family - the dsh family.
+ * Plan a shared-version family's version-manifest rewrite. The dsh family
+ * includes the root; ClawDSH includes only its publishable members here.
+ * @param family - a shared-version family.
  * @param root - repository root.
  * @param members - the family's members.
  * @param request - `major`, `minor`, `patch`, or an explicit version.
  * @returns The manifests to rewrite and the shared target version.
  */
-function planShared(
+export function planShared(
   family: ReleaseFamily,
   root: string,
   members: readonly ReleaseMember[],
@@ -251,12 +283,20 @@ function planShared(
 ): { planned: PlannedVersion[]; version: string } {
   const [first] = members
   if (first === undefined) throw new Error(`release family ${family.id} has no members`)
-  const version = nextSharedVersion(first.version, request)
-  // The workspace root carries the family version too: the workspace constraint
-  // requires every member's version to equal the root's.
-  const planned: PlannedVersion[] = [
-    { manifestPath: ROOT_MANIFEST, label: ROOT_MANIFEST, from: rootVersion(root), to: version, tag: undefined },
-  ]
+  if (family.versioning === 'per-package') {
+    throw new Error(`release family ${family.id} does not use shared versioning`)
+  }
+  const version = nextSharedVersion(first.version, request, family.id)
+  const planned: PlannedVersion[] = []
+  if (family.versioning === 'shared-with-root') {
+    planned.push({
+      manifestPath: ROOT_MANIFEST,
+      label: ROOT_MANIFEST,
+      from: rootVersion(root),
+      to: version,
+      tag: undefined,
+    })
+  }
   for (const member of members) {
     planned.push({
       manifestPath: join(member.directory, 'package.json'),
@@ -311,7 +351,7 @@ function main(): void {
     },
     allowPositionals: true,
   })
-  if (values.family === undefined) throw new Error('usage: bump.ts --family <dsh|vendor> [version]')
+  if (values.family === undefined) throw new Error('usage: bump.ts --family <dsh|clawdsh|vendor> [version]')
 
   const family = releaseFamily(values.family)
   const root = process.cwd()
@@ -319,16 +359,20 @@ function main(): void {
   family.verifyVersions(members)
 
   let planned: PlannedVersion[]
+  let dependencyRanges: PlannedDependencyRange[] = []
   let sharedVersion: string | undefined
-  if (family.id === 'dsh') {
+  if (family.versioning !== 'per-package') {
     const request = positionals[0]
-    if (request === undefined) throw new Error('usage: release:dsh <major|minor|patch|x.y.z>')
+    if (request === undefined || positionals.length !== 1) {
+      throw new Error(`usage: release:${family.id} <major|minor|patch|x.y.z>`)
+    }
     if (values.prerelease !== undefined) {
-      throw new Error('release:dsh takes the prerelease in its version argument, as in 0.0.1-rc.1')
+      throw new Error(`release:${family.id} takes the prerelease in its version argument, as in 0.0.1-rc.1`)
     }
     const shared = planShared(family, root, members, request)
     planned = shared.planned
     sharedVersion = shared.version
+    dependencyRanges = family.planSynchronizedDependencyRanges(root, members, shared.version)
   } else {
     if (positionals.length > 0) throw new Error('release:vendor takes no version: each package increments its own patch')
     if (values.prerelease !== undefined && !/^[0-9A-Za-z.-]+$/.test(values.prerelease)) {
@@ -345,6 +389,7 @@ function main(): void {
   const dryRun = values['dry-run']
   if (!dryRun) {
     for (const entry of planned) writeVersion(root, entry.manifestPath, entry.from, entry.to)
+    writeDependencyRanges(root, dependencyRanges)
     capture('pnpm', ['install', '--lockfile-only'])
   }
 
@@ -352,14 +397,18 @@ function main(): void {
     ?? planned.map(entry => `${entry.label.replace('vendor/', '')} ${entry.to}`).join(', ')
   console.log(`release bump: family ${family.id} -> ${summary}`)
   for (const entry of planned) console.log(`  ${entry.label}: ${entry.from} -> ${entry.to}`)
+  for (const entry of dependencyRanges) {
+    console.log(`  ${entry.manifestPath} ${entry.packageName}: ${entry.from} -> ${entry.to}`)
+  }
 
   if (dryRun) {
     console.log('release bump: dry run, nothing written')
     return
   }
-  capture('git', ['add', 'pnpm-lock.yaml', ...planned.map(entry => entry.manifestPath)])
+  const synchronizedManifests = [...new Set(dependencyRanges.map(entry => entry.manifestPath))]
+  capture('git', ['add', 'pnpm-lock.yaml', ...planned.map(entry => entry.manifestPath), ...synchronizedManifests])
   capture('git', ['commit', '-m', `release(${family.id}): ${summary}`])
-  console.log('release bump: committed. After this merges to master, tag it:')
+  console.log(`release bump: committed. After this merges to ${family.releaseBranch}, tag it:`)
   for (const tag of [...new Set(planned.map(entry => entry.tag).filter(tag => tag !== undefined))]) {
     console.log(`  git tag ${tag} <merge commit> && git push origin ${tag}`)
   }

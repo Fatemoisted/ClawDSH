@@ -4,8 +4,8 @@
  * When the durable context nears its window (`totalTokens >= contextWindow −
  * reserveTokensFloor − softThresholdTokens`, OpenClaw's defaults 20_000 /
  * 4_000), a silent agent turn queues at `agent/turn-stopping`: the flush
- * prompt asks the model to write durable memories to `memory/YYYY-MM-DD.md`
- * (the convention the recall section already teaches) and to answer
+ * prompt asks the model to append durable memories to `memory/YYYY-MM-DD.md`
+ * through `memory_append` (the convention the recall section already teaches) and to answer
  * `NO_REPLY` when there is nothing to store. The turn is an ordinary logged
  * turn with a plugin source, so "model-visible means logged" holds; channel
  * delivery filters plugin-sourced turns in `extractReply`.
@@ -32,8 +32,8 @@ export const FLUSH_PLUGIN_SOURCE = 'memory-flush'
 export const DEFAULT_FLUSH_RESERVE_TOKENS_FLOOR = 20_000
 /** Default soft band below the reserve where the flush becomes due (OpenClaw `softThresholdTokens`). */
 export const DEFAULT_FLUSH_SOFT_THRESHOLD_TOKENS = 4_000
-/** Default flush prompt, OpenClaw's semantics verbatim. */
-export const DEFAULT_FLUSH_PROMPT = 'Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY.'
+/** Default flush prompt: OpenClaw's semantics routed through the narrow append capability. */
+export const DEFAULT_FLUSH_PROMPT = 'Store durable memories now with memory_append (use memory/YYYY-MM-DD.md). If nothing to store, reply with NO_REPLY.'
 
 /** Flush sub-config of the memory row. */
 export interface FlushConfig {
@@ -94,10 +94,8 @@ export function resolveFlushConfig(config: FlushConfig = {}): ResolvedFlushConfi
 const NO_REPLY_PREFIX = /^\s*NO_REPLY(?=$|\W)/
 const NO_REPLY_SUFFIX = /\bNO_REPLY\b\W*$/
 
-/** Per-agent flush state: the compaction cycle already flushed and whether a flush turn is queued. */
+/** Per-agent transient state; completed-cycle ownership is derived from the durable session log. */
 interface FlushState {
-  /** Seq of the newest `compaction/end` covered by the last flush (−Infinity before the first flush). */
-  throughSeq: number
   /** A flush turn is queued or running and must not queue again. */
   pending: boolean
 }
@@ -120,6 +118,12 @@ function newestCompactionEndSeq(session: Session): number {
   return end?.seq ?? -1
 }
 
+/** Whether a durable flush message already follows the current compaction-cycle marker. */
+function currentCycleWasFlushed(session: Session): boolean {
+  const flush = session.events.findLast(isFlushMessage)
+  return flush !== undefined && flush.seq > newestCompactionEndSeq(session)
+}
+
 /**
  * Install the flush turn hooks on the agent event stream.
  * @param ctx - Cordis context; `ctx.get('tokenMeter')` and `ctx.get('llm')` are read at hook time so late mounts enable the flush.
@@ -137,7 +141,7 @@ export function installMemoryFlush(ctx: Context, config: ResolvedFlushConfig): (
   const stateFor = (agent: Agent): FlushState => {
     const existing = states.get(agent)
     if (existing !== undefined) return existing
-    const created: FlushState = { throughSeq: Number.NEGATIVE_INFINITY, pending: false }
+    const created: FlushState = { pending: false }
     states.set(agent, created)
     return created
   }
@@ -222,9 +226,8 @@ export function installMemoryFlush(ctx: Context, config: ResolvedFlushConfig): (
     }
     const threshold = contextWindow - config.reserveTokensFloor - config.softThresholdTokens
     if (threshold <= 0 || totalTokens < threshold) return
-    if (newestCompactionEndSeq(agent.session) <= state.throughSeq) return
+    if (currentCycleWasFlushed(agent.session)) return
     state.pending = true
-    state.throughSeq = newestCompactionEndSeq(agent.session)
     agent.followup(createUserMessage({
       content: [{ type: 'text', text: config.prompt }],
       source: { kind: 'plugin', plugin: FLUSH_PLUGIN_SOURCE },

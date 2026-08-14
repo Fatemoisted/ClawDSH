@@ -1,6 +1,6 @@
 {
   "name": "@clawdsh/dsh-channel-feishu",
-  "description": "ClawDSH Feishu (Lark) channel adapter: plaintext webhook inbound and im/v1/messages outbound over the ctx.channels seam",
+  "description": "ClawDSH Feishu/Lark adapter over the official LarkChannel: normalized WebSocket inbound, native replies, reactions, and rich-message fallback",
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
@@ -26,15 +26,17 @@
   "peerDependencies": {
     "@clawdsh/dsh-channel-core": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/cordis-plugin-timer": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "workspace:^",
-    "@larksuiteoapi/node-sdk": "^1.73.0"
+    "@larksuiteoapi/node-sdk": "1.73.0"
   },
   "devDependencies": {
     "@clawdsh/dsh-channel-core": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/cordis-plugin-timer": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^"
   },
   "publishConfig": {
@@ -42,7 +44,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/Fatemoisted/ClawDSH.git",
     "directory": "packages/openclaw/channel-feishu"
   }
 }

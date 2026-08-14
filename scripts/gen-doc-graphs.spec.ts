@@ -23,7 +23,7 @@ const FIXTURE: Record<string, string> = {
       skipLibCheck: true,
       types: [],
     },
-    include: ['vendor/**/*.ts', 'packages/**/*.ts'],
+    include: ['vendor/**/*.ts', 'packages/core/**/*.ts', 'packages/fix/**/*.ts'],
   }),
   'vendor/cordis/src/context.ts': 'export class Context { private brand!: void }\n',
   'vendor/cordis/src/events.ts': [
@@ -61,6 +61,15 @@ const FIXTURE: Record<string, string> = {
   'packages/fix/pkgc/src/helper.ts':
     "function scriptFire(args: [string]): void { void gEvents.dispatch('emit', args) }\n",
   'packages/fix/pkgc/src/caller.ts': "scriptFire(['pkgc/script-event'])\n",
+  // This extension is intentionally absent from tsconfig.host.json. One
+  // explicit additional root must make it visible to relationship scans
+  // without changing the host project configuration.
+  'packages/openclaw/pkgd/src/index.ts': [
+    "import { EventsService } from '../../../../vendor/cordis/src/events.ts'",
+    'declare const events: EventsService',
+    "void events.dispatch('emit', ['pkgd/extension-event'])",
+    '',
+  ].join('\n'),
 }
 
 const root = mkdtempSync(join(tmpdir(), 'gen-doc-graphs-'))
@@ -94,5 +103,17 @@ describe('event relation call-site indexing', () => {
     // pkgc alone: the script helper is the first demand, so a wrongly passing
     // proof would index helper.ts only and lose the caller.ts call site.
     expect(dispatchersOf(['pkgc'], 'pkgc/script-event')).toEqual(['pkgc'])
+  })
+
+  it('adds an extension source without adding it to the host config', () => {
+    expect(sources.some(source => source.pkg === 'pkgd')).toBe(false)
+    const extensionProject = new TypeScriptProject(root, [
+      join(root, 'packages/openclaw/pkgd/src/index.ts'),
+    ])
+    const relations = new EventRelationCollector(
+      extensionProject,
+      collectPackageSources(extensionProject),
+    ).collect()
+    expect([...relations.get('pkgd/extension-event')?.dispatchers.keys() ?? []]).toEqual(['pkgd'])
   })
 })

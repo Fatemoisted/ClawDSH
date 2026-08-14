@@ -10,16 +10,28 @@
       "path": "../../../vendor/cordis"
     },
     {
+      "path": "../../../vendor/timer"
+    },
+    {
       "path": "../../core/agent"
     },
     {
       "path": "../../core/agent-default-model"
     },
     {
+      "path": "../../preset/agent-presets"
+    },
+    {
       "path": "../../llm/llm"
     },
     {
       "path": "../../core/session"
+    },
+    {
+      "path": "../../session/session-persistence"
+    },
+    {
+      "path": "../../util/timeout"
     },
     {
       "path": "../../runtime-diagnostics/invariants"

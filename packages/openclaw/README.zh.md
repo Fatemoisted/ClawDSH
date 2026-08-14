@@ -25,14 +25,20 @@
 
 | 包 | 定位 | OpenClaw 对应 | dsh 接缝 | 状态 |
 |---|---|---|---|---|
-| `channel-core/` | 渠道网关 seam | 渠道网关 Gateway | **新增** `ctx.channels`（ADR-0002） | **implemented**（阶段 2 ✅） |
-| `channel-telegram/` | Telegram 渠道 | 渠道适配器 | `ctx.channels` | **implemented**（阶段 2 ✅，e2e 待凭证） |
-| `channel-feishu/` | 飞书渠道（**发起人第一优先**） | OpenClaw `extensions/feishu`（v2026.2.12 起） | `ctx.channels` | **implemented**（阶段 2 ✅，真实 e2e 已过） |
+| `channel-core/` | 持久渠道网关 | 渠道 Gateway | **新增** `ctx.channels` + Harness agents/presets/persistence/timer | **implemented**（可等待持久化、确定性恢复、FIFO、旧地址兼容、群聊/ack 策略 ✅） |
+| `channel-telegram/` | Telegram 渠道 | 渠道适配器 | `ctx.channels` + grammY | **implemented**（command/mention/caption/topic/引用/reaction、Unicode-safe 4096 分片 ✅；线上 e2e 待凭证） |
+| `channel-feishu/` | 飞书渠道（**发起人第一优先**） | OpenClaw `extensions/feishu` | `ctx.channels` + 官方 SDK `LarkChannel` | **implemented**（富消息归一化、身份退避、topic-safe 引用、失败握手清理 ✅；此前文本 e2e 已过） |
 | `soul/` | 人格 / Soul | Soul 系统 | system-prompt 装配 | **implemented**（阶段 0 ✅ + 阶段 2 深读定稿 ✅） |
-| `memory/` | 记忆（Markdown 事实源 + 语义召回） | Memory（v2026.1.15） | `ctx.fs` + `ctx.tools` + system-prompt 段 + `ctx.get('embeddings')` | **implemented**（阶段 2 补漏 ✅） |
+| `memory/` | 记忆（Markdown 事实源 + 语义召回） | Memory（v2026.1.15） | Harness `ctx.fs` + sandbox policy + tools/system prompt + embeddings | **implemented**（安全 append、配置化召回默认、缺失 root 启动、持久 flush 周期 ✅） |
 | `embeddings/` | 文本嵌入 seam（Service Definition） | memory 的 embeddings 后端选一 | **新增** `ctx.embeddings`（ADR-0003） | **implemented**（阶段 2 补漏 ✅） |
 | `embeddings-ark/` | 火山方舟 Ark 文本嵌入 provider | openai-remote 分支位 | `ctx.embeddings` | **implemented**（阶段 2 补漏 ✅，e2e 待凭证） |
-| `skills-hub/` | ClawHub 兼容技能加载 | Skills/ClawHub | `ctx.skills` | planning |
-| `automation/` | 定时任务 / 自动化 | Cron/Automation | `ctx.schedule` / `ctx.jobs` | planning |
+| `skills-hub/` | ClawHub 兼容技能加载 | Skills/ClawHub | Harness `ctx.skills` provider | **implemented**（阶段 3 ✅） |
+| `automation/` | 定时持久 Agent 回合 | Cron/Automation | Harness agents/sessions/persistence/model selection | **implemented**（阶段 3 ✅；配置声明规则） |
 
 渠道列表不止 Telegram：WhatsApp、Email、Web Chat 等按同一模板逐个新增（每个渠道一个包，互不阻塞）。
+
+## 发布状态
+
+9 个包已组成独立的 `clawdsh` release family：共享一条版本线和 `clawdsh-v*` tag，不与根 dsh 或 vendor 版本耦合。bump/verify/pack/publish 脚本、workspace 约束、packed-install 验证及 `.github/workflows/release-clawdsh.yml` 均已实现。PR 与 `clawdsh` 分支 push 无需 registry 凭证即可构建并验证 tarball；npm 发布只能从 `clawdsh-v*` tag 受保护地手动触发。
+
+当前工作树尚未实际执行 ClawDSH npm 发布。因此在明确发布前，本地开发仍使用 `tools/link-openclaw.sh` 及其 profile symlink。

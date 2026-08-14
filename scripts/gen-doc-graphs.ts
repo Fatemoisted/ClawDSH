@@ -787,10 +787,11 @@ const EVENT_API_METHODS = new Set(['on', 'once', 'emit', 'parallel', 'serial', '
 /**
  * Collect event dispatch/listener relations from real cross-file receiver types.
  *
- * TODO: the program is seeded from the host aggregate alone (ts-project.ts
- * documents why: one program cannot hold both faces' Context merges), so a
- * Client package enters only when a host file imports it. Client-face
- * listeners on client-face events are therefore under-reported —
+ * TODO: the program is seeded from the host aggregate plus the explicit
+ * OpenClaw host-extension roots (ts-project.ts documents why one program
+ * cannot hold both faces' Context merges), so a Client package enters only
+ * when a host file imports it. Client-face listeners on client-face events
+ * are therefore under-reported —
    * `connection/reset` omits `ui-skill`/`ui-agent-preset`. Closing it needs a
    * second Client program whose relations merge into these, not a wider seed.
  */
@@ -1160,7 +1161,18 @@ export function collectPackageSources(project: TypeScriptProject): PackageSource
 }
 
 function collectEventRelations(): Map<string, EventRelation> {
-  const project = new TypeScriptProject(root)
+  // OpenClaw deliberately stays out of tsconfig.host.json so its extension
+  // seam cannot enter the upstream Cordis catalog. The event relationship
+  // document is broader than that catalog, though: seed only the extension's
+  // source files into this semantic scan so its listeners and undeclared
+  // channel events remain visible without changing the host project boundary.
+  const openclawSources = ts.sys.readDirectory(
+    resolve(root, 'packages/openclaw'),
+    ['.ts'],
+    ['**/lib/**', '**/node_modules/**'],
+    ['*/src/**/*.ts'],
+  )
+  const project = new TypeScriptProject(root, openclawSources)
   return new EventRelationCollector(project, collectPackageSources(project)).collect()
 }
 
@@ -1194,10 +1206,11 @@ function renderEventRelations(pkgs: Pkg[], events: readonly EventEntry[]): strin
   }
   // Every declared event needs a dispatcher: zero means dead vocabulary or an
   // unrecognized semantic dispatch form. Listener-free extension points remain
-  // valid. Client-declared events are exempt: the relation scan seeds the HOST
-  // aggregate program only (host+client cannot share one program — the cordis
-  // Context merges collide), so client dispatch sites are structurally
-  // invisible here; their rows stay in the table for the declarations' sake.
+  // valid. Client-declared events are exempt: the relation scan seeds the Host
+  // aggregate and explicit OpenClaw host-extension roots, but Host+Client
+  // cannot share one program because their Cordis Context merges collide.
+  // Client dispatch sites are therefore structurally invisible here; their
+  // rows stay in the table for the declarations' sake.
   const undispatched = [...events]
     .filter(event => !event.source.startsWith('packages/client/'))
     .filter(event => (relations.get(event.name)?.dispatchers.size ?? 0) === 0)

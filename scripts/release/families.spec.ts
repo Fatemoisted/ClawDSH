@@ -1,8 +1,13 @@
 /** Release family discovery, publish order, tag naming, and the bump judgements. */
 
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { releaseFamily, type ReleaseMember } from './families.ts'
-import { compareVersions, nextVendorVersion, reachesPayload } from './bump.ts'
+import { compareVersions, nextVendorVersion, planShared, reachesPayload, writeDependencyRanges } from './bump.ts'
+
+const repositoryRoot = resolve(import.meta.dirname, '../..')
 
 /**
  * A release member standing in for a manifest on disk.
@@ -16,26 +21,129 @@ function member(directory: string, name: string, manifest: Record<string, unknow
 }
 
 describe('release families', () => {
-  it('names one tag for the whole dsh family and one per vendored package', () => {
+  it('discovers ClawDSH separately from the upstream dsh family', () => {
+    const dshMembers = releaseFamily('dsh').members(repositoryRoot)
+    const clawdshMembers = releaseFamily('clawdsh').members(repositoryRoot)
+
+    expect(dshMembers.some(entry => entry.directory.startsWith('packages/openclaw/'))).toBe(false)
+    expect(dshMembers.every(entry => entry.name.startsWith('@deepseek-ai/'))).toBe(true)
+    expect(clawdshMembers.map(entry => entry.directory)).toEqual([
+      'packages/openclaw/automation',
+      'packages/openclaw/channel-core',
+      'packages/openclaw/channel-feishu',
+      'packages/openclaw/channel-telegram',
+      'packages/openclaw/embeddings-ark',
+      'packages/openclaw/embeddings',
+      'packages/openclaw/memory',
+      'packages/openclaw/skills-hub',
+      'packages/openclaw/soul',
+    ])
+    expect(clawdshMembers.every(entry => entry.name.startsWith('@clawdsh/dsh-'))).toBe(true)
+  })
+
+  it('names one tag per shared-version family and one per vendored package', () => {
     const dsh = releaseFamily('dsh')
+    const clawdsh = releaseFamily('clawdsh')
     const vendor = releaseFamily('vendor')
     const cli = member('apps/cli', '@deepseek-ai/dsh')
+    const channel = member('packages/openclaw/channel-core', '@clawdsh/dsh-channel-core')
     const cordis = { ...member('vendor/cordis', '@deepseek-ai/cordis'), version: '4.0.1' }
 
     expect(dsh.tagFor(cli)).toBe('dsh-v0.0.1')
+    expect(clawdsh.tagFor(channel)).toBe('clawdsh-v0.0.1')
     expect(vendor.tagFor(cordis)).toBe('vendor-cordis-v4.0.1')
     // The prefix is constructed, not recovered from a tag: a version with a
     // hyphen would defeat any suffix-stripping.
     expect(vendor.tagPrefixFor({ ...cordis, version: '4.0.0-rc.7' })).toBe('vendor-cordis-v')
     expect(vendor.tagFor({ ...cordis, version: '4.0.0-rc.7' })).toBe('vendor-cordis-v4.0.0-rc.7')
+    expect(dsh.releaseBranch).toBe('master')
+    expect(clawdsh.releaseBranch).toBe('clawdsh')
+    expect(vendor.releaseBranch).toBe('master')
   })
 
   it('rejects a family whose members disagree on the shared version', () => {
     const dsh = releaseFamily('dsh')
+    const clawdsh = releaseFamily('clawdsh')
     const members = [member('apps/cli', '@deepseek-ai/dsh'), { ...member('apps/web', '@deepseek-ai/dsh-web-frontend'), version: '0.0.2' }]
+    const clawdshMembers = [
+      member('packages/openclaw/channel-core', '@clawdsh/dsh-channel-core'),
+      { ...member('packages/openclaw/soul', '@clawdsh/dsh-soul'), version: '0.0.2' },
+    ]
 
     expect(() => { dsh.verifyVersions(members) }).toThrow(/must share one version/)
     expect(() => { dsh.verifyVersions([members[0]!]) }).not.toThrow()
+    expect(() => { clawdsh.verifyVersions(clawdshMembers) }).toThrow(/must share one version/)
+    expect(() => { clawdsh.verifyVersions([clawdshMembers[0]!]) }).not.toThrow()
+  })
+
+  it('bumps ClawDSH as one version without rewriting the dsh workspace root', () => {
+    const clawdsh = releaseFamily('clawdsh')
+    const clawdshMembers = clawdsh.members(repositoryRoot)
+    const clawdshPlan = planShared(clawdsh, repositoryRoot, clawdshMembers, 'patch')
+
+    expect(clawdsh.versioning).toBe('shared')
+    expect(clawdshPlan.version).toBe('0.1.1')
+    expect(clawdshPlan.planned).toHaveLength(clawdshMembers.length)
+    expect(clawdshPlan.planned.some(entry => entry.manifestPath === 'package.json')).toBe(false)
+    expect(new Set(clawdshPlan.planned.map(entry => entry.tag))).toEqual(new Set(['clawdsh-v0.1.1']))
+    const dependencyRanges = clawdsh.planSynchronizedDependencyRanges(
+      repositoryRoot,
+      clawdshMembers,
+      clawdshPlan.version,
+    )
+    expect(dependencyRanges).toHaveLength(clawdshMembers.length)
+    expect(new Set(dependencyRanges.map(entry => entry.manifestPath))).toEqual(new Set([
+      'tools/openclaw-preset-openclaw/profile/package.json',
+    ]))
+    expect(new Set(dependencyRanges.map(entry => entry.packageName)))
+      .toEqual(new Set(clawdshMembers.map(entry => entry.name)))
+    expect(dependencyRanges.every(entry => entry.from === `^${clawdshMembers[0]!.version}`)).toBe(true)
+    expect(dependencyRanges.every(entry => entry.to === `^${clawdshPlan.version}`)).toBe(true)
+    expect(() => { clawdsh.verifySynchronizedDependencyRanges(repositoryRoot, clawdshMembers) }).not.toThrow()
+
+    const dsh = releaseFamily('dsh')
+    const [firstDsh] = dsh.members(repositoryRoot)
+    expect(firstDsh).toBeDefined()
+    const dshPlan = planShared(dsh, repositoryRoot, [firstDsh!], 'patch')
+    expect(dsh.versioning).toBe('shared-with-root')
+    expect(dshPlan.planned[0]?.manifestPath).toBe('package.json')
+    expect(releaseFamily('vendor').versioning).toBe('per-package')
+  })
+
+  it('rewrites synchronized ranges and gates a stale ClawDSH profile', () => {
+    const root = mkdtempSync(join(tmpdir(), 'clawdsh-release-profile-'))
+    const profilePath = 'tools/openclaw-preset-openclaw/profile/package.json'
+    const members = [
+      { ...member('packages/openclaw/channel-core', '@clawdsh/dsh-channel-core'), version: '2.0.0' },
+      { ...member('packages/openclaw/soul', '@clawdsh/dsh-soul'), version: '2.0.0' },
+    ]
+    try {
+      mkdirSync(join(root, 'tools/openclaw-preset-openclaw/profile'), { recursive: true })
+      writeFileSync(join(root, profilePath), `${JSON.stringify({
+        dependencies: {
+          '@clawdsh/dsh-channel-core': '^1.9.0',
+          '@clawdsh/dsh-soul': '^2.0.0',
+        },
+      }, undefined, 2)}\n`)
+
+      const clawdsh = releaseFamily('clawdsh')
+      expect(() => { clawdsh.verifySynchronizedDependencyRanges(root, members) })
+        .toThrow(/channel-core is \^1\.9\.0, expected \^2\.0\.0/)
+
+      const planned = clawdsh.planSynchronizedDependencyRanges(root, members, '2.1.0')
+      writeDependencyRanges(root, planned)
+      const rewritten = JSON.parse(readFileSync(join(root, profilePath), 'utf8')) as {
+        dependencies: Record<string, string>
+      }
+      expect(rewritten.dependencies).toEqual({
+        '@clawdsh/dsh-channel-core': '^2.1.0',
+        '@clawdsh/dsh-soul': '^2.1.0',
+      })
+      const advanced = members.map(entry => ({ ...entry, version: '2.1.0' }))
+      expect(() => { clawdsh.verifySynchronizedDependencyRanges(root, advanced) }).not.toThrow()
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('accepts independent vendored versions and rejects an unpublishable one', () => {
@@ -74,13 +182,17 @@ describe('release families', () => {
     expect(() => { dsh.publishOrder(members) }).toThrow(/dependency cycle/)
   })
 
-  it('applies the harness payload policy to dsh and keeps upstream payloads for vendored packages', () => {
+  it('applies the harness payload policy to dsh and ClawDSH but keeps upstream vendor payloads', () => {
     const dsh = releaseFamily('dsh')
+    const clawdsh = releaseFamily('clawdsh')
     const vendor = releaseFamily('vendor')
     const harness = member('packages/a/library', '@deepseek-ai/dsh-library')
+    const channel = member('packages/openclaw/channel-core', '@clawdsh/dsh-channel-core')
     const vendored = member('vendor/cordis', '@deepseek-ai/cordis')
 
     expect(() => { dsh.validatePayload(harness, ['package/lib/index.js', 'package/src/index.ts']) })
+      .toThrow(/publishes source file/)
+    expect(() => { clawdsh.validatePayload(channel, ['package/lib/index.js', 'package/src/index.ts']) })
       .toThrow(/publishes source file/)
     expect(() => { vendor.validatePayload(vendored, ['package/lib/index.js', 'package/src/index.ts']) }).not.toThrow()
     expect(() => { vendor.validatePayload(vendored, []) }).toThrow(/empty tarball/)
@@ -88,6 +200,8 @@ describe('release families', () => {
 
   it('drives the installed entry only for the family that publishes one', () => {
     expect(releaseFamily('dsh').installedEntry).toEqual({ packageName: '@deepseek-ai/dsh', binPath: 'lib/bin.js' })
+    expect(releaseFamily('clawdsh').installedEntry).toBeUndefined()
+    expect(releaseFamily('clawdsh').installedImportSubpaths).toEqual(['', '/invariant'])
     expect(releaseFamily('vendor').installedEntry).toBeUndefined()
   })
 

@@ -2,12 +2,12 @@
  * ClawDSH memory row: OpenClaw-style long-term memory on dsh seams. The memory
  * files (`MEMORY.md` for durable facts, `memory/YYYY-MM-DD.md` for running
  * notes) are plain Markdown under a configured root and stay the source of
- * truth — the plugin never writes them; the model writes through the fs tools
- * under the recall-section convention. Recall is on-demand: `memory_search`
- * ranks chunks by embedding cosine similarity and `memory_get` reads back
- * lines. Nothing is auto-injected per request, so every model-visible memory
- * enters the transcript as a tool result, satisfying "model-visible means
- * logged" without a new session event.
+ * truth. `memory_append` is the one narrow mutation: it preserves the calling
+ * session's sandbox mode while fencing this operation to the configured memory
+ * root; `memory_search` ranks chunks by embedding cosine similarity and
+ * `memory_get` reads back lines. Nothing is auto-injected per request, so every
+ * model-visible memory enters the transcript as a tool result, satisfying
+ * "model-visible means logged" without a new session event.
  *
  * @module @clawdsh/dsh-memory
  */
@@ -25,6 +25,7 @@ import { MemoryIndex } from './search.ts'
 import type { SearchHit } from './search.ts'
 import { MEMORY_RECALL_ORDER, MEMORY_RECALL_SECTION, RECALL_TEXT } from './recall-section.ts'
 import { installMemoryFlush, resolveFlushConfig, FlushConfig } from './flush.ts'
+import { installMemoryAppend } from './append.ts'
 
 export { MEMORY_RECALL_ORDER, MEMORY_RECALL_SECTION, RECALL_TEXT } from './recall-section.ts'
 export { FLUSH_PLUGIN_SOURCE, DEFAULT_FLUSH_PROMPT, DEFAULT_FLUSH_RESERVE_TOKENS_FLOOR, DEFAULT_FLUSH_SOFT_THRESHOLD_TOKENS } from './flush.ts'
@@ -32,6 +33,7 @@ export type { MemoryChunk } from './chunk.ts'
 export { chunkMarkdown } from './chunk.ts'
 export { cosineSimilarity } from './search.ts'
 export type { SearchHit } from './search.ts'
+export { appendMemoryText, MEMORY_APPEND_TOOL } from './append.ts'
 
 /** Cordis plugin name used by Loader diagnostics. */
 export const name = 'memory'
@@ -107,8 +109,8 @@ const TEXT_OUTPUT = {
 
 const MEMORY_SEARCH_PARAMETERS = {
   query: { type: 'string', required: true, description: 'Semantic query over MEMORY.md and memory/*.md.' },
-  maxResults: { type: 'integer', description: 'Maximum hits returned. Defaults to 6.' },
-  minScore: { type: 'number', description: 'Minimum cosine similarity (0-1). Defaults to 0.35.' },
+  maxResults: { type: 'integer', description: 'Maximum hits returned. Defaults to the plugin configuration.' },
+  minScore: { type: 'number', description: 'Minimum cosine similarity (-1 to 1). Defaults to the plugin configuration.' },
 } as const
 
 const MEMORY_GET_PARAMETERS = {
@@ -117,7 +119,7 @@ const MEMORY_GET_PARAMETERS = {
   lines: { type: 'integer', description: 'Number of lines to read. Defaults to 1000.' },
 } as const
 
-/** Register the memory guidance section, both tools, and the flush-turn hooks. */
+/** Register the memory guidance section, three tools, and the flush-turn hooks. */
 export function apply(ctx: Context, config: Config): void {
   const resolved = resolveConfig(config)
   const disposeFlush = installMemoryFlush(ctx, resolved.flush)
@@ -148,7 +150,10 @@ export function apply(ctx: Context, config: Config): void {
             'memory_search requires a ctx.embeddings provider (load @clawdsh/dsh-embeddings-ark)',
           )
         }
-        const parsed = parseSearchArgs(args)
+        const parsed = parseSearchArgs(args, {
+          maxResults: resolved.maxResults,
+          minScore: resolved.minScore,
+        })
         const hits = await (await index()).search(
           parsed.query, embeddings, parsed.maxResults, parsed.minScore, resolved.snippetChars, exec.signal,
         )
@@ -172,17 +177,19 @@ export function apply(ctx: Context, config: Config): void {
         return `# ${parsed.path} (lines ${read.startLine}-${read.endLine}${truncated ? `, capped at ${resolved.maxReadLines}` : ''})\n${read.text}`
       },
     }))
+    const disposeAppend = installMemoryAppend(ctx, rootTarget, resolved.timeoutMs)
     return () => {
+      disposeAppend()
       disposeGet()
       disposeSearch()
       disposeSection()
       disposeFlush()
     }
-  }, 'memory.section() + memory tools + flush hooks')
+  }, 'memory.section() + memory search/get/append tools + flush hooks')
 }
 
 function resolveConfig(config: Config): ResolvedConfig {
-  if (config.root === undefined || config.root.length === 0) {
+  if (config.root.length === 0) {
     throw new TypeError('memory: config root is required (the memory file directory)')
   }
   const chunkSizeChars = config.chunkSizeChars ?? DEFAULT_CHUNK_SIZE_CHARS
@@ -217,7 +224,10 @@ function resolveConfig(config: Config): ResolvedConfig {
   return { root: config.root, chunkSizeChars, chunkOverlapChars, maxResults, minScore, snippetChars, timeoutMs, maxReadLines, flush }
 }
 
-function parseSearchArgs(args: unknown): { query: string; maxResults: number; minScore: number } {
+function parseSearchArgs(
+  args: unknown,
+  defaults: { maxResults: number; minScore: number },
+): { query: string; maxResults: number; minScore: number } {
   if (typeof args !== 'object' || args === null) throw new TypeError('memory_search: invalid arguments')
   const record = args as Record<string, unknown>
   const query = record.query
@@ -226,8 +236,8 @@ function parseSearchArgs(args: unknown): { query: string; maxResults: number; mi
   if (typeof query !== 'string' || query.length === 0) throw new TypeError('memory_search: query must be a non-empty string')
   return {
     query,
-    maxResults: maxResults === undefined ? DEFAULT_MAX_RESULTS : boundedInt(maxResults, 'maxResults'),
-    minScore: minScore === undefined ? DEFAULT_MIN_SCORE : boundedNumber(minScore, 'minScore'),
+    maxResults: maxResults === undefined ? defaults.maxResults : boundedInt(maxResults, 'maxResults'),
+    minScore: minScore === undefined ? defaults.minScore : boundedNumber(minScore, 'minScore'),
   }
 }
 

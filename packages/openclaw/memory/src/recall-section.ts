@@ -17,5 +17,5 @@ export const MEMORY_RECALL_ORDER = 115
 export const RECALL_TEXT =
   'Use memory_search to recall facts about people, preferences, decisions, and prior work from '
   + 'MEMORY.md and memory/*.md before answering questions about them; follow a strong hit with '
-  + 'memory_get to read the needed lines. To remember something, append running notes to '
-  + 'memory/YYYY-MM-DD.md and keep durable facts in MEMORY.md through file tools only — append, never rewrite history.'
+  + 'memory_get to read the needed lines. To remember something, use memory_append: append running '
+  + 'notes to memory/YYYY-MM-DD.md and durable facts to MEMORY.md — append, never rewrite history.'
