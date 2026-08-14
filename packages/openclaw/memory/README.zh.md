@@ -29,6 +29,9 @@
     # snippetChars: 700             # 片段字符上限
     # timeoutMs: 30000              # 协作超时（透传 embed）
     # maxReadLines: 1000            # memory_get 行数硬上限
+    # watch: true                   # 宿主文件变更监听（默认开，主动失效）
+    # watchStabilityThresholdMs: 200  # 变更稳定阈值 ms
+    # watchPollIntervalMs: 100        # 稳定性探测间隔 ms
     # flush:                        # 预压缩 flush 回合（默认启用）
     #   reserveTokensFloor: 20000   # 窗口下方保留 token 余量
     #   softThresholdTokens: 4000   # 软触发带
@@ -39,7 +42,7 @@
 
 ## 设计要点
 
-- **文件是唯一事实源**：插件只读文件、只维护派生索引；索引以 `(version, size)` 判定变化文件，每次 search 前增量重建（个人记忆规模下成本可忽略；chokidar watch 列 Deferred）；
+- **文件是唯一事实源**：插件只读文件、只维护派生索引；索引以 `(version, size)` 判定变化文件，每次 search 前增量重建，chokidar watch（默认开）主动失效变更文件——补齐 `(version, size)` 的同尺寸编辑盲区——无需重嵌其余文件；
 - **一次 embed 批**：每次 search 的 embed 调用 = 查询 + 所有未嵌入 chunk，冷启动一次 HTTP、增量编辑一次 HTTP；
 - **路径白名单 + 双保险**：`isMemoryPath`（`MEMORY.md` | `memory/<file>.md`，拒绝绝对路径与 `..`）+ `fs.contains(root, target)` 在解析操作处 enforcement；
 - **fail-loud 文化**：root 必配、无 embeddings provider、路径逃逸、维度漂移（provider 侧）全部响亮失败；
@@ -105,8 +108,7 @@ Append-only：prompt 作为普通回合输入落在日志中段；无系统提�
 - **无专用写工具**：写入靠模型遵守规约（OpenClaw 同构），现由 flush 回合驱动，其余靠模型自发；
 - **flush 在回合之间运行，而非严格早于主回合**：flush 完成前入队的入站先跑；且 flush 回合自身的 pre-step 可能先触发压力压缩，flush 从压缩后的摘要写记忆（dsh 默认压缩阈值低于 flush 阈值时，压缩 → 从摘要 flush 是常见流程；把 `compaction.thresholdRatio` 调到 flush 阈值之上即得 OpenClaw 顺序）；
 - **flush 跳过清单是挂载面的**：不挂 memory 行的 profile 永不 flush（映射 OpenClaw 的 heartbeat/CLI/sandbox-ro 跳过）；
-- **无 chokidar watch**：变更靠 search 前增量重建，不主动推送；
-- **词汇降级**（无 embeddings 时的检索）列为 Deferred——阶段 3 离线场景评估；
+- **词汇降级**（无 embeddings 时的检索）已定论拒绝：两个评分空间语义不同，静默切换会误导模型（见 rejected Note `2026-08-14-memory-lexical-fallback`）；
 - **超大检索结果 spill**（挂 `ctx.spillStore`）列 Deferred；
 - **多 agent 隔离**：需要各自配置 `root`；共享记忆语义留阶段 3；
 - **sandbox 后端**：`root` 在 workspace 外时模型的 fs 工具可能写不进去，阶段 3 评估记忆专用写工具或沙箱豁免；

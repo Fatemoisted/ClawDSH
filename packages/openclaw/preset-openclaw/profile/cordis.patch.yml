@@ -46,6 +46,7 @@
       name: '@clawdsh/dsh-memory'
       config:
         root: !!js dshHomePath('memory')
+        # watch 默认开启：宿主改动记忆文件即时失效对应索引条目（补 (version,size) 同尺寸编辑盲区）。
 
     - id: embeddings-ark
       name: '@clawdsh/dsh-embeddings-ark'

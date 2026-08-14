@@ -23,7 +23,8 @@ import * as Memory from '@clawdsh/dsh-memory'
 import { MEMORY_RECALL_SECTION, RECALL_TEXT } from '@clawdsh/dsh-memory'
 import { chunkMarkdown } from '../src/chunk.ts'
 import { readLineSlice } from '../src/memory-files.ts'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { MemoryIndex } from '../src/search.ts'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /** Deterministic token-overlap embedding backend: one dimension per distinct token. */
 class StubEmbeddings extends Embeddings {
@@ -96,7 +97,10 @@ beforeEach(async () => {
   await ctx.plugin(StubEmbeddings)
 })
 
-afterEach(() => {
+afterEach(async () => {
+  // The memory row now watches the root by default; dispose the fiber so the
+  // persistent Chokidar watcher closes before the temp root is removed.
+  await ctx.fiber.dispose()
   rmSync(dir, { recursive: true, force: true })
 })
 
@@ -248,5 +252,50 @@ describe('disposal', () => {
 
     const result = await call('memory_search', { query: 'anything' })
     expect(result.isError).toBe(true)
+  })
+})
+
+describe('config validation', () => {
+  it('rejects a non-positive watch stability threshold', async () => {
+    await expect(ctx.plugin(Memory, { root: dir, watchStabilityThresholdMs: 0 })).rejects.toThrow()
+  })
+
+  it('rejects a non-boolean watch flag', async () => {
+    await expect(ctx.plugin(Memory, { root: dir, watch: 'yes' as unknown as boolean })).rejects.toThrow()
+  })
+})
+
+describe('MemoryIndex.invalidateFile', () => {
+  it('re-reads only the invalidated file and preserves other cached embeddings', async () => {
+    await writeMemoryFile('MEMORY.md', 'The user likes banana smoothies.\n')
+    await writeMemoryFile('memory/2026-08-14.md', 'The user hates celery.\n')
+
+    // Observe the embed batches on the registered stub backend.
+    const embeddings = ctx.get('embeddings')
+    if (embeddings === undefined) throw new Error('expected embeddings')
+    const batches: string[][] = []
+    const realEmbed = embeddings.embed.bind(embeddings)
+    vi.spyOn(embeddings, 'embed').mockImplementation((texts, signal) => {
+      batches.push([...texts])
+      return realEmbed(texts, signal)
+    })
+    const index = new MemoryIndex(ctx.fs, await ctx.fs.resolve(dir), 1600, 160)
+
+    // First search embeds the query plus both chunks in one batch.
+    await index.search('banana', embeddings, 6, 0.01, 700)
+    expect(batches).toHaveLength(1)
+    expect(batches[0]).toHaveLength(3)
+
+    // Invalidate MEMORY.md after an edit; celery's chunk keeps its cached vector.
+    await writeMemoryFile('MEMORY.md', 'The user moved to Shenzhen city.\n')
+    index.invalidateFile('MEMORY.md')
+    batches.length = 0
+
+    const hits = await index.search('Shenzhen', embeddings, 6, 0.01, 700)
+    // Only the query plus the one re-read chunk re-embed, not celery's cached chunk.
+    expect(batches).toHaveLength(1)
+    expect(batches[0]).toHaveLength(2)
+    expect(hits.map(hit => hit.path)).toContain('MEMORY.md')
+    expect(hits.some(hit => hit.snippet.includes('Shenzhen'))).toBe(true)
   })
 })

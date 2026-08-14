@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/rejected/feature/2026-08-14-memory-lexical-fallback.md
+2026-08-14-memory-lexical-fallback.md: e6b19e3eea9a470fddd05060a5b6dc8deab87390
+2026-08-14-memory-lexical-fallback.zh.md: 85bb2fb949923f50af755a81a0c0f688a8c78bf1

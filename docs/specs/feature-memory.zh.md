@@ -20,6 +20,7 @@
 - 不自建向量数据库/检索引擎：embedding 走外部 OpenAI 兼容端点（Ark），chunk + cosine 是包内纯函数，索引是内存派生数据；
 - 不做本地 embedding 模型（OpenClaw 的 local GGUF 分支留阶段 3 评估）；
 - 不做每请求自动注入记忆（OpenClaw 同构：按需工具 + 静态指引段）；
+- 不做无 embeddings provider 时的词汇降级：已定论拒绝而非仅延期——两个评分空间语义不同，静默切换会误导模型（见 rejected Note [2026-08-14-memory-lexical-fallback](../../.agents/notes/rejected/feature/2026-08-14-memory-lexical-fallback.md)）；
 - 不做多用户记忆隔离（跟随 dsh 的 agent/session 隔离模型，多 agent = 各自 root）；
 - 不做回合前置压缩**之前**的 flush：flush 回合在回合之间运行，可能自身先触发压力压缩（成文降质，见 [flush Agent Note](../../.agents/notes/implemented/feature/2026-08-14-memory-flush-turn.md)）。
 
@@ -45,6 +46,9 @@ memory:
   snippetChars: 700              # 片段字符上限
   timeoutMs: 30000               # 协作超时（透传 embed）
   maxReadLines: 1000             # memory_get 行数硬上限
+  watch: true                    # 宿主文件变更监听（默认开，主动失效）
+  watchStabilityThresholdMs: 200 # 变更稳定阈值 ms
+  watchPollIntervalMs: 100       # 稳定性探测间隔 ms
   flush:
     enabled: true                # 预压缩 flush 回合开关
     reserveTokensFloor: 20000    # 窗口下方保留的 token 余量
