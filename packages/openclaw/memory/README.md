@@ -50,8 +50,7 @@ Write convention (taught to the model by the guidance section): stable facts go 
 
 ## Changelog
 
-- 0.1.0: first release (chunk + incremental index + two tools + guidance section; 13 contract tests, keyless bag-of-words stub).
-- 0.2.0: pre-compaction memory flush turn (threshold + once-per-compaction-cycle guard on `agent/turn-stopping`; 8 flush contract tests, real agent-loop composition).
+- 0.1.0: first release — chunk + incremental index + two tools + guidance section (13 contract tests, keyless bag-of-words stub) plus the pre-compaction memory flush turn (threshold + once-per-compaction-cycle guard on `agent/turn-stopping`; 8 flush contract tests, real agent-loop composition).
 
 ## Model Experience
 

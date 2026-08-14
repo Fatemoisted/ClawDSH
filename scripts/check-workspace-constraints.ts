@@ -47,10 +47,14 @@ const repositoryUrl = 'git+https://github.com/deepseek-harness/deepseek-harness.
  * their trusted publishing against the repository that runs the workflow.
  */
 const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harness.git'
+/** ClawDSH's own packages publish to the initiator's private registry; the repository field points at the private origin. */
+const clawdshRepositoryUrl = 'git+https://github.com/Fatemoisted/ClawDSH.git'
 /** Directories whose packages this repository publishes: one release member each. */
 const releaseMemberDirectory = /^(?:packages\/[^/]+\/[^/]+|apps\/[^/]+|vendor\/[^/]+)$/
 
 const localArtifactDirs = new Set(['node_modules'])
+/** ClawDSH dirs under packages/openclaw that are not npm packages (template, unstarted channel, profile bundle). */
+const clawdshNonPackageDirs = new Set(['_template', 'channel-wechat', 'preset-openclaw'])
 const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh': ['lib/*.js', 'config'],
   // The Web build emits sourcemaps for browser debugging; publishing them is
@@ -240,6 +244,20 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
       || manifest.repository.directory !== expectedDirectory) {
       errors.push(`${label}: published Landlock package repository must use ${repositoryUrl} with directory ${expectedDirectory} for trusted publishing`)
     }
+  } else if (manifest.name?.startsWith('@clawdsh/')) {
+    // ClawDSH packages publish to the initiator's private registry; the repository
+    // field points at the private origin, not the public harness repository.
+    if (manifest.private === true) {
+      errors.push(`${label}: ClawDSH package must not set "private": true`)
+    }
+    if (manifest.publishConfig?.access !== 'public') {
+      errors.push(`${label}: ClawDSH package must set publishConfig.access to "public"`)
+    }
+    if (manifest.repository?.type !== 'git'
+      || manifest.repository.url !== clawdshRepositoryUrl
+      || manifest.repository.directory !== dir) {
+      errors.push(`${label}: ClawDSH package repository must use ${clawdshRepositoryUrl} with directory ${dir}`)
+    }
   } else if (releaseMemberDirectory.test(dir)) {
     // Release members state that they are publishable: npm refuses a private
     // package, and the repository field is how a consumer finds the source of
@@ -363,6 +381,7 @@ function checkHierarchyShape(): string[] {
     for (const pkg of readdirSync(join(packagesRoot, group.name), { withFileTypes: true })) {
       if (!pkg.isDirectory()) continue
       if (localArtifactDirs.has(pkg.name)) continue
+      if (group.name === 'openclaw' && clawdshNonPackageDirs.has(pkg.name)) continue
       const pkgRel = join(groupRel, pkg.name)
       if (!existsSync(join(packagesRoot, group.name, pkg.name, 'package.json'))) {
         errors.push(`${pkgRel}: expected a package here (no package.json found) — the hierarchy is exactly packages/<group>/<pkg>, no deeper nesting`)

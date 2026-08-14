@@ -3,7 +3,14 @@
   "description": "ClawDSH memory row: OpenClaw-style long-term memory (MEMORY.md + memory/*.md) with semantic recall over the embeddings seam",
   "version": "0.1.0",
   "license": "MIT",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fatemoisted/ClawDSH.git",
+    "directory": "packages/openclaw/memory"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
