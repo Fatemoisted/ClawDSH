@@ -33,7 +33,7 @@
 | 工具执行（bash/文件/浏览器…） | `src/agents/*-tools.ts` | `ctx.tools` / `ctx.shell` / `ctx.fs` / `ctx.web` | 复用 | — | 直接可用 |
 | 技能（Skill） | 顶层 `skills/` | `ctx.skills`（provider 合并） | 插件 | `skills-hub` | planning |
 | 定时 / 自动化 | `src/cron/` | `ctx.schedule` / `ctx.jobs` | 插件 | `automation` | planning |
-| 人格（Soul） | `src/agents/` 的 identity 机制（具体形态阶段 2 深读） | system-prompt 装配 | 插件 | `soul` | **implemented**（阶段 0 ✅） |
+| 人格（Soul） | `src/agents/system-prompt.ts` 首行 + workspace 六文件（AGENTS/SOUL/TOOLS/IDENTITY/USER/BOOTSTRAP.md） | system-prompt 装配（persona 首行 / soul append / complete 段 / 工具指引带）+ 渠道呈现（IDENTITY，Deferred） | 插件 | `soul` | **implemented**（阶段 0 ✅ + 阶段 2 深读定稿 ✅） |
 | 记忆（Memory） | 基线无 → 参考 v2026.1.15 `src/agents/memory-search.ts`、`memory-tool.ts` | `ctx.spillStore` / session-persistence | 插件 | `memory` | planning |
 | **渠道网关（Gateway）** | `src/gateway/` | **无** | **新 seam** | `channel-core` | **implemented**（阶段 2 ✅） |
 | 渠道：Telegram | `src/telegram/` | `ctx.channels` | 插件 | `channel-telegram` | **implemented**（阶段 2 ✅） |
