@@ -69,12 +69,10 @@ export interface Config {
   model?: string
   /** Deadline in milliseconds for one `embed` call. */
   timeoutMs?: number
-  /** Maximum texts per HTTP request; larger inputs are sharded serially. */
-  maxBatchTexts?: number
 }
 ```
 
-Source: [`packages/openclaw/embeddings-ark/src/index.ts:44`](../packages/openclaw/embeddings-ark/src/index.ts)
+Source: [`packages/openclaw/embeddings-ark/src/index.ts:41`](../packages/openclaw/embeddings-ark/src/index.ts)
 
 <a id="clawdshdsh-memory"></a>
 
@@ -115,7 +113,14 @@ Requires: `systemPrompt`
 ```ts config-catalog
 /** Plugin config: where the soul text comes from and how it lands. */
 export interface Config {
-  /** Path to a soul file (markdown). Resolved against process.cwd(). Wins over `text`. */
+  /**
+   * Path to a soul file (markdown). Wins over `text`. A relative path resolves
+   * against the mount tree's `ctx.baseUrl` — the preset composition directory
+   * for agent presets, the profile directory under the profile launcher — and
+   * against `process.cwd()` when the context has no base (raw test contexts).
+   * An absolute path is used as-is. This mirrors how relative module
+   * specifiers resolve under the Loader, so a preset's soul file travels with it.
+   */
   source?: string
   /** Inline soul text; used when `source` is absent or empty. */
   text?: string
@@ -126,7 +131,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/openclaw/soul/src/index.ts:44`](../packages/openclaw/soul/src/index.ts)
+Source: [`packages/openclaw/soul/src/index.ts:45`](../packages/openclaw/soul/src/index.ts)
 
 <a id="deepseek-aidsh-acp"></a>
 
