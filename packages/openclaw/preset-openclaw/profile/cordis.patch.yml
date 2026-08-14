@@ -28,8 +28,9 @@
         domain: feishu
 
     # 阶段 2 补漏：memory（Markdown 记忆事实源）+ embeddings-ark（语义召回后端）。
-    # memory 的 root 用 dshHomePath('memory')（~/.dsh/memory）；embeddings-ark 保持 disabled——
-    # 无 ARK_API_KEY 时不得影响 boot；拿到 key 后（根 .env 或 $DSH_HOME/.env）解除 disabled。
+    # memory 的 root 用 dshHomePath('memory')（~/.dsh/memory）。
+    # embeddings-ark 缺 ARK_API_KEY 时 boot 不受影响——provider 只在 embed 调用时
+    # per-call 解析凭证并 fail-loud（memory_search 报错指名该包），不会静默降级。
     - id: memory
       name: '@clawdsh/dsh-memory'
       config:
@@ -37,4 +38,3 @@
 
     - id: embeddings-ark
       name: '@clawdsh/dsh-embeddings-ark'
-      disabled: true
