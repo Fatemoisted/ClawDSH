@@ -32,7 +32,6 @@ export default defineConfig(({ env }) => {
         'packages/openclaw/automation/**',
         'packages/openclaw/channel-wechat/**',
         'packages/openclaw/preset-openclaw/**',
-        'packages/openclaw/skills-hub/**',
       ],
     },
     entry: client ? '' : ['lib/types/{index,invariant,startup}.js'],

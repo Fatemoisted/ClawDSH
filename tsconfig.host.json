@@ -281,6 +281,7 @@
     { "path": "./packages/openclaw/embeddings" },
     { "path": "./packages/openclaw/embeddings-ark" },
     { "path": "./packages/openclaw/memory" },
+    { "path": "./packages/openclaw/skills-hub" },
     { "path": "./packages/guard/repeat-tool-reminder" },
     { "path": "./packages/extensions/cordis-host-runner" },
     { "path": "./packages/extensions/tool-cordis" },

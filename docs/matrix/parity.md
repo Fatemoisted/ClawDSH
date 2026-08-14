@@ -33,7 +33,7 @@ English | [中文](parity.zh.md)
 | Sessions / message history | `src/sessions/` | `ctx.sessions` (append-only log) | Reuse | — | directly usable |
 | Session tracing / replay / forking | — (dsh-native) | Trajectory view / replay | Reuse | — | directly usable |
 | Tool execution (bash/file/browser…) | `src/agents/*-tools.ts` | `ctx.tools` / `ctx.shell` / `ctx.fs` / `ctx.web` | Reuse | — | directly usable |
-| Skills (Skill) | top-level `skills/` | `ctx.skills` (provider merge) | Plugin | `skills-hub` | planning |
+| Skills (Skill) | top-level `skills/` | `ctx.skills` (provider merge) | Plugin | `skills-hub` | **implemented** (Phase 3 ✅) |
 | Scheduling / automation | `src/cron/` | `ctx.schedule` / `ctx.jobs` | Plugin | `automation` | planning |
 | Persona (Soul) | `src/agents/system-prompt.ts` first line + workspace six files (AGENTS/SOUL/TOOLS/IDENTITY/USER/BOOTSTRAP.md) | system-prompt assembly (persona first line / soul append / complete section / tool guidance band) + channel presentation (IDENTITY, Deferred) | Plugin | `soul` | **implemented** (Phase 0 ✅ + Phase 2 deep-read finalization ✅) |
 | Memory | baseline absent → reference v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`, `memory-tool.ts` | `ctx.fs` file source-of-fact + `ctx.tools` + system-prompt section + `ctx.get('embeddings')` (new seam, ADR-0003) | Plugin | `memory` + `embeddings` + `embeddings-ark` | **implemented** (Phase 2 gap-fill ✅) |
