@@ -43,7 +43,7 @@
 | 渠道：iMessage / Signal / Slack | `src/imessage/` 等 | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
 | 渠道：WhatsApp | 参考 v2026.1.15 `src/whatsapp/` | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
 | 审批 / 安全策略 | `src/security/`（1.15 起） | `ctx.approval` / guard | 复用（配置） | — | 直接可用 |
-| 联邦节点（clawd） | 基线早期无 | `ctx.subagents`（transport） | 插件 | 待命名 | 暂缓（阶段 3 末评估） |
+| 联邦节点（clawd） | 基线早期无 | `ctx.subagents`（transport） | 插件 | `clawd-federation` | ADR-0005（仅评估），实现暂缓 |
 | 智能家居（casa） | 基线无 | 无 | 新插件域 | 待命名 | 暂缓 |
 | 桌面/移动客户端 | `ui/`（+ `apps/`） | `apps/web`（dsh Web UI） | 复用 | — | 后续评估定制面 |
 

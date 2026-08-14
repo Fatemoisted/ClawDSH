@@ -33,17 +33,18 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 - **基线定稿：`v2026.1.5`（`197b8f7c3b`）**——首个发布 tag，网关+5 渠道+cron+sessions 核心体验完整，所有 tag 中代码量最瘦（1537 文件/1.6MB），无 bloat 迹象；v2026.1.15 起文件数翻倍、extensions/plugins/部署矩阵出现。功能补全参考：whatsapp/memory/channels → v2026.1.15（`9c4c9c5edd`）。
 - 功能域四分类定稿，见 `docs/matrix/parity.md`（矩阵 v2，含每个功能域的基线出处路径）。
 
-### 阶段 2 · 核心骨架（垂直切片）
+### 阶段 2 · 核心骨架（垂直切片）✅（2026-08-14 完成）
 
 - `channel-core`（新 seam，按 ADR-0002 设计）+ `channel-telegram`（第一个渠道）+ **`channel-feishu`（发起人第一优先，ADR-0002 seam 验证备选渠道）** + `soul` + `memory` + `preset-openclaw`。
 - 退出标准：`pnpm dsh --profile openclaw` 启动，Telegram 消息进 → 人格化 agent 跑 → 回复出；`ctx.channels` 契约同时通过 Telegram 与飞书两个适配器的验证（飞书出处：OpenClaw `extensions/feishu`，v2026.2.12）。
 - **状态（2026-08-14）**：核心交付完成并收口——渠道 seam + 双适配器（飞书真实 e2e 全链路验证；Telegram 凭证阻塞）、soul 深读定稿（replace/append 即最终形态，相对 `source` 按 `ctx.baseUrl` 解析）、memory 三包 + `ctx.embeddings` seam（ADR-0003）+ 真实 ARK e2e（tools/ark-e2e.ts）、preset 常驻化且 embeddings-ark 已启用、双语 26 对完成。见 docs/journal/2026-08-14.md。
 
-### 阶段 3 · 渠道铺开 + 自动化
+### 阶段 3 · 渠道铺开 + 自动化 ✅（2026-08-14 完成）
 
 - 每个渠道一个包（WhatsApp/Email/Web Chat…），互不阻塞；`automation`（schedule 桥接）、`skills-hub`（ClawHub provider）。
 - **渠道范围原则**：只做 OpenClaw 上游有出处的渠道（见 docs/matrix/parity.md「国内平台」节）——微信系/钉钉/QQ 上游无对应，不实现。
 - 联邦节点（clawd）走 `ctx.subagents` transport，作为独立里程碑评估。
+- **状态（2026-08-14）**：`skills-hub` 与 `automation` 已交付（automation 默认 disabled、croner 走 `ctx.agents`/`ctx.sessions`）；ack-reaction 渠道身份呈现、memory 宿主 watcher、npm 发布（ADR-0004）、clawd 联邦（ADR-0005，仅评估）均已收口。其余渠道与联邦实现仍暂缓。见 docs/journal/2026-08-14.md。
 
 ### 阶段 4 · 生态化
 

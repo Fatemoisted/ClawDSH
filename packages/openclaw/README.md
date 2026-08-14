@@ -36,8 +36,8 @@ When implementing a plugin, remove that package from the exclude list and wire i
 | `soul/` | persona / Soul | Soul system | system-prompt assembly | **implemented** (phase 0 ✅ + phase 2 deep-read finalized ✅) |
 | `memory/` | memory (Markdown fact source + semantic recall) | Memory (v2026.1.15) | `ctx.fs` + `ctx.tools` + system-prompt section + `ctx.get('embeddings')` | **implemented** (phase 2 gap-fill ✅) |
 | `embeddings/` | text-embedding seam (Service Definition) | choose one of memory's embeddings backends | **new** `ctx.embeddings` (ADR-0003) | **implemented** (phase 2 gap-fill ✅) |
-| `embeddings-ark/` | Volcano Ark text-embedding provider | openai-remote branch slot | `ctx.embeddings` | **implemented** (phase 2 gap-fill ✅, e2e pending credentials) |
-| `skills-hub/` | ClawHub-compatible skill loading | Skills/ClawHub | `ctx.skills` | planning |
-| `automation/` | scheduled tasks / automation | Cron/Automation | `ctx.schedule` / `ctx.jobs` | planning |
+| `embeddings-ark/` | Volcano Ark text-embedding provider | openai-remote branch slot | `ctx.embeddings` | **implemented** (phase 2 gap-fill ✅, real e2e via tools/ark-e2e.ts) |
+| `skills-hub/` | ClawHub-compatible skill loading | Skills/ClawHub | `ctx.skills` | **implemented** (phase 3 ✅) |
+| `automation/` | scheduled tasks / automation | Cron/Automation | `ctx.agents` + `ctx.sessions` | **implemented** (phase 3 ✅, disabled opt-in) |
 
 The channel list is not limited to Telegram: WhatsApp, Email, Web Chat, and others are added one by one following the same template (one package per channel, mutually non-blocking).

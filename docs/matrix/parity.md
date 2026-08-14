@@ -43,7 +43,7 @@ English | [中文](parity.zh.md)
 | Channel: iMessage / Signal / Slack | `src/imessage/` etc. | `ctx.channels` | Plugin | per-package later | Deferred (Phase 3) |
 | Channel: WhatsApp | reference v2026.1.15 `src/whatsapp/` | `ctx.channels` | Plugin | per-package later | Deferred (Phase 3) |
 | Approval / security policy | `src/security/` (from 1.15) | `ctx.approval` / guard | Reuse (config) | — | directly usable |
-| Federation node (clawd) | absent in early baseline | `ctx.subagents` (transport) | Plugin | to be named | Deferred (evaluated at end of Phase 3) |
+| Federation node (clawd) | absent in early baseline | `ctx.subagents` (transport) | Plugin | `clawd-federation` | ADR-0005 (evaluation-only), implementation deferred |
 | Smart home (casa) | absent in baseline | none | new plugin domain | to be named | Deferred |
 | Desktop/mobile client | `ui/` (+ `apps/`) | `apps/web` (dsh Web UI) | Reuse | — | customization surface evaluated later |
 

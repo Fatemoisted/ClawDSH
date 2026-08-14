@@ -33,17 +33,18 @@ dsh's Cordis architecture (everything is a plugin: plugins declare dependencies 
 - **Baseline finalized: `v2026.1.5` (`197b8f7c3b`)** — the first release tag, complete gateway + 5 channels + cron + sessions core experience, the thinnest codebase of all tags (1537 files/1.6MB), no bloat signs; from v2026.1.15 file count doubles and extensions/plugins/deploy matrix appear. Feature-completion reference: whatsapp/memory/channels → v2026.1.15 (`9c4c9c5edd`).
 - Feature-domain four-way classification finalized, see `docs/matrix/parity.md` (matrix v2, with each feature domain's baseline-source path).
 
-### Phase 2 · Core skeleton (vertical slice)
+### Phase 2 · Core skeleton (vertical slice) ✅ (completed 2026-08-14)
 
 - `channel-core` (new seam, per ADR-0002) + `channel-telegram` (first channel) + **`channel-feishu` (initiator's first priority, ADR-0002 seam-verification alternate channel)** + `soul` + `memory` + `preset-openclaw`.
 - Exit criteria: `pnpm dsh --profile openclaw` starts, Telegram message in → personalized agent runs → reply out; the `ctx.channels` contract passes verification through both the Telegram and Feishu adapters (Feishu source: OpenClaw `extensions/feishu`, v2026.2.12).
 - **Status (2026-08-14)**: core deliverables shipped and closed out — channel seam + two adapters (Feishu real e2e verified end-to-end; Telegram blocked on credentials), soul deep-read finalized (replace/append is the final form, preset-relative `source` via `ctx.baseUrl`), memory three packages with the `ctx.embeddings` seam (ADR-0003) and a real ARK e2e (tools/ark-e2e.ts), preset daemon-ized with `embeddings-ark` enabled, 26 bilingual doc pairs completed. See docs/journal/2026-08-14.md.
 
-### Phase 3 · Channel rollout + automation
+### Phase 3 · Channel rollout + automation ✅ (completed 2026-08-14)
 
 - One package per channel (WhatsApp/Email/Web Chat…), none blocking each other; `automation` (schedule bridging), `skills-hub` (ClawHub provider).
 - **Channel-scope principle**: only build channels that have a source in OpenClaw upstream (see docs/matrix/parity.md "Domestic platforms" section) — WeChat-family/DingTalk/QQ have no upstream counterpart, not implemented.
 - Federation node (clawd) goes over `ctx.subagents` transport, evaluated as an independent milestone.
+- **Status (2026-08-14)**: `skills-hub` and `automation` shipped (automation disabled opt-in, croner over `ctx.agents`/`ctx.sessions`); ack-reaction channel identity presentation, memory host watcher, npm publishing (ADR-0004), and clawd federation (ADR-0005, evaluation-only) closed out. Further channels and federation implementation remain deferred. See docs/journal/2026-08-14.md.
 
 ### Phase 4 · Ecosystem
 

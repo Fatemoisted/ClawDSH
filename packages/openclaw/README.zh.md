@@ -36,8 +36,8 @@
 | `soul/` | 人格 / Soul | Soul 系统 | system-prompt 装配 | **implemented**（阶段 0 ✅ + 阶段 2 深读定稿 ✅） |
 | `memory/` | 记忆（Markdown 事实源 + 语义召回） | Memory（v2026.1.15） | `ctx.fs` + `ctx.tools` + system-prompt 段 + `ctx.get('embeddings')` | **implemented**（阶段 2 补漏 ✅） |
 | `embeddings/` | 文本嵌入 seam（Service Definition） | memory 的 embeddings 后端选一 | **新增** `ctx.embeddings`（ADR-0003） | **implemented**（阶段 2 补漏 ✅） |
-| `embeddings-ark/` | 火山方舟 Ark 文本嵌入 provider | openai-remote 分支位 | `ctx.embeddings` | **implemented**（阶段 2 补漏 ✅，e2e 待凭证） |
-| `skills-hub/` | ClawHub 兼容技能加载 | Skills/ClawHub | `ctx.skills` | planning |
-| `automation/` | 定时任务 / 自动化 | Cron/Automation | `ctx.schedule` / `ctx.jobs` | planning |
+| `embeddings-ark/` | 火山方舟 Ark 文本嵌入 provider | openai-remote 分支位 | `ctx.embeddings` | **implemented**（阶段 2 补漏 ✅，真实 e2e 见 tools/ark-e2e.ts） |
+| `skills-hub/` | ClawHub 兼容技能加载 | Skills/ClawHub | `ctx.skills` | **implemented**（阶段 3 ✅） |
+| `automation/` | 定时任务 / 自动化 | Cron/Automation | `ctx.agents` + `ctx.sessions` | **implemented**（阶段 3 ✅，disabled 起步） |
 
 渠道列表不止 Telegram：WhatsApp、Email、Web Chat 等按同一模板逐个新增（每个渠道一个包，互不阻塞）。
