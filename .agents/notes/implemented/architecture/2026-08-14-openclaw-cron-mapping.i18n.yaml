@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-14-openclaw-cron-mapping.md
+2026-08-14-openclaw-cron-mapping.md: ca876697126591cae0067e9a09669dd9ff978365
+2026-08-14-openclaw-cron-mapping.zh.md: a25fa068c1b2ed2d6461fec7263e0e7a11d1b9c7
