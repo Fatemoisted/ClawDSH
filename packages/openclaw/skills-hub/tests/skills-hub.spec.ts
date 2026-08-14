@@ -1,0 +1,195 @@
+/**
+ * Contract tests for the skills-hub row, keyless: the real SkillRegistry, the
+ * real provider over temp roots, and fixture SKILL.md files. Gating probes the
+ * host PATH and environment without child processes. Registry-level assertions
+ * observe summaries (rank/metadata are provider-level fields); candidate-level
+ * fields are asserted against the provider directly.
+ */
+import { describe, expect, it } from 'vitest'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { Context } from '@deepseek-ai/cordis'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
+import * as SkillsHub from '../src/index.ts'
+
+async function tempDir(name: string): Promise<string> {
+  return await mkdtemp(join(tmpdir(), `dsh-${name}-`))
+}
+
+async function writeSkill(root: string, name: string, description: string, body = 'Use the skill.', frontmatter = ''): Promise<void> {
+  const dir = join(root, name)
+  await mkdir(dir, { recursive: true })
+  await writeFile(join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: ${description}${frontmatter}\n---\n\n${body}\n`)
+}
+
+/** Mount the registry + hub row; the managed dir points into the temp tree so the host's real `~/.clawdbot` never leaks in. */
+async function setup(workspace: string, config: SkillsHub.Config = {}): Promise<{ ctx: Context; fiber: { dispose: () => Promise<void> } }> {
+  const ctx = new Context()
+  await ctx.plugin(SkillRegistry)
+  const fiber = await ctx.plugin(SkillsHub, { managedDir: join(workspace, 'no-clawdbot'), ...config })
+  return { ctx, fiber }
+}
+
+/** A provider over the same roots as `setup`, for candidate-level fields the registry summaries strip. */
+function hubProvider(workspace: string, logger: Context['logger'], config: SkillsHub.Config = {}): SkillsHub.ClawHubProvider {
+  return new SkillsHub.ClawHubProvider(SkillsHub.resolveConfig({ managedDir: join(workspace, 'no-clawdbot'), ...config }), logger)
+}
+
+describe('skills-hub provider', () => {
+  it('lists SKILL.md directory skills from the workspace root and skips invalid files', async () => {
+    const workspace = await tempDir('hub-workspace')
+    try {
+      await writeSkill(join(workspace, 'skills'), 'summarize', 'Summarize URLs or files')
+      await writeSkill(join(workspace, 'skills'), 'no-description', '')
+      // A directory without SKILL.md is not a skill.
+      await mkdir(join(workspace, 'skills', 'empty-dir'), { recursive: true })
+      const { ctx } = await setup(workspace)
+      const skills = await ctx.skills.list({ cwd: workspace })
+      expect(skills.map(skill => [skill.name, skill.provider])).toEqual([['summarize', 'clawhub']])
+      const candidates = await hubProvider(workspace, ctx.logger).list({ cwd: workspace })
+      expect(candidates.map(candidate => [candidate.rank, candidate.source]))
+        .toEqual([[SkillsHub.WORKSPACE_SKILL_RANK, 'clawhub-workspace']])
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('resolves a duplicate name by rank: workspace (300) beats managed (450)', async () => {
+    const workspace = await tempDir('hub-ws-win')
+    const managed = await tempDir('hub-managed')
+    try {
+      await writeSkill(join(workspace, 'skills'), 'shared', 'Workspace body', 'Workspace body')
+      await writeSkill(managed, 'shared', 'Managed body', 'Managed body')
+      const { ctx } = await setup(workspace, { managedDir: managed })
+      const skills = await ctx.skills.list({ cwd: workspace })
+      expect(skills.map(skill => skill.description)).toEqual(['Workspace body'])
+      expect((await ctx.skills.get('shared', { cwd: workspace }))?.content).toBe('Workspace body')
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+      await rm(managed, { recursive: true, force: true })
+    }
+  })
+
+  it('evaluates metadata.clawdbot gating: missing bins and env exclude the skill', async () => {
+    const workspace = await tempDir('hub-gating')
+    try {
+      await writeSkill(join(workspace, 'skills'), 'needs-bin', 'Requires a bin', 'Bin body.',
+        '\nmetadata: {"clawdbot":{"requires":{"bins":["definitely-not-a-real-bin-xyz"]}}}')
+      await writeSkill(join(workspace, 'skills'), 'needs-env', 'Requires an env var', 'Env body.',
+        '\nmetadata: {"clawdbot":{"requires":{"env":["DH_SKILLS_HUB_TEST_UNSET_VAR"]}}}')
+      await writeSkill(join(workspace, 'skills'), 'passes', 'No gates', 'Pass body.')
+      const { ctx } = await setup(workspace)
+      expect((await ctx.skills.list({ cwd: workspace })).map(skill => skill.name)).toEqual(['passes'])
+
+      // With gating disabled the same skills are all listed.
+      const ungated = await setup(workspace, { gating: false })
+      expect((await ungated.ctx.skills.list({ cwd: workspace })).map(skill => skill.name))
+        .toEqual(['needs-bin', 'needs-env', 'passes'])
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('passes an anyBins gate when at least one binary exists on PATH', async () => {
+    const workspace = await tempDir('hub-anybins')
+    try {
+      await writeSkill(join(workspace, 'skills'), 'any-bin', 'Requires any bin', 'Any body.',
+        '\nmetadata: {"clawdbot":{"requires":{"anyBins":["definitely-not-a-real-bin-xyz","node"]}}}')
+      const { ctx } = await setup(workspace)
+      const skills = await ctx.skills.list({ cwd: workspace })
+      expect(skills.map(skill => skill.name)).toEqual(['any-bin'])
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('normalizes single-line JSON metadata into the candidate and the loaded definition', async () => {
+    const workspace = await tempDir('hub-metadata')
+    try {
+      await writeSkill(join(workspace, 'skills'), 'meta-skill', 'Has metadata', 'Meta body.',
+        '\nmetadata: {"clawdbot":{"emoji":"🧾","requires":{"bins":[]}}}')
+      const { ctx } = await setup(workspace)
+      const candidates = await hubProvider(workspace, ctx.logger).list({ cwd: workspace })
+      expect(candidates.map(candidate => candidate.metadata))
+        .toEqual([{ clawdbot: { emoji: '🧾', requires: { bins: [] } } }])
+      const definition = await ctx.skills.get('meta-skill', { cwd: workspace })
+      expect(definition?.metadata).toEqual({ clawdbot: { emoji: '🧾', requires: { bins: [] } } })
+      expect(definition?.content).toBe('Meta body.')
+      expect(definition?.resourceBase).toEqual({ kind: 'directory', path: join(workspace, 'skills', 'meta-skill') })
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps the dsh invocation-policy keys and loads a definition without frontmatter', async () => {
+    const workspace = await tempDir('hub-policy')
+    try {
+      await writeSkill(join(workspace, 'skills'), 'quiet-skill', 'Not model invocable', 'Quiet body.',
+        '\ndisable-model-invocation: true')
+      const { ctx } = await setup(workspace)
+      const skills = await ctx.skills.list({ cwd: workspace })
+      expect(skills.map(skill => skill.invocation)).toEqual([{ modelInvocable: false, userInvocable: true }])
+      const definition = await ctx.skills.get('quiet-skill', { cwd: workspace })
+      expect(definition?.content).toBe('Quiet body.')
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('unregisters the provider when the plugin fiber is disposed', async () => {
+    const workspace = await tempDir('hub-dispose')
+    try {
+      await writeSkill(join(workspace, 'skills'), 'disposed', 'Disposed skill')
+      const { ctx, fiber } = await setup(workspace)
+      expect(await ctx.skills.list({ cwd: workspace })).toHaveLength(1)
+      await fiber.dispose()
+      expect(await ctx.skills.list({ cwd: workspace })).toEqual([])
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('returns nothing when the provider cannot load a vanished candidate', async () => {
+    const workspace = await tempDir('hub-vanish')
+    try {
+      await writeSkill(join(workspace, 'skills'), 'vanishing', 'Vanishing skill')
+      const { ctx } = await setup(workspace)
+      const skills = await ctx.skills.list({ cwd: workspace })
+      expect(skills).toHaveLength(1)
+      await rm(join(workspace, 'skills', 'vanishing'), { recursive: true })
+      expect(await ctx.skills.get('vanishing', { cwd: workspace })).toBeUndefined()
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('validates raw config types defensively for non-Loader callers', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    await expect(ctx.plugin(SkillsHub, { gating: 'yes' as never })).rejects.toThrow(/gating/)
+    await expect(ctx.plugin(SkillsHub, { extraDirs: 'nope' as never })).rejects.toThrow(/extraDirs/)
+  })
+
+  it('lets a same-rank skill-filesystem custom dir beat the hub workspace candidate', async () => {
+    const workspace = await tempDir('hub-tiebreak')
+    const customRoot = await tempDir('hub-custom')
+    try {
+      await writeSkill(join(workspace, 'skills'), 'tie-skill', 'Hub body')
+      await writeSkill(join(customRoot, 'skills'), 'tie-skill', 'Filesystem body')
+      const ctx = new Context()
+      await ctx.plugin(SkillRegistry)
+      const SkillFileSystem = await import('@deepseek-ai/dsh-skill-filesystem')
+      // Registration order: skill-filesystem (base bundle) first, then the hub provider.
+      await ctx.plugin(SkillFileSystem, { customSkillDirs: [join(customRoot, 'skills')], includeDefaultRoots: false })
+      await ctx.plugin(SkillsHub, { managedDir: join(workspace, 'no-clawdbot') })
+      const skills = await ctx.skills.list({ cwd: workspace })
+      const tie = skills.find(skill => skill.name === 'tie-skill')
+      expect(tie?.provider).toBe('filesystem')
+      expect(tie?.description).toBe('Filesystem body')
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+      await rm(customRoot, { recursive: true, force: true })
+    }
+  })
+})

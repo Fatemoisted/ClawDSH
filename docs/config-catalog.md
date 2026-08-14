@@ -104,6 +104,31 @@ export interface Config {
 
 Source: [`packages/openclaw/memory/src/index.ts:56`](../packages/openclaw/memory/src/index.ts)
 
+<a id="clawdshdsh-skills-hub"></a>
+
+## `@clawdsh/dsh-skills-hub`
+
+Requires: `skills`
+
+```ts config-catalog
+/** Plugin config: which OpenClaw-style roots to scan and whether to evaluate `metadata.clawdbot` gating. */
+export interface Config {
+  /**
+   * Fixed workspace skills directory. Empty (default) scans `<cwd>/skills`
+   * per lookup instead, mirroring OpenClaw's `<workspaceDir>/skills`.
+   */
+  workspaceDir?: string
+  /** Legacy managed skills directory. Empty (default) uses `~/.clawdbot/skills`. */
+  managedDir?: string
+  /** Additional skill directories scanned between workspace and managed. */
+  extraDirs?: string[]
+  /** Evaluate `metadata.clawdbot.requires.{bins,anyBins,env}` at list time and exclude gated-out skills. */
+  gating?: boolean
+}
+```
+
+Source: [`packages/openclaw/skills-hub/src/index.ts:55`](../packages/openclaw/skills-hub/src/index.ts)
+
 <a id="clawdshdsh-soul"></a>
 
 ## `@clawdsh/dsh-soul`
