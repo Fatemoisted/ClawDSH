@@ -153,6 +153,9 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   slots: 'client-side interface-typed browser service — packages/client/runtime/README.md owns the API',
   theme: 'client-side interface-typed browser service — packages/client/ui-theme/README.md owns the API',
   workspaces: 'client-side interface-typed browser service — packages/client/runtime/README.md owns the API',
+  // ClawDSH: 自有扩展 seam（packages/openclaw/*）不进上游目录；宿主侧由 walk 豁免具名。见 docs/upstream-proposal/ctx-channels.md。
+  channels: 'ClawDSH channel registry extension seam — packages/openclaw/channel-core/README.md owns the API',
+  embeddings: 'ClawDSH text-embedding extension seam — packages/openclaw/embeddings/README.md owns the API',
 }
 
 /**
@@ -204,6 +207,9 @@ export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
   'slash/input-insert-text': 'client-face slash-input protocol — packages/client/ui-input-trigger/README.md owns the API',
   'slots/changed': 'client-face slot invalidation signal — packages/client/runtime/README.md owns the API',
   'theme/change': 'client-face theme switch signal — packages/client/ui-theme/README.md owns the API',
+  // ClawDSH: 自有扩展事件（packages/openclaw/*）不进上游目录；见 docs/upstream-proposal/ctx-channels.md。
+  'channel/inbound': 'ClawDSH channel extension event — packages/openclaw/channel-core/README.md owns the API',
+  'channel/outbound': 'ClawDSH channel extension event — packages/openclaw/channel-core/README.md owns the API',
 }
 
 /**

@@ -104,7 +104,10 @@
     "packages/client/tsdown.client.ts",
     "scripts/client-bundle-css.spec.ts",
     "packages/typert/generator/tests/fixtures/**",
-    "scripts/client-bundle-purity.spec.ts"
+    "scripts/client-bundle-purity.spec.ts",
+    // ClawDSH: openclaw 测试由自有聚合 packages/openclaw/tsconfig.json 检查；
+    // 留在 host 程序里会经 paths 拉入其 src 触发 TS6307（src 不是 host 引用项目）。
+    "packages/openclaw/*/tests/**"
   ],
   "references": [
     { "path": "./vendor/cosmokit" },
@@ -273,16 +276,6 @@
     { "path": "./packages/plan/plan-mode" },
     { "path": "./packages/preset/agent-presets" },
     { "path": "./packages/preset/persona" },
-    // ClawDSH: 自有插件域（packages/openclaw/*）的新包在此注册 host 聚合。
-    { "path": "./packages/openclaw/soul" },
-    { "path": "./packages/openclaw/channel-core" },
-    { "path": "./packages/openclaw/channel-telegram" },
-    { "path": "./packages/openclaw/channel-feishu" },
-    { "path": "./packages/openclaw/embeddings" },
-    { "path": "./packages/openclaw/embeddings-ark" },
-    { "path": "./packages/openclaw/memory" },
-    { "path": "./packages/openclaw/skills-hub" },
-    { "path": "./packages/openclaw/automation" },
     { "path": "./packages/guard/repeat-tool-reminder" },
     { "path": "./packages/extensions/cordis-host-runner" },
     { "path": "./packages/extensions/tool-cordis" },

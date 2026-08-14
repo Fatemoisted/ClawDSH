@@ -1,0 +1,22 @@
+{
+  // ClawDSH 自有聚合：openclaw 插件的构建单元（tsc -b 发射 lib/types）。
+  // 不注册进上游 tsconfig.host.json —— cordis-catalog 门禁 fail-closed 双向
+  // （scripts/gen-cordis-catalog.ts 的 SERVICE_PAGE/EVENT_SCOPE_PAGE 与
+  // walk 豁免），extension seam 不能进上游目录。测试的类型检查走
+  // tsconfig.check.json（纯检查程序，paths 拉入上游 src 不触发 TS6307，
+  // 与 scripts/doc-typecheck.ts 同模式）。
+  // 构建入口：tools/link-openclaw.sh（CI 冒烟：clawdsh-smoke.yml）。
+  "extends": "../../tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "./soul" },
+    { "path": "./channel-core" },
+    { "path": "./channel-telegram" },
+    { "path": "./channel-feishu" },
+    { "path": "./embeddings" },
+    { "path": "./embeddings-ark" },
+    { "path": "./memory" },
+    { "path": "./skills-hub" },
+    { "path": "./automation" }
+  ]
+}

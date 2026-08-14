@@ -3,7 +3,6 @@
   "description": "ClawDSH automation row: OpenClaw-cron-style scheduled agent turns (croner + per-rule durable sessions) on the dsh agent turn bridge",
   "version": "0.1.0",
   "license": "MIT",
-  "private": true,
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -44,5 +43,13 @@
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-session-persistence-jsonl": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/openclaw/automation"
   }
 }

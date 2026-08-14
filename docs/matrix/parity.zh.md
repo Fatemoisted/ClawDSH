@@ -63,7 +63,7 @@
 |---|---|---|---|---|---|
 | 渠道：飞书（Lark） | OpenClaw `extensions/feishu`（v2026.2.12 起；引入提交 `0223416c61`） | `ctx.channels` | 插件 | `channel-feishu` | **implemented**（阶段 2 ✅） |
 
-微信系不落矩阵（不实现），决策记录见 `packages/openclaw/channel-wechat/README.md`。
+微信系不落矩阵（不实现），决策记录见 `docs/specs/feature-channel-wechat.md`。
 
 ## 维护规则
 

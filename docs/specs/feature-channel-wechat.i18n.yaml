@@ -1,6 +1,6 @@
 # Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write packages/openclaw/preset-openclaw/README.md
-README.md: a31483d3d93ffdbfa55d317945fcc39466871c63
-README.zh.md: f190e87235abd9c244efbab3af1aa3c8e2a3d24a
+#   pnpm run verify-translation-pairing --write docs/specs/feature-channel-wechat.md
+feature-channel-wechat.md: d72abd8849803c21a21f8c93956d8951dae155c1
+feature-channel-wechat.zh.md: f6f8ff37b9f3d3a56e0bd88d056ac62e0a6dc996

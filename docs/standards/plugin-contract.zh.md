@@ -8,7 +8,7 @@
 
 - 一个功能 = 一个包（`packages/openclaw/<pkg>/`），包名 `@clawdsh/dsh-<kebab-case>`；
 - 插件 = 一个 Cordis plugin：`inject` 声明依赖 + `apply(ctx)` 挂载，禁止手动引导顺序；
-- 复制 `packages/openclaw/_template/` 起步，按 `packages/openclaw/README.md` 的接入流程注册。
+- 复制 `tools/openclaw-plugin-template/` 起步，按 `packages/openclaw/README.md` 的接入流程注册。
 
 ## 2. 依赖声明（inject）
 

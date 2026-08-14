@@ -63,7 +63,7 @@ English | [中文](parity.zh.md)
 |---|---|---|---|---|---|
 | Channel: Feishu (Lark) | OpenClaw `extensions/feishu` (since v2026.2.12; introducing commit `0223416c61`) | `ctx.channels` | Plugin | `channel-feishu` | **implemented** (Phase 2 ✅) |
 
-WeChat family not in the matrix (not implemented), decision record in `packages/openclaw/channel-wechat/README.md`.
+WeChat family not in the matrix (not implemented), decision record in `docs/specs/feature-channel-wechat.md`.
 
 ## Maintenance rules
 

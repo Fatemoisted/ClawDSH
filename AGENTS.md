@@ -13,7 +13,7 @@
 
 **自有代码只允许出现在**：`packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal,upstream-proposal}/`、`tools/`、`.github/workflows/clawdsh-*`。
 
-**新增插件流程**：复制 `packages/openclaw/_template/` → 写 `docs/specs/feature-*.md` → 更新 `docs/matrix/parity.md` → 接入 workspace/tsconfig → 过契约测试。规范见 [docs/standards/plugin-contract.md](docs/standards/plugin-contract.md) 与 [docs/standards/pr-policy.md](docs/standards/pr-policy.md)。
+**新增插件流程**：复制 `tools/openclaw-plugin-template/` → 写 `docs/specs/feature-*.md` → 更新 `docs/matrix/parity.md` → 接入 workspace/tsconfig → 过契约测试。规范见 [docs/standards/plugin-contract.md](docs/standards/plugin-contract.md) 与 [docs/standards/pr-policy.md](docs/standards/pr-policy.md)。
 
 **当前阶段**：阶段 2（渠道 seam + 双渠道适配器已完成）。`channel-core`/`channel-telegram`/`channel-feishu` 已接入 workspace；凭证真实 e2e 待收尾。
 

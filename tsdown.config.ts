@@ -17,10 +17,10 @@ export default defineConfig(({ env }) => {
   const client = isBuildFaceClient(env?.DSH_BUILD_FACE)
   return {
     // ClawDSH: workspace 扫描以"目录"为粒度（不要求有 package.json），
-    // packages/openclaw/ 中尚未实现的骨架包会被误扫而报 Cannot find entry，
-    // 故显式排除。exclude 会整体替换 tsdown 内置默认值，因此上面四条
-    // 默认模式必须原样保留。插件包实现并接入构建时（参考 soul 包），
-    // 逐个移出排除名单（见 docs/adr/0001-project-foundation.md 决策 4）。
+    // packages/openclaw/ 中的目录现均为已实现的 npm 包，直接参与扫描；
+    // 模板与组装素材已移至 tools/、决策记录移至 docs/specs/（均不在
+    // workspace.include 内，无需排除）。exclude 会整体替换 tsdown 内置
+    // 默认值，因此上面四条默认模式必须原样保留。
     workspace: {
       include: ['vendor/*', 'packages/*/*', 'apps/cli'],
       exclude: [
@@ -28,9 +28,6 @@ export default defineConfig(({ env }) => {
         '**/dist/**',
         '**/test?(s)/**',
         '**/t?(e)mp/**',
-        'packages/openclaw/_template/**',
-        'packages/openclaw/channel-wechat/**',
-        'packages/openclaw/preset-openclaw/**',
       ],
     },
     entry: client ? '' : ['lib/types/{index,invariant,startup}.js'],

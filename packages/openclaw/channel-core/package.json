@@ -3,7 +3,6 @@
   "description": "ClawDSH channel seam: adapter registry routing inbound messages to per-thread agent sessions and returning each reply",
   "version": "0.1.0",
   "license": "MIT",
-  "private": true,
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -42,5 +41,13 @@
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-system-prompt": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/openclaw/channel-core"
   }
 }

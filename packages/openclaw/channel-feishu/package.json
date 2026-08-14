@@ -3,7 +3,6 @@
   "description": "ClawDSH Feishu (Lark) channel adapter: plaintext webhook inbound and im/v1/messages outbound over the ctx.channels seam",
   "version": "0.1.0",
   "license": "MIT",
-  "private": true,
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -37,5 +36,13 @@
     "@clawdsh/dsh-channel-core": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/openclaw/channel-feishu"
   }
 }
