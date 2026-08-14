@@ -3,7 +3,14 @@
   "description": "ClawDSH Feishu (Lark) channel adapter: plaintext webhook inbound and im/v1/messages outbound over the ctx.channels seam",
   "version": "0.1.0",
   "license": "MIT",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fatemoisted/ClawDSH.git",
+    "directory": "packages/openclaw/channel-feishu"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

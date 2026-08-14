@@ -3,7 +3,14 @@
   "description": "ClawDSH embeddings provider: Volcano Ark (火山方舟) text embeddings via the multimodal endpoint",
   "version": "0.1.0",
   "license": "MIT",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fatemoisted/ClawDSH.git",
+    "directory": "packages/openclaw/embeddings-ark"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

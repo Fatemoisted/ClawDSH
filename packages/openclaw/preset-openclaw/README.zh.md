@@ -21,9 +21,9 @@
 - ✅（阶段 2）飞书真实 e2e——`channel-feishu`（长连接入站）→ `channel-core`（per-thread agent turn）→ DeepSeek agent 回复 → `im.message.create` 出站，用户已在飞书确认收到；
 - ✅（阶段 2 补漏）memory 行接线——`profile/cordis.patch.yml` 已 `insert` `memory`（root 默认 `dshHomePath('memory')`）+ `embeddings-ark`（**已启用**：缺 ARK_API_KEY 时 boot 无感，只在 memory_search 调用时 fail-loud；key 放根 `.env` 或 `$DSH_HOME/.env`）；
 - ✅（阶段 2 收尾）soul 文件路径随 preset 目录解析——相对 `source` 按挂载树 `ctx.baseUrl` 解析，`agent.cordis.yml` 已切 `source: ./souls/assistant.md`；
-- ✅（阶段 2 收尾）symlink 过渡脚本化——`tools/link-openclaw.sh` 一键复制 profile + 建 6 个 `@clawdsh/*` symlink（替代手动四步）；
+- ✅（阶段 2 收尾）symlink 过渡脚本化——`tools/link-openclaw.sh` 一键复制 profile + 建 9 个 `@clawdsh/*` symlink（替代手动四步）；
 - ⏳（阶段 3）headless 一次性任务形态挂 openclaw preset（飞书 daemon 已验证 preset+agent 组合；headless 的 preset 选择接线留阶段 3）；
-- ⏳（阶段 3）`@clawdsh/*` 包正式发布 / 解析方案（symlink 是发布前过渡）。
+- ✅（阶段 3）`@clawdsh/*` 发布面（ADR-0004）：私有 registry manifest + `clawdsh-publish` 工作流；首次实际发布待 registry URL（symlink 保留为开发过渡）。
 
 ## 使用（飞书 daemon，本地开发）
 
@@ -39,5 +39,7 @@ export DEEPSEEK_API_KEY=sk-xxx
 # 3. 起 daemon（常驻长连接，等飞书消息）
 pnpm dsh --profile openclaw
 ```
+
+`@clawdsh/*` 包发布到私有 registry 后（ADR-0004），上面的 symlink 步骤可选：用 `dsh plugin --profile openclaw add @clawdsh/dsh-<pkg>`（每包一条）声明式安装——这是用户路径；symlink 脚本仍是发布前开发路径。
 
 未设 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 时 boot 会 fail-loud（`appId`/`appSecret` required），不会静默收不到消息。

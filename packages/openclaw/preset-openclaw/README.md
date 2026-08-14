@@ -21,9 +21,9 @@ English | [中文](README.zh.md)
 - ✅ (phase 2) Feishu real e2e — `channel-feishu` (long-connection inbound) → `channel-core` (per-thread agent turn) → DeepSeek agent reply → `im.message.create` outbound, user confirmed receipt in Feishu;
 - ✅ (phase 2 catch-up) memory-row wiring — `profile/cordis.patch.yml` `insert`s `memory` (root defaults to `dshHomePath('memory')`) + `embeddings-ark` (**enabled**: missing ARK_API_KEY is invisible at boot, only fails loud on a `memory_search` call; key in root `.env` or `$DSH_HOME/.env`);
 - ✅ (phase 2 wrap-up) soul file path resolved relative to the preset directory — relative `source` resolves against the mounted tree's `ctx.baseUrl`; `agent.cordis.yml` now uses `source: ./souls/assistant.md`;
-- ✅ (phase 2 wrap-up) symlink transition scripted — `tools/link-openclaw.sh` copies the profile and creates 6 `@clawdsh/*` symlinks in one step (replacing the manual four steps);
+- ✅ (phase 2 wrap-up) symlink transition scripted — `tools/link-openclaw.sh` copies the profile and creates 9 `@clawdsh/*` symlinks in one step (replacing the manual four steps);
 - ⏳ (phase 3) headless one-shot task shape mounting the openclaw preset (the Feishu daemon already verifies the preset+agent composition; headless preset selection wiring deferred to phase 3);
-- ⏳ (phase 3) `@clawdsh/*` packages formal publishing / resolution plan (symlink is a pre-publish transition).
+- ✅ (phase 3) `@clawdsh/*` publishing surface (ADR-0004): private-registry manifests + `clawdsh-publish` workflow; the first actual publish awaits the registry URL (the symlink stays a development transition).
 
 ## Usage (Feishu daemon, local development)
 
@@ -39,5 +39,7 @@ export DEEPSEEK_API_KEY=sk-xxx
 # 3. 起 daemon（常驻长连接，等飞书消息）
 pnpm dsh --profile openclaw
 ```
+
+Once the `@clawdsh/*` packages are published to the private registry (ADR-0004), the symlink step above is optional: install them declaratively with `dsh plugin --profile openclaw add @clawdsh/dsh-<pkg>` (one per package) — the user-facing path. The symlink script remains the pre-publish development path.
 
 Boot fails loud (with `appId`/`appSecret` required) when `FEISHU_APP_ID` / `FEISHU_APP_SECRET` are unset, never silently missing messages.

@@ -3,7 +3,14 @@
   "description": "ClawDSH automation row: OpenClaw-cron-style scheduled agent turns (croner + per-rule durable sessions) on the dsh agent turn bridge",
   "version": "0.1.0",
   "license": "MIT",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fatemoisted/ClawDSH.git",
+    "directory": "packages/openclaw/automation"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

@@ -50,8 +50,7 @@
 
 ## 变更说明
 
-- 0.1.0：首版（chunk+增量索引+双工具+指引段；契约测试 13 例，keyless 词袋 stub）。
-- 0.2.0：预压缩 memory flush 回合（阈值 + `agent/turn-stopping` 上的每压缩周期守卫；8 个 flush 契约测试，真 agent-loop 组合）。
+- 0.1.0：首版——chunk+增量索引+双工具+指引段（契约测试 13 例，keyless 词袋 stub）加预压缩 memory flush 回合（阈值 + `agent/turn-stopping` 上的每压缩周期守卫；8 个 flush 契约测试，真 agent-loop 组合）。
 
 ## Model Experience
 

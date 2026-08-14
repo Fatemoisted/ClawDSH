@@ -3,7 +3,14 @@
   "description": "ClawDSH skills-hub row: OpenClaw/ClawHub-compatible skill directory provider on the ctx.skills seam",
   "version": "0.1.0",
   "license": "MIT",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fatemoisted/ClawDSH.git",
+    "directory": "packages/openclaw/skills-hub"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

@@ -3,7 +3,14 @@
   "description": "ClawDSH channel seam: adapter registry routing inbound messages to per-thread agent sessions and returning each reply",
   "version": "0.1.0",
   "license": "MIT",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fatemoisted/ClawDSH.git",
+    "directory": "packages/openclaw/channel-core"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
