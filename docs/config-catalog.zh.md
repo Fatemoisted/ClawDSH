@@ -11,11 +11,67 @@
 
 `Requires:` 行列出插件通过 `inject` 注入的服务键：其 `cordis.yml` 树还必须加载这些服务的提供者。范围限定为 harness 层级（`packages/`）；配置树还可能加载的 vendored cordis 插件（`hmr`、控制台日志记录器等）固定为上游源代码（参见 [vendoring policy](../vendor/README.md)），未收录于此目录。
 
-<a id="clawdshdsh-channel-feishu"></a>
+<a id="clawdshdsh-automation"></a>
+
+## `@clawdsh/dsh-automation`
+
+需要： `agents` · `sessions` · `agentDefaultModel`
+
+```ts config-catalog
+/** Plugin config: the declared rule set. cordis.yml is the durable store — no separate storage seam. */
+export interface Config {
+  /** Scheduled rules; each gets its own durable agent session. */
+  rules?: AutomationRule[]
+}
+
+/** One scheduled rule. */
+export interface AutomationRule {
+  /** Stable rule identity; also the session id suffix `automation:<id>`. */
+  id: string
+  /** Optional human label carried in the turn framing. */
+  name?: string
+  /** When the rule fires: cron, one-shot at, or anchored every. */
+  schedule: CronSchedule | AtSchedule | EverySchedule
+  /** Message text sent to the rule's agent on each occurrence. */
+  message: string
+  /** Whether the rule participates; defaults to true. */
+  enabled?: boolean
+}
+
+/** A 5-field cron schedule with an optional IANA timezone. */
+export interface CronSchedule {
+  /** Discriminant: cron schedule. */
+  kind: 'cron'
+  /** 5-field cron expression, e.g. `0 9 * * *`. */
+  expr: string
+  /** IANA timezone name; omitted means the process timezone. */
+  timeZone?: string
+}
+
+/** A one-shot absolute-time schedule. */
+export interface AtSchedule {
+  /** Discriminant: one-shot schedule. */
+  kind: 'at'
+  /** ISO/RFC 3339 occurrence time, e.g. `2026-08-17T09:00:00+08:00`. */
+  at: string
+}
+
+/** An anchored fixed-interval schedule in seconds. */
+export interface EverySchedule {
+  /** Discriminant: interval schedule. */
+  kind: 'every'
+  /** Interval length in whole seconds (min 1); the first occurrence fires at mount. */
+  seconds: number
+}
+```
+
+来源： [`packages/openclaw/automation/src/index.ts:89`](../packages/openclaw/automation/src/index.ts)
+
+<a id="<a id="clawdshdsh-channel-feishu"></a>
 
 ## `@clawdsh/dsh-channel-feishu`
 
-需要：`channels`
+需要： `channels`
 
 ```ts config-catalog
 /** Plugin config: app identity plus which Open Platform region to dial. */
@@ -32,13 +88,13 @@ export interface Config {
 export type FeishuDomain = 'feishu' | 'lark'
 ```
 
-来源：[`packages/openclaw/channel-feishu/src/index.ts:37`](../packages/openclaw/channel-feishu/src/index.ts)
+来源： [`packages/openclaw/channel-feishu/src/index.ts:37`](../packages/openclaw/channel-feishu/src/index.ts)
 
-<a id="clawdshdsh-channel-telegram"></a>
+<a id="<a id="clawdshdsh-channel-telegram"></a>
 
 ## `@clawdsh/dsh-channel-telegram`
 
-需要：`channels`
+需要： `channels`
 
 ```ts config-catalog
 /** Plugin config: the bot token plus long-polling tuning. */
@@ -52,9 +108,9 @@ export interface Config {
 }
 ```
 
-来源：[`packages/openclaw/channel-telegram/src/index.ts:28`](../packages/openclaw/channel-telegram/src/index.ts)
+来源： [`packages/openclaw/channel-telegram/src/index.ts:28`](../packages/openclaw/channel-telegram/src/index.ts)
 
-<a id="clawdshdsh-embeddings-ark"></a>
+<a id="<a id="clawdshdsh-embeddings-ark"></a>
 
 ## `@clawdsh/dsh-embeddings-ark`
 
@@ -76,13 +132,13 @@ export interface Config {
 }
 ```
 
-来源：[`packages/openclaw/embeddings-ark/src/index.ts:41`](../packages/openclaw/embeddings-ark/src/index.ts)
+来源： [`packages/openclaw/embeddings-ark/src/index.ts:44`](../packages/openclaw/embeddings-ark/src/index.ts)
 
-<a id="clawdshdsh-memory"></a>
+<a id="<a id="clawdshdsh-memory"></a>
 
 ## `@clawdsh/dsh-memory`
 
-需要：`tools` · `systemPrompt` · `fs`
+需要： `tools` · `systemPrompt` · `fs`
 
 ```ts config-catalog
 /** Plugin config; `root` is required — the memory directory a deployment owns. */
@@ -120,13 +176,38 @@ export interface FlushConfig {
 }
 ```
 
-来源：[`packages/openclaw/memory/src/index.ts:58`](../packages/openclaw/memory/src/index.ts)
+来源： [`packages/openclaw/memory/src/index.ts:58`](../packages/openclaw/memory/src/index.ts)
 
-<a id="clawdshdsh-soul"></a>
+<a id="<a id="clawdshdsh-skills-hub"></a>
+
+## `@clawdsh/dsh-skills-hub`
+
+需要： `skills`
+
+```ts config-catalog
+/** Plugin config: which OpenClaw-style roots to scan and whether to evaluate `metadata.clawdbot` gating. */
+export interface Config {
+  /**
+   * Fixed workspace skills directory. Empty (default) scans `<cwd>/skills`
+   * per lookup instead, mirroring OpenClaw's `<workspaceDir>/skills`.
+   */
+  workspaceDir?: string
+  /** Legacy managed skills directory. Empty (default) uses `~/.clawdbot/skills`. */
+  managedDir?: string
+  /** Additional skill directories scanned between workspace and managed. */
+  extraDirs?: string[]
+  /** Evaluate `metadata.clawdbot.requires.{bins,anyBins,env}` at list time and exclude gated-out skills. */
+  gating?: boolean
+}
+```
+
+来源： [`packages/openclaw/skills-hub/src/index.ts:55`](../packages/openclaw/skills-hub/src/index.ts)
+
+<a id="<a id="clawdshdsh-soul"></a>
 
 ## `@clawdsh/dsh-soul`
 
-需要：`systemPrompt`
+需要： `systemPrompt`
 
 ```ts config-catalog
 /** Plugin config: where the soul text comes from and how it lands. */
@@ -149,7 +230,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/openclaw/soul/src/index.ts:45`](../packages/openclaw/soul/src/index.ts)
+来源： [`packages/openclaw/soul/src/index.ts:45`](../packages/openclaw/soul/src/index.ts)
 
 <a id="deepseek-aidsh-acp"></a>
 
