@@ -198,6 +198,45 @@ describe('release families', () => {
     expect(() => { vendor.validatePayload(vendored, []) }).toThrow(/empty tarball/)
   })
 
+  it('requires every ClawDSH export target to resolve from the packed payload', () => {
+    const clawdsh = releaseFamily('clawdsh')
+    const payload = [
+      'package/package.json',
+      'package/lib/index.js',
+      'package/lib/invariant.js',
+      'package/lib/types/index.d.ts',
+      'package/lib/types/invariant.d.ts',
+    ]
+    const manifest = {
+      exports: {
+        '.': {
+          types: './lib/types/index.d.ts',
+          default: './lib/index.js',
+        },
+        './invariant': {
+          types: './lib/types/invariant.d.ts',
+          default: './lib/invariant.js',
+        },
+        './package.json': './package.json',
+      },
+    }
+    const channel = member('packages/openclaw/channel-core', '@clawdsh/dsh-channel-core', manifest)
+
+    expect(() => { clawdsh.validatePayload(channel, payload) }).not.toThrow()
+
+    const sourceExport = member(channel.directory, channel.name, {
+      exports: { ...manifest.exports, './src/*': './src/*' },
+    })
+    expect(() => { clawdsh.validatePayload(sourceExport, payload) })
+      .toThrow(/exports\["\.\/src\/\*"\] target "\.\/src\/\*" is absent from the packed tarball/)
+
+    expect(() => { clawdsh.validatePayload(channel, payload.filter(file => file !== 'package/lib/types/index.d.ts')) })
+      .toThrow(/exports\["\."\]\["types"\] target "\.\/lib\/types\/index\.d\.ts" is absent/)
+
+    expect(() => { clawdsh.validatePayload(channel, [...payload, 'package/lib/types/stale.d.ts']) })
+      .toThrow(/packed stale declaration package\/lib\/types\/stale\.d\.ts: no current source src\/stale\.ts or src\/stale\.tsx/)
+  })
+
   it('drives the installed entry only for the family that publishes one', () => {
     expect(releaseFamily('dsh').installedEntry).toEqual({ packageName: '@deepseek-ai/dsh', binPath: 'lib/bin.js' })
     expect(releaseFamily('clawdsh').installedEntry).toBeUndefined()

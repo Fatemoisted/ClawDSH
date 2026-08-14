@@ -20,6 +20,7 @@ English | [中文](feature-memory.zh.md)
 - No self-built vector database/retrieval engine: embedding goes through an external OpenAI-compatible endpoint (Ark), chunk + cosine are pure in-package functions, the index is in-memory derived data;
 - No local embedding model (OpenClaw's local GGUF branch deferred to Phase 3 evaluation);
 - No per-request automatic memory injection (OpenClaw-isomorphic: on-demand tools + static guidance section);
+- No lexical keyword fallback when no embeddings provider is loaded: rejected, not merely deferred — the two scoring spaces are semantically different and a silent switch would mislead the model (see the rejected Note [2026-08-14-memory-lexical-fallback](../../.agents/notes/rejected/feature/2026-08-14-memory-lexical-fallback.md));
 - No multi-user memory isolation (follows dsh's agent/session isolation model, multiple agents = separate roots);
 - No flush *before* the compaction that precedes a turn: the flush turn runs between turns and may itself trigger the pressure compaction first (documented degradation, see the [flush Agent Note](../../.agents/notes/implemented/feature/2026-08-14-memory-flush-turn.md)).
 
@@ -45,6 +46,9 @@ memory:
   snippetChars: 700              # 片段字符上限
   timeoutMs: 30000               # 协作超时（透传 embed）
   maxReadLines: 1000             # memory_get 行数硬上限
+  watch: true                    # 宿主文件变更监听（默认开，主动失效）
+  watchStabilityThresholdMs: 200 # 变更稳定阈值 ms
+  watchPollIntervalMs: 100       # 稳定性探测间隔 ms
   flush:
     enabled: true                # 预压缩 flush 回合开关
     reserveTokensFloor: 20000    # 窗口下方保留的 token 余量

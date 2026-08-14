@@ -20,10 +20,14 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {} from '@deepseek-ai/cordis-plugin-timer'
 import {
+  DEFAULT_ACK_REACTION_SCOPE,
   deriveMentionPatterns,
   resolveAckReaction,
   resolveResponsePrefix,
+  shouldAckReaction,
   stripMentions,
+  stripZeroWidth,
+  type AckReactionScope,
   type IdentityConfig,
   type PresentationConfig,
 } from './presentation.ts'
@@ -33,13 +37,16 @@ export type { ChannelAdapter, ChannelCapabilities, ChannelMessage } from './type
 export {
   AUTO_RESPONSE_PREFIX,
   DEFAULT_ACK_REACTION,
+  DEFAULT_ACK_REACTION_SCOPE,
   deriveMentionPatterns,
   resolveAckReaction,
   resolveMessagePrefix,
   resolveResponsePrefix,
+  shouldAckReaction,
   stripMentions,
+  stripZeroWidth,
 } from './presentation.ts'
-export type { IdentityConfig, PresentationConfig } from './presentation.ts'
+export type { AckReactionScope, IdentityConfig, PresentationConfig } from './presentation.ts'
 export { splitTextByUtf16Limit } from './text.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -77,9 +84,6 @@ interface ThreadEntry {
   closing?: Promise<void>
 }
 
-/** Which inbound messages receive the configured acknowledgement reaction. */
-export type AckReactionScope = 'all' | 'direct' | 'group-all' | 'group-mentions' | 'off' | 'none'
-
 /** Whether group traffic requires a bot mention before it becomes an agent turn. */
 export type GroupMode = 'mention' | 'always'
 
@@ -104,25 +108,6 @@ export function deriveChannelSessionId(
     .update(JSON.stringify([channel, conversationId, threadId ?? null]))
     .digest('base64url')
   return SessionId(`channel:v1:${digest}`)
-}
-
-/**
- * Decide whether an accepted message receives an acknowledgement reaction.
- * @param scope - configured acknowledgement scope.
- * @param chatType - direct or group conversation.
- * @param botMentioned - trusted structured/fallback mention decision.
- * @returns whether the adapter reaction should be attempted.
- */
-export function shouldAckReaction(
-  scope: AckReactionScope,
-  chatType: 'direct' | 'group',
-  botMentioned: boolean,
-): boolean {
-  if (scope === 'off' || scope === 'none') return false
-  if (scope === 'all') return true
-  if (scope === 'direct') return chatType === 'direct'
-  if (scope === 'group-all') return chatType === 'group'
-  return chatType === 'group' && botMentioned
 }
 
 /**
@@ -174,16 +159,17 @@ export interface Config {
   idleTimeoutMs?: number
   /** Identity the presentation resolves against. */
   identity?: IdentityConfig
-  /** Outbound prefix; `'auto'` renders `[name]`. */
+  /** Outbound prefix; `'auto'` renders `[name]`, while an explicit empty string disables it. */
   responsePrefix?: string
-  /** Ack emoji; falls back to `identity.emoji`, then `👀`. */
+  /** Ack emoji; falls back to `identity.emoji`, then `👀`; an explicit empty string disables acks. */
   ackReaction?: string
 }
 
 export const Config: z<Config> = z.object({
   agentPreset: z.string().default('openclaw'),
   groupMode: z.union(['mention', 'always'] as const).default('mention'),
-  ackReactionScope: z.union(['all', 'direct', 'group-all', 'group-mentions', 'off', 'none'] as const).default('group-mentions'),
+  ackReactionScope: z.union(['all', 'direct', 'group-all', 'group-mentions', 'off', 'none'] as const)
+    .default(DEFAULT_ACK_REACTION_SCOPE),
   idleTimeoutMs: z.union([
     z.const(0),
     z.number().step(1).min(1000).max(MAX_TIMER_DELAY_MS),
@@ -195,8 +181,12 @@ export const Config: z<Config> = z.object({
     theme: z.string().default(''),
     emoji: z.string().default(''),
   }),
-  responsePrefix: z.string().default(''),
-  ackReaction: z.string().default(''),
+  // No schema default: undefined follows the automatic identity prefix, while
+  // an explicit empty string remains observable and disables the prefix.
+  responsePrefix: z.string(),
+  // No schema default: undefined follows the identity/default fallback, while
+  // an explicit empty string remains observable and disables reactions.
+  ackReaction: z.string(),
 })
 
 /**
@@ -222,12 +212,12 @@ export class ChannelRegistry extends Service {
     super(ctx, 'channels')
     this.agentPreset = config.agentPreset ?? 'openclaw'
     this.groupMode = config.groupMode ?? 'mention'
-    this.ackReactionScope = config.ackReactionScope ?? 'group-mentions'
+    this.ackReactionScope = config.ackReactionScope ?? DEFAULT_ACK_REACTION_SCOPE
     this.idleTimeoutMs = config.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS
     this.presentation = {
       ...(config.identity === undefined ? {} : { identity: config.identity }),
-      ...(config.responsePrefix === undefined || config.responsePrefix === '' ? {} : { responsePrefix: config.responsePrefix }),
-      ...(config.ackReaction === undefined || config.ackReaction === '' ? {} : { ackReaction: config.ackReaction }),
+      ...(config.responsePrefix === undefined ? {} : { responsePrefix: config.responsePrefix }),
+      ...(config.ackReaction === undefined ? {} : { ackReaction: config.ackReaction }),
     }
     this.mentionPatterns = deriveMentionPatterns(config.identity?.name, config.identity?.emoji)
     ctx.on('channel/inbound', (message) => {
@@ -250,6 +240,15 @@ export class ChannelRegistry extends Service {
       ctx.interval(() => { this.sweepIdleThreads() }, sweepEvery)
     }
     ctx.effect(() => () => this.disposeThreads(), 'channels.thread-handles()')
+  }
+
+  /**
+   * The registry's presentation config — the single entry point adapters use
+   * to derive mention patterns from the deployment identity.
+   * @returns the resolved presentation config, readonly.
+   */
+  getPresentation(): Readonly<PresentationConfig> {
+    return this.presentation
   }
 
   /**
@@ -304,14 +303,15 @@ export class ChannelRegistry extends Service {
     if (message.direction !== 'in') return
     const address = this.resolveAddress(message)
     const chatType = message.chatType ?? 'direct'
-    const botMentioned = this.isBotMentioned(message)
-    if (chatType === 'group' && this.groupMode === 'mention' && !botMentioned) return
+    const mention = this.resolveMention(message, chatType)
+    if (chatType === 'group' && this.groupMode === 'mention' && !mention.botMentioned) return
     // Provider adapters normalize structured mentions themselves. The generic
     // identity regex is only a fallback for group adapters without mention
     // metadata; applying it to every accepted message corrupts ordinary direct
     // text such as "tell me about ClawDSH".
-    const fallbackMention = chatType === 'group' && message.mention === undefined && botMentioned
-    const text = (fallbackMention ? stripMentions(message.text, this.mentionPatterns) : message.text).trim()
+    const fallbackMention = chatType === 'group' && message.mention === undefined && mention.botMentioned
+    const fallbackText = fallbackMention ? stripZeroWidth(message.text) : message.text
+    const text = (fallbackMention ? stripMentions(fallbackText, this.mentionPatterns) : fallbackText).trim()
     if (text === '') return
     const normalized: ChannelMessage = {
       ...message,
@@ -321,21 +321,30 @@ export class ChannelRegistry extends Service {
       text,
     }
     if (address.threadId === undefined) delete normalized.threadId
+    // Acknowledgement is a receipt signal, so begin it as soon as the message
+    // has passed routing/text gates. It must not sit behind a slow prior model
+    // turn in the same FIFO. The route still awaits the contained task below,
+    // which keeps provider and registry teardown drain-aware.
+    const ackTask = this.startAck(normalized, mention)
     const key = JSON.stringify([message.channel, address.conversationId, address.threadId ?? null])
     const sessionId = deriveChannelSessionId(message.channel, address.conversationId, address.threadId)
-    const entry = await this.getOrCreateThread(key, sessionId)
-    const turn = entry.tail
-      .then(async () => {
-        try {
-          await this.driveTurn(entry, normalized, botMentioned, address.legacyThreadOnly)
-        } finally {
-          entry.lastActive = Date.now()
-        }
-      })
-    // A failed turn is visible to this caller, but the queue tail itself is
-    // contained so later messages in the same conversation can still run.
-    entry.tail = turn.catch(() => undefined)
-    await turn
+    try {
+      const entry = await this.getOrCreateThread(key, sessionId)
+      const turn = entry.tail
+        .then(async () => {
+          try {
+            await this.driveTurn(entry, normalized, address.legacyThreadOnly)
+          } finally {
+            entry.lastActive = Date.now()
+          }
+        })
+      // A failed turn is visible to this caller, but the queue tail itself is
+      // contained so later messages in the same conversation can still run.
+      entry.tail = turn.catch(() => undefined)
+      await turn
+    } finally {
+      await ackTask
+    }
   }
 
   /** Normalize the new address contract while accepting the former threadId-only shape. */
@@ -358,12 +367,43 @@ export class ChannelRegistry extends Service {
   }
 
   /** Prefer platform-structured mention data; configured identity is a generic-adapter fallback. */
-  private isBotMentioned(message: ChannelMessage): boolean {
-    if (message.chatType !== 'group') return false
+  private resolveMention(
+    message: ChannelMessage,
+    chatType: 'direct' | 'group',
+  ): { detectable: boolean; botMentioned: boolean } {
+    if (chatType !== 'group') return { detectable: false, botMentioned: false }
     if (message.mention !== undefined) {
-      return message.mention.detectable && message.mention.botMentioned
+      return {
+        detectable: message.mention.detectable,
+        botMentioned: message.mention.detectable && message.mention.botMentioned,
+      }
     }
-    return this.mentionPatterns.some(pattern => pattern.test(message.text))
+    return {
+      detectable: this.mentionPatterns.length > 0,
+      botMentioned: this.mentionPatterns.some(pattern => pattern.test(stripZeroWidth(message.text))),
+    }
+  }
+
+  /** Start one contained receipt reaction without joining the conversation FIFO. */
+  private startAck(
+    message: ChannelMessage,
+    mention: { detectable: boolean; botMentioned: boolean },
+  ): Promise<void> {
+    const adapter = this.adapters.get(message.channel)
+    const emoji = resolveAckReaction(this.presentation)
+    if (adapter === undefined || !adapter.capabilities.react || adapter.react === undefined
+      || message.messageId === undefined || emoji === ''
+      || !shouldAckReaction(
+        this.ackReactionScope,
+        message.chatType === 'group',
+        this.groupMode === 'mention',
+        mention.detectable,
+        mention.botMentioned,
+      )) return Promise.resolve()
+
+    return Promise.resolve().then(() => adapter.react?.(message, emoji)).catch((error: unknown) => {
+      this.ctx.logger.warn(`channels: ack reaction for "${message.channel}" failed: ${describe(error)}`)
+    })
   }
 
   /** Single-flight acquisition of one deterministic, durable channel Agent. */
@@ -432,20 +472,10 @@ export class ChannelRegistry extends Service {
   private async driveTurn(
     entry: ThreadEntry,
     message: ChannelMessage,
-    botMentioned: boolean,
     legacyThreadOnly: boolean,
   ): Promise<void> {
     const { agent } = entry.handle
     const adapter = this.adapters.get(message.channel)
-    if (adapter !== undefined && adapter.capabilities.react && adapter.react !== undefined
-      && message.messageId !== undefined
-      && shouldAckReaction(this.ackReactionScope, message.chatType ?? 'direct', botMentioned)) {
-      // Fire-and-forget: the ack marks receipt; a failed reaction must not block the reply.
-      const emoji = resolveAckReaction(this.presentation)
-      void adapter.react(message, emoji).catch((error: unknown) => {
-        this.ctx.logger.warn(`channels: ack reaction for "${message.channel}" failed: ${describe(error)}`)
-      })
-    }
     const firstSeq = agent.session.seq
     agent.followup(createUserMessage({
       content: [{ type: 'text', text: message.text }],
@@ -519,6 +549,25 @@ export class ChannelRegistry extends Service {
       await closing
     }))
   }
+}
+
+/**
+ * Build and register a channel adapter, deriving its mention patterns from the
+ * registry's identity presentation. Every bundled channel adapter's `apply()`
+ * uses this lifecycle entry; adapters without structured mention metadata can
+ * consume the supplied patterns as their fallback.
+ * @param ctx - Cordis context carrying the `channels` service.
+ * @param build - builds the adapter from the derived mention patterns.
+ * @returns the disposer that stops the adapter and removes it from the registry.
+ */
+export function registerChannelAdapter(
+  ctx: Context,
+  build: (mentionPatterns: readonly RegExp[]) => ChannelAdapter,
+): () => Promise<void> {
+  const presentation = ctx.channels.getPresentation()
+  const mentionPatterns = deriveMentionPatterns(presentation.identity?.name, presentation.identity?.emoji)
+  const adapter = build(mentionPatterns)
+  return ctx.effect(() => ctx.channels.registerAdapter(adapter), `channel-${adapter.id}.register()`)
 }
 
 export default ChannelRegistry

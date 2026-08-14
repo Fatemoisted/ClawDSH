@@ -3,9 +3,9 @@
  *
  * Inbound messages arrive through grammY's long polling: the adapter runs a
  * `Bot` with a `message` handler that maps text and caption bodies onto
- * `channel/inbound`, and grammY advances the `offset` past every consumed
- * update (idempotent under at-least-once delivery). Outbound replies post
- * through `bot.api.sendMessage`, preserving topics and native replies.
+ * `channel/inbound`. Outbound replies post through `bot.api.sendMessage`,
+ * preserving topics and native replies. Durable cross-process inbox/outbox
+ * de-duplication is intentionally not claimed by this adapter.
  *
  * Webhook delivery and attachment transfer remain outside this adapter's
  * normalized text surface.
@@ -17,14 +17,19 @@ import type { ReactionTypeEmoji } from 'grammy/types'
 import { autoRetry } from '@grammyjs/auto-retry'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { splitTextByUtf16Limit } from '@clawdsh/dsh-channel-core'
+import type {} from '@deepseek-ai/cordis-plugin-timer'
+import { registerChannelAdapter, splitTextByUtf16Limit } from '@clawdsh/dsh-channel-core'
 import type { ChannelAdapter, ChannelMessage } from '@clawdsh/dsh-channel-core'
 
 /** Cordis plugin name. */
 export const name = 'channel-telegram'
 
 /** The channel registry this adapter contributes to. */
-export const inject = ['channels']
+export const inject = ['channels', 'timer']
+
+/** Outer lifecycle retry after grammY's own polling/API retry policy gives up. */
+const INITIAL_POLLING_RETRY_MS = 1000
+const MAX_POLLING_RETRY_MS = 30_000
 
 /** Plugin config: the bot token plus long-polling tuning. */
 export interface Config {
@@ -153,8 +158,25 @@ function removeEntityRanges(
     .reduce((text, range) => text.slice(0, range.offset) + text.slice(range.offset + range.length), body)
 }
 
-/** Start grammY long polling and return its drain-aware disposer. */
-function startPolling(ctx: Context, bot: Bot, timeout: number): () => Promise<void> {
+/** Telegram API error code without coupling lifecycle policy to a concrete error class. */
+function telegramErrorCode(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null || !('error_code' in error)) return undefined
+  const code = error.error_code
+  return typeof code === 'number' ? code : undefined
+}
+
+/** A bad token cannot recover by restarting the same adapter. */
+function isRetryablePollingError(error: unknown): boolean {
+  return telegramErrorCode(error) !== 401
+}
+
+/** Start grammY long polling and return its retrying, drain-aware disposer. */
+function startPolling(
+  ctx: Context,
+  bot: Bot,
+  timeout: number,
+  setReceiving: (receiving: boolean) => void,
+): () => Promise<void> {
   bot.catch((error) => {
     ctx.logger.warn(`channel-telegram: ${error.message}`)
   })
@@ -162,10 +184,46 @@ function startPolling(ctx: Context, bot: Bot, timeout: number): () => Promise<vo
     const inbound = toInbound(message)
     if (inbound !== undefined) await ctx.parallel('channel/inbound', inbound)
   })
-  const pollingTask = bot.start({ allowed_updates: ['message'], timeout }).catch((error: unknown) => {
-    ctx.logger.warn(`channel-telegram: polling start failed: ${error instanceof Error ? error.message : String(error)}`)
-  })
+  let disposed = false
+  let attempt = 0
+  let cancelRetry: (() => void) | undefined
+  let pollingTask: Promise<void> | undefined
+  const scheduleRetry = (error: unknown): void => {
+    if (disposed) return
+    setReceiving(false)
+    if (!isRetryablePollingError(error)) {
+      ctx.logger.warn(`channel-telegram: polling stopped permanently: ${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
+    const delay = Math.min(INITIAL_POLLING_RETRY_MS * 2 ** attempt, MAX_POLLING_RETRY_MS)
+    attempt += 1
+    ctx.logger.warn(
+      `channel-telegram: polling stopped: ${error instanceof Error ? error.message : String(error)}; retrying in ${delay}ms`,
+    )
+    cancelRetry = ctx.timeout(() => {
+      cancelRetry = undefined
+      start()
+    }, delay)
+  }
+  const start = (): void => {
+    if (disposed) return
+    setReceiving(true)
+    try {
+      pollingTask = bot.start({ allowed_updates: ['message'], timeout })
+      void pollingTask.then(
+        () => { scheduleRetry(new Error('polling task ended unexpectedly')) },
+        (error: unknown) => { scheduleRetry(error) },
+      )
+    } catch (error: unknown) {
+      scheduleRetry(error)
+    }
+  }
+  start()
   return async () => {
+    disposed = true
+    setReceiving(false)
+    cancelRetry?.()
+    cancelRetry = undefined
     try {
       await bot.stop()
     } catch (error) {
@@ -173,7 +231,7 @@ function startPolling(ctx: Context, bot: Bot, timeout: number): () => Promise<vo
     }
     // grammY resolves start() only after polling has stopped and all active
     // middleware has completed, so awaiting it makes adapter disposal a drain.
-    await pollingTask
+    await (pollingTask ?? Promise.resolve()).catch(() => undefined)
   }
 }
 
@@ -255,10 +313,13 @@ export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAd
   if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 60) {
     throw new TypeError('telegram: timeout must be an integer from 1 to 60 seconds')
   }
+  const capabilities = { receive: polling, send: true, react: true }
   return {
     id: 'telegram',
-    capabilities: { receive: polling, send: true, react: true },
-    start: ctx => polling ? startPolling(ctx, bot, timeout) : () => {},
+    capabilities,
+    start: ctx => polling
+      ? startPolling(ctx, bot, timeout, (receiving) => { capabilities.receive = receiving })
+      : () => {},
     send: message => sendMessage(bot, message),
     react: (message, emoji) => react(bot, message, emoji),
   }
@@ -270,6 +331,5 @@ export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAd
  * @param config - validated plugin config.
  */
 export function apply(ctx: Context, config: Config): void {
-  const adapter = createAdapter(config)
-  ctx.effect(() => ctx.channels.registerAdapter(adapter), 'channel-telegram.register()')
+  registerChannelAdapter(ctx, () => createAdapter(config))
 }

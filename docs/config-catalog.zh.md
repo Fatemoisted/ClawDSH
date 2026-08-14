@@ -71,18 +71,32 @@ export interface EverySchedule {
 
 ## `@clawdsh/dsh-channel-core`
 
-需要： `agents` · `sessions` · `agentDefaultModel`
+需要： `agents` · `sessions` · `agentDefaultModel` · `agentPresets` · `sessionPersistence` · `timer`
 
 ```ts config-catalog
 /** Channel registry config: identity presentation (never prompt content). */
 export interface Config {
+  /** Agent preset composed for newly created channel sessions. */
+  agentPreset?: string
+  /** Group messages become turns only after a bot mention by default. */
+  groupMode?: GroupMode
+  /** Scope of the non-blocking inbound acknowledgement reaction. */
+  ackReactionScope?: AckReactionScope
+  /** Dispose idle live Agents after this many milliseconds; 0 disables eviction. */
+  idleTimeoutMs?: number
   /** Identity the presentation resolves against. */
   identity?: IdentityConfig
-  /** Outbound prefix; `'auto'` renders `[name]`. */
+  /** Outbound prefix; `'auto'` renders `[name]`, while an explicit empty string disables it. */
   responsePrefix?: string
-  /** Ack emoji; falls back to `identity.emoji`, then `👀`. */
+  /** Ack emoji; falls back to `identity.emoji`, then `👀`; an explicit empty string disables acks. */
   ackReaction?: string
 }
+
+/** Whether group traffic requires a bot mention before it becomes an agent turn. */
+export type GroupMode = 'mention' | 'always'
+
+/** Where the ack emoji reaction applies (OpenClaw's `messages.ackReactionScope`). */
+export type AckReactionScope = 'all' | 'direct' | 'group-all' | 'group-mentions' | 'off' | 'none'
 
 /** Identity config: presentation only, never injected into the prompt. */
 export interface IdentityConfig {
@@ -95,13 +109,13 @@ export interface IdentityConfig {
 }
 ```
 
-来源： [`packages/openclaw/channel-core/src/index.ts:99`](../packages/openclaw/channel-core/src/index.ts)
+来源： [`packages/openclaw/channel-core/src/index.ts:151`](../packages/openclaw/channel-core/src/index.ts)
 
 <a id="clawdshdsh-channel-feishu"></a>
 
 ## `@clawdsh/dsh-channel-feishu`
 
-需要： `channels`
+需要： `channels` · `timer`
 
 ```ts config-catalog
 /** Plugin config: app identity plus which Open Platform region to dial. */
@@ -118,13 +132,13 @@ export interface Config {
 export type FeishuDomain = 'feishu' | 'lark'
 ```
 
-来源： [`packages/openclaw/channel-feishu/src/index.ts:37`](../packages/openclaw/channel-feishu/src/index.ts)
+来源： [`packages/openclaw/channel-feishu/src/index.ts:34`](../packages/openclaw/channel-feishu/src/index.ts)
 
 <a id="clawdshdsh-channel-telegram"></a>
 
 ## `@clawdsh/dsh-channel-telegram`
 
-需要： `channels`
+需要： `channels` · `timer`
 
 ```ts config-catalog
 /** Plugin config: the bot token plus long-polling tuning. */
@@ -138,7 +152,7 @@ export interface Config {
 }
 ```
 
-来源： [`packages/openclaw/channel-telegram/src/index.ts:29`](../packages/openclaw/channel-telegram/src/index.ts)
+来源： [`packages/openclaw/channel-telegram/src/index.ts:35`](../packages/openclaw/channel-telegram/src/index.ts)
 
 <a id="clawdshdsh-embeddings-ark"></a>
 
@@ -189,6 +203,12 @@ export interface Config {
   timeoutMs?: number
   /** Maximum lines one memory_get call reads. Defaults to 1000. */
   maxReadLines?: number
+  /** Whether host changes to memory files are watched for proactive invalidation. Defaults to true. */
+  watch?: boolean
+  /** Milliseconds a changed memory file must remain stable before it is observed. Defaults to 200. */
+  watchStabilityThresholdMs?: number
+  /** Milliseconds between Chokidar host-change and write-stability probes. Defaults to 100. */
+  watchPollIntervalMs?: number
   /** Pre-compaction memory flush turn; enabled by default, thresholds OpenClaw's 20000/4000. */
   flush?: FlushConfig
 }
@@ -206,7 +226,7 @@ export interface FlushConfig {
 }
 ```
 
-来源： [`packages/openclaw/memory/src/index.ts:58`](../packages/openclaw/memory/src/index.ts)
+来源： [`packages/openclaw/memory/src/index.ts:61`](../packages/openclaw/memory/src/index.ts)
 
 <a id="clawdshdsh-skills-hub"></a>
 
@@ -255,12 +275,14 @@ export interface Config {
   text?: string
   /** `replace` makes the soul the complete system prompt; `append` (default) adds it as a section. */
   mode?: 'replace' | 'append'
+  /** Prepend the {@link SOUL_PRECEDENCE_NOTE} declaration to append-mode souls (default true); never in replace mode. */
+  precedenceNote?: boolean
   /** Suppress dynamic runtime-context snapshots for this agent scope. */
   includeRuntimeContext?: boolean
 }
 ```
 
-来源： [`packages/openclaw/soul/src/index.ts:45`](../packages/openclaw/soul/src/index.ts)
+来源： [`packages/openclaw/soul/src/index.ts:55`](../packages/openclaw/soul/src/index.ts)
 
 <a id="deepseek-aidsh-acp"></a>
 

@@ -13,13 +13,13 @@
  */
 
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { lstatSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { parseArgs } from 'node:util'
-import { releaseFamily } from './families.ts'
+import { releaseFamily, tarballName, type ReleaseFamily } from './families.ts'
 import { attempt, isEntry } from './process.ts'
-import { packedIdentity, readPublishOrder } from './tarball.ts'
+import { packedIdentity, readPublishOrder, tarballFiles } from './tarball.ts'
 
 /**
  * Registry codes that answer a write which did not settle, rather than a
@@ -45,6 +45,77 @@ const PUBLISH_SPACING_MS = 2_000
 type RegistryState =
   | { readonly kind: 'absent' }
   | { readonly kind: 'present'; readonly integrity: string }
+
+/** One artifact proven to be the exact checkout-defined family member. */
+export interface VerifiedPublishArtifact {
+  readonly filename: string
+  readonly name: string
+  readonly version: string
+}
+
+/** Render one deterministic list for a fail-loud artifact-set diagnostic. */
+function renderList(values: readonly string[]): string {
+  return values.length === 0 ? '(none)' : values.join(', ')
+}
+
+/** Whether two ordered string lists are exactly equal. */
+function sameSequence(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+/**
+ * Bind a downloaded pack directory back to the family declared by this
+ * checkout. Publication must never trust an order file on its own: every
+ * expected member must appear exactly once, no extra tarball may ride along,
+ * and each archive must still carry the expected identity and payload policy.
+ * @param family - checkout-defined release family.
+ * @param directory - absolute pack artifact directory.
+ * @param root - checkout root used to discover current family members.
+ * @returns Verified artifacts in dependency-safe publish order.
+ */
+export function verifyPackedFamilyArtifacts(
+  family: ReleaseFamily,
+  directory: string,
+  root = process.cwd(),
+): VerifiedPublishArtifact[] {
+  const members = family.publishOrder(family.members(root))
+  family.verifyVersions(members)
+  family.verifySynchronizedDependencyRanges(root, members)
+  const expected = members.map(member => ({
+    filename: tarballName(member),
+    name: member.name,
+    version: member.version,
+    member,
+  }))
+  const expectedFiles = expected.map(artifact => artifact.filename)
+  const order = readPublishOrder(directory)
+  if (!sameSequence(order, expectedFiles)) {
+    throw new Error(
+      `release publish: artifact order does not exactly match family ${family.id}`
+      + `\n  expected: ${renderList(expectedFiles)}\n  actual:   ${renderList(order)}`,
+    )
+  }
+  const present = readdirSync(directory).filter(filename => filename.endsWith('.tgz')).sort()
+  const sortedExpected = [...expectedFiles].sort()
+  if (!sameSequence(present, sortedExpected)) {
+    throw new Error(
+      `release publish: tarball set does not exactly match family ${family.id}`
+      + `\n  expected: ${renderList(sortedExpected)}\n  actual:   ${renderList(present)}`,
+    )
+  }
+  return expected.map(({ filename, name, version, member }) => {
+    const tarball = join(directory, filename)
+    if (!lstatSync(tarball).isFile()) throw new Error(`release publish: ${filename} is not a regular file`)
+    const identity = packedIdentity(tarball)
+    if (identity.name !== name || identity.version !== version) {
+      throw new Error(
+        `release publish: ${filename} declares ${identity.name}@${identity.version}, expected ${name}@${version}`,
+      )
+    }
+    family.validatePayload(member, tarballFiles(tarball))
+    return { filename, name, version }
+  })
+}
 
 /**
  * Whether a failed publish is worth another attempt.
@@ -135,12 +206,12 @@ async function main(): Promise<void> {
 
   const family = releaseFamily(values.family)
   const directory = resolve(process.cwd(), values.from)
+  const artifacts = verifyPackedFamilyArtifacts(family, directory)
 
   let published = 0
   let skipped = 0
-  for (const filename of readPublishOrder(directory)) {
+  for (const { filename, name, version } of artifacts) {
     const tarball = join(directory, filename)
-    const { name, version } = packedIdentity(tarball)
     const state = registryState(name, version)
     if (state.kind === 'present') {
       const local = integrityOf(tarball)

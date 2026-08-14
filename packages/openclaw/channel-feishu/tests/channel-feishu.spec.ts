@@ -86,6 +86,27 @@ describe('the Feishu channel adapter', () => {
     })
   })
 
+  it('preserves the SDK structured decision for an unmentioned group message', () => {
+    expect(toInbound(normalized({ chatType: 'group', mentionedBot: false }))).toMatchObject({
+      conversationId: 'oc_1',
+      chatType: 'group',
+      mention: { detectable: true, botMentioned: false },
+    })
+  })
+
+  it('maps an SDK mention-all broadcast to a structured bot mention', () => {
+    expect(toInbound(normalized({
+      chatType: 'group',
+      mentionedBot: false,
+      mentionAll: true,
+      content: '@所有人 status update',
+    }))).toMatchObject({
+      conversationId: 'oc_1',
+      chatType: 'group',
+      mention: { detectable: true, botMentioned: true },
+    })
+  })
+
   it('falls back to the p2p chat id when the sender id is absent', () => {
     expect(toInbound(normalized({ chatType: 'p2p', senderId: '' }))).toMatchObject({
       conversationId: 'oc_1',
@@ -216,6 +237,32 @@ describe('the Feishu channel adapter', () => {
     expect(sdk.disconnect).toHaveBeenCalledOnce()
   })
 
+  it('attempts every failed-handshake cleanup step even when earlier teardown throws', async () => {
+    const sdk = mockChannel(
+      () => Promise.reject(new LarkChannelError('not_connected', 'handshake failed')),
+      { state: 'reconnecting', reconnectAttempts: 1 },
+    )
+    const close = vi.fn(() => { throw new Error('socket close failed') })
+    const disposeSafety = vi.fn(async () => { throw new Error('safety dispose failed') })
+    Object.assign(sdk.channel, {
+      rawWsClient: { close },
+      safety: { dispose: disposeSafety },
+    })
+    const ctx = new Context()
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    const adapter = createAdapter(CONFIG, { channel: sdk.channel })
+
+    const dispose = adapter.start(ctx)
+    await Promise.resolve()
+    await Promise.resolve()
+    await dispose()
+
+    expect(close).toHaveBeenCalledWith({ force: true })
+    expect(disposeSafety).toHaveBeenCalledOnce()
+    expect(sdk.disconnect).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('failed to fully disconnect'))
+  })
+
   it('uses the SDK text sender for native replies in a topic', async () => {
     const sdk = mockChannel()
     const adapter = createAdapter(CONFIG, { channel: sdk.channel })
@@ -261,6 +308,29 @@ describe('the Feishu channel adapter', () => {
     expect(sentText).toBe(reply)
   })
 
+  it('splits an ordinary long reply without cutting a surrogate pair', async () => {
+    const sdk = mockChannel()
+    const adapter = createAdapter(CONFIG, { channel: sdk.channel })
+    const reply = `${'a'.repeat(3499)}😀tail`
+    await adapter.send({
+      channel: 'feishu',
+      direction: 'out',
+      conversationId: 'oc_1',
+      replyToMessageId: 'om_1',
+      text: reply,
+    })
+
+    expect(sdk.send.mock.calls).toEqual([
+      ['oc_1', { text: 'a'.repeat(3499) }, { replyTo: 'om_1' }],
+      ['oc_1', { text: '😀tail' }, {}],
+    ])
+    const sentText = sdk.send.mock.calls.map((call) => {
+      const input = call[1]
+      return 'text' in input ? input.text : ''
+    }).join('')
+    expect(sentText).toBe(reply)
+  })
+
   it('lets the SDK own ordinary sending, chunking, retry, and fallback', async () => {
     const sdk = mockChannel()
     const adapter = createAdapter(CONFIG, { channel: sdk.channel })
@@ -286,12 +356,30 @@ describe('the Feishu channel adapter', () => {
     expect(sdk.addReaction).toHaveBeenCalledWith('om_1', 'EYES')
   })
 
-  it('fails loud for an unsupported Feishu reaction', async () => {
+  it('maps a common portable ack to Feishu\'s named reaction', async () => {
     const sdk = mockChannel()
     const adapter = createAdapter(CONFIG, { channel: sdk.channel })
-    await expect(adapter.react?.({
+    await adapter.react?.({
       channel: 'feishu', direction: 'in', conversationId: 'oc_1', messageId: 'om_1', text: 'hi',
-    }, '👍')).rejects.toThrow(/unsupported reaction/)
+    }, '👍')
+    expect(sdk.addReaction).toHaveBeenCalledWith('om_1', 'THUMBSUP')
+  })
+
+  it('skips the ack reaction when the inbound event has no message id', async () => {
+    const sdk = mockChannel()
+    const adapter = createAdapter(CONFIG, { channel: sdk.channel })
+    await adapter.react?.({
+      channel: 'feishu', direction: 'in', conversationId: 'oc_1', text: 'hi',
+    }, '👀')
     expect(sdk.addReaction).not.toHaveBeenCalled()
+  })
+
+  it('falls back to eyes for an arbitrary core identity ack emoji', async () => {
+    const sdk = mockChannel()
+    const adapter = createAdapter(CONFIG, { channel: sdk.channel })
+    await adapter.react?.({
+      channel: 'feishu', direction: 'in', conversationId: 'oc_1', messageId: 'om_1', text: 'hi',
+    }, '🐚')
+    expect(sdk.addReaction).toHaveBeenCalledWith('om_1', 'EYES')
   })
 })

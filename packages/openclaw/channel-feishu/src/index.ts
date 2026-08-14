@@ -14,7 +14,7 @@ import * as Lark from '@larksuiteoapi/node-sdk'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/cordis-plugin-timer'
-import { splitTextByUtf16Limit } from '@clawdsh/dsh-channel-core'
+import { registerChannelAdapter, splitTextByUtf16Limit } from '@clawdsh/dsh-channel-core'
 import type { ChannelAdapter, ChannelMessage } from '@clawdsh/dsh-channel-core'
 
 /** Cordis plugin name. */
@@ -102,7 +102,10 @@ export function toInbound(message: Lark.NormalizedMessage): ChannelMessage | und
     chatType: isDirect ? 'direct' : 'group',
     mention: {
       detectable: true,
-      botMentioned: isDirect || message.mentionedBot,
+      // `respondToMentionAll` is enabled on the SDK policy above, so preserve
+      // that accepted broadcast as an explicit mention for channel-core's
+      // centralized group gate too.
+      botMentioned: isDirect || message.mentionedBot || message.mentionAll,
     },
     ...(message.senderId === '' ? {} : { sender: message.senderId }),
     messageId: message.messageId,
@@ -133,12 +136,26 @@ interface FailedConnectInternals {
  * connections stay entirely on the public SDK lifecycle.
  */
 async function disconnectChannel(channel: Lark.LarkChannel, connectedOnce: boolean): Promise<void> {
+  const failures: unknown[] = []
   if (!connectedOnce) {
-    channel.rawWsClient?.close({ force: true })
+    try {
+      channel.rawWsClient?.close({ force: true })
+    } catch (error: unknown) {
+      failures.push(error)
+    }
     const internals = channel as unknown as FailedConnectInternals
-    await internals.safety?.dispose()
+    try {
+      await internals.safety?.dispose()
+    } catch (error: unknown) {
+      failures.push(error)
+    }
   }
-  await channel.disconnect()
+  try {
+    await channel.disconnect()
+  } catch (error: unknown) {
+    failures.push(error)
+  }
+  if (failures.length > 0) throw new AggregateError(failures, 'failed to fully disconnect Lark channel')
 }
 
 /** Attach the SDK channel to Cordis and return a disposer that drains connection teardown. */
@@ -222,22 +239,43 @@ async function sendMessage(channel: Lark.LarkChannel, message: ChannelMessage): 
     ...(message.replyToMessageId === undefined ? {} : { replyTo: message.replyToMessageId }),
     ...(message.threadId === undefined ? {} : { replyInThread: true }),
   }
-  // node-sdk 1.73 splits at 3500 UTF-16 units but applies `replyTo` only to
-  // its first chunk. In a topic that makes later chunks fall back to chat
-  // creation. Pre-split only that case, then keep using the SDK for every
-  // authenticated/retried/fallback-aware native reply.
-  const chunks = message.threadId !== undefined && message.replyToMessageId !== undefined
-    ? splitTextByUtf16Limit(message.text, 3500)
-    : [message.text]
-  for (const chunk of chunks) {
-    await channel.send(message.conversationId, { text: chunk }, options)
+  // node-sdk 1.73 splits with plain String.slice, which can cut a surrogate
+  // pair at the 3500 UTF-16-unit boundary. Pre-split every message safely and
+  // keep the SDK responsible for authenticated delivery/retry/fallback. A
+  // normal chat quotes only the first chunk (matching the SDK); a topic keeps
+  // the native reply target on every chunk so none falls back to chat create.
+  const chunks = splitTextByUtf16Limit(message.text, 3500)
+  for (let index = 0; index < chunks.length; index++) {
+    const chunk = chunks[index]
+    if (chunk === undefined) continue
+    const chunkOptions = index === 0 || message.threadId !== undefined ? options : {}
+    await channel.send(message.conversationId, { text: chunk }, chunkOptions)
   }
 }
 
-/** Map the portable acknowledgement emoji to Feishu's named reaction type. */
+/** Portable reactions with an unambiguous Feishu named-reaction equivalent. */
+const FEISHU_REACTION_BY_ACK: ReadonlyMap<string, string> = new Map([
+  ['👀', 'EYES'],
+  ['EYES', 'EYES'],
+  ['👍', 'THUMBSUP'],
+  ['THUMBSUP', 'THUMBSUP'],
+  ['🙏', 'THANKS'],
+  ['THANKS', 'THANKS'],
+  ['😊', 'SMILE'],
+  ['🙂', 'SMILE'],
+  ['SMILE', 'SMILE'],
+  ['✅', 'DONE'],
+  ['DONE', 'DONE'],
+  ['❤', 'HEART'],
+  ['❤️', 'HEART'],
+  ['HEART', 'HEART'],
+  ['🎉', 'PARTY'],
+  ['PARTY', 'PARTY'],
+] as const)
+
+/** Map a portable ack to Feishu's named type, safely degrading to eyes. */
 function resolveReactionType(emoji: string): string {
-  if (emoji === '👀' || emoji === 'EYES') return 'EYES'
-  throw new Error(`feishu: unsupported reaction emoji "${emoji}"`)
+  return FEISHU_REACTION_BY_ACK.get(emoji) ?? 'EYES'
 }
 
 /** Attach an acknowledgement reaction using the SDK's typed helper. */
@@ -264,6 +302,5 @@ export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAd
 
 /** Mount the Feishu adapter into the shared Harness-backed channel registry. */
 export function apply(ctx: Context, config: Config): void {
-  const adapter = createAdapter(config)
-  ctx.effect(() => ctx.channels.registerAdapter(adapter), 'channel-feishu.register()')
+  registerChannelAdapter(ctx, () => createAdapter(config))
 }

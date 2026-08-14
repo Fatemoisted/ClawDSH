@@ -69,6 +69,95 @@ function requireString(manifest: Record<string, unknown>, field: string, context
   return value
 }
 
+/** One leaf target from a package's potentially conditional exports map. */
+interface ManifestExportTarget {
+  /** JSON-style pointer used in release failures. */
+  readonly pointer: string
+  /** Package-relative export target. */
+  readonly target: string
+}
+
+/** Collect every string target from nested export conditions and fallback arrays. */
+function collectExportTargets(
+  value: unknown,
+  pointer: string,
+  context: string,
+  targets: ManifestExportTarget[],
+): void {
+  if (typeof value === 'string') {
+    targets.push({ pointer, target: value })
+    return
+  }
+  if (value === null) return
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => { collectExportTargets(entry, `${pointer}[${String(index)}]`, context, targets) })
+    return
+  }
+  if (typeof value === 'object') {
+    for (const [condition, entry] of Object.entries(value)) {
+      collectExportTargets(entry, `${pointer}[${JSON.stringify(condition)}]`, context, targets)
+    }
+    return
+  }
+  throw new Error(`${context} ${pointer} is not a valid export target`)
+}
+
+/** Convert an npm tarball member into its package-relative payload path. */
+function packedPayloadPath(file: string): string {
+  const normalized = file.replaceAll('\\', '/').replace(/^\.\/+/, '').replace(/\/+$/, '')
+  return normalized.startsWith('package/') ? normalized.slice('package/'.length) : normalized
+}
+
+/** Escape literal text before inserting it into a wildcard-target regular expression. */
+function escapeRegularExpression(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Whether one package-relative target names at least one actual tarball member. */
+function packedTargetExists(target: string, payload: readonly string[]): boolean {
+  if (!target.startsWith('./')) return false
+  const relativeTarget = target.slice(2)
+  if (!relativeTarget.includes('*')) return payload.includes(relativeTarget)
+  const pattern = new RegExp(`^${relativeTarget.split('*').map(escapeRegularExpression).join('.*')}$`)
+  return payload.some(file => pattern.test(file))
+}
+
+/**
+ * Require every public ClawDSH export target to be present in the exact packed
+ * payload. This catches source-navigation exports and any future generated
+ * subpath that `files` accidentally omits before publication can begin.
+ */
+function validatePackedExportTargets(member: ReleaseMember, files: readonly string[]): void {
+  const exportsField = member.manifest.exports
+  if (exportsField === undefined) throw new Error(`${member.name} manifest has no exports map`)
+  const targets: ManifestExportTarget[] = []
+  collectExportTargets(exportsField, 'exports', member.name, targets)
+  const payload = files.map(packedPayloadPath).filter(file => file !== '')
+  for (const { pointer, target } of targets) {
+    if (packedTargetExists(target, payload)) continue
+    throw new Error(`${member.name} ${pointer} target ${JSON.stringify(target)} is absent from the packed tarball`)
+  }
+}
+
+/**
+ * Reject declaration files left behind by an incremental build after their
+ * source module was deleted or consolidated. ClawDSH publishes the complete
+ * `lib/types` tree, so every packed declaration must be source-derived from
+ * the current member rather than merely present on disk.
+ */
+function validatePackedDeclarationSources(member: ReleaseMember, files: readonly string[]): void {
+  const sourceStems = new Set(globSync(['src/**/*.ts', 'src/**/*.tsx'], { cwd: member.directory })
+    .map(file => file.replaceAll('\\', '/'))
+    .map(file => file.slice('src/'.length).replace(/\.tsx?$/, '')))
+  for (const file of files) {
+    const payload = packedPayloadPath(file)
+    if (!payload.startsWith('lib/types/') || !payload.endsWith('.d.ts')) continue
+    const stem = payload.slice('lib/types/'.length, -'.d.ts'.length)
+    if (sourceStems.has(stem)) continue
+    throw new Error(`${member.name} packed stale declaration ${file}: no current source src/${stem}.ts or src/${stem}.tsx`)
+  }
+}
+
 /** The executable a family's installed artifacts are driven through. */
 export interface InstalledEntry {
   /** Package that carries the executable. */
@@ -360,9 +449,11 @@ class ClawdshFamily extends ReleaseFamily {
     return this.tagPrefix
   }
 
-  /** Apply the same compiled-output payload policy as the upstream dsh family. */
+  /** Apply the compiled-output policy and require every export to resolve from the packed bytes. */
   validatePayload(member: ReleaseMember, files: readonly string[]): void {
     validateTarballPayload(files, member.name)
+    validatePackedExportTargets(member, files)
+    validatePackedDeclarationSources(member, files)
   }
 
   /** ClawDSH currently publishes libraries rather than an executable. */

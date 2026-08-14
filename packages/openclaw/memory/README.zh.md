@@ -29,6 +29,9 @@
     # snippetChars: 700             # 片段字符上限
     # timeoutMs: 30000              # 协作超时（透传 embed）
     # maxReadLines: 1000            # memory_get 行数硬上限
+    # watch: true                   # 宿主文件变更监听（默认开，主动失效）
+    # watchStabilityThresholdMs: 200  # 变更稳定阈值 ms
+    # watchPollIntervalMs: 100        # 宿主变更与写稳定性探测间隔 ms
     # flush:                        # 预压缩 flush 回合（默认启用）
     #   reserveTokensFloor: 20000   # 窗口下方保留 token 余量
     #   softThresholdTokens: 4000   # 软触发带
@@ -39,8 +42,8 @@
 
 ## 设计要点
 
-- **文件是唯一事实源**：`memory_append` 直接修改 Markdown 文件，插件没有另一套写数据库；派生索引以 `(version, size)` 判定变化文件，每次 search 前增量重建（个人记忆规模下成本可忽略；chokidar watch 列 Deferred）；
-- **首次 root 延迟创建**：`root` 配置必填，但目录本身可以尚不存在；search 把缺失 root 视为空索引，第一次受围栏保护的 `memory_append` 会创建目标及父目录；
+- **文件是唯一事实源**：`memory_append` 直接修改 Markdown 文件，插件没有另一套写数据库；派生索引以 `(version, size)` 判定变化文件，每次 search 前增量重建，同时由默认开启的 Chokidar 宿主监听主动失效单个变更文件——补齐同尺寸编辑盲区，且无需重嵌其余文件；
+- **首次 root 延迟创建**：`root` 配置必填，但目录本身可以尚不存在；search 把缺失 root 视为空索引，宿主监听会跟随最近的已存在祖先，第一次受围栏保护的 `memory_append` 创建目标及父目录后，watcher 无需重启即可观察到新 root；
 - **一次 embed 批**：每次 search 的 embed 调用 = 查询 + 所有未嵌入 chunk，冷启动一次 HTTP、增量编辑一次 HTTP；
 - **配置默认值真正生效**：`memory_search` 未传 `maxResults` 或 `minScore` 时使用插件配置；只有插件配置也省略时才回落到 6 / 0.35，显式工具参数仍可覆盖；
 - **路径白名单 + 双保险**：`isMemoryPath`（`MEMORY.md` | `memory/<file>.md`，拒绝绝对路径与 `..`）+ `fs.contains(root, target)` 在解析操作处 enforcement；普通 fs/shell 工具不会得到额外 root；
@@ -52,7 +55,8 @@
 
 - 语义召回与有界行读取：增量索引 + `memory_search`/`memory_get`，插件配置默认值生效，并以无 key 的确定性 embedding 测试覆盖；
 - 持久的压缩前 flush：在 `agent/turn-stopping` 判断阈值，已完成的压缩周期从持久 session log 而非插件内存推导，因此 remount/restart 不会重复 flush；
-- sandbox-aware `memory_append`：路径白名单、逐调用 memory root、保留有效 mode、首次延迟创建、守卫式并发追加，并在下一次 search 立即增量重建。
+- sandbox-aware `memory_append`：路径白名单、逐调用 memory root、保留有效 mode、首次延迟创建、守卫式并发追加，并在下一次 search 立即增量重建；
+- 宿主编辑新鲜度：可配置的轮询式 Chokidar 监听只失效被改动的 memory 文件（包括同尺寸编辑），使并行启动下的 ready-to-write 边界保持确定，并由插件的 Cordis effect 生命周期托管。
 
 ## Model Experience
 
@@ -108,8 +112,7 @@ Append-only：prompt 作为普通回合输入落在日志中段；无系统提�
 
 - **flush 以排队回合执行**：其判定和 `turn/start` 早于同一 flush 回合可能触发的压力压缩，但该回合的 pre-step 仍可能在模型执行 flush prompt 前先压缩。dsh 默认压缩阈值低于 flush 阈值时，从压缩摘要写入很常见；需要保留摘要前细节时，可把 `compaction.thresholdRatio` 调到 flush 阈值之上；
 - **flush 跳过清单是挂载面的**：不挂 memory 行的 profile 永不 flush（映射 OpenClaw 的 heartbeat/CLI/sandbox-ro 跳过）；
-- **无 chokidar watch**：变更靠 search 前增量重建，不主动推送；
-- **词汇降级**（无 embeddings 时的检索）列为 Deferred——阶段 3 离线场景评估；
+- **词汇降级**（无 embeddings 时的检索）已定论拒绝：两个评分空间语义不同，静默切换会误导模型（见 rejected Note `2026-08-14-memory-lexical-fallback`）；
 - **超大检索结果 spill**（挂 `ctx.spillStore`）列 Deferred；
 - **多 agent 隔离**：需要各自配置 `root`；共享记忆语义留阶段 3；
 - **跨进程追加竞争**：进程内调用会串行化，外部 stale 写入会做有界重试；持续竞争的多进程仍可能耗尽重试预算（session persistence 栈同样假设单 daemon writer）；

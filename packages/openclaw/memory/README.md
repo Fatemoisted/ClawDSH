@@ -29,6 +29,9 @@ English | [中文](README.zh.md)
     # snippetChars: 700             # 片段字符上限
     # timeoutMs: 30000              # 协作超时（透传 embed）
     # maxReadLines: 1000            # memory_get 行数硬上限
+    # watch: true                   # 宿主文件变更监听（默认开，主动失效）
+    # watchStabilityThresholdMs: 200  # 变更稳定阈值 ms
+    # watchPollIntervalMs: 100        # 宿主变更与写稳定性探测间隔 ms
     # flush:                        # 预压缩 flush 回合（默认启用）
     #   reserveTokensFloor: 20000   # 窗口下方保留 token 余量
     #   softThresholdTokens: 4000   # 软触发带
@@ -39,8 +42,8 @@ Write convention (taught to the model by the guidance section): stable facts go 
 
 ## Design notes
 
-- **Files are the sole source of truth**: `memory_append` changes the Markdown files themselves and the plugin maintains no separate write database; the derived index detects changed files by `(version, size)` and rebuilds incrementally before each search (negligible cost at personal-memory scale; chokidar watch is deferred);
-- **First-run root is lazy**: `root` must be configured, but the directory itself need not exist yet. Search treats a missing root as an empty index, and the first guarded `memory_append` creates the target and parents;
+- **Files are the sole source of truth**: `memory_append` changes the Markdown files themselves and the plugin maintains no separate write database; the derived index detects changed files by `(version, size)` and rebuilds incrementally before each search, while a Chokidar host watch (default on) proactively invalidates one changed file — closing the same-size-edit gap without re-embedding every other file;
+- **First-run root is lazy**: `root` must be configured, but the directory itself need not exist yet. Search treats a missing root as an empty index, the host watch follows its nearest existing ancestor, and the first guarded `memory_append` creates the target and parents; the watcher then observes that new root without a restart;
 - **One embed batch**: each search's embed calls = the query + all un-embedded chunks, one HTTP call on cold start, one HTTP call on incremental edits;
 - **Configured search defaults are real defaults**: when a `memory_search` call omits `maxResults` or `minScore`, it uses the plugin configuration (6 / 0.35 only when that configuration is also omitted); explicit tool arguments override it;
 - **Path allowlist + double safety**: `isMemoryPath` (`MEMORY.md` | `memory/<file>.md`, rejecting absolute paths and `..`) + `fs.contains(root, target)` enforced at the resolution operation; ordinary fs and shell tools receive no extra root;
@@ -52,7 +55,8 @@ Write convention (taught to the model by the guidance section): stable facts go 
 
 - Semantic recall and bounded line reads: incremental index + `memory_search`/`memory_get`, with plugin-configured defaults and keyless deterministic embedding tests;
 - Durable pre-compaction flush: threshold detection on `agent/turn-stopping`, with the completed compaction cycle derived from the persisted session log rather than plugin memory, so remount/restart does not duplicate a flush;
-- Sandbox-aware `memory_append`: path allowlist, per-call memory root, preserved effective mode, lazy first-run creation, guarded concurrent append, and immediate re-indexing on the next search.
+- Sandbox-aware `memory_append`: path allowlist, per-call memory root, preserved effective mode, lazy first-run creation, guarded concurrent append, and immediate re-indexing on the next search;
+- Host-edit freshness: a configurable polling Chokidar watch invalidates only the touched memory file, including same-size edits, makes the ready-to-write boundary deterministic under parallel startup, and is owned by the plugin's Cordis effect lifecycle.
 
 ## Model Experience
 
@@ -108,8 +112,7 @@ Append-only: the prompt lands mid-log as an ordinary turn input; no system-promp
 
 - **Flush execution is a queued turn**: its decision and `turn/start` precede any pressure compaction triggered in that flush turn, but the turn's own pre-step may compact before the model executes the flush prompt. With dsh's default compaction threshold below the flush threshold, writing from the compacted summary is therefore common; tune `compaction.thresholdRatio` above the flush threshold when pre-summary detail must be retained;
 - **Flush skip-list is mount-level**: profiles that do not mount the memory row never flush (maps OpenClaw's heartbeat/CLI/sandbox-ro skips);
-- **No chokidar watch**: changes rely on pre-search incremental rebuild, no proactive push;
-- **Lexical fallback** (retrieval without embeddings) is deferred — evaluated in phase 3 offline scenarios;
+- **Lexical fallback** (retrieval without embeddings) is rejected: the two scoring spaces are semantically different and a silent switch would mislead the model (see the rejected Note `2026-08-14-memory-lexical-fallback`);
 - **Spill of oversized retrieval results** (hanging on `ctx.spillStore`) is deferred;
 - **Multi-agent isolation**: each needs its own `root`; shared-memory semantics deferred to phase 3;
 - **Cross-process append contention**: in-process calls serialize and external stale writes retry a bounded number of times; continuously competing processes can still exhaust the retry budget (the session persistence stack likewise assumes one daemon writer);

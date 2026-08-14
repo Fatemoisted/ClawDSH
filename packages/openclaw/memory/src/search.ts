@@ -96,6 +96,24 @@ export class MemoryIndex {
   }
 
   /**
+   * Queue one file's indexed entry for removal so the next sync re-reads it
+   * from disk. The removal shares the sync chain: a watcher notification that
+   * arrives while `readText` is pending therefore runs after that sync and
+   * cannot be overwritten by its stale completion. `add` needs no
+   * invalidation — the sync seen-set picks new files up — but a
+   * `change`/`unlink` must force a re-read because a same-size edit is
+   * invisible to the `(version, size)` freshness check and a
+   * delete-then-recreate with an identical size would otherwise keep stale
+   * chunks. Dropping a single file preserves every other file's cached
+   * embedding (one embed request per text, so a full clear is costly).
+   * @param rel - the memory-root-relative path to drop; unknown paths are a no-op.
+   */
+  invalidateFile(rel: string): void {
+    const invalidate = this.syncChain.then(() => { this.files.delete(rel) })
+    this.syncChain = invalidate.catch(() => {})
+  }
+
+  /**
    * Rank memory chunks against one query: syncs first, embeds the query plus
    * any un-embedded chunks in one batch, ranks by cosine similarity, and keeps
    * the strongest hits above the score floor.

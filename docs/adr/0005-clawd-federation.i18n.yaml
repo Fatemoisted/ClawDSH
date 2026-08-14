@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/adr/0005-clawd-federation.md
+0005-clawd-federation.md: be861caf2020760239dcb51a08739126be8940f1
+0005-clawd-federation.zh.md: f7216c13ee6d1077bb248c7e5553de5c15f07e59

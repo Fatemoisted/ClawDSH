@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import Timer from '@deepseek-ai/cordis-plugin-timer'
 import type { ChannelMessage } from '@clawdsh/dsh-channel-core'
 
 const retryPlugin = vi.hoisted(() => {
@@ -14,9 +15,12 @@ import { createAdapter, toInbound } from '../src/index.ts'
 
 /** A minimal stand-in for the grammY bot surface this adapter touches. */
 function mockBot(
-  startImpl: () => Promise<void> = async () => {},
-  stopImpl: () => Promise<void> = async () => {},
+  startImpl?: () => Promise<void>,
+  stopImpl?: () => Promise<void>,
 ) {
+  let finishDefaultStart: (() => void) | undefined
+  const resolvedStart = (): Promise<void> => new Promise((resolve) => { finishDefaultStart = resolve })
+  const resolvedStop = async (): Promise<void> => { finishDefaultStart?.() }
   const sendMessage = vi.fn(async (..._args: [string | number, string, Record<string, unknown>?]) => ({}))
   const setMessageReaction = vi.fn(async () => ({}))
   const use = vi.fn()
@@ -25,8 +29,16 @@ function mockBot(
     handlers.push(handler)
   })
   const catchFn = vi.fn()
-  const start = vi.fn(startImpl)
-  const stop = vi.fn(stopImpl)
+  const start = vi.fn(startImpl ?? resolvedStart)
+  const stop = vi.fn(async () => {
+    try {
+      await (stopImpl ?? resolvedStop)()
+    } finally {
+      // Real grammY resolves start() when stop() settles, including its error
+      // path. Keep the default mock lifecycle faithful to that contract.
+      finishDefaultStart?.()
+    }
+  })
   const bot = {
     api: { config: { use }, sendMessage, setMessageReaction },
     on,
@@ -249,8 +261,7 @@ describe('the telegram channel adapter', () => {
   })
 
   it('logs a rejected polling stop instead of leaking an unhandled rejection', async () => {
-    const { bot, stop } = mockBot()
-    stop.mockRejectedValueOnce(new Error('stop failed'))
+    const { bot } = mockBot(undefined, async () => { throw new Error('stop failed') })
     const ctx = new Context()
     const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
     const adapter = createAdapter({ botToken: 't' }, { bot })
@@ -263,15 +274,53 @@ describe('the telegram channel adapter', () => {
     })
   })
 
-  it('logs a rejected polling start instead of leaking an unhandled rejection', async () => {
-    const { bot } = mockBot(() => Promise.reject(new Error('network down')))
+  it('restarts rejected polling through the Harness timer and cancels it on dispose', async () => {
+    vi.useFakeTimers()
+    try {
+      let attempts = 0
+      let finishRetry!: () => void
+      const retryTask = new Promise<void>((resolve) => { finishRetry = resolve })
+      const { bot, start } = mockBot(
+        () => {
+          attempts += 1
+          return attempts === 1 ? Promise.reject(new Error('network down')) : retryTask
+        },
+        async () => { finishRetry() },
+      )
+      const ctx = new Context()
+      await ctx.plugin(Timer)
+      const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+      const adapter = createAdapter({ botToken: 't' }, { bot })
+      const dispose = adapter.start(ctx)
+
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(start).toHaveBeenCalledOnce()
+      expect(adapter.capabilities.receive).toBe(false)
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('retrying in 1000ms'))
+
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(start).toHaveBeenCalledTimes(2)
+      expect(adapter.capabilities.receive).toBe(true)
+      await dispose()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(start).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('marks a bad-token polling adapter unavailable without retrying forever', async () => {
+    const unauthorized = Object.assign(new Error('unauthorized'), { error_code: 401 })
+    const { bot, start } = mockBot(() => Promise.reject(unauthorized))
     const ctx = new Context()
     const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
     const adapter = createAdapter({ botToken: 't' }, { bot })
     const dispose = adapter.start(ctx)
-    await vi.waitFor(() => {
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('network down'))
-    })
+
+    await vi.waitFor(() => { expect(adapter.capabilities.receive).toBe(false) })
+    expect(start).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('permanently'))
     await dispose()
   })
 

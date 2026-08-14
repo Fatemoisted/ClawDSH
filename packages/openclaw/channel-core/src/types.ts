@@ -33,7 +33,7 @@ export interface ChannelMessage {
   replyToMessageId?: string
   /** Conversation shape used by group response and ack policies. */
   chatType?: 'direct' | 'group'
-  /** Platform-structured bot-mention result; unknown detection fails closed. */
+  /** Platform-structured bot-mention result; unknown detection receives no mention-only ack. */
   mention?: {
     /** Whether the adapter had enough bot identity/entity data to decide. */
     detectable: boolean

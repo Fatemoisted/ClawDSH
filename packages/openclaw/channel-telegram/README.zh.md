@@ -4,7 +4,7 @@
 
 **定位**：Telegram 渠道适配器——grammY `Bot` 上的一层薄 `ChannelAdapter`：以可排空的长轮询接收文本/caption，并以带重试的原生 topic、引用回复、reaction 与 Unicode-safe 4096-unit 分片出站。
 
-**OpenClaw 对应**：Telegram 渠道（OpenClaw 支持矩阵中最早稳定的一批渠道之一）。上游 `extensions/telegram` 同样组合 grammY 组件；本适配器使用 `grammy` 长轮询与官方 `@grammyjs/auto-retry`，只有更高负载时才需要 runner/throttler。
+**OpenClaw 对应**：Telegram 渠道（OpenClaw 支持矩阵中最早稳定的一批渠道之一）。上游 `extensions/telegram` 同样组合 grammY 组件；本适配器使用 grammY 长轮询与官方 `@grammyjs/auto-retry`，轮询本身退出后由 Harness timer 负责有界外层重启。
 
 **接缝**：`ctx.channels`（@clawdsh/dsh-channel-core）。
 
@@ -16,7 +16,7 @@
 - **可等待准入**：grammY handler 会等待 `ctx.parallel('channel/inbound', inbound)`，直至 channel-core 的 FIFO 回合、`sessions.flush` 与出站发送结束，不会在持久化检查点前提前确认 update；
 - **出站**：长回复按 Telegram 的 4096 个 UTF-16 unit 上限分片，且绝不切断 surrogate pair；每片都保留 `message_thread_id`，只有首片通过 `reply_parameters` 引用触发消息。`setMessageReaction` 提供配置的 ack 表情；官方 auto-retry transformer 会对 API 限流和服务端错误最多重试三次，单次等待上限 30 秒。网络 `HttpError` 会立即上抛，因为 2.0.2 插件默认会在不受次数上限约束的内层循环中重试；最终失败再经 channel-core reject；
 - **凭证**：`botToken` 经 Config 进入，不私存密钥；接入 `ctx.credentials` 留待真实 e2e 收尾。
-- **轮询生命周期归 grammY**：适配器自身不持有 offset 状态；dispose 会先等待 `bot.stop()`，再等待保存的 `bot.start()` task（grammY 的 middleware 排空屏障）；start/stop rejection 都会捕获并记录。
+- **轮询生命周期**：适配器自身不持有 offset 状态；dispose 会取消 Harness 重试 timer、等待 `bot.stop()`，再等待保存的 `bot.start()` task（grammY 的 middleware 排空屏障）。瞬时退出按有上限的指数退避重启；401 会把 receive capability 标成不可用，而不是拿坏 token 永久重试。
 
 ## Model Experience
 
@@ -39,5 +39,5 @@
 - **带凭证 e2e**：无密钥测试已覆盖 entity/caption/`bot_command` 映射、可等待入站、Unicode-safe 4096-unit 分片、topic、原生引用、reaction 与轮询启停失败；部署闭环仍需真实 `botToken` 与模型 key。
 - **二进制附件**：已处理媒体 caption，但尚未把 photo/document/audio 字节下载进 Harness `ctx.attachments`。
 - **投递模式**：尚未接 webhook；当前每个适配器实例运行一个 grammY 长轮询进程。
-- **runner/throttler**：`@grammyjs/runner`（高负载并发）与 `@grammyjs/transformer-throttler`（限流）上游有采用，本适配器先以 `bot.start()` 长轮询最小面，需要时再引入。
-- **最终投递失败**：middleware 错误经 grammY error handler 处理后，update 会被消费。官方有界 API 重试已显著缩小瞬时发送丢失窗口，但重试后仍失败的回复还没有持久 outbox。
+- **跨聊天轮询并发**：grammY simple polling 会串行等待 middleware，因此慢模型回合仍会延后其他会话的 update，即使 channel-core 本可并发运行不同会话。切换 `@grammyjs/runner` 必须与持久 ingress queue 一起做：runner 会在并发 middleware 完成前推进 fetch offset，否则崩溃会静默丢 update。
+- **崩溃/投递幂等**：目前还没有基于 provider `messageId` 的持久 inbox 或出站 outbox。Telegram offset 确认窗口中的崩溃可能重放回合；provider 有界重试耗尽后，session 已记录 assistant answer，但回复仍可能丢失。

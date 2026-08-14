@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/specs/feature-memory.md
-feature-memory.md: 835edc8c2cecaec21f9af163395bd7ee3c0fd28f
-feature-memory.zh.md: a2d7c78b81d54de3225d1ef45c493499570530bc
+feature-memory.md: e926ec094c3054baa5f97874076b3c56a9364105
+feature-memory.zh.md: 760d5ee53932a676aa887a05fa192edb011518aa

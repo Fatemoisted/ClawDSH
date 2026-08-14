@@ -23,9 +23,9 @@ English | [中文](README.zh.md)
 - ✅ (phase 2 wrap-up) soul file path resolved relative to the preset directory — relative `source` resolves against the mounted tree's `ctx.baseUrl`; `agent.cordis.yml` now uses `source: ./souls/assistant.md`;
 - ✅ Harness-native per-channel agents — `channel-core` derives a durable opaque session id, resumes it through `sessionPersistence`, and resolves/mounts the recorded `openclaw` composition through `dsh-agent-presets` on both create and resume;
 - ✅ Feishu/Telegram channel behavior — channel-core exposes a durable, failure-propagating `ctx.parallel` route and drains admitted turns on shutdown; structured commands/mentions, native replies/topics, acknowledgement reactions, Unicode-safe long-reply chunks, caption/rich-message text, Telegram bounded API retry, and process-restart session continuity are covered by keyless contract tests;
-- ✅ memory writes — `memory_append` is the only extra write capability and delegates storage/sandbox enforcement to Harness `ctx.fs`, without widening ordinary file or shell tools; missing first-run roots are empty until append creates them, and flush-cycle ownership survives a memory-plugin remount;
+- ✅ memory writes and host edits — `memory_append` is the only extra model write capability and delegates storage/sandbox enforcement to Harness `ctx.fs`, without widening ordinary file or shell tools; the host watcher invalidates only changed index entries, missing first-run roots are empty until append creates them, and flush-cycle ownership survives a memory-plugin remount;
 - ✅ symlink transition scripted — `tools/link-openclaw.sh` builds all nine packages, installs the profile plus `.agent-presets/openclaw`, initializes the memory directory, creates 9 `@clawdsh/*` links, and bridges the Harness `dsh-agent-presets` package for a repository checkout;
-- ✅ independent release line — the nine packages share the `clawdsh` family version/tag; bump/verify/pack/publish, packed-install verification, and the protected `release-clawdsh` workflow are implemented;
+- ✅ independent private-registry release line — the nine packages share the `clawdsh` family version/tag; synchronized bump/verify/pack/publish, packed-install verification, and credential-isolated workflows read the registry URL only from the protected `npm-publish` environment's `NPM_REGISTRY_URL` variable (ADR-0004);
 - ⏳ (phase 3) headless one-shot task shape mounting the openclaw preset (the Feishu daemon already verifies the preset+agent composition; headless preset selection wiring deferred to phase 3);
 - ⏳ actual npm publication — no `@clawdsh/*` tarball has been deliberately published from this worktree yet, so the symlink path remains the local-development transition.
 
@@ -43,5 +43,7 @@ export DEEPSEEK_API_KEY=sk-xxx
 # 3. 起 daemon（常驻长连接，等飞书消息）
 pnpm dsh --profile openclaw
 ```
+
+Once the `@clawdsh/*` packages are published to the private registry (ADR-0004), the symlink step above is optional: install them declaratively with `dsh plugin --profile openclaw add @clawdsh/dsh-<pkg>` (one per package) — the user-facing path. The symlink script remains the pre-publish development path.
 
 Config validation fails loud (with `appId`/`appSecret` required) when `FEISHU_APP_ID` / `FEISHU_APP_SECRET` are unset. After startup, the SDK reports identity/connection failures through the channel log; live platform permissions still need a credentialed deployment check.

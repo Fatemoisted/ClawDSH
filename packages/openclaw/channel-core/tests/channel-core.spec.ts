@@ -13,9 +13,8 @@ import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import ChannelRegistry, { deriveChannelSessionId, shouldAckReaction } from '@clawdsh/dsh-channel-core'
-import type { Config } from '@clawdsh/dsh-channel-core'
-import type { ChannelAdapter, ChannelMessage } from '@clawdsh/dsh-channel-core'
+import ChannelRegistry, { deriveChannelSessionId, registerChannelAdapter } from '@clawdsh/dsh-channel-core'
+import type { ChannelAdapter, ChannelMessage, Config } from '@clawdsh/dsh-channel-core'
 import { MockAdapter, textResponse } from './mock-adapter.ts'
 
 async function harness(adapter: MockAdapter, config: Config = {}): Promise<Context> {
@@ -37,7 +36,7 @@ async function harness(adapter: MockAdapter, config: Config = {}): Promise<Conte
     list: () => Promise.resolve([]),
   } as never)
   ctx.llm.registerAdapter(['mock'], adapter)
-  await ctx.plugin(ChannelRegistry, { ackReactionScope: 'all', ...config })
+  await ctx.plugin(ChannelRegistry, config)
   return ctx
 }
 
@@ -71,6 +70,17 @@ function fakeAdapter(sent: ChannelMessage[]): ChannelAdapter {
   }
 }
 
+/** A react-capable adapter that records every acknowledgement. */
+function reactAdapter(reactions: Array<{ messageId: string | undefined; emoji: string }>): ChannelAdapter {
+  return {
+    id: 'fake',
+    capabilities: { receive: true, send: true, react: true },
+    start: () => () => {},
+    send: async () => {},
+    react: async (message, emoji) => { reactions.push({ messageId: message.messageId, emoji }) },
+  }
+}
+
 function nextOutbound(ctx: Context): Promise<ChannelMessage> {
   return new Promise((resolve) => {
     const dispose = ctx.on('channel/outbound', (message) => {
@@ -91,6 +101,40 @@ describe('the channel-core seam', () => {
 
     expect(ctx.channels.listAdapters()).toHaveLength(0)
     expect(ctx.channels.getAdapter('fake')).toBeUndefined()
+  })
+
+  it('derives mention patterns from the identity and registers the adapter', async () => {
+    const ctx = await harness(new MockAdapter([]), { identity: { name: 'Clawd', emoji: '🐚' } })
+    const captured: RegExp[][] = []
+    const dispose = registerChannelAdapter(ctx, (patterns) => {
+      captured.push([...patterns])
+      return fakeAdapter([])
+    })
+
+    expect(captured).toHaveLength(1)
+    expect(captured[0]).toHaveLength(2)
+    expect(ctx.channels.listAdapters()).toHaveLength(1)
+
+    await dispose()
+    expect(ctx.channels.listAdapters()).toHaveLength(0)
+  })
+
+  it('binds a helper-registered adapter to the owning plugin lifecycle', async () => {
+    const ctx = await harness(new MockAdapter([]))
+    const stop = vi.fn()
+    const owner = await ctx.plugin(Object.assign((inner: Context) => {
+      registerChannelAdapter(inner, () => ({
+        id: 'owned',
+        capabilities: { receive: true, send: true, react: false },
+        start: () => () => { stop() },
+        send: async () => {},
+      }))
+    }, { inject: ['channels'] }))
+
+    expect(ctx.channels.getAdapter('owned')).toBeDefined()
+    await owner.dispose()
+    expect(ctx.channels.getAdapter('owned')).toBeUndefined()
+    expect(stop).toHaveBeenCalledOnce()
   })
 
   it('rejects a duplicate adapter id', async () => {
@@ -332,6 +376,21 @@ describe('the channel-core seam', () => {
     expect(reply.text).toBe('[Clawd] hello there')
   })
 
+  it('preserves an explicit empty response prefix when identity has a name', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('hello there')]), {
+      identity: { name: 'Clawd' },
+      responsePrefix: '',
+    })
+    const sent: ChannelMessage[] = []
+    ctx.channels.registerAdapter(fakeAdapter(sent))
+
+    await ctx.parallel('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 'no-prefix', text: 'hi',
+    })
+
+    expect(sent[0]?.text).toBe('hello there')
+  })
+
   it('preserves ordinary identity-name text in direct messages', async () => {
     const adapter = new MockAdapter([textResponse('ok')])
     const ctx = await harness(adapter, { identity: { name: 'ClawDSH' } })
@@ -345,8 +404,24 @@ describe('the channel-core seam', () => {
     expect(JSON.stringify(adapter.requests[0])).toContain('介绍一下 ClawDSH')
   })
 
+  it('matches and strips a zero-width-decorated identity mention in a group fallback', async () => {
+    const adapter = new MockAdapter([textResponse('accepted')])
+    const ctx = await harness(adapter, { identity: { name: 'Clawd' } })
+    const sent: ChannelMessage[] = []
+    ctx.channels.registerAdapter(fakeAdapter(sent))
+
+    await ctx.parallel('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 'decorated-mention', chatType: 'group',
+      text: 'hey Cl\u200bawd please',
+    })
+
+    expect(sent[0]?.text).toBe('[Clawd] accepted')
+    expect(JSON.stringify(adapter.requests[0])).toContain('hey  please')
+    expect(JSON.stringify(adapter.requests[0])).not.toContain('Cl\u200bawd')
+  })
+
   it('attaches an ack reaction to the inbound message when the adapter can react', async () => {
-    const ctx = await harness(new MockAdapter([textResponse('hello there')]))
+    const ctx = await harness(new MockAdapter([textResponse('hello there')]), { ackReactionScope: 'all' })
     const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
     ctx.channels.registerAdapter({
       id: 'fake',
@@ -361,6 +436,110 @@ describe('the channel-core seam', () => {
     await outbound
 
     expect(reactions).toEqual([{ messageId: 'm-1', emoji: '👀' }])
+  })
+
+  it('runs the ack concurrently but keeps route and registry disposal waiting for it', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('reply')]), { ackReactionScope: 'all' })
+    let releaseAck!: () => void
+    const ackGate = new Promise<void>((resolve) => { releaseAck = resolve })
+    let ackStarted!: () => void
+    const ackEntered = new Promise<void>((resolve) => { ackStarted = resolve })
+    let sendStarted!: () => void
+    const sendEntered = new Promise<void>((resolve) => { sendStarted = resolve })
+    ctx.channels.registerAdapter({
+      id: 'fake',
+      capabilities: { receive: true, send: true, react: true },
+      start: () => () => {},
+      send: async () => { sendStarted() },
+      react: async () => {
+        ackStarted()
+        await ackGate
+      },
+    })
+
+    const route = ctx.parallel('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 'ack-drain', messageId: 'm-1', text: 'hi',
+    })
+    await Promise.all([ackEntered, sendEntered])
+
+    let routeSettled = false
+    void route.then(
+      () => { routeSettled = true },
+      () => { routeSettled = true },
+    )
+    await Promise.resolve()
+    expect(routeSettled).toBe(false)
+
+    let disposalSettled = false
+    const disposal = Promise.resolve(ctx.fiber.dispose()).then(() => { disposalSettled = true })
+    await Promise.resolve()
+    expect(disposalSettled).toBe(false)
+
+    releaseAck()
+    await route
+    await disposal
+    expect(routeSettled).toBe(true)
+    expect(disposalSettled).toBe(true)
+  })
+
+  it('acks a later FIFO message before the preceding model turn has finished sending', async () => {
+    const model = new MockAdapter([textResponse('first'), textResponse('second')])
+    const ctx = await harness(model, { ackReactionScope: 'all' })
+    let releaseFirstSend!: () => void
+    const firstSendGate = new Promise<void>((resolve) => { releaseFirstSend = resolve })
+    let firstSendStarted!: () => void
+    const firstSendEntered = new Promise<void>((resolve) => { firstSendStarted = resolve })
+    const reactions: string[] = []
+    let sends = 0
+    ctx.channels.registerAdapter({
+      id: 'fake',
+      capabilities: { receive: true, send: true, react: true },
+      start: () => () => {},
+      send: async () => {
+        sends += 1
+        if (sends === 1) {
+          firstSendStarted()
+          await firstSendGate
+        }
+      },
+      react: async (message) => { reactions.push(message.messageId ?? '') },
+    })
+
+    const first = ctx.parallel('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 'receipt-fifo', messageId: 'm-1', text: 'one',
+    })
+    await firstSendEntered
+    const second = ctx.parallel('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 'receipt-fifo', messageId: 'm-2', text: 'two',
+    })
+
+    await vi.waitFor(() => { expect(reactions).toEqual(['m-1', 'm-2']) })
+    expect(model.requests).toHaveLength(1)
+
+    releaseFirstSend()
+    await Promise.all([first, second])
+    expect(model.requests).toHaveLength(2)
+  })
+
+  it('logs a failed ack without blocking the text reply', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('reply')]), { ackReactionScope: 'all' })
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    const sent: ChannelMessage[] = []
+    ctx.channels.registerAdapter({
+      id: 'fake',
+      capabilities: { receive: true, send: true, react: true },
+      start: () => () => {},
+      send: async (message) => { sent.push(message) },
+      react: async () => { throw new Error('reaction denied') },
+    })
+
+    await ctx.parallel('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 'ack-failure', messageId: 'm-1', text: 'hi',
+    })
+
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.text).toBe('reply')
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('reaction denied'))
   })
 
   it('skips the ack when the inbound message has no platform id', async () => {
@@ -389,17 +568,6 @@ describe('the channel-core seam', () => {
     expect(first).not.toContain('secret-chat')
   })
 
-  it('implements every acknowledgement scope without conflating it with response routing', () => {
-    expect(shouldAckReaction('all', 'direct', false)).toBe(true)
-    expect(shouldAckReaction('direct', 'direct', false)).toBe(true)
-    expect(shouldAckReaction('direct', 'group', true)).toBe(false)
-    expect(shouldAckReaction('group-all', 'group', false)).toBe(true)
-    expect(shouldAckReaction('group-mentions', 'group', true)).toBe(true)
-    expect(shouldAckReaction('group-mentions', 'group', false)).toBe(false)
-    expect(shouldAckReaction('off', 'group', true)).toBe(false)
-    expect(shouldAckReaction('none', 'direct', true)).toBe(false)
-  })
-
   it('drops unmentioned group traffic and accepts a structured bot mention', async () => {
     const ctx = await harness(new MockAdapter([textResponse('accepted')]), {
       groupMode: 'mention',
@@ -422,6 +590,19 @@ describe('the channel-core seam', () => {
     })
     await expect(outbound).resolves.toMatchObject({ text: 'accepted' })
     expect(ctx.agents.list()).toHaveLength(1)
+  })
+
+  it('accepts a provider-normalized broadcast mention through the default group gate', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('broadcast accepted')]))
+    const sent: ChannelMessage[] = []
+    ctx.channels.registerAdapter(fakeAdapter(sent))
+
+    await ctx.parallel('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 'broadcast', chatType: 'group',
+      mention: { detectable: true, botMentioned: true }, text: '@all status update',
+    })
+
+    expect(sent[0]?.text).toBe('broadcast accepted')
   })
 
   it('single-flights concurrent first messages and preserves their FIFO turns', async () => {
@@ -521,5 +702,111 @@ describe('the channel-core seam', () => {
       await first?.fiber.dispose()
       await rm(root, { recursive: true, force: true })
     }
+  })
+
+  it('acks a mentioned group message under the default group-mentions scope', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('ok')]))
+    const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
+    ctx.channels.registerAdapter(reactAdapter(reactions))
+    const outbound = nextOutbound(ctx)
+
+    ctx.emit('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 't1', messageId: 'm-1',
+      chatType: 'group', mention: { detectable: true, botMentioned: true }, text: 'hi',
+    })
+    await outbound
+
+    expect(reactions).toEqual([{ messageId: 'm-1', emoji: '👀' }])
+  })
+
+  it('does not broaden group-mentions when group routing accepts every message', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('ok')]), { groupMode: 'always' })
+    const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
+    ctx.channels.registerAdapter(reactAdapter(reactions))
+    const outbound = nextOutbound(ctx)
+
+    ctx.emit('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 't1', messageId: 'm-1',
+      chatType: 'group', mention: { detectable: true, botMentioned: false }, text: 'hi',
+    })
+    await outbound
+
+    expect(reactions).toEqual([])
+  })
+
+  it('still acks an actual group mention when group routing also accepts unmentioned traffic', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('ok')]), { groupMode: 'always' })
+    const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
+    ctx.channels.registerAdapter(reactAdapter(reactions))
+    const outbound = nextOutbound(ctx)
+
+    ctx.emit('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 't1', messageId: 'm-1',
+      chatType: 'group', mention: { detectable: true, botMentioned: true }, text: 'hi',
+    })
+    await outbound
+
+    expect(reactions).toEqual([{ messageId: 'm-1', emoji: '👀' }])
+  })
+
+  it('does not ack when an accepted group message has an undetectable mention', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('ok')]), { groupMode: 'always' })
+    const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
+    ctx.channels.registerAdapter(reactAdapter(reactions))
+    const outbound = nextOutbound(ctx)
+
+    ctx.emit('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 't1', messageId: 'm-1',
+      chatType: 'group', mention: { detectable: false, botMentioned: false }, text: 'hi',
+    })
+    await outbound
+
+    expect(reactions).toEqual([])
+  })
+
+  it('acks a direct message under the direct scope', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('ok')]), { ackReactionScope: 'direct' })
+    const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
+    ctx.channels.registerAdapter(reactAdapter(reactions))
+    const outbound = nextOutbound(ctx)
+
+    ctx.emit('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 't1', messageId: 'm-1', chatType: 'direct', text: 'hi',
+    })
+    await outbound
+
+    expect(reactions).toEqual([{ messageId: 'm-1', emoji: '👀' }])
+  })
+
+  it('acks a group message unconditionally under group-all', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('ok')]), {
+      groupMode: 'always',
+      ackReactionScope: 'group-all',
+    })
+    const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
+    ctx.channels.registerAdapter(reactAdapter(reactions))
+    const outbound = nextOutbound(ctx)
+
+    ctx.emit('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 't1', messageId: 'm-1',
+      chatType: 'group', mention: { detectable: true, botMentioned: false }, text: 'hi',
+    })
+    await outbound
+
+    expect(reactions).toEqual([{ messageId: 'm-1', emoji: '👀' }])
+  })
+
+  it('disables acks entirely when ackReaction is an explicit empty string', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('ok')]), { ackReaction: '', ackReactionScope: 'all' })
+    const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
+    ctx.channels.registerAdapter(reactAdapter(reactions))
+    const outbound = nextOutbound(ctx)
+
+    ctx.emit('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 't1', messageId: 'm-1', text: 'hi',
+    })
+    await outbound
+
+    expect(reactions).toEqual([])
   })
 })

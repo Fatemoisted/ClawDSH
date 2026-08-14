@@ -26,6 +26,7 @@ import type { SearchHit } from './search.ts'
 import { MEMORY_RECALL_ORDER, MEMORY_RECALL_SECTION, RECALL_TEXT } from './recall-section.ts'
 import { installMemoryFlush, resolveFlushConfig, FlushConfig } from './flush.ts'
 import { installMemoryAppend } from './append.ts'
+import { installMemoryWatch, DEFAULT_WATCH_STABILITY_THRESHOLD_MS, DEFAULT_WATCH_POLL_INTERVAL_MS } from './watch.ts'
 
 export { MEMORY_RECALL_ORDER, MEMORY_RECALL_SECTION, RECALL_TEXT } from './recall-section.ts'
 export { FLUSH_PLUGIN_SOURCE, DEFAULT_FLUSH_PROMPT, DEFAULT_FLUSH_RESERVE_TOKENS_FLOOR, DEFAULT_FLUSH_SOFT_THRESHOLD_TOKENS } from './flush.ts'
@@ -74,6 +75,12 @@ export interface Config {
   timeoutMs?: number
   /** Maximum lines one memory_get call reads. Defaults to 1000. */
   maxReadLines?: number
+  /** Whether host changes to memory files are watched for proactive invalidation. Defaults to true. */
+  watch?: boolean
+  /** Milliseconds a changed memory file must remain stable before it is observed. Defaults to 200. */
+  watchStabilityThresholdMs?: number
+  /** Milliseconds between Chokidar host-change and write-stability probes. Defaults to 100. */
+  watchPollIntervalMs?: number
   /** Pre-compaction memory flush turn; enabled by default, thresholds OpenClaw's 20000/4000. */
   flush?: FlushConfig
 }
@@ -87,6 +94,9 @@ export const Config: z<Config> = z.object({
   snippetChars: z.number().step(1).min(1).default(DEFAULT_SNIPPET_CHARS),
   timeoutMs: z.number().step(1).min(1).max(MAX_TIMER_DELAY_MS).default(DEFAULT_TIMEOUT_MS),
   maxReadLines: z.number().step(1).min(1).default(DEFAULT_MAX_READ_LINES),
+  watch: z.boolean().default(true),
+  watchStabilityThresholdMs: z.number().step(1).min(1).default(DEFAULT_WATCH_STABILITY_THRESHOLD_MS),
+  watchPollIntervalMs: z.number().step(1).min(1).default(DEFAULT_WATCH_POLL_INTERVAL_MS),
   flush: FlushConfig,
 })
 
@@ -99,6 +109,9 @@ interface ResolvedConfig {
   readonly snippetChars: number
   readonly timeoutMs: number
   readonly maxReadLines: number
+  readonly watch: boolean
+  readonly watchStabilityThresholdMs: number
+  readonly watchPollIntervalMs: number
   readonly flush: ReturnType<typeof resolveFlushConfig>
 }
 
@@ -129,6 +142,19 @@ export function apply(ctx: Context, config: Config): void {
   let indexPromise: Promise<MemoryIndex> | undefined
   const index = (): Promise<MemoryIndex> => (
     indexPromise ??= rootTarget().then(target => new MemoryIndex(ctx.fs, target, resolved.chunkSizeChars, resolved.chunkOverlapChars))
+  )
+  const onMemoryFile = (rel: string): void => {
+    // The index may not exist yet (no search has run); the first sync reads the
+    // full tree anyway, so a pre-index event is a no-op.
+    void indexPromise?.then((built) => { built.invalidateFile(rel) }, () => {})
+  }
+  ctx.effect(
+    () => installMemoryWatch(ctx, rootPath, {
+      enabled: resolved.watch,
+      stabilityThresholdMs: resolved.watchStabilityThresholdMs,
+      pollIntervalMs: resolved.watchPollIntervalMs,
+    }, onMemoryFile),
+    'memory.watch()',
   )
 
   ctx.effect(() => {
@@ -189,7 +215,10 @@ export function apply(ctx: Context, config: Config): void {
 }
 
 function resolveConfig(config: Config): ResolvedConfig {
-  if (config.root.length === 0) {
+  // Loader applies the schema, but direct plugin callers can still bypass its
+  // static `Config` contract at runtime; keep the fail-loud error intentional.
+  const root = (config as Partial<Config>).root
+  if (root === undefined || root.length === 0) {
     throw new TypeError('memory: config root is required (the memory file directory)')
   }
   const chunkSizeChars = config.chunkSizeChars ?? DEFAULT_CHUNK_SIZE_CHARS
@@ -199,6 +228,9 @@ function resolveConfig(config: Config): ResolvedConfig {
   const snippetChars = config.snippetChars ?? DEFAULT_SNIPPET_CHARS
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const maxReadLines = config.maxReadLines ?? DEFAULT_MAX_READ_LINES
+  const watch = config.watch ?? true
+  const watchStabilityThresholdMs = config.watchStabilityThresholdMs ?? DEFAULT_WATCH_STABILITY_THRESHOLD_MS
+  const watchPollIntervalMs = config.watchPollIntervalMs ?? DEFAULT_WATCH_POLL_INTERVAL_MS
   if (!Number.isSafeInteger(chunkSizeChars) || chunkSizeChars < 1) {
     throw new TypeError('memory: chunkSizeChars must be a positive safe integer')
   }
@@ -220,8 +252,30 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(maxReadLines) || maxReadLines < 1) {
     throw new TypeError('memory: maxReadLines must be a positive safe integer')
   }
+  if (config.watch !== undefined && typeof config.watch !== 'boolean') {
+    throw new TypeError('memory: watch must be a boolean')
+  }
+  if (!Number.isSafeInteger(watchStabilityThresholdMs) || watchStabilityThresholdMs < 1) {
+    throw new TypeError('memory: watchStabilityThresholdMs must be a positive safe integer')
+  }
+  if (!Number.isSafeInteger(watchPollIntervalMs) || watchPollIntervalMs < 1) {
+    throw new TypeError('memory: watchPollIntervalMs must be a positive safe integer')
+  }
   const flush = resolveFlushConfig(config.flush)
-  return { root: config.root, chunkSizeChars, chunkOverlapChars, maxResults, minScore, snippetChars, timeoutMs, maxReadLines, flush }
+  return {
+    root,
+    chunkSizeChars,
+    chunkOverlapChars,
+    maxResults,
+    minScore,
+    snippetChars,
+    timeoutMs,
+    maxReadLines,
+    watch,
+    watchStabilityThresholdMs,
+    watchPollIntervalMs,
+    flush,
+  }
 }
 
 function parseSearchArgs(

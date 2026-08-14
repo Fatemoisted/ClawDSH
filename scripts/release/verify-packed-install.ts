@@ -17,7 +17,7 @@
  * checkout cannot stand in for a missing file here.
  */
 
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -25,6 +25,12 @@ import { parseArgs } from 'node:util'
 import { releaseFamily, type ReleaseFamily, type ReleaseMember } from './families.ts'
 import { capture, isEntry } from './process.ts'
 import { packedIdentity } from './tarball.ts'
+
+/** npm flags for an artifact-focused consumer install with no native build toolchain. */
+export const PACKED_INSTALL_NPM_ARGS = [
+  'install', '--no-audit', '--no-fund', '--package-lock=false',
+  '--omit=optional', '--ignore-scripts',
+] as const
 
 /**
  * Environment for the installed artifact: no host Node hooks, no host DeepSeek
@@ -42,6 +48,49 @@ function consumerEnvironment(consumerRoot: string): NodeJS.ProcessEnv {
   environment.DSH_AGENTS_HOME = resolve(consumerRoot, '.agents')
   environment.DSH_TELEMETRY_DISABLED = '1'
   return environment
+}
+
+/** Non-secret host variables a plain Node import probe may need cross-platform. */
+const PROBE_ENV_ALLOWLIST = [
+  'PATH', 'PATHEXT', 'SystemRoot', 'SYSTEMROOT', 'ComSpec', 'COMSPEC', 'WINDIR',
+  'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'NO_COLOR', 'FORCE_COLOR',
+] as const
+
+/**
+ * Build a credential-free environment for executing installed package code.
+ * The install subprocess may need a registry read token; imported dependencies
+ * never do, and must not inherit GitHub/ACTIONS or npm authentication state.
+ */
+function probeEnvironment(consumerRoot: string): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {}
+  for (const key of PROBE_ENV_ALLOWLIST) {
+    const value = process.env[key]
+    if (value !== undefined) environment[key] = value
+  }
+  environment.DSH_HOME = resolve(consumerRoot, '.dsh')
+  environment.DSH_AGENTS_HOME = resolve(consumerRoot, '.agents')
+  environment.DSH_TELEMETRY_DISABLED = '1'
+  // If imported code invokes npm config discovery, point it at an intentionally
+  // blank file inside the permission boundary rather than the runner account.
+  const userConfig = resolve(consumerRoot, '.npmrc-probe')
+  writeFileSync(userConfig, '')
+  environment.NPM_CONFIG_USERCONFIG = userConfig
+  return environment
+}
+
+/** Node permission flags that confine installed-code probes to the consumer. */
+function probePermissionArgs(consumerRoot: string): string[] {
+  const canonicalRoot = realpathSync(consumerRoot)
+  const dshHome = resolve(canonicalRoot, '.dsh')
+  const agentsHome = resolve(canonicalRoot, '.agents')
+  mkdirSync(dshHome, { recursive: true })
+  mkdirSync(agentsHome, { recursive: true })
+  return [
+    '--permission',
+    `--allow-fs-read=${canonicalRoot}`,
+    `--allow-fs-write=${dshHome}`,
+    `--allow-fs-write=${agentsHome}`,
+  ]
 }
 
 /**
@@ -123,19 +172,24 @@ export function verifyPackedInstall(
       dependencies: Object.fromEntries([...packed].map(([name, entryPacked]) => [name, entryPacked.url])),
     }, null, 2)}\n`)
 
-    const environment = consumerEnvironment(consumerRoot)
+    const installEnvironment = consumerEnvironment(consumerRoot)
     console.log(`release verify-packed-install: installing ${String(packed.size)} tarball(s) into ${consumerRoot}`)
     // Optional dependencies are omitted: the Landlock platform packages behind
-    // them need a musl toolchain and one build per architecture, and a consumer
-    // that cannot install them must still start — which is what optional means
-    // here. Their entry package is a plain dependency of dsh-sandbox-local, so
-    // its tarball is supplied through --from.
-    capture('npm', ['install', '--no-audit', '--no-fund', '--package-lock=false', '--omit=optional'],
-      { cwd: consumerRoot, env: environment })
+    // them are released separately, and a consumer that cannot install them
+    // must still start — which is what optional means here. Omitting optional
+    // packages also omits third-party native prebuild helpers (for example
+    // koffi's platform package), so lifecycle scripts are disabled for this
+    // payload/import probe instead of forcing a source build toolchain. A normal
+    // consumer install keeps both scripts and optional prebuilds enabled.
+    capture('npm', PACKED_INSTALL_NPM_ARGS,
+      { cwd: consumerRoot, env: installEnvironment })
+
+    const environment = probeEnvironment(consumerRoot)
+    const permissions = probePermissionArgs(consumerRoot)
 
     if (entry !== undefined && expectedEntry !== undefined) {
       const bin = join(consumerRoot, 'node_modules', ...entry.packageName.split('/'), entry.binPath)
-      const version = capture(process.execPath, [bin, '--version'], { cwd: consumerRoot, env: environment })
+      const version = capture(process.execPath, [...permissions, bin, '--version'], { cwd: consumerRoot, env: environment })
       if (version !== expectedEntry.version) {
         throw new Error(`installed ${entry.packageName} --version reported ${JSON.stringify(version)}, expected ${expectedEntry.version}`)
       }
@@ -143,6 +197,7 @@ export function verifyPackedInstall(
     }
     for (const specifier of importSpecifiers) {
       capture(process.execPath, [
+        ...permissions,
         '--input-type=module',
         '--eval',
         `await import(${JSON.stringify(specifier)})`,

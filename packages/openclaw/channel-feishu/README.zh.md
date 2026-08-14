@@ -13,10 +13,10 @@
 ## 设计要点
 
 - **SDK 负责平台层**：`createLarkChannel` 负责接流量前探测 bot `open_id`、WebSocket 重连、过期消息拒绝、TTL 去重、in-flight lock、结构化 mention 移除、富消息归一化、token 刷新、普通出站分片/重试、引用失效回退和 reaction；
-- **薄转换**：适配器只把 `NormalizedMessage` 映射成 `ChannelMessage`（`conversationId` = 群 `chatId` 或私聊 sender id、可选 `threadId`、结构化 `mention` 与 SDK 渲染后的文本），其 callback 会等待 `ctx.parallel('channel/inbound', inbound)` 走完 FIFO 回合、`sessions.flush` 与出站发送。SDK 1.73 在关闭 queue 后会异步启动这个 callback，因此 WebSocket 入站确认本身不是持久化屏障；
+- **薄转换**：适配器只把 `NormalizedMessage` 映射成 `ChannelMessage`（`conversationId` = 群 `chatId` 或私聊 sender id、可选 `threadId`、结构化 `mention` 与 SDK 渲染后的文本）。由于 SDK policy 已启用 `respondToMentionAll`，广播提及也会被规范化成 channel-core 群聊门控可接受的 bot mention。callback 会等待 `ctx.parallel('channel/inbound', inbound)` 走完 FIFO 回合、`sessions.flush`、出站发送与 ack 完成。SDK 1.73 在关闭 queue 后会异步启动这个 callback，因此 WebSocket 入站确认本身不是持久化屏障；
 - **不跨话题合并**：关闭 SDK `chatQueue` batching，因为它只按 chat id 分组，而 Harness session 还会区分飞书 topic；SDK mention policy 同样关闭，统一交给 channel-core；
 - **WebSocket 前身份重试**：WebSocket client 一旦存在，重连仍完全归 SDK；只有创建 WebSocket 前探测 bot 身份的瞬时失败由 adapter 经 Harness timer 重试，指数退避从 1 秒封顶到 30 秒，永久 SDK 错误不进入重试循环；
-- **topic-safe 出站**：SDK 1.73 通常按 3500 个 UTF-16 unit 分片，但只给首片应用 `replyTo`，可能让后续片段掉出 topic。对 topic reply，adapter 会先做不切断 surrogate pair 的分片，再让每片都以相同 `replyTo`/`replyInThread` 调用 `LarkChannel.send`；鉴权、重试与引用目标消失后的回退仍全部归 SDK。其他发送直接用 SDK 自有分片；`addReaction` 负责飞书表情 API；
+- **topic-safe 出站**：SDK 1.73 通常按 3500 个 UTF-16 unit 分片，但只给首片应用 `replyTo`，可能让后续片段掉出 topic。对 topic reply，adapter 会先做不切断 surrogate pair 的分片，再让每片都以相同 `replyTo`/`replyInThread` 调用 `LarkChannel.send`；鉴权、重试与引用目标消失后的回退仍全部归 SDK。其他发送直接用 SDK 自有分片。reaction 仍经 SDK `addReaction`：一张最小明确表把常见便携 ack emoji 映射为飞书 named reaction，未知 identity emoji 则稳定降级成 `EYES`，不再让每次 ack 都失败；
 - **排空与失败握手清理**：dispose 会先取消入站订阅并等待适配器跟踪的全部消息 callback，再断开连接。SDK 1.73 在连接从未达到 `connected=true` 时，公开 `disconnect()` 会提前返回；只在该路径上，dispose 会强制关闭 `rawWsClient`、排空 SDK safety timer，再调用公开 disconnect。成功连接完全走公开生命周期；
 - **凭证**：`appId`/`appSecret` 经 Config 进入，不私存密钥；接入 `ctx.credentials` 留待真实 e2e 收尾。
 - **长连接取代 webhook**：无 `verificationToken`/`encryptKey`、无入站 HTTP 端口、无 URL 校验 challenge（这些只在 webhook 模式需要；长连接由 SDK 完成鉴权）。`domain` 选择飞书（默认）或国际版 Lark。

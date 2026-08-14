@@ -6,11 +6,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_ACK_REACTION,
+  DEFAULT_ACK_REACTION_SCOPE,
   deriveMentionPatterns,
   resolveAckReaction,
   resolveMessagePrefix,
   resolveResponsePrefix,
+  shouldAckReaction,
   stripMentions,
+  stripZeroWidth,
 } from '../src/presentation.ts'
 
 describe('channel identity presentation', () => {
@@ -18,14 +21,55 @@ describe('channel identity presentation', () => {
     expect(resolveAckReaction({})).toBe(DEFAULT_ACK_REACTION)
     expect(resolveAckReaction({ identity: { emoji: '🐚' } })).toBe('🐚')
     expect(resolveAckReaction({ identity: { emoji: '🐚' }, ackReaction: '✨' })).toBe('✨')
-    // An empty explicit value falls through, like OpenClaw's empty-string handling.
-    expect(resolveAckReaction({ ackReaction: '', identity: { emoji: '🐚' } })).toBe('🐚')
+    // An explicit empty string disables acks (OpenClaw semantics): it no longer
+    // falls through to the emoji fallback.
+    expect(resolveAckReaction({ ackReaction: '', identity: { emoji: '🐚' } })).toBe('')
+  })
+
+  it('defaults the ack scope to group-mentions', () => {
+    expect(DEFAULT_ACK_REACTION_SCOPE).toBe('group-mentions')
+  })
+
+  it('strips zero-width and bidi characters', () => {
+    expect(stripZeroWidth('a​b')).toBe('ab')
+    expect(stripZeroWidth('plain')).toBe('plain')
+  })
+
+  it('gates the ack reaction across every scope', () => {
+    // scope, isGroup, mentionRequired, canDetectMention, wasMentioned → expected
+    const cases: Array<[Parameters<typeof shouldAckReaction>, boolean]> = [
+      // all acks everything, regardless of group or mention.
+      [['all', false, true, true, false], true],
+      [['all', true, true, true, false], true],
+      // direct acks non-group chats only.
+      [['direct', false, true, true, false], true],
+      [['direct', true, true, true, true], false],
+      // group-all acks groups unconditionally.
+      [['group-all', true, true, true, false], true],
+      [['group-all', false, true, true, true], false],
+      // Legacy-compatible disable sentinels never ack.
+      [['off', false, true, true, true], false],
+      [['none', true, true, true, true], false],
+      // group-mentions acks groups only when a mention was detected.
+      [['group-mentions', true, true, true, true], true],
+      [['group-mentions', true, true, true, false], false],
+      [['group-mentions', false, true, true, true], false],
+      // Mention-gated routing off still acks an actual mention, but not other traffic.
+      [['group-mentions', true, false, true, false], false],
+      [['group-mentions', true, false, true, true], true],
+      // undetectable mentions fail open: no ack, never a blocked message.
+      [['group-mentions', true, true, false, false], false],
+    ]
+    for (const [args, expected] of cases) {
+      expect(shouldAckReaction(...args)).toBe(expected)
+    }
   })
 
   it("renders the response prefix as [name] on 'auto', literal otherwise, and empty without a name", () => {
     expect(resolveResponsePrefix({})).toBe('')
     expect(resolveResponsePrefix({ identity: { name: 'Clawd' } })).toBe('[Clawd]')
     expect(resolveResponsePrefix({ identity: { name: 'Clawd' }, responsePrefix: '>> ' })).toBe('>> ')
+    expect(resolveResponsePrefix({ identity: { name: 'Clawd' }, responsePrefix: '' })).toBe('')
     expect(resolveResponsePrefix({ responsePrefix: 'literal' })).toBe('literal')
   })
 
@@ -55,6 +99,7 @@ describe('channel identity presentation', () => {
   it('derives nothing from an absent name and emoji', () => {
     expect(deriveMentionPatterns(undefined, undefined)).toEqual([])
     expect(deriveMentionPatterns('   ', undefined)).toEqual([])
+    expect(deriveMentionPatterns('\u200b', undefined)).toEqual([])
   })
 
   it('strips mention matches from message text', () => {

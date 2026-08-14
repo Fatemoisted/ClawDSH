@@ -25,7 +25,7 @@
 
 | 包 | 定位 | OpenClaw 对应 | dsh 接缝 | 状态 |
 |---|---|---|---|---|
-| `channel-core/` | 持久渠道网关 | 渠道 Gateway | **新增** `ctx.channels` + Harness agents/presets/persistence/timer | **implemented**（可等待持久化、确定性恢复、FIFO、旧地址兼容、群聊/ack 策略 ✅） |
+| `channel-core/` | 持久渠道网关 | 渠道 Gateway | **新增** `ctx.channels` + Harness agents/presets/persistence/timer | **implemented**（可等待持久化、确定性恢复、FIFO、旧地址兼容、`groupMode`/结构化 mention + ack 策略 ✅） |
 | `channel-telegram/` | Telegram 渠道 | 渠道适配器 | `ctx.channels` + grammY | **implemented**（command/mention/caption/topic/引用/reaction、Unicode-safe 4096 分片 ✅；线上 e2e 待凭证） |
 | `channel-feishu/` | 飞书渠道（**发起人第一优先**） | OpenClaw `extensions/feishu` | `ctx.channels` + 官方 SDK `LarkChannel` | **implemented**（富消息归一化、身份退避、topic-safe 引用、失败握手清理 ✅；此前文本 e2e 已过） |
 | `soul/` | 人格 / Soul | Soul 系统 | system-prompt 装配 | **implemented**（阶段 0 ✅ + 阶段 2 深读定稿 ✅） |
@@ -39,6 +39,6 @@
 
 ## 发布状态
 
-9 个包已组成独立的 `clawdsh` release family：共享一条版本线和 `clawdsh-v*` tag，不与根 dsh 或 vendor 版本耦合。bump/verify/pack/publish 脚本、workspace 约束、packed-install 验证及 `.github/workflows/release-clawdsh.yml` 均已实现。PR 与 `clawdsh` 分支 push 无需 registry 凭证即可构建并验证 tarball；npm 发布只能从 `clawdsh-v*` tag 受保护地手动触发。
+9 个包已组成独立的 `clawdsh` release family：共享一条版本线和 `clawdsh-v*` tag，不与根 dsh 或 vendor 版本耦合。bump/verify/pack/publish 脚本、profile 范围同步、workspace 约束、pack 产物、主路径与 invariant 路径的全新 packed-install 验证及 `.github/workflows/clawdsh-publish.yml` 均已实现。PR 与 `clawdsh` 分支 push 无需 registry 凭证即可构建并验证 tarball；发布目标由受保护的 `npm-publish` environment 变量 `NPM_REGISTRY_URL` 配置，且只能通过 `clawdsh-v*` tag 上的受保护手动操作执行。
 
 当前工作树尚未实际执行 ClawDSH npm 发布。因此在明确发布前，本地开发仍使用 `tools/link-openclaw.sh` 及其 profile symlink。
