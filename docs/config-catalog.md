@@ -52,6 +52,60 @@ export interface Config {
 
 Source: [`packages/openclaw/channel-telegram/src/index.ts:28`](../packages/openclaw/channel-telegram/src/index.ts)
 
+<a id="clawdshdsh-embeddings-ark"></a>
+
+## `@clawdsh/dsh-embeddings-ark`
+
+```ts config-catalog
+/** Plugin config (all optional — `static Config` supplies the defaults). */
+export interface Config {
+  /** Literal Ark API key; prefer {@link apiKeyEnv} so no secret enters configuration files. */
+  apiKey?: string
+  /** Credential reference resolved per embed; defaults to `ARK_API_KEY`. */
+  apiKeyEnv?: string
+  /** Endpoint base; `/embeddings/multimodal` is appended. */
+  baseURL?: string
+  /** Embedding model name. Defaults to {@link ARK_DEFAULT_MODEL}. */
+  model?: string
+  /** Deadline in milliseconds for one `embed` call. */
+  timeoutMs?: number
+  /** Maximum texts per HTTP request; larger inputs are sharded serially. */
+  maxBatchTexts?: number
+}
+```
+
+Source: [`packages/openclaw/embeddings-ark/src/index.ts:44`](../packages/openclaw/embeddings-ark/src/index.ts)
+
+<a id="clawdshdsh-memory"></a>
+
+## `@clawdsh/dsh-memory`
+
+Requires: `tools` · `systemPrompt` · `fs`
+
+```ts config-catalog
+/** Plugin config; `root` is required — the memory directory a deployment owns. */
+export interface Config {
+  /** Memory root directory (absolute or resolved against `process.cwd()`). Required, fail-loud. */
+  root: string
+  /** Character budget per index chunk. Defaults to 1600. */
+  chunkSizeChars?: number
+  /** Sentence-aligned overlap from the previous chunk's tail. Defaults to 160. */
+  chunkOverlapChars?: number
+  /** Maximum hits returned by one memory_search call. Defaults to 6. */
+  maxResults?: number
+  /** Minimum cosine similarity for a hit. Defaults to 0.35. */
+  minScore?: number
+  /** Character cap per hit snippet. Defaults to 700. */
+  snippetChars?: number
+  /** Cooperative search deadline in milliseconds. Defaults to 30000. */
+  timeoutMs?: number
+  /** Maximum lines one memory_get call reads. Defaults to 1000. */
+  maxReadLines?: number
+}
+```
+
+Source: [`packages/openclaw/memory/src/index.ts:56`](../packages/openclaw/memory/src/index.ts)
+
 <a id="clawdshdsh-soul"></a>
 
 ## `@clawdsh/dsh-soul`
@@ -3161,6 +3215,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 
 Abstract service classes — a deployment loads a concrete implementation package instead ([capability seams](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md)).
 
+- `@clawdsh/dsh-embeddings` — abstract `Embeddings` ([`packages/openclaw/embeddings/src/index.ts`](../packages/openclaw/embeddings/src/index.ts))
 - `@deepseek-ai/dsh-attachment` — abstract `AttachmentStore` ([`packages/attachment/attachment/src/index.ts`](../packages/attachment/attachment/src/index.ts))
 - `@deepseek-ai/dsh-code-runtime` — abstract `CodeRuntime` ([`packages/code-runtime/code-runtime/src/index.ts`](../packages/code-runtime/code-runtime/src/index.ts))
 - `@deepseek-ai/dsh-compaction` — abstract `CompactionEngine` ([`packages/compaction/compaction/src/index.ts`](../packages/compaction/compaction/src/index.ts))
