@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-14-embeddings-ark-bounded-concurrency.md
+2026-08-14-embeddings-ark-bounded-concurrency.md: 472a0c60225528852289ab8898179a2d600dc6b1
+2026-08-14-embeddings-ark-bounded-concurrency.zh.md: d032795f2b404e9c05ff4cee6d79b7f7714af406
