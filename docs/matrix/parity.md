@@ -45,7 +45,7 @@ English | [中文](parity.zh.md)
 | Approval / security policy | `src/security/` (from 1.15) | `ctx.approval` / guard | Reuse (config) | — | directly usable |
 | Federation node (clawd) | absent in early baseline | `ctx.subagents` (transport) | Plugin | `clawd-federation` | ADR-0005 (evaluation-only), implementation deferred |
 | Smart home (casa) | absent in baseline | none | new plugin domain | to be named | Deferred |
-| Desktop/mobile client | `ui/` (+ `apps/`) | `apps/web` (dsh Web UI) | Reuse | — | customization surface evaluated later |
+| Desktop/mobile client | `ui/` (+ `apps/`) | `apps/web` (dsh Web UI) | Reuse (profile/preset) | `preset-openclaw` + `dsh-web-app` | **implemented** (Phase 4 ✅) |
 
 ## Domestic platforms (principle: only implement what OpenClaw upstream has)
 
