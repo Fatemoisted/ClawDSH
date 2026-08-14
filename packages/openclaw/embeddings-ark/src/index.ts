@@ -37,9 +37,6 @@ export const ARK_DEFAULT_API_KEY_ENV = 'ARK_API_KEY'
 /** Default cooperative deadline for one `embed` call. */
 export const ARK_DEFAULT_TIMEOUT_MS = 30_000
 
-/** Default maximum texts per HTTP request; larger inputs are sharded serially. */
-export const ARK_DEFAULT_MAX_BATCH_TEXTS = 32
-
 /** Plugin config (all optional — `static Config` supplies the defaults). */
 export interface Config {
   /** Literal Ark API key; prefer {@link apiKeyEnv} so no secret enters configuration files. */
@@ -52,8 +49,6 @@ export interface Config {
   model?: string
   /** Deadline in milliseconds for one `embed` call. */
   timeoutMs?: number
-  /** Maximum texts per HTTP request; larger inputs are sharded serially. */
-  maxBatchTexts?: number
 }
 
 export const Config: z<Config> = z.object({
@@ -65,15 +60,17 @@ export const Config: z<Config> = z.object({
   baseURL: z.string().default(ARK_DEFAULT_BASE_URL),
   model: z.string().default(ARK_DEFAULT_MODEL),
   timeoutMs: z.number().step(1).min(1).max(MAX_TIMER_DELAY_MS).default(ARK_DEFAULT_TIMEOUT_MS),
-  maxBatchTexts: z.number().step(1).min(1).default(ARK_DEFAULT_MAX_BATCH_TEXTS),
 })
 
 /**
  * Volcano Ark text-embedding backend. One implementation per context (the
- * `embeddings` service contract); a second load throws at mount. The provider
- * validates every response (entry count, finite non-empty vectors, batch and
- * cross-call dimension consistency) and rejects the whole call on any
- * mismatch — a dimension drift from a silent model upgrade must not corrupt
+ * `embeddings` service contract); a second load throws at mount. The wire is
+ * the multimodal endpoint's real shape (verified against the live API on
+ * 2026-08-14): one `data.embedding` object per request, 2048 dimensions, and
+ * one text per request — the endpoint embeds the whole input array as ONE
+ * multimodal item, so the provider sends one request per text in input order.
+ * Every response is validated (finite non-empty vector) and cross-call
+ * dimension drift fails the call, so a silent model upgrade cannot corrupt
  * cosine ranking in consumers.
  */
 export class ArkEmbeddings extends Embeddings {
@@ -82,7 +79,6 @@ export class ArkEmbeddings extends Embeddings {
   private readonly baseURL: string
   private readonly model: string
   private readonly timeoutMs: number
-  private readonly maxBatchTexts: number
   /** Literal key when configured; otherwise resolved per embed via credentials/env. */
   private readonly apiKey: string | undefined
   private readonly apiKeyEnv: CredentialRef
@@ -94,7 +90,6 @@ export class ArkEmbeddings extends Embeddings {
     this.baseURL = config.baseURL ?? ARK_DEFAULT_BASE_URL
     this.model = config.model ?? ARK_DEFAULT_MODEL
     this.timeoutMs = config.timeoutMs ?? ARK_DEFAULT_TIMEOUT_MS
-    this.maxBatchTexts = config.maxBatchTexts ?? ARK_DEFAULT_MAX_BATCH_TEXTS
     this.apiKey = config.apiKey !== undefined && config.apiKey.length > 0 ? config.apiKey : undefined
     this.apiKeyEnv = credentialRef(config.apiKeyEnv ?? ARK_DEFAULT_API_KEY_ENV)
   }
@@ -107,10 +102,11 @@ export class ArkEmbeddings extends Embeddings {
         '(set config apiKey, or provide the key through the credentials seam / launch environment)',
       )
     }
+    // The multimodal endpoint embeds one input array as ONE multimodal item, so
+    // batching is impossible with this model: one request per text, in order.
     const vectors: EmbeddingVector[] = []
-    for (let start = 0; start < texts.length; start += this.maxBatchTexts) {
-      const batch = texts.slice(start, start + this.maxBatchTexts)
-      vectors.push(...await this.embedBatch(batch, apiKey, signal))
+    for (const text of texts) {
+      vectors.push(await this.embedOne(text, apiKey, signal))
     }
     return vectors
   }
@@ -129,8 +125,8 @@ export class ArkEmbeddings extends Embeddings {
     return ambient !== undefined && ambient.value.length > 0 ? ambient.value : undefined
   }
 
-  /** Embed one shard and validate its response. */
-  private async embedBatch(batch: readonly string[], apiKey: string, signal?: AbortSignal): Promise<EmbeddingVector[]> {
+  /** Embed one text and validate its response. */
+  private async embedOne(text: string, apiKey: string, signal?: AbortSignal): Promise<EmbeddingVector> {
     const response = await fetch(`${this.baseURL}/embeddings/multimodal`, {
       method: 'POST',
       headers: {
@@ -139,7 +135,7 @@ export class ArkEmbeddings extends Embeddings {
       },
       body: JSON.stringify({
         model: this.model,
-        input: batch.map(text => ({ type: 'text', text })),
+        input: [{ type: 'text', text }],
       }),
       signal: signal === undefined
         ? AbortSignal.timeout(this.timeoutMs)
@@ -152,65 +148,39 @@ export class ArkEmbeddings extends Embeddings {
       )
     }
     const payload: unknown = await response.json()
-    const { vectors, dimension } = parseResponse(payload, batch.length)
+    const vector = parseResponse(payload)
     if (this.firstDimension === undefined) {
-      this.firstDimension = dimension
-    } else if (dimension !== this.firstDimension) {
+      this.firstDimension = vector.length
+    } else if (vector.length !== this.firstDimension) {
       throw new Error(
-        `@clawdsh/dsh-embeddings-ark: embedding dimension drifted from ${this.firstDimension} to ${dimension} ` +
+        `@clawdsh/dsh-embeddings-ark: embedding dimension drifted from ${this.firstDimension} to ${vector.length} ` +
         '(model changed server-side?); refusing to mix incompatible vectors',
       )
     }
-    return vectors
+    return vector
   }
 }
 
-/** A validated embedding response: the vectors in order plus their shared dimension. */
-interface ParsedEmbeddings {
-  vectors: EmbeddingVector[]
-  dimension: number
-}
-
 /**
- * Validate an Ark embedding response against the seam contract: exactly one
- * entry per input, each a non-empty list of finite numbers, all of one dimension.
+ * Validate an Ark embedding response: the multimodal endpoint answers with a
+ * single `data.embedding` object holding one non-empty vector of finite numbers.
  * @param payload - the parsed JSON body.
- * @param expectedCount - the number of inputs the request sent.
- * @returns the validated vectors in response order plus their shared dimension.
+ * @returns the validated vector.
  */
-function parseResponse(payload: unknown, expectedCount: number): ParsedEmbeddings {
-  if (expectedCount === 0) return { vectors: [], dimension: 0 }
+function parseResponse(payload: unknown): EmbeddingVector {
   if (typeof payload !== 'object' || payload === null || !('data' in payload)) {
     throw new Error('@clawdsh/dsh-embeddings-ark: malformed embedding response (no data field)')
   }
   const data = (payload as { data: unknown }).data
-  if (!Array.isArray(data) || data.length !== expectedCount) {
-    throw new Error(
-      `@clawdsh/dsh-embeddings-ark: embedding response has ${Array.isArray(data) ? data.length : 'no'} entries ` +
-      `for ${expectedCount} inputs`,
-    )
+  if (typeof data !== 'object' || data === null || !('embedding' in data)
+    || !Array.isArray((data as { embedding: unknown }).embedding)) {
+    throw new Error('@clawdsh/dsh-embeddings-ark: malformed embedding response (no data.embedding vector)')
   }
-  const vectors = data.map((entry, index) => {
-    if (typeof entry !== 'object' || entry === null || !('embedding' in entry)
-      || !Array.isArray((entry as { embedding: unknown }).embedding)) {
-      throw new Error(`@clawdsh/dsh-embeddings-ark: malformed embedding entry at index ${index}`)
-    }
-    const embedding = (entry as { embedding: unknown[] }).embedding
-    if (embedding.length === 0 || !embedding.every(value => typeof value === 'number' && Number.isFinite(value))) {
-      throw new Error(`@clawdsh/dsh-embeddings-ark: invalid embedding vector at index ${index}`)
-    }
-    return embedding as number[]
-  })
-  const first = vectors[0]
-  if (first === undefined) {
-    // Unreachable: expectedCount > 0 above guarantees a non-empty `data`.
-    throw new Error('@clawdsh/dsh-embeddings-ark: empty embedding response for a non-empty input')
+  const embedding = (data as { embedding: unknown[] }).embedding
+  if (embedding.length === 0 || !embedding.every(value => typeof value === 'number' && Number.isFinite(value))) {
+    throw new Error('@clawdsh/dsh-embeddings-ark: invalid embedding vector (empty or non-finite entries)')
   }
-  const dimension = first.length
-  if (!vectors.every(vector => vector.length === dimension)) {
-    throw new Error('@clawdsh/dsh-embeddings-ark: inconsistent embedding dimensions within one response')
-  }
-  return { vectors, dimension }
+  return embedding as number[]
 }
 
 export default ArkEmbeddings

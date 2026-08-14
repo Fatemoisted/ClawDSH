@@ -55,6 +55,6 @@ No prompt text is produced by the seam; per-call embedding payloads are provider
 ## Known Limitations and Deferred Work
 
 - **单 provider**：`ctx.embeddings` 单实现；多 provider 需求出现时在消费侧做注册表升级（本 seam 保持不动）；
-- **无维度协商**：维度以 provider 返回为准，seam 不声明期望维度；跨调用维度漂移由 provider 自行 fail-loud（ark 已实现）；
+- **无维度协商**：维度以 provider 返回为准，seam 不声明期望维度；跨调用维度漂移由 provider 自行 fail-loud（ark 已实现，实测 2048）；
 - **无本地模型**：本期只有远端 HTTP provider；本地 GGUF（OpenClaw 的 local 路径）留待阶段 3；
-- **真实 e2e**：Ark wire shape 未经真实凭证 e2e（契约测试 mock fetch），见 embeddings-ark README。
+- **真实 e2e 已验**：Ark wire 经 tools/ark-e2e.ts 真实闭环（2026-08-14），见 embeddings-ark README。

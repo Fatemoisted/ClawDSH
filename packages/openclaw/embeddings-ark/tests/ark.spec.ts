@@ -1,9 +1,12 @@
 /**
  * Contract tests for the Ark embeddings provider, keyless: the HTTP layer is mocked with
  * `vi.stubGlobal('fetch', …)` and credentials come from literal config or a stub credentials
- * provider — no real endpoint is contacted. Pinned: request shape (endpoint, Bearer header,
- * text-only multimodal body), response validation (entry count, finite vectors, batch and
- * cross-call dimension consistency), fail-loud credential handling, and batch sharding.
+ * provider — no real endpoint is contacted. Pinned against the wire shape verified with the
+ * live API on 2026-08-14: the multimodal endpoint answers with one `data.embedding` object
+ * per request and embeds one text per request, so the provider issues one request per text
+ * in input order. Also pinned: request shape (endpoint, Bearer header, text-only input),
+ * response validation (finite non-empty vector), cross-call dimension drift, and
+ * fail-loud credential handling.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -26,9 +29,9 @@ class StubCredentials extends CredentialProvider {
   async unset(_ref: CredentialRef): Promise<void> {}
 }
 
-/** Build an OpenAI-compatible response body with the given vectors. */
-function responseBody(vectors: readonly (readonly number[])[]): string {
-  return JSON.stringify({ data: vectors.map(embedding => ({ embedding })) })
+/** Build the live wire's response body: one `data.embedding` vector. */
+function responseBody(embedding: readonly number[]): string {
+  return JSON.stringify({ data: { embedding } })
 }
 
 function okFetch(body: string): ReturnType<typeof vi.fn> {
@@ -50,13 +53,17 @@ afterEach(() => {
 })
 
 describe('ark embeddings provider', () => {
-  it('posts text-only inputs to the multimodal endpoint with a Bearer header and parses vectors', async () => {
-    const fetchMock = okFetch(responseBody([[0.1, 0.2], [0.3, 0.4]]))
+  it('sends one text-only request per text and parses vectors in order', async () => {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const text = (JSON.parse(init.body as string).input as { text: string }[])[0]!.text
+      return new Response(responseBody(text === '天很蓝' ? [0.1, 0.2] : [0.3, 0.4]), { status: 200 })
+    })
     vi.stubGlobal('fetch', fetchMock)
     const ctx = new Context()
     await ctx.plugin(ArkEmbeddings, { apiKey: 'test-key' })
     const vectors = await ctx.embeddings.embed(['天很蓝', '海很深'])
     expect(vectors).toEqual([[0.1, 0.2], [0.3, 0.4]])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     const first = fetchMock.mock.calls[0]
     if (first === undefined) throw new Error('fetch was never called')
     const [url, init] = first
@@ -64,28 +71,28 @@ describe('ark embeddings provider', () => {
     expect((init as RequestInit).headers).toMatchObject({ Authorization: 'Bearer test-key' })
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
       model: 'doubao-embedding-vision-251215',
-      input: [{ type: 'text', text: '天很蓝' }, { type: 'text', text: '海很深' }],
+      input: [{ type: 'text', text: '天很蓝' }],
     })
   })
 
-  it('throws when the response entry count does not match the input count', async () => {
-    vi.stubGlobal('fetch', okFetch(responseBody([[0.1, 0.2]])))
+  it('throws on a response without a data.embedding vector', async () => {
+    vi.stubGlobal('fetch', okFetch(JSON.stringify({ data: { object: 'embedding' } })))
     const ctx = new Context()
     await ctx.plugin(ArkEmbeddings, { apiKey: 'test-key' })
-    await expect(ctx.embeddings.embed(['a', 'b'])).rejects.toThrow(/entries/)
+    await expect(ctx.embeddings.embed(['a'])).rejects.toThrow(/data\.embedding/)
   })
 
-  it('throws on inconsistent dimensions within one response', async () => {
-    vi.stubGlobal('fetch', okFetch(responseBody([[0.1, 0.2], [0.3]])))
+  it('throws on an empty or non-finite embedding vector', async () => {
+    vi.stubGlobal('fetch', okFetch(JSON.stringify({ data: { embedding: [0.1, Number.NaN] } })))
     const ctx = new Context()
     await ctx.plugin(ArkEmbeddings, { apiKey: 'test-key' })
-    await expect(ctx.embeddings.embed(['a', 'b'])).rejects.toThrow(/dimension/)
+    await expect(ctx.embeddings.embed(['a'])).rejects.toThrow(/invalid embedding vector/)
   })
 
   it('throws when the dimension drifts across calls', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(responseBody([[0.1, 0.2]]), { status: 200 }))
-      .mockResolvedValueOnce(new Response(responseBody([[0.1, 0.2, 0.3]]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(responseBody([0.1, 0.2]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(responseBody([0.1, 0.2, 0.3]), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     const ctx = new Context()
     await ctx.plugin(ArkEmbeddings, { apiKey: 'test-key' })
@@ -111,7 +118,7 @@ describe('ark embeddings provider', () => {
 
   it('prefers the literal apiKey over the environment', async () => {
     vi.stubEnv('ARK_API_KEY', 'env-key')
-    const fetchMock = okFetch(responseBody([[0.1]]))
+    const fetchMock = okFetch(responseBody([0.1]))
     vi.stubGlobal('fetch', fetchMock)
     const ctx = new Context()
     await ctx.plugin(ArkEmbeddings, { apiKey: 'literal-key' })
@@ -120,25 +127,12 @@ describe('ark embeddings provider', () => {
   })
 
   it('resolves the key through the credentials seam for a custom reference', async () => {
-    const fetchMock = okFetch(responseBody([[0.1]]))
+    const fetchMock = okFetch(responseBody([0.1]))
     vi.stubGlobal('fetch', fetchMock)
     const ctx = new Context()
     await ctx.plugin(StubCredentials)
     await ctx.plugin(ArkEmbeddings, { apiKeyEnv: 'MY_CUSTOM_KEY' })
     await ctx.embeddings.embed(['a'])
     expect(firstFetchInit(fetchMock).headers).toMatchObject({ Authorization: 'Bearer stub-key-MY_CUSTOM_KEY' })
-  })
-
-  it('shards oversized inputs across sequential requests', async () => {
-    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const count = (JSON.parse(init.body as string).input as unknown[]).length
-      return new Response(responseBody(Array.from({ length: count }, () => [0.1])), { status: 200 })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    const ctx = new Context()
-    await ctx.plugin(ArkEmbeddings, { apiKey: 'test-key', maxBatchTexts: 2 })
-    const vectors = await ctx.embeddings.embed(['a', 'b', 'c', 'd', 'e'])
-    expect(vectors).toHaveLength(5)
-    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 })

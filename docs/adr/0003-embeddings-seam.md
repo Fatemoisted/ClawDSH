@@ -19,7 +19,7 @@ Memory 插件（交付 B）需要「按语义召回记忆」：OpenClaw v2026.1.
 
 1. **新增 `ctx.embeddings` 单实现服务**（Service Definition，spill 式）：`abstract embed(texts): Promise<number[][]>`，每 context 一个实现，load 第二个 throw。**否决多 provider 注册表**（web 式）：混合 provider 产生不可比的嵌入空间，cosine 排序无意义；OpenClaw 原实现同样是配置二选一（openai-remote / local-gguf）。将来若需多 provider，升级路径在消费侧（配置选 provider），seam 保持不动。
 2. **三件套拆包**：`@clawdsh/dsh-embeddings`（Service Definition）+ `@clawdsh/dsh-embeddings-ark`（Provider）+ `@clawdsh/dsh-memory`（Consumer），镜像 dsh 的 spill/spill-local 分层。
-3. **第一个 provider = 火山方舟 Ark 文本嵌入**（发起人指定）：POST `https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal`（OpenAI 兼容响应），model `doubao-embedding-vision-251215`，只发 `type: "text"` 输入；API Key 经 credentials seam 每操作解析（根 `.env` 的 `ARK_API_KEY`，永不入仓库），解析不到 fail-loud。
+3. **第一个 provider = 火山方舟 Ark 文本嵌入**（发起人指定）：POST `https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal`，model `doubao-embedding-vision-251215`，只发 `type: "text"` 输入；API Key 经 credentials seam 每操作解析（根 `.env` 的 `ARK_API_KEY`，永不入仓库），解析不到 fail-loud。**wire 实测（2026-08-14，tools/ark-e2e.ts）**：响应为单对象 `data.embedding`（2048 维）而非 OpenAI 的 `data: [{embedding}]` 数组；该端点把整个 input 数组嵌成一条多模态条目，**无法批量**——provider 按输入序每文本发一个请求。
 4. **memory 存储 = 纯 Markdown 文件经 `ctx.fs`**（`MEMORY.md` + `memory/*.md`，对齐 OpenClaw「文件是事实源」），索引是派生数据、纯内存不落盘（文件变更增量重建）。
 5. **无 embeddings provider 时 `memory_search` fail-loud**（错误信息指名需要 `@clawdsh/dsh-embeddings-ark`）；词汇打分降级列 Deferred（两个评分空间语义不同，静默切换会误导模型）。
 6. **上游提案缓行**：本次偏离「ADR → 上游 PR → profile patch 过渡」纪律默认流程——上游 PR 周期太长、上游无暇回应（ADR-0002 已确立先例）。`ctx.embeddings` 作为 ClawDSH 自有 seam 长期保留，`docs/upstream-proposal/` 暂不建档；未来若上游自建等价能力再评估去留，差异记录回本 ADR。

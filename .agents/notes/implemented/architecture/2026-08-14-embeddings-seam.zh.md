@@ -15,7 +15,7 @@ Memory 插件需要语义召回——OpenClaw `v2026.1.15` 的 `memory_search` �
 | 包 | 角色 |
 |---|---|
 | `@clawdsh/dsh-embeddings` | Service Definition：抽象 `Embeddings`（`super(ctx, 'embeddings')`）、`embed(texts, signal?) → number[][]`、词汇类型。 |
-| `@clawdsh/dsh-embeddings-ark` | Provider：火山方舟文本嵌入（多模态端点、仅 `type: "text"` 输入）、凭证每操作分层解析、响应校验含跨调用维度漂移检测。 |
+| `@clawdsh/dsh-embeddings-ark` | Provider：火山方舟文本嵌入（多模态端点、仅 `type: "text"` 输入）、凭证每操作分层解析、响应校验含跨调用维度漂移检测。实测 wire（2026-08-14 验证）：每请求一个 `data.embedding` 单对象、2048 维、每文本一个请求——该端点把整个 input 数组嵌成一条多模态条目，无法批量。 |
 | `@clawdsh/dsh-memory` | Consumer：经 `ctx.fs` 的 Markdown 记忆文件、内存派生索引、`memory_search`/`memory_get` 两工具。 |
 
 关键设计点（完整决策记录见 [ADR-0003](../../../../docs/adr/0003-embeddings-seam.md)）：

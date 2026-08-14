@@ -81,4 +81,4 @@ Tool results land mid-transcript, like any tool output; no system-prompt prefix 
 - **超大检索结果 spill**（挂 `ctx.spillStore`）列 Deferred；
 - **多 agent 隔离**：需要各自配置 `root`；共享记忆语义留阶段 3；
 - **sandbox 后端**：`root` 在 workspace 外时模型的 fs 工具可能写不进去，阶段 3 评估记忆专用写工具或沙箱豁免；
-- **真实 e2e**：契约测试以确定性词袋 stub 替代真实 embedding；真实 ARK e2e 留凭证后验证。
+- **真实 e2e 已验**：tools/ark-e2e.ts 对真实 ARK 端点跑通「写记忆 → 真实 embedding 召回」闭环（2048 维、top 命中 0.648、无关查询过滤），契约测试仍以确定性词袋 stub 保持 keyless。

@@ -15,7 +15,7 @@ A new single-implementation service seam `ctx.embeddings` plus a first provider,
 | Package | Role |
 |---|---|
 | `@clawdsh/dsh-embeddings` | Service Definition: abstract `Embeddings` (`super(ctx, 'embeddings')`), `embed(texts, signal?) → number[][]`, vocabulary types. |
-| `@clawdsh/dsh-embeddings-ark` | Provider: Volcano Ark text embeddings through the multimodal endpoint (`type: "text"` inputs only), credential layering per operation, response validation with cross-call dimension-drift detection. |
+| `@clawdsh/dsh-embeddings-ark` | Provider: Volcano Ark text embeddings through the multimodal endpoint (`type: "text"` inputs only), credential layering per operation, response validation with cross-call dimension-drift detection. Live wire (verified 2026-08-14): one `data.embedding` object per request, 2048 dimensions, one request per text — the endpoint embeds the whole input array as one multimodal item, so batching is impossible. |
 | `@clawdsh/dsh-memory` | Consumer: Markdown memory files via `ctx.fs`, in-memory derived index, `memory_search`/`memory_get` tools. |
 
 Key design points (full decision record in [ADR-0003](../../../../docs/adr/0003-embeddings-seam.md)):

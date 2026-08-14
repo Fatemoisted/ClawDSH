@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-14-embeddings-seam.md
-2026-08-14-embeddings-seam.md: 7761b3f4dc8229a3c6ea8d72f4b0db353dd3f309
-2026-08-14-embeddings-seam.zh.md: 06755cb21ffb67ac75052db423fe6ef5618fa1d7
+2026-08-14-embeddings-seam.md: 8e686dbd541570d233dcec449bda3db0d183c1da
+2026-08-14-embeddings-seam.zh.md: f9fb49913a3aa08a7f7fd67fbcfc5f189b574f60
