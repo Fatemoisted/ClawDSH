@@ -25,10 +25,15 @@
     "lib/types/**/*.d.ts"
   ],
   "peerDependencies": {
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@deepseek-ai/dsh-compaction": "workspace:^",
     "@deepseek-ai/dsh-fs": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-system-prompt": "workspace:^",
     "@deepseek-ai/dsh-timeout": "workspace:^",
+    "@deepseek-ai/dsh-token-meter": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
   },
@@ -38,12 +43,19 @@
   "devDependencies": {
     "@clawdsh/dsh-embeddings": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-agent": "workspace:^",
+    "@deepseek-ai/dsh-agent-default-model": "workspace:^",
+    "@deepseek-ai/dsh-agent-loop": "workspace:^",
+    "@deepseek-ai/dsh-compaction": "workspace:^",
+    "@deepseek-ai/dsh-compaction-basic": "workspace:^",
     "@deepseek-ai/dsh-fs": "workspace:^",
     "@deepseek-ai/dsh-fs-local": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-llm": "workspace:^",
+    "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-system-prompt": "workspace:^",
     "@deepseek-ai/dsh-timeout": "workspace:^",
+    "@deepseek-ai/dsh-token-meter": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^"
   }
 }

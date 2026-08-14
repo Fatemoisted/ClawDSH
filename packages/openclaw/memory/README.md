@@ -29,6 +29,10 @@ English | [中文](README.zh.md)
     # snippetChars: 700             # 片段字符上限
     # timeoutMs: 30000              # 协作超时（透传 embed）
     # maxReadLines: 1000            # memory_get 行数硬上限
+    # flush:                        # 预压缩 flush 回合（默认启用）
+    #   reserveTokensFloor: 20000   # 窗口下方保留 token 余量
+    #   softThresholdTokens: 4000   # 软触发带
+    #   prompt: 'Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY.'
 ```
 
 Write convention (taught to the model by the guidance section): stable facts go into `MEMORY.md`, runtime notes are appended to `memory/YYYY-MM-DD.md`, only via file tools, append-only and never rewriting history.
@@ -44,6 +48,7 @@ Write convention (taught to the model by the guidance section): stable facts go 
 ## Changelog
 
 - 0.1.0: first release (chunk + incremental index + two tools + guidance section; 13 contract tests, keyless bag-of-words stub).
+- 0.2.0: pre-compaction memory flush turn (threshold + once-per-compaction-cycle guard on `agent/turn-stopping`; 8 flush contract tests, real agent-loop composition).
 
 ## Model Experience
 
@@ -75,9 +80,31 @@ Proportional to what the model retrieves (bounded by `maxResults`/`snippetChars`
 
 Tool results land mid-transcript, like any tool output; no system-prompt prefix changes.
 
+### The pre-compaction flush turn
+
+#### What the model sees
+
+When the measured context crosses `contextWindow − reserveTokensFloor − softThresholdTokens`, one plugin-sourced message carrying `source: {kind: 'plugin', plugin: 'memory-flush'}` queues once per compaction cycle (channel reply extraction skips plugin-sourced turns), verbatim:
+
+##### Flush prompt
+
+```markdown
+Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY.
+```
+
+#### Token effect
+
+One prompt message plus one reply per flush, only on cycles where the threshold is crossed — zero in low-context sessions.
+
+#### KV Cache effect
+
+Append-only: the prompt lands mid-log as an ordinary turn input; no system-prompt prefix changes.
+
 ## Known Limitations and Deferred Work
 
-- **No dedicated write tool**: writes rely on the model following the convention (isomorphic with OpenClaw); the pre-compaction memory flush round (OpenClaw's existing-write driver) is deferred to phase 3, hanging on the dsh compaction hook;
+- **No dedicated write tool**: writes rely on the model following the convention (isomorphic with OpenClaw), driven now by the flush turn and otherwise by the model's own initiative;
+- **The flush runs between turns, not strictly before the main turn**: an inbound queued before the flush completes runs first; and the flush turn's own pre-step may trigger the pressure compaction first, so the flush writes from the compacted summary (with dsh's default compaction threshold below the flush threshold, compaction → flush-from-summary is the common flow; tune `compaction.thresholdRatio` above the flush threshold for the OpenClaw ordering);
+- **Flush skip-list is mount-level**: profiles that do not mount the memory row never flush (maps OpenClaw's heartbeat/CLI/sandbox-ro skips);
 - **No chokidar watch**: changes rely on pre-search incremental rebuild, no proactive push;
 - **Lexical fallback** (retrieval without embeddings) is deferred — evaluated in phase 3 offline scenarios;
 - **Spill of oversized retrieval results** (hanging on `ctx.spillStore`) is deferred;

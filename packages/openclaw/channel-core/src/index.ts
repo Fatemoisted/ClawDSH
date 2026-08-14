@@ -46,12 +46,29 @@ interface ThreadEntry {
   tail: Promise<void>
 }
 
-/** Extract the joined text of the assistant reply produced after `firstSeq`. */
+/**
+ * Extract the joined text of the assistant reply produced after `firstSeq`.
+ * Turns claimed by a plugin-sourced message (memory flush, schedule notices)
+ * are skipped: their output is not the channel reply.
+ */
 function extractReply(events: readonly SessionEvent[], firstSeq: number): string {
   let text = ''
+  let pluginTurn = false
+  let turnHasUser = false
   for (const event of events) {
     if (event.seq < firstSeq) continue
-    if (event.type !== 'assistant/message') continue
+    if (event.type === 'turn/start') {
+      pluginTurn = false
+      turnHasUser = false
+      continue
+    }
+    if (event.type === 'user/message') {
+      // The turn's claimed input decides; injected context mid-turn does not.
+      if (!turnHasUser) pluginTurn = event.data.source.kind === 'plugin'
+      turnHasUser = true
+      continue
+    }
+    if (event.type !== 'assistant/message' || pluginTurn) continue
     const joined = event.data.message.content
       .filter(block => block.type === 'text')
       .map(block => block.text)

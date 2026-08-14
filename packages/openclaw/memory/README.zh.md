@@ -29,6 +29,10 @@
     # snippetChars: 700             # 片段字符上限
     # timeoutMs: 30000              # 协作超时（透传 embed）
     # maxReadLines: 1000            # memory_get 行数硬上限
+    # flush:                        # 预压缩 flush 回合（默认启用）
+    #   reserveTokensFloor: 20000   # 窗口下方保留 token 余量
+    #   softThresholdTokens: 4000   # 软触发带
+    #   prompt: 'Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY.'
 ```
 
 写入规约（由指引段教给模型）：稳定事实进 `MEMORY.md`，运行笔记追加到 `memory/YYYY-MM-DD.md`，只经文件工具、只追加不改写历史。
@@ -44,6 +48,7 @@
 ## 变更说明
 
 - 0.1.0：首版（chunk+增量索引+双工具+指引段；契约测试 13 例，keyless 词袋 stub）。
+- 0.2.0：预压缩 memory flush 回合（阈值 + `agent/turn-stopping` 上的每压缩周期守卫；8 个 flush 契约测试，真 agent-loop 组合）。
 
 ## Model Experience
 
@@ -75,9 +80,31 @@ Proportional to what the model retrieves (bounded by `maxResults`/`snippetChars`
 
 Tool results land mid-transcript, like any tool output; no system-prompt prefix changes.
 
+### The pre-compaction flush turn
+
+#### What the model sees
+
+实测上下文越过 `contextWindow − reserveTokensFloor − softThresholdTokens` 时，一条携带 `source: {kind: 'plugin', plugin: 'memory-flush'}` 的 plugin 源消息按压缩周期入队一次（渠道回复提取跳过 plugin 源回合），原文如下：
+
+##### Flush prompt
+
+```markdown
+Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY.
+```
+
+#### Token effect
+
+每次 flush 一条 prompt 消息加一条回复，且只在越过阈值的周期出现——低上下文会话为零。
+
+#### KV Cache effect
+
+Append-only：prompt 作为普通回合输入落在日志中段；无系统提示前缀变化。
+
 ## Known Limitations and Deferred Work
 
-- **无专用写工具**：写入靠模型遵守规约（OpenClaw 同构）；预压缩 memory flush 回合（OpenClaw 的存量写入驱动）留阶段 3，挂 dsh compaction 钩子；
+- **无专用写工具**：写入靠模型遵守规约（OpenClaw 同构），现由 flush 回合驱动，其余靠模型自发；
+- **flush 在回合之间运行，而非严格早于主回合**：flush 完成前入队的入站先跑；且 flush 回合自身的 pre-step 可能先触发压力压缩，flush 从压缩后的摘要写记忆（dsh 默认压缩阈值低于 flush 阈值时，压缩 → 从摘要 flush 是常见流程；把 `compaction.thresholdRatio` 调到 flush 阈值之上即得 OpenClaw 顺序）；
+- **flush 跳过清单是挂载面的**：不挂 memory 行的 profile 永不 flush（映射 OpenClaw 的 heartbeat/CLI/sandbox-ro 跳过）；
 - **无 chokidar watch**：变更靠 search 前增量重建，不主动推送；
 - **词汇降级**（无 embeddings 时的检索）列为 Deferred——阶段 3 离线场景评估；
 - **超大检索结果 spill**（挂 `ctx.spillStore`）列 Deferred；

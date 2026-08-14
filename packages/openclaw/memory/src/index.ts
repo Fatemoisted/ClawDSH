@@ -24,8 +24,10 @@ import { readLineSlice, resolveMemoryTarget } from './memory-files.ts'
 import { MemoryIndex } from './search.ts'
 import type { SearchHit } from './search.ts'
 import { MEMORY_RECALL_ORDER, MEMORY_RECALL_SECTION, RECALL_TEXT } from './recall-section.ts'
+import { installMemoryFlush, resolveFlushConfig, FlushConfig } from './flush.ts'
 
 export { MEMORY_RECALL_ORDER, MEMORY_RECALL_SECTION, RECALL_TEXT } from './recall-section.ts'
+export { FLUSH_PLUGIN_SOURCE, DEFAULT_FLUSH_PROMPT, DEFAULT_FLUSH_RESERVE_TOKENS_FLOOR, DEFAULT_FLUSH_SOFT_THRESHOLD_TOKENS } from './flush.ts'
 export type { MemoryChunk } from './chunk.ts'
 export { chunkMarkdown } from './chunk.ts'
 export { cosineSimilarity } from './search.ts'
@@ -70,6 +72,8 @@ export interface Config {
   timeoutMs?: number
   /** Maximum lines one memory_get call reads. Defaults to 1000. */
   maxReadLines?: number
+  /** Pre-compaction memory flush turn; enabled by default, thresholds OpenClaw's 20000/4000. */
+  flush?: FlushConfig
 }
 
 export const Config: z<Config> = z.object({
@@ -81,6 +85,7 @@ export const Config: z<Config> = z.object({
   snippetChars: z.number().step(1).min(1).default(DEFAULT_SNIPPET_CHARS),
   timeoutMs: z.number().step(1).min(1).max(MAX_TIMER_DELAY_MS).default(DEFAULT_TIMEOUT_MS),
   maxReadLines: z.number().step(1).min(1).default(DEFAULT_MAX_READ_LINES),
+  flush: FlushConfig,
 })
 
 interface ResolvedConfig {
@@ -92,6 +97,7 @@ interface ResolvedConfig {
   readonly snippetChars: number
   readonly timeoutMs: number
   readonly maxReadLines: number
+  readonly flush: ReturnType<typeof resolveFlushConfig>
 }
 
 const TEXT_OUTPUT = {
@@ -111,9 +117,10 @@ const MEMORY_GET_PARAMETERS = {
   lines: { type: 'integer', description: 'Number of lines to read. Defaults to 1000.' },
 } as const
 
-/** Register the memory guidance section and both tools. */
+/** Register the memory guidance section, both tools, and the flush-turn hooks. */
 export function apply(ctx: Context, config: Config): void {
   const resolved = resolveConfig(config)
+  const disposeFlush = installMemoryFlush(ctx, resolved.flush)
   const rootPath = resolve(resolved.root)
   let rootPromise: Promise<FsTarget> | undefined
   const rootTarget = (): Promise<FsTarget> => (rootPromise ??= ctx.fs.resolve(rootPath))
@@ -169,8 +176,9 @@ export function apply(ctx: Context, config: Config): void {
       disposeGet()
       disposeSearch()
       disposeSection()
+      disposeFlush()
     }
-  }, 'memory.section() + memory tools')
+  }, 'memory.section() + memory tools + flush hooks')
 }
 
 function resolveConfig(config: Config): ResolvedConfig {
@@ -205,7 +213,8 @@ function resolveConfig(config: Config): ResolvedConfig {
   if (!Number.isSafeInteger(maxReadLines) || maxReadLines < 1) {
     throw new TypeError('memory: maxReadLines must be a positive safe integer')
   }
-  return { root: config.root, chunkSizeChars, chunkOverlapChars, maxResults, minScore, snippetChars, timeoutMs, maxReadLines }
+  const flush = resolveFlushConfig(config.flush)
+  return { root: config.root, chunkSizeChars, chunkOverlapChars, maxResults, minScore, snippetChars, timeoutMs, maxReadLines, flush }
 }
 
 function parseSearchArgs(args: unknown): { query: string; maxResults: number; minScore: number } {
