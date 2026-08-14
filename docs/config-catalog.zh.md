@@ -67,7 +67,37 @@ export interface EverySchedule {
 
 来源： [`packages/openclaw/automation/src/index.ts:89`](../packages/openclaw/automation/src/index.ts)
 
-<a id="<a id="clawdshdsh-channel-feishu"></a>
+<a id="clawdshdsh-channel-core"></a>
+
+## `@clawdsh/dsh-channel-core`
+
+需要： `agents` · `sessions` · `agentDefaultModel`
+
+```ts config-catalog
+/** Channel registry config: identity presentation (never prompt content). */
+export interface Config {
+  /** Identity the presentation resolves against. */
+  identity?: IdentityConfig
+  /** Outbound prefix; `'auto'` renders `[name]`. */
+  responsePrefix?: string
+  /** Ack emoji; falls back to `identity.emoji`, then `👀`. */
+  ackReaction?: string
+}
+
+/** Identity config: presentation only, never injected into the prompt. */
+export interface IdentityConfig {
+  /** Display name rendered as `[name]` and matched in mention patterns. */
+  name?: string
+  /** OpenClaw's theme slot; accepted for config parity and reserved — nothing reads it yet. */
+  theme?: string
+  /** Emoji used as the ack reaction fallback and a literal mention pattern. */
+  emoji?: string
+}
+```
+
+来源： [`packages/openclaw/channel-core/src/index.ts:99`](../packages/openclaw/channel-core/src/index.ts)
+
+<a id="clawdshdsh-channel-feishu"></a>
 
 ## `@clawdsh/dsh-channel-feishu`
 
@@ -90,7 +120,7 @@ export type FeishuDomain = 'feishu' | 'lark'
 
 来源： [`packages/openclaw/channel-feishu/src/index.ts:37`](../packages/openclaw/channel-feishu/src/index.ts)
 
-<a id="<a id="clawdshdsh-channel-telegram"></a>
+<a id="clawdshdsh-channel-telegram"></a>
 
 ## `@clawdsh/dsh-channel-telegram`
 
@@ -108,9 +138,9 @@ export interface Config {
 }
 ```
 
-来源： [`packages/openclaw/channel-telegram/src/index.ts:28`](../packages/openclaw/channel-telegram/src/index.ts)
+来源： [`packages/openclaw/channel-telegram/src/index.ts:29`](../packages/openclaw/channel-telegram/src/index.ts)
 
-<a id="<a id="clawdshdsh-embeddings-ark"></a>
+<a id="clawdshdsh-embeddings-ark"></a>
 
 ## `@clawdsh/dsh-embeddings-ark`
 
@@ -134,7 +164,7 @@ export interface Config {
 
 来源： [`packages/openclaw/embeddings-ark/src/index.ts:44`](../packages/openclaw/embeddings-ark/src/index.ts)
 
-<a id="<a id="clawdshdsh-memory"></a>
+<a id="clawdshdsh-memory"></a>
 
 ## `@clawdsh/dsh-memory`
 
@@ -178,7 +208,7 @@ export interface FlushConfig {
 
 来源： [`packages/openclaw/memory/src/index.ts:58`](../packages/openclaw/memory/src/index.ts)
 
-<a id="<a id="clawdshdsh-skills-hub"></a>
+<a id="clawdshdsh-skills-hub"></a>
 
 ## `@clawdsh/dsh-skills-hub`
 
@@ -203,7 +233,7 @@ export interface Config {
 
 来源： [`packages/openclaw/skills-hub/src/index.ts:55`](../packages/openclaw/skills-hub/src/index.ts)
 
-<a id="<a id="clawdshdsh-soul"></a>
+<a id="clawdshdsh-soul"></a>
 
 ## `@clawdsh/dsh-soul`
 
@@ -3248,7 +3278,6 @@ export interface Config {
 
 这些插件通过 `cordis.yml` 中不含 `config:` 块的条目加载；它们未声明任何配置接口。
 
-- `@clawdsh/dsh-channel-core` — 需要 `agents` · `sessions` · `agentDefaultModel`（[`packages/openclaw/channel-core/src/index.ts`](../packages/openclaw/channel-core/src/index.ts)）
 - `@deepseek-ai/dsh-agent`（[`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts)）
 - `@deepseek-ai/dsh-api-gateway` — 需要 `typert`（[`packages/api/gateway/src/index.ts`](../packages/api/gateway/src/index.ts)）
 - `@deepseek-ai/dsh-api-remotes`（[`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts)）

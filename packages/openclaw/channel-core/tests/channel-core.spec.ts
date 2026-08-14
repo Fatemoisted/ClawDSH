@@ -110,6 +110,15 @@ describe('the channel-core seam', () => {
         source: { kind: 'plugin', plugin: 'memory-flush' },
       }))
     })
+    const outbound = nextOutbound(ctx)
+
+    ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', sender: 'u1', text: 'hi' })
+
+    const reply = await outbound
+    expect(reply.text).toBe('channel reply')
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.text).toBe('channel reply')
+  })
 
   it('prefixes the reply with [name] when identity presentation is configured', async () => {
     const ctx = new Context()
@@ -129,10 +138,6 @@ describe('the channel-core seam', () => {
     ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', sender: 'u1', text: 'hi' })
 
     const reply = await outbound
-    expect(reply.text).toBe('channel reply')
-    expect(sent).toHaveLength(1)
-    expect(sent[0]?.text).toBe('channel reply')
-
     expect(reply.text).toBe('[Clawd] hello there')
   })
 

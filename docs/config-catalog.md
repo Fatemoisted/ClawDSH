@@ -65,6 +65,36 @@ export interface EverySchedule {
 
 Source: [`packages/openclaw/automation/src/index.ts:89`](../packages/openclaw/automation/src/index.ts)
 
+<a id="clawdshdsh-channel-core"></a>
+
+## `@clawdsh/dsh-channel-core`
+
+Requires: `agents` · `sessions` · `agentDefaultModel`
+
+```ts config-catalog
+/** Channel registry config: identity presentation (never prompt content). */
+export interface Config {
+  /** Identity the presentation resolves against. */
+  identity?: IdentityConfig
+  /** Outbound prefix; `'auto'` renders `[name]`. */
+  responsePrefix?: string
+  /** Ack emoji; falls back to `identity.emoji`, then `👀`. */
+  ackReaction?: string
+}
+
+/** Identity config: presentation only, never injected into the prompt. */
+export interface IdentityConfig {
+  /** Display name rendered as `[name]` and matched in mention patterns. */
+  name?: string
+  /** OpenClaw's theme slot; accepted for config parity and reserved — nothing reads it yet. */
+  theme?: string
+  /** Emoji used as the ack reaction fallback and a literal mention pattern. */
+  emoji?: string
+}
+```
+
+Source: [`packages/openclaw/channel-core/src/index.ts:99`](../packages/openclaw/channel-core/src/index.ts)
+
 <a id="clawdshdsh-channel-feishu"></a>
 
 ## `@clawdsh/dsh-channel-feishu`
@@ -106,7 +136,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/openclaw/channel-telegram/src/index.ts:28`](../packages/openclaw/channel-telegram/src/index.ts)
+Source: [`packages/openclaw/channel-telegram/src/index.ts:29`](../packages/openclaw/channel-telegram/src/index.ts)
 
 <a id="clawdshdsh-embeddings-ark"></a>
 
@@ -3246,7 +3276,6 @@ Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
 
-- `@clawdsh/dsh-channel-core` — requires `agents` · `sessions` · `agentDefaultModel` ([`packages/openclaw/channel-core/src/index.ts`](../packages/openclaw/channel-core/src/index.ts))
 - `@deepseek-ai/dsh-agent` ([`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts))
 - `@deepseek-ai/dsh-api-gateway` — requires `typert` ([`packages/api/gateway/src/index.ts`](../packages/api/gateway/src/index.ts))
 - `@deepseek-ai/dsh-api-remotes` ([`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts))
