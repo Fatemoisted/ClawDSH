@@ -235,6 +235,22 @@ Types: [TokenUsage](subsystems/llm-streaming.md)
 
 Source: [`packages/core/session/src/types.ts:273`](../packages/core/session/src/types.ts)
 
+### `automation/*`
+
+<a id="automationrun--log-only"></a>
+
+#### `automation/run` — log-only
+
+```ts persistence-catalog
+/**
+ * Automation run status record appended before (`started`, at-least-once
+ * marker) and after (`ok` / `error`) one scheduled turn.
+ */
+'automation/run': AutomationRunEvent
+```
+
+Source: [`packages/openclaw/automation/src/types.ts:15`](../packages/openclaw/automation/src/types.ts)
+
 ### `command/*`
 
 <a id="commanddone--log-only"></a>

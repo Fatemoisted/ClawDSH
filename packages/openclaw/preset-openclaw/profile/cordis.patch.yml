@@ -44,3 +44,16 @@
     # 默认 managedDir 即 legacy OpenClaw 目录（~/.clawdbot/skills），存量技能开箱即用。
     - id: skills-hub
       name: '@clawdsh/dsh-skills-hub'
+
+    # 阶段 3：automation（cron 风格定时 agent 回合）。disabled 起步（opt-in）：
+    # 规则在 config.rules 声明，配置错误挂载时 fail-loud。示例：
+    #   - id: automation
+    #     name: '@clawdsh/dsh-automation'
+    #     config:
+    #       rules:
+    #         - id: morning-digest
+    #           schedule: { kind: cron, expr: '0 9 * * *', timeZone: Asia/Shanghai }
+    #           message: Post a morning digest of the session log.
+    - id: automation
+      name: '@clawdsh/dsh-automation'
+      disabled: true
