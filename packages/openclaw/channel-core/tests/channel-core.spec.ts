@@ -7,6 +7,7 @@ import LlmRuntime from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import ChannelRegistry from '@clawdsh/dsh-channel-core'
 import type { ChannelAdapter, ChannelMessage } from '@clawdsh/dsh-channel-core'
 import { MockAdapter, textResponse } from './mock-adapter.ts'
@@ -94,5 +95,28 @@ describe('the channel-core seam', () => {
     await third
 
     expect(ctx.agents.list()).toHaveLength(2)
+  })
+
+  it('delivers the channel reply, not the output of a plugin-sourced turn queued between turns', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('channel reply'), textResponse('flush output')]))
+    const sent: ChannelMessage[] = []
+    ctx.channels.registerAdapter(fakeAdapter(sent))
+    // Simulate the memory flush: a plugin-sourced followup queued at the
+    // previous turn's stop boundary runs before the driver's reply extraction.
+    const dispose = ctx.on('agent/turn-stopping', ({ agent }) => {
+      dispose()
+      agent.followup(createUserMessage({
+        content: [{ type: 'text', text: 'silent flush turn' }],
+        source: { kind: 'plugin', plugin: 'memory-flush' },
+      }))
+    })
+    const outbound = nextOutbound(ctx)
+
+    ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', sender: 'u1', text: 'hi' })
+
+    const reply = await outbound
+    expect(reply.text).toBe('channel reply')
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.text).toBe('channel reply')
   })
 })

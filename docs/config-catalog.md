@@ -155,10 +155,24 @@ export interface Config {
   timeoutMs?: number
   /** Maximum lines one memory_get call reads. Defaults to 1000. */
   maxReadLines?: number
+  /** Pre-compaction memory flush turn; enabled by default, thresholds OpenClaw's 20000/4000. */
+  flush?: FlushConfig
+}
+
+/** Flush sub-config of the memory row. */
+export interface FlushConfig {
+  /** Whether the flush turn participates; defaults to true. */
+  enabled?: boolean
+  /** Tokens kept free below the context window; the flush becomes due only above `window − reserve − soft`. Defaults to 20000. */
+  reserveTokensFloor?: number
+  /** Soft band below the reserve; defaults to 4000. */
+  softThresholdTokens?: number
+  /** The flush turn's prompt; defaults to the OpenClaw wording. */
+  prompt?: string
 }
 ```
 
-Source: [`packages/openclaw/memory/src/index.ts:56`](../packages/openclaw/memory/src/index.ts)
+Source: [`packages/openclaw/memory/src/index.ts:58`](../packages/openclaw/memory/src/index.ts)
 
 <a id="clawdshdsh-skills-hub"></a>
 
