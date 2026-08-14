@@ -45,6 +45,7 @@ OpenClaw 的 identity 由四层组成（`src/gateway/` 无装配代码，全部�
 
 - **scope-only**：无作用域挂载直接报错（避免发布进程级灵魂），与上游 persona 的约束一致；
 - **挂载即定格**：灵魂文本在挂载时读取一次，运行期不变——提示前缀稳定，KV 缓存复用不受影响（沿用上游设计）；换灵魂 = 重新挂载（patch + 会话重启）；
+- **相对 source 按挂载树解析**：相对路径以 `ctx.baseUrl` 为锚——agent preset 里即组合目录（preset 目录随 `copyComposition` 传播，灵魂文件跟着走）、profile 启动器下即 profile 目录；无 baseUrl 的裸上下文回退 `process.cwd()`。与相对模块说明符同语义（typert-loader/client-modules 同款 seam）；
 - **可逆**：全部注册走 `ctx.effect()`，卸载即回卷（热插拔）；
 - **日志不变式**：灵魂文本作为 prompt section 参与装配，"model-visible means logged" 由上游 session 机制保证。
 
@@ -73,4 +74,5 @@ Prefix-stable for the life of an agent — the text is read once at mount, befor
 
 - **挂载即定格**：灵魂文本在挂载时读取一次，运行期不变；换灵魂需重新挂载 + 会话重启。
 - **scope-only**：无作用域挂载直接报错，避免发布进程级灵魂（与上游 persona 约束一致）。
-- **真实 e2e**：系统提示装配的组装测试需真 key，当前以契约测试（10 例）覆盖。
+- **bundle patch 层的相对 source**：由 bundle patch 层提供的行解析到 profile 目录（根树的 baseUrl），不是 bundle 包目录——与相对模块说明符语义一致，非缺陷。
+- **真实 e2e**：系统提示装配的组装测试需真 key，当前以契约测试（12 例）覆盖。

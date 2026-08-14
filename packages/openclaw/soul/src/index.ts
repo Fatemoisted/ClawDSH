@@ -22,6 +22,7 @@
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { scopeOf } from '@deepseek-ai/dsh-scope'
@@ -42,7 +43,14 @@ export const inject = ['systemPrompt']
 
 /** Plugin config: where the soul text comes from and how it lands. */
 export interface Config {
-  /** Path to a soul file (markdown). Resolved against process.cwd(). Wins over `text`. */
+  /**
+   * Path to a soul file (markdown). Wins over `text`. A relative path resolves
+   * against the mount tree's `ctx.baseUrl` — the preset composition directory
+   * for agent presets, the profile directory under the profile launcher — and
+   * against `process.cwd()` when the context has no base (raw test contexts).
+   * An absolute path is used as-is. This mirrors how relative module
+   * specifiers resolve under the Loader, so a preset's soul file travels with it.
+   */
   source?: string
   /** Inline soul text; used when `source` is absent or empty. */
   text?: string
@@ -73,7 +81,8 @@ export function apply(ctx: Context, config: Config): void {
   if (mode !== 'replace' && mode !== 'append') {
     throw new Error(`soul: unknown mode ${JSON.stringify(mode)}; expected "replace" or "append"`)
   }
-  const text = config.source ? readFileSync(resolve(config.source), 'utf8') : (config.text ?? '')
+  const base = ctx.baseUrl === undefined ? undefined : fileURLToPath(ctx.baseUrl)
+  const text = config.source ? readFileSync(resolve(base ?? '.', config.source), 'utf8') : (config.text ?? '')
   if (text === '') {
     throw new Error('soul: config requires a non-empty "source" file path or inline "text"')
   }

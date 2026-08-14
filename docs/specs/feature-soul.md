@@ -15,7 +15,7 @@
 
 - 不做人格市场/分享协议（后续可复用 ClawHub 式分发，另立规格）；
 - 不做多智能体间的人格社交（阶段 3 后再议）；
-- **文件路径随 preset 目录解析**（当前 `source` 相对 process.cwd()）——阶段 2 待办，见 packages/openclaw/preset-openclaw/README.md；
+- ~~文件路径随 preset 目录解析~~（阶段 2 收尾已实现：相对 `source` 按挂载树 `ctx.baseUrl` 解析，见 Agent Note 2026-08-14-soul-preset-relative-source）；
 - 不做灵魂文件热重载（挂载即定格，与上游 KV 前缀稳定设计一致；换灵魂 = 重挂载）；
 - **不做模板自举（`flag:"wx"` 首启写模板）**：OpenClaw 需要它是因为首启向导没有 preset；ClawDSH 经 preset/profile 显式下发灵魂，ensure-if-missing 无适用场景；
 - **不做 `[MISSING] Expected at:` 占位符**：静默占位会把缺失的身份放进 prompt；dsh 文化是 misconfiguration fail-loud，soul 已对空文本/缺失文件抛错，保持一致。
@@ -49,5 +49,6 @@ soul:
 5. ✅ **profile 层叠**：`--profile openclaw --dump-config` 解析出 dsh-base + dsh-headless + 我们的 persona 覆盖（冒烟通过）。
 6. ⏳ `--profile openclaw` 下**真实 agent 挂载 preset**：属阶段 2（headless 形态的 preset 接线），见 preset-openclaw/README.md。
 7. ✅ **identity 映射文档化（阶段 2 深读定稿）**：OpenClaw identity 四层结构到 dsh 接缝的完整映射落于 Agent Note（`.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping`）、本规格与 parity 矩阵三处一致；soul 代码零改动。
+8. ✅ **文件路径随 preset 目录解析（阶段 2 收尾）**：相对 `source` 以挂载树 `ctx.baseUrl` 为锚解析（preset → 组合目录、profile → profile 目录、裸上下文 → cwd 回退）；测试 12 例含 baseUrl 相对解析与 cwd 回退两例。
 
 **阶段 0 退出标准达成：接缝假设成立，项目继续。阶段 2 深读定稿：replace/append 形态即最终形态。**

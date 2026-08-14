@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { createScope, type ScopeKey } from '@deepseek-ai/dsh-scope'
@@ -100,6 +101,33 @@ describe('the soul row', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  it('resolves a relative source against the mount tree baseUrl', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'clawdsh-soul-'))
+    try {
+      writeFileSync(join(dir, 'assistant.md'), 'Preset soul text.', 'utf8')
+
+      const ctx = await harness('')
+      const key: ScopeKey = { agent: 'a1' }
+      // baseUrl is a constructor-owned property: define it on an extended child
+      // (the proxy set trap rejects plain assignment under a running fiber).
+      const scope = createScope(ctx, key).ctx.extend({ baseUrl: pathToFileURL(join(dir, '')).href + '/' })
+      await scope.plugin(Soul, { source: './assistant.md' })
+
+      expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBe('Preset soul text.')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('falls back to process.cwd() when the context has no baseUrl', async () => {
+    const ctx = await harness('')
+    const key: ScopeKey = { agent: 'a1' }
+
+    // A relative source with no loader-provided base resolves against cwd and fails loud there.
+    await expect(createScope(ctx, key).ctx.plugin(Soul, { source: 'clawdsh-definitely-missing-soul.md' }))
+      .rejects.toThrow()
   })
 
   it('fails loud on a missing source file', async () => {

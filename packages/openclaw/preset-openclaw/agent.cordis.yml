@@ -5,10 +5,7 @@
 - id: soul
   name: '@clawdsh/dsh-soul'
   config:
-    # 灵魂文本来自灵魂文件（相对 process.cwd()）。
-    # 「文件路径随 preset 目录解析」是阶段 2 待办（见 docs/specs/feature-soul.md 的非目标），
-    # 这里先内联，保证 preset 开箱可运行；示例灵魂文件见 souls/assistant.md。
-    text: >-
-      You are a personal AI assistant living in the user's messaging channels.
-      Be warm, concise, and honest. Admit what you do not know.
+    # 相对 source 按挂载树 baseUrl（本 preset 的组合目录）解析；
+    # copyComposition 会把 souls/ 目录随 preset 一起复制。
+    source: ./souls/assistant.md
     mode: append
