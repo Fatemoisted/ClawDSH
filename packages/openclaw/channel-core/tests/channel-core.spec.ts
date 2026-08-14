@@ -129,11 +129,10 @@ describe('the channel-core seam', () => {
     ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', sender: 'u1', text: 'hi' })
 
     const reply = await outbound
-<<<<<<< HEAD
     expect(reply.text).toBe('channel reply')
     expect(sent).toHaveLength(1)
     expect(sent[0]?.text).toBe('channel reply')
-=======
+
     expect(reply.text).toBe('[Clawd] hello there')
   })
 
@@ -171,6 +170,5 @@ describe('the channel-core seam', () => {
     await outbound
 
     expect(reacted).toBe(0)
->>>>>>> 17b60c06bc (feat(channel-core): 渠道身份呈现（identity/前缀/ack/mention 正则）)
   })
 })

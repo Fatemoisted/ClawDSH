@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/specs/feature-soul.md
-feature-soul.md: ac41897109f70d8f8913d24d792e8c7ca565418a
-feature-soul.zh.md: 687bc67122a85248098cc906e45e48c7d7116aeb
+feature-soul.md: 6cc80dbf4f00aef055d2db07b78c83e2a1321a7d
+feature-soul.zh.md: 14e85e8427e9eaa64410c3d9c70e725dea2469dd
