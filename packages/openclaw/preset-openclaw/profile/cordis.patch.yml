@@ -1,7 +1,8 @@
 # ClawDSH「openclaw」profile 层（复制到 $DSH_HOME/profiles/openclaw/ 后生效）。
 # 格式：顶层 YAML 数组的 loader patch entries（覆盖既有行 / insert 新行）。
 # 阶段 0：把部署级默认人格换成 OpenClaw 的中性开场——验证 profile 层叠机制。
-# 阶段 2：insert 渠道行（channel-core 注册表 + Telegram/飞书双适配器）。
+# 阶段 2：insert 渠道行（channel-core 注册表 + Telegram/飞书双适配器）。飞书已启用（凭证走 env），
+#         Telegram 保持 disabled（无账号）。
 
 - id: system-prompt
   config:
@@ -9,12 +10,11 @@
       You are a personal AI assistant.
 
 - insert:
-    # ctx.channels 注册表 + 两个适配器。凭证（botToken / appId+appSecret）后置，
-    # 全部默认 disabled；真实 e2e 前解开对应行并填 Config（凭证走 ctx.credentials/.env）。
-    # 适配器 inject 'channels'，启用时须与 channel-core 同启。
+    # ctx.channels 注册表 + 双适配器。飞书凭证走环境变量（FEISHU_APP_ID / FEISHU_APP_SECRET），
+    # 不落盘；未设置时 boot 会 fail-loud（appId/appSecret required）。适配器 inject 'channels'，
+    # 启用时须与 channel-core 同启。
     - id: channel-core
       name: '@clawdsh/dsh-channel-core'
-      disabled: true
 
     - id: channel-telegram
       name: '@clawdsh/dsh-channel-telegram'
@@ -22,4 +22,7 @@
 
     - id: channel-feishu
       name: '@clawdsh/dsh-channel-feishu'
-      disabled: true
+      config:
+        appId: !!js process.env.FEISHU_APP_ID
+        appSecret: !!js process.env.FEISHU_APP_SECRET
+        domain: feishu

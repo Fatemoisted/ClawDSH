@@ -4,8 +4,7 @@
   "dsh": {
     "profile": {
       "bundles": [
-        "@deepseek-ai/dsh-base",
-        "@deepseek-ai/dsh-headless"
+        "@deepseek-ai/dsh-base"
       ]
     }
   }
