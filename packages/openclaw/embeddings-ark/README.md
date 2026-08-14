@@ -41,15 +41,15 @@
 
 #### What the model sees
 
-None directly — `embed` results are vectors consumed programmatically (e.g. `@clawdsh/dsh-memory` cosine ranking). Only the consumer's tool result reaches the model.
+The model sees nothing from this provider directly: `embed` results are vectors consumed programmatically (e.g. `@clawdsh/dsh-memory` cosine ranking). Only the consumer's tool result reaches the model.
 
 #### Token effect
 
-None: no prompt section, no model request.
+The provider contributes no prompt section and makes no model request, so it adds no model-facing tokens of its own.
 
 #### KV Cache effect
 
-None.
+No prompt text is produced by this provider, so the prompt prefix and its KV cache are untouched.
 
 ## Known Limitations and Deferred Work
 

@@ -10,7 +10,7 @@ ClawDSH 阶段 2 需要 Memory 行：OpenClaw 的长期记忆（人/偏好/决�
 
 ## 决策
 
-Memory 行以函数插件形态只挂既有接缝，语义召回缺口由新 embeddings seam 补上（[2026-08-14-embeddings-seam](../architecture/2026-08-14-embeddings-seam.md)、[ADR-0003](../../../docs/adr/0003-embeddings-seam.md)）：
+Memory 行以函数插件形态只挂既有接缝，语义召回缺口由新 embeddings seam 补上（[2026-08-14-embeddings-seam](../architecture/2026-08-14-embeddings-seam.md)、[ADR-0003](../../../../docs/adr/0003-embeddings-seam.md)）：
 
 - **存储 = 经 `ctx.fs` 的 Markdown 文件**——`MEMORY.md` 存稳定事实、`memory/YYYY-MM-DD.md` 日记式追加。插件自身零写入；模型经 fs 工具按指引段规约写入（OpenClaw 同构——无专用写工具）。append-only 幂等由 fs observation policy 的版本守卫兜底。
 - **召回 = 按需工具，无每请求注入**——`memory_search`（embedding cosine 排序，默认 `minScore` 0.35 / `maxResults` 6，片段带源行号）与 `memory_get`（行切片读取，`isMemoryPath` 白名单 + `FileSystem.contains` enforcement）。不做任何自动注入；召回内容以工具结果入转录，「model-visible means logged」无需新 session event 即成立。

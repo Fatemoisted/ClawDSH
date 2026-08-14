@@ -13,8 +13,13 @@
 provider 侧：子类化 `Embeddings`，实现 `embed`，作为插件加载即可（构造器 `super(ctx, 'embeddings')` 完成注册，重复加载第二个实现会 throw）：
 
 ```ts
+import { Embeddings } from '@clawdsh/dsh-embeddings'
+import type { EmbeddingVector } from '@clawdsh/dsh-embeddings'
+
 export class MyEmbeddings extends Embeddings {
-  async embed(texts: readonly string[], signal?: AbortSignal): Promise<EmbeddingVector[]> { ... }
+  async embed(texts: readonly string[], signal?: AbortSignal): Promise<EmbeddingVector[]> {
+    throw new Error('not implemented')
+  }
 }
 ```
 
@@ -37,15 +42,15 @@ export class MyEmbeddings extends Embeddings {
 
 #### What the model sees
 
-None directly — vectors never enter the prompt. They surface only through consumers such as `@clawdsh/dsh-memory`, whose `memory_search` tool result carries matched snippets, paths, and scores into the session transcript.
+The model never sees vectors directly — they surface only through consumers such as `@clawdsh/dsh-memory`, whose `memory_search` tool result carries matched snippets, paths, and scores into the session transcript.
 
 #### Token effect
 
-None by itself: the seam performs no model request and contributes no prompt section.
+The seam itself performs no model request and contributes no prompt section, so it adds no model-facing tokens of its own.
 
 #### KV Cache effect
 
-None: no prompt text is produced; per-call embedding payloads are provider-side HTTP bodies.
+No prompt text is produced by the seam; per-call embedding payloads are provider-side HTTP bodies and never touch the prompt prefix.
 
 ## Known Limitations and Deferred Work
 

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-14-memory-plugin.md
-2026-08-14-memory-plugin.md: 1524276332ca1238cd4cd24295113c77afb4baf1
-2026-08-14-memory-plugin.zh.md: 0550c2eef43d7855a1d7fb080c9f38110148e8e4
+2026-08-14-memory-plugin.md: b4499c7735e3c73a2278f61d31acd6c39ddf545a
+2026-08-14-memory-plugin.zh.md: 0f84315b775eb2439abefe997eeb6528c8d1d051

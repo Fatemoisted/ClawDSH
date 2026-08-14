@@ -18,7 +18,7 @@ A new single-implementation service seam `ctx.embeddings` plus a first provider,
 | `@clawdsh/dsh-embeddings-ark` | Provider: Volcano Ark text embeddings through the multimodal endpoint (`type: "text"` inputs only), credential layering per operation, response validation with cross-call dimension-drift detection. |
 | `@clawdsh/dsh-memory` | Consumer: Markdown memory files via `ctx.fs`, in-memory derived index, `memory_search`/`memory_get` tools. |
 
-Key design points (full decision record in [ADR-0003](../../docs/adr/0003-embeddings-seam.md)):
+Key design points (full decision record in [ADR-0003](../../../../docs/adr/0003-embeddings-seam.md)):
 
 - **Single implementation, not a provider registry.** Mixing providers in one context produces incomparable embedding spaces and corrupts cosine ranking; OpenClaw's own embeddings layer is config-select-one. A future multi-provider need upgrades on the consumer side (config-selected provider), leaving this seam unchanged.
 - **Per-operation credential resolution, never cached**, following the credentials seam contract and the `web-search-deepseek` layering: literal config `apiKey` → `ctx.get('credentials')` → launch environment. Missing key fails loudly — no silent degradation.

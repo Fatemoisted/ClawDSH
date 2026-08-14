@@ -2,7 +2,7 @@
 
 - **状态**：implemented（阶段 0 Spike ✅ + 阶段 2 深读定稿 ✅，2026-08-14）
 - **实现包**：`packages/openclaw/soul`（`@clawdsh/dsh-soul`）
-- **OpenClaw 对应**：Soul 系统（人格、口吻、行为准则）。基线出处：OpenClaw `v2026.1.5`（`197b8f7c3b`）`src/agents/` 的 identity 机制（`system-prompt.ts` 首行 + workspace 六文件）。阶段 2 深读结论：replace/append 已完整表达该机制，「具体形态」定稿为现有 spike 不变——完整映射见 Agent Note [2026-08-14-openclaw-identity-mapping](../.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping.md)。
+- **OpenClaw 对应**：Soul 系统（人格、口吻、行为准则）。基线出处：OpenClaw `v2026.1.5`（`197b8f7c3b`）`src/agents/` 的 identity 机制（`system-prompt.ts` 首行 + workspace 六文件）。阶段 2 深读结论：replace/append 已完整表达该机制，「具体形态」定稿为现有 spike 不变——完整映射见 Agent Note [2026-08-14-openclaw-identity-mapping](../../.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping.md)。
 
 ## 目标
 
@@ -28,7 +28,7 @@
 
 ### 阶段 2 深读定稿：OpenClaw identity 映射
 
-OpenClaw identity 由四层组成（gateway 无装配代码，全部在 `src/agents/`）：硬编码首行 → `deployment:persona`（order 0）；`SOUL.md` → soul `append`（order 10）；「灵魂即完整提示」→ `replace`=complete 段；`AGENTS.md` → preset soul 文本承载；`TOOLS.md` → 工具指引带（100–199，各工具包自带）；`IDENTITY.md`（name/emoji）→ 渠道呈现非 prompt（Deferred）；`USER.md` → preset persona/soul 文本；每次运行的场景段 → `PromptContext`；`system-prompt-report` → `request/header.header.system` 日志链路。完整映射表与「为何不补」论证见 [Agent Note](../.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping.md)。
+OpenClaw identity 由四层组成（gateway 无装配代码，全部在 `src/agents/`）：硬编码首行 → `deployment:persona`（order 0）；`SOUL.md` → soul `append`（order 10）；「灵魂即完整提示」→ `replace`=complete 段；`AGENTS.md` → preset soul 文本承载；`TOOLS.md` → 工具指引带（100–199，各工具包自带）；`IDENTITY.md`（name/emoji）→ 渠道呈现非 prompt（Deferred）；`USER.md` → preset persona/soul 文本；每次运行的场景段 → `PromptContext`；`system-prompt-report` → `request/header.header.system` 日志链路。完整映射表与「为何不补」论证见 [Agent Note](../../.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping.md)。
 
 ## 配置面（草案）
 

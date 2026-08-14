@@ -3,7 +3,7 @@
 - **状态**：implemented（阶段 2 补漏 ✅，2026-08-14）
 - **实现包**：`packages/openclaw/memory`（`@clawdsh/dsh-memory`）+ `packages/openclaw/embeddings`（`@clawdsh/dsh-embeddings`）+ `packages/openclaw/embeddings-ark`（`@clawdsh/dsh-embeddings-ark`）
 - **OpenClaw 对应**：Memory 系统（长期记忆：人/事/偏好，跨会话检索）。基线出处：OpenClaw `v2026.1.15`（`9c4c9c5edd`）`src/memory/` + `src/agents/memory-search.ts` + `src/agents/tools/memory-tool.ts`（基线 v2026.1.5 无 memory，功能补全参考）。
-- **决策记录**：docs/adr/0003-embeddings-seam.md · Agent Note [2026-08-14-memory-plugin](../.agents/notes/implemented/feature/2026-08-14-memory-plugin.md)
+- **决策记录**：docs/adr/0003-embeddings-seam.md · Agent Note [2026-08-14-memory-plugin](../../.agents/notes/implemented/feature/2026-08-14-memory-plugin.md)
 
 ## 目标
 

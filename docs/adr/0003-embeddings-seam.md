@@ -26,7 +26,7 @@ Memory 插件（交付 B）需要「按语义召回记忆」：OpenClaw v2026.1.
 
 ## 契约
 
-```ts
+```ts ignore-check
 // @clawdsh/dsh-embeddings（仅类型 + 抽象服务）
 export type EmbeddingVector = number[]
 

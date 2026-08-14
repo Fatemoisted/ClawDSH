@@ -18,7 +18,7 @@ Memory 插件需要语义召回——OpenClaw `v2026.1.15` 的 `memory_search` �
 | `@clawdsh/dsh-embeddings-ark` | Provider：火山方舟文本嵌入（多模态端点、仅 `type: "text"` 输入）、凭证每操作分层解析、响应校验含跨调用维度漂移检测。 |
 | `@clawdsh/dsh-memory` | Consumer：经 `ctx.fs` 的 Markdown 记忆文件、内存派生索引、`memory_search`/`memory_get` 两工具。 |
 
-关键设计点（完整决策记录见 [ADR-0003](../../docs/adr/0003-embeddings-seam.md)）：
+关键设计点（完整决策记录见 [ADR-0003](../../../../docs/adr/0003-embeddings-seam.md)）：
 
 - **单实现，不做 provider 注册表。** 一个 context 混合 provider 产生不可比的嵌入空间、破坏 cosine 排序；OpenClaw 自己的 embeddings 层就是配置选一。将来多 provider 需求在消费侧升级（配置选 provider），本 seam 不动。
 - **凭证每操作解析、绝不缓存**，遵循 credentials seam 契约与 `web-search-deepseek` 的分层：字面量 `apiKey` → `ctx.get('credentials')` → launch environment。缺 key fail-loud，不静默降级。

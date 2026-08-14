@@ -10,7 +10,7 @@ ClawDSH stage 2 needs the Memory row: OpenClaw's long-term memory (people, prefe
 
 ## Decision
 
-The memory row ships as a function plugin on existing seams only, with the semantic-recall gap covered by the new embeddings seam ([2026-08-14-embeddings-seam](../architecture/2026-08-14-embeddings-seam.md), [ADR-0003](../../../docs/adr/0003-embeddings-seam.md)):
+The memory row ships as a function plugin on existing seams only, with the semantic-recall gap covered by the new embeddings seam ([2026-08-14-embeddings-seam](../architecture/2026-08-14-embeddings-seam.md), [ADR-0003](../../../../docs/adr/0003-embeddings-seam.md)):
 
 - **Storage = Markdown files via `ctx.fs`** — `MEMORY.md` for durable facts, `memory/YYYY-MM-DD.md` for append-style running notes. The plugin itself never writes; the model writes through the fs tools under the recall-section convention (OpenClaw's own shape — no dedicated write tool). Append-only idempotence rides the fs observation policy's version guards.
 - **Recall = on-demand tools, no per-request injection** — `memory_search` (embedding cosine ranking, `minScore` 0.35 / `maxResults` 6 defaults, snippet with source lines) and `memory_get` (line-slice read with `isMemoryPath` whitelist + `FileSystem.contains` enforcement). Nothing is auto-injected; recalled content enters the transcript as tool results, so "model-visible means logged" holds without a new session event.

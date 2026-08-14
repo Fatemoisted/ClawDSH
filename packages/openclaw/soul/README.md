@@ -24,7 +24,7 @@
 
 ## OpenClaw identity 映射（阶段 2 深读定稿）
 
-OpenClaw 的 identity 由四层组成（`src/gateway/` 无装配代码，全部在 `src/agents/`），soul 的 replace/append 已完整覆盖其中「承载人格」的部分，其余映射到 dsh 既有接缝——完整论证见 [Agent Note](../../.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping.md)：
+OpenClaw 的 identity 由四层组成（`src/gateway/` 无装配代码，全部在 `src/agents/`），soul 的 replace/append 已完整覆盖其中「承载人格」的部分，其余映射到 dsh 既有接缝——完整论证见 [Agent Note](../../../.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping.md)：
 
 | OpenClaw identity 组成部分 | dsh 对应落地 |
 |---|---|
