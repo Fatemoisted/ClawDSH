@@ -29,7 +29,6 @@ export default defineConfig(({ env }) => {
         '**/test?(s)/**',
         '**/t?(e)mp/**',
         'packages/openclaw/_template/**',
-        'packages/openclaw/automation/**',
         'packages/openclaw/channel-wechat/**',
         'packages/openclaw/preset-openclaw/**',
       ],

@@ -1,6 +1,6 @@
 # Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write packages/openclaw/automation/README.md
-README.md: 58525f89e1d6c8c854549b883388298a64efda84
-README.zh.md: 62656503f886866de5092401a2cfa5680010e270
+#   pnpm run verify-translation-pairing --write docs/specs/feature-automation.md
+feature-automation.md: c7e7ad23d57aad133f4ba91e2320a7d750c6ac87
+feature-automation.zh.md: 06ba8e3a93715a85ee6e1e10b23730b5822f1830

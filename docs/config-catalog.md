@@ -9,6 +9,62 @@ This file is GENERATED from source (`scripts/gen-config-catalog.ts`) and verifie
 
 A `Requires:` line lists the service keys the plugin `inject`s: its `cordis.yml` tree must also load providers for those services. Scope is the harness tier (`packages/`); the vendored cordis plugins a config tree may also load (`hmr`, the console logger, …) are pinned upstream source ([vendoring policy](../vendor/README.md)) and not catalogued here.
 
+<a id="clawdshdsh-automation"></a>
+
+## `@clawdsh/dsh-automation`
+
+Requires: `agents` · `sessions` · `agentDefaultModel`
+
+```ts config-catalog
+/** Plugin config: the declared rule set. cordis.yml is the durable store — no separate storage seam. */
+export interface Config {
+  /** Scheduled rules; each gets its own durable agent session. */
+  rules?: AutomationRule[]
+}
+
+/** One scheduled rule. */
+export interface AutomationRule {
+  /** Stable rule identity; also the session id suffix `automation:<id>`. */
+  id: string
+  /** Optional human label carried in the turn framing. */
+  name?: string
+  /** When the rule fires: cron, one-shot at, or anchored every. */
+  schedule: CronSchedule | AtSchedule | EverySchedule
+  /** Message text sent to the rule's agent on each occurrence. */
+  message: string
+  /** Whether the rule participates; defaults to true. */
+  enabled?: boolean
+}
+
+/** A 5-field cron schedule with an optional IANA timezone. */
+export interface CronSchedule {
+  /** Discriminant: cron schedule. */
+  kind: 'cron'
+  /** 5-field cron expression, e.g. `0 9 * * *`. */
+  expr: string
+  /** IANA timezone name; omitted means the process timezone. */
+  timeZone?: string
+}
+
+/** A one-shot absolute-time schedule. */
+export interface AtSchedule {
+  /** Discriminant: one-shot schedule. */
+  kind: 'at'
+  /** ISO/RFC 3339 occurrence time, e.g. `2026-08-17T09:00:00+08:00`. */
+  at: string
+}
+
+/** An anchored fixed-interval schedule in seconds. */
+export interface EverySchedule {
+  /** Discriminant: interval schedule. */
+  kind: 'every'
+  /** Interval length in whole seconds (min 1); the first occurrence fires at mount. */
+  seconds: number
+}
+```
+
+Source: [`packages/openclaw/automation/src/index.ts:89`](../packages/openclaw/automation/src/index.ts)
+
 <a id="clawdshdsh-channel-feishu"></a>
 
 ## `@clawdsh/dsh-channel-feishu`

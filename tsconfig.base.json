@@ -49,6 +49,7 @@
       "@clawdsh/dsh-embeddings-ark": ["./packages/openclaw/embeddings-ark/src"],
       "@clawdsh/dsh-memory": ["./packages/openclaw/memory/src"],
       "@clawdsh/dsh-skills-hub": ["./packages/openclaw/skills-hub/src"],
+      "@clawdsh/dsh-automation": ["./packages/openclaw/automation/src"],
       "@deepseek-ai/dsh-typert-registry": ["./packages/typert/registry/src/index.ts"],
       "@deepseek-ai/dsh-typert-registry/client": ["./packages/typert/registry/src/client/index.ts"],
       "@deepseek-ai/dsh-api-gateway": ["./packages/api/gateway/src/index.ts"],
