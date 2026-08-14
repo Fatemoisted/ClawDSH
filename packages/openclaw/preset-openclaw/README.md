@@ -9,9 +9,9 @@ English | [中文](README.zh.md)
 **Seam**: not a plugin, an assembly config. This directory now delivers three things:
 1. **agent preset** (`preset.yml` + `agent.cordis.yml`) — mounts the `@clawdsh/dsh-soul` row, discoverable by dsh's agent-presets discovery (the user preset root is `.agent-presets/`);
 2. **example soul** (`souls/assistant.md`);
-3. **profile template** (`profile/`) — copying it to `$DSH_HOME/profiles/openclaw/` makes it the assembly base of `--profile openclaw` (bundles: `dsh-base`, the resident daemon; no `dsh-headless`, which is the one-shot task runner).
+3. **profile template** (`profile/`) — copying it to `$DSH_HOME/profiles/openclaw/` makes it the assembly base of `--profile openclaw` (bundles: `dsh-base` + `dsh-web-app`, the resident daemon + browser GUI; no `dsh-headless`, which is the one-shot task runner).
 
-**Spec**: docs/specs/roadmap.md (phase 0/2 deliverables) · **Status**: phase-2 e2e-verified (Feishu message → personalized agent → reply, real loop verified)
+**Spec**: docs/specs/roadmap.md (phase 0/2/4 deliverables) · **Status**: phase-2 e2e-verified (Feishu message → personalized agent → reply, real loop verified) + phase-4 GUI wiring (web bundle + openclaw preset)
 
 ## Phase 0 verified / Phase 2 pending
 
@@ -24,6 +24,7 @@ English | [中文](README.zh.md)
 - ✅ (phase 2 wrap-up) symlink transition scripted — `tools/link-openclaw.sh` copies the profile and creates 9 `@clawdsh/*` symlinks in one step (replacing the manual four steps);
 - ⏳ (phase 3) headless one-shot task shape mounting the openclaw preset (the Feishu daemon already verifies the preset+agent composition; headless preset selection wiring deferred to phase 3);
 - ✅ (phase 3) `@clawdsh/*` publishing surface (ADR-0004): private-registry manifests + `clawdsh-publish` workflow; the first actual publish awaits the registry URL (the symlink stays a development transition).
+- ✅ (phase 4) GUI wiring — profile bundles `dsh-web-app`, default preset `openclaw`; `agent.cordis.yml` mirrors the `standard` preset's full toolset with `soul` replacing `persona`; `link-openclaw.sh` installs the preset to `$DSH_HOME/.agent-presets/openclaw/`.
 
 ## Usage (Feishu daemon, local development)
 
@@ -43,3 +44,18 @@ pnpm dsh --profile openclaw
 Once the `@clawdsh/*` packages are published to the private registry (ADR-0004), the symlink step above is optional: install them declaratively with `dsh plugin --profile openclaw add @clawdsh/dsh-<pkg>` (one per package) — the user-facing path. The symlink script remains the pre-publish development path.
 
 Boot fails loud (with `appId`/`appSecret` required) when `FEISHU_APP_ID` / `FEISHU_APP_SECRET` are unset, never silently missing messages.
+
+## Usage (Web GUI, local development)
+
+```bash
+# 1. 装 profile + symlink + preset（幂等）
+tools/link-openclaw.sh
+
+# 2. 凭证（ARK_API_KEY 可选，用于 memory 语义召回）
+export DEEPSEEK_API_KEY=sk-xxx
+
+# 3. 起 GUI（127.0.0.1:3080）
+pnpm dsh --profile openclaw
+```
+
+New sessions default to the "OpenClaw 形态" preset (soul persona + memory recall + skills + the full toolset); `profile/cordis.patch.yml` overrides the web bundle's `agent-presets` default to `openclaw`.

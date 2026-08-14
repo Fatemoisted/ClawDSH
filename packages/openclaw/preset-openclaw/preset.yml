@@ -1,3 +1,3 @@
 name: OpenClaw 形态
-description: 挂载 ClawDSH 的 soul 人格行——从灵魂文件/文本加载身份，replace/append 双模式。阶段 0 Spike 产物。
+description: OpenClaw 个人助手——完整对齐 dsh standard 工具集（shell/fs/web/skills/plan/subagent/workflow），人格由 soul（souls/assistant.md）替换 persona。阶段 4 GUI 接线产物。
 order: 3

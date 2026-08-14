@@ -69,3 +69,9 @@
     - id: automation
       name: '@clawdsh/dsh-automation'
       disabled: true
+
+# 阶段 4（GUI 接线）：默认 agent preset 指向 openclaw，覆盖 web bundle 的 default: standard，
+# 让 GUI 新会话自动挂上「OpenClaw 形态」preset（soul 人格 + 完整工具集）。
+- id: agent-presets
+  config:
+    default: openclaw
