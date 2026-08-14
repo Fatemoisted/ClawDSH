@@ -20,7 +20,9 @@
     #   name: ClawDSH
     #   emoji: 🐚
     responsePrefix: auto       # 'auto' → [name]；无名字时为空
-    ackReaction: '👀'          # 缺省回退 identity.emoji → 👀
+    ackReaction: '👀'          # 缺省回退 identity.emoji → 👀；显式 '' 禁用 ack
+    ackReactionScope: group-mentions  # all | direct | group-all | group-mentions
+    requireMention: true       # group-mentions 下群聊须提及才 ack
 ```
 
 ## 设计要点（详见 ADR-0002）
@@ -51,5 +53,4 @@ Append-only; each inbound turn appends a user message to the reusable request pr
 - **真实 e2e**：Loader 内跑真实 agent turn 的组装测试需真 key，当前以 MockAdapter 契约测试 + `--dump-config` 冒烟覆盖。
 - **并发**：per-thread tail-chain 串行化兜底；跨消息交错、多 sender 归并留待阶段 3。
 - **渠道特性**：附件/引用/富文本/交互卡片一律推迟（阶段 3 渠道扩展）。
-- **ack 范围是恒开的**：OpenClaw 的 `ackReactionScope`（群提及门控）需要群聊提及检测；在此之前凡带平台 message id 的入站都会收到 ack（飞书在验证其表情 API 前声明 `react: false`）。
-- **`deriveMentionPatterns` 暂无消费者**：按移植工具要求随契约测试出；未来 owner 是 ack scope 门控与适配器提及检测。
+- **ack 门控的控制命令旁路推迟**：OpenClaw 的 `shouldBypassMention`（控制命令无需提及也 ack）依赖渠道 seam 尚未建模的命令概念；在此之前 `group-mentions` 要求检测到提及。`removeAckAfterReply`（回复落地后删除 ack）同样推迟——需要 list-then-delete 表情往返，不值当非对称 seam。

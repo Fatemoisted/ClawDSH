@@ -15,20 +15,33 @@ import type {} from '@deepseek-ai/dsh-agent-default-model'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { resolveAckReaction, resolveResponsePrefix, type IdentityConfig, type PresentationConfig } from './presentation.ts'
+import {
+  DEFAULT_ACK_REACTION,
+  DEFAULT_ACK_REACTION_SCOPE,
+  deriveMentionPatterns,
+  resolveAckReaction,
+  resolveResponsePrefix,
+  shouldAckReaction,
+  type AckReactionScope,
+  type IdentityConfig,
+  type PresentationConfig,
+} from './presentation.ts'
 import type { ChannelAdapter, ChannelMessage } from './types.ts'
 
 export type { ChannelAdapter, ChannelCapabilities, ChannelMessage } from './types.ts'
 export {
   AUTO_RESPONSE_PREFIX,
   DEFAULT_ACK_REACTION,
+  DEFAULT_ACK_REACTION_SCOPE,
   deriveMentionPatterns,
   resolveAckReaction,
   resolveMessagePrefix,
   resolveResponsePrefix,
+  shouldAckReaction,
   stripMentions,
+  stripZeroWidth,
 } from './presentation.ts'
-export type { IdentityConfig, PresentationConfig } from './presentation.ts'
+export type { AckReactionScope, IdentityConfig, PresentationConfig } from './presentation.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -101,8 +114,12 @@ export interface Config {
   identity?: IdentityConfig
   /** Outbound prefix; `'auto'` renders `[name]`. */
   responsePrefix?: string
-  /** Ack emoji; falls back to `identity.emoji`, then `👀`. */
+  /** Ack emoji; falls back to `identity.emoji`, then `👀`; an explicit empty string disables acks. */
   ackReaction?: string
+  /** Where the ack applies; defaults to `group-mentions` (groups, mentioned only). */
+  ackReactionScope?: AckReactionScope
+  /** Whether group chats demand a mention before acks; defaults to true. */
+  requireMention?: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -114,7 +131,15 @@ export const Config: z<Config> = z.object({
     emoji: z.string().default(''),
   }),
   responsePrefix: z.string().default(''),
-  ackReaction: z.string().default(''),
+  // Defaulting to the emoji (not '') keeps "unset" distinct from "explicitly disabled".
+  ackReaction: z.string().default(DEFAULT_ACK_REACTION),
+  ackReactionScope: z.union([
+    z.const('all'),
+    z.const('direct'),
+    z.const('group-all'),
+    z.const('group-mentions'),
+  ]).default(DEFAULT_ACK_REACTION_SCOPE),
+  requireMention: z.boolean().default(true),
 })
 
 /**
@@ -128,19 +153,32 @@ export class ChannelRegistry extends Service {
   private readonly adapters = new Map<string, ChannelAdapter>()
   private readonly threads = new Map<string, ThreadEntry>()
   private readonly presentation: PresentationConfig
+  private readonly ackScope: AckReactionScope
+  private readonly requireMention: boolean
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'channels')
     this.presentation = {
       ...(config.identity === undefined ? {} : { identity: config.identity }),
       ...(config.responsePrefix === undefined || config.responsePrefix === '' ? {} : { responsePrefix: config.responsePrefix }),
-      ...(config.ackReaction === undefined || config.ackReaction === '' ? {} : { ackReaction: config.ackReaction }),
+      ...(config.ackReaction === undefined ? {} : { ackReaction: config.ackReaction }),
     }
+    this.ackScope = config.ackReactionScope ?? DEFAULT_ACK_REACTION_SCOPE
+    this.requireMention = config.requireMention ?? true
     ctx.on('channel/inbound', (message) => {
       this.route(message).catch((error: unknown) => {
         this.ctx.logger.warn(`channels: inbound routing failed: ${describe(error)}`)
       })
     })
+  }
+
+  /**
+   * The registry's presentation config — the single entry point adapters use
+   * to derive mention patterns from the deployment identity.
+   * @returns the resolved presentation config, readonly.
+   */
+  getPresentation(): Readonly<PresentationConfig> {
+    return this.presentation
   }
 
   /**
@@ -213,10 +251,17 @@ export class ChannelRegistry extends Service {
   private async driveTurn(entry: ThreadEntry, message: ChannelMessage): Promise<void> {
     const { agent } = entry.handle
     const adapter = this.adapters.get(message.channel)
+    const emoji = resolveAckReaction(this.presentation)
     if (adapter !== undefined && adapter.capabilities.react && adapter.react !== undefined
-      && message.messageId !== undefined) {
+      && message.messageId !== undefined && emoji !== ''
+      && shouldAckReaction(
+        this.ackScope,
+        message.isGroup ?? false,
+        this.requireMention,
+        message.wasMentioned !== undefined,
+        message.wasMentioned ?? false,
+      )) {
       // Fire-and-forget: the ack marks receipt; a failed reaction must not block the reply.
-      const emoji = resolveAckReaction(this.presentation)
       void adapter.react(message, emoji).catch((error: unknown) => {
         this.ctx.logger.warn(`channels: ack reaction for "${message.channel}" failed: ${describe(error)}`)
       })
@@ -241,6 +286,25 @@ export class ChannelRegistry extends Service {
     await adapter.send(outbound)
     this.ctx.emit('channel/outbound', outbound)
   }
+}
+
+/**
+ * Build and register a channel adapter, deriving its mention patterns from the
+ * registry's identity presentation. Every channel adapter's `apply()` performs
+ * this identical wiring; this is the single entry point so the derivation stays
+ * symmetric across channels.
+ * @param ctx - Cordis context carrying the `channels` service.
+ * @param build - builds the adapter from the derived mention patterns.
+ * @returns the disposer that stops the adapter and removes it from the registry.
+ */
+export function registerChannelAdapter(
+  ctx: Context,
+  build: (mentionPatterns: readonly RegExp[]) => ChannelAdapter,
+): () => void {
+  const presentation = ctx.channels.getPresentation()
+  const mentionPatterns = deriveMentionPatterns(presentation.identity?.name, presentation.identity?.emoji)
+  const adapter = build(mentionPatterns)
+  return ctx.effect(() => ctx.channels.registerAdapter(adapter), `channel-${adapter.id}.register()`)
 }
 
 export default ChannelRegistry

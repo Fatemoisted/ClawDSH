@@ -80,8 +80,12 @@ export interface Config {
   identity?: IdentityConfig
   /** Outbound prefix; `'auto'` renders `[name]`. */
   responsePrefix?: string
-  /** Ack emoji; falls back to `identity.emoji`, then `👀`. */
+  /** Ack emoji; falls back to `identity.emoji`, then `👀`; an explicit empty string disables acks. */
   ackReaction?: string
+  /** Where the ack applies; defaults to `group-mentions` (groups, mentioned only). */
+  ackReactionScope?: AckReactionScope
+  /** Whether group chats demand a mention before acks; defaults to true. */
+  requireMention?: boolean
 }
 
 /** Identity config: presentation only, never injected into the prompt. */
@@ -93,9 +97,12 @@ export interface IdentityConfig {
   /** Emoji used as the ack reaction fallback and a literal mention pattern. */
   emoji?: string
 }
+
+/** Where the ack emoji reaction applies (OpenClaw's `messages.ackReactionScope`). */
+export type AckReactionScope = 'all' | 'direct' | 'group-all' | 'group-mentions'
 ```
 
-来源： [`packages/openclaw/channel-core/src/index.ts:99`](../packages/openclaw/channel-core/src/index.ts)
+来源： [`packages/openclaw/channel-core/src/index.ts:112`](../packages/openclaw/channel-core/src/index.ts)
 
 <a id="clawdshdsh-channel-feishu"></a>
 
@@ -118,7 +125,7 @@ export interface Config {
 export type FeishuDomain = 'feishu' | 'lark'
 ```
 
-来源： [`packages/openclaw/channel-feishu/src/index.ts:37`](../packages/openclaw/channel-feishu/src/index.ts)
+来源： [`packages/openclaw/channel-feishu/src/index.ts:38`](../packages/openclaw/channel-feishu/src/index.ts)
 
 <a id="clawdshdsh-channel-telegram"></a>
 
@@ -138,7 +145,7 @@ export interface Config {
 }
 ```
 
-来源： [`packages/openclaw/channel-telegram/src/index.ts:29`](../packages/openclaw/channel-telegram/src/index.ts)
+来源： [`packages/openclaw/channel-telegram/src/index.ts:30`](../packages/openclaw/channel-telegram/src/index.ts)
 
 <a id="clawdshdsh-embeddings-ark"></a>
 

@@ -12,8 +12,9 @@
 
 ## 设计要点
 
-- **入站**：`Lark.EventDispatcher` 注册 `im.message.receive_v1`，`Lark.WSClient` 长连接启动（SDK 内部完成鉴权与 ACK，至少一次投递）；按 `message_id` 幂等去重；文本消息 → `channel/inbound`（群 `threadId` = chat_id，p2p/private = sender open_id，`sender` = open_id，text 从 `content` JSON 字符串 `{"text":"…"}` 解出）。
+- **入站**：`Lark.EventDispatcher` 注册 `im.message.receive_v1`，`Lark.WSClient` 长连接启动（SDK 内部完成鉴权与 ACK，至少一次投递）；按 `message_id` 幂等去重；文本消息 → `channel/inbound`（群 `threadId` = chat_id，p2p/private = sender open_id，`sender` = open_id，text 从 `content` JSON 字符串 `{"text":"…"}` 解出）。`isGroup` 来自 `chat_type === 'group'`；`wasMentioned` 由 `mentions[].name` 与身份派生模式匹配得出（无模式则省略该字段→fail-open）。
 - **出站**：`Lark.Client.im.message.create`（`params.receive_id_type` 群 = `chat_id`、p2p = `open_id`，`data.receive_id` + `msg_type:'text'` + `content` JSON）；`tenant_access_token` 由 SDK 的 `tokenManager` 缓存与刷新，适配器不自行管理。
+- **ack 表情**：`Lark.Client.im.messageReaction.create`（`path.message_id` + `data.reaction_type.emoji_type`）；非零 `code` 抛错，与 `sendMessage` 对称。
 - **凭证**：`appId`/`appSecret` 经 Config 进入，不私存密钥；接入 `ctx.credentials` 留待真实 e2e 收尾。
 - **长连接取代 webhook**：无 `verificationToken`/`encryptKey`、无入站 HTTP 端口、无 URL 校验 challenge（这些只在 webhook 模式需要；长连接由 SDK 完成鉴权）。`domain` 选择飞书（默认）或国际版 Lark。
 
@@ -40,4 +41,4 @@ Append-only through channel-core's user-message write.
 - **真实 e2e**：Loader 内跑真实 agent turn 的组装测试需真 key（凭证清单见阶段 2 汇总），当前以契约测试（协议映射 + `send` 载荷 + 幂等去重）+ dump-config 冒烟覆盖。
 - **去重集合**：`seen` 以 10000 条为界逐出最旧，长期运行的 bot 不无限增长。
 - **发送失败即抛**：`im.message.create` 返回非零 `code` 时抛错；重试/限流策略留待阶段 3。
-- **暂无 ack 表情**：适配器声明 `react: false`；接 `POST /open-apis/im/v1/messages/:message_id/reactions`（im v1 message reaction create）需待本 workspace 确认 node-sdk schema。
+- **按显示名映射提及**：`wasMentioned` 用 `mentions[].name` 匹配身份模式；从 mention `id` 解析 bot 自身 `open_id`（从而名字无关匹配）需要额外 API 往返，留待后续。名字不匹配任何身份模式的提及上报 `wasMentioned: false`。

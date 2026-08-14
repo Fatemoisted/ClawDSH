@@ -27,6 +27,17 @@ export interface ChannelMessage {
   sender?: string
   /** Platform-side message id, when the platform exposes one (ack reactions target it). */
   messageId?: string
+  /**
+   * Whether the message arrived in a group chat. Absent means the adapter
+   * could not determine it; the ack gate then treats it as a non-group.
+   */
+  isGroup?: boolean
+  /**
+   * Whether the message mentioned the bot. Field presence is the
+   * detection-capability signal: omitted means the adapter cannot evaluate
+   * mentions, and the ack gate fails open (no ack, never a blocked message).
+   */
+  wasMentioned?: boolean
   /** Plain text body. */
   text: string
 }

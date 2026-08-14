@@ -15,10 +15,17 @@ function nextInbound(ctx: Context): Promise<ChannelMessage> {
   })
 }
 
-/** A minimal stand-in for the SDK client's `im.message.create` surface. */
+/** A minimal stand-in for the SDK client's `im.message.*` surfaces. */
 function mockClient() {
   const create = vi.fn(async () => ({ code: 0 }))
-  return { client: { im: { message: { create } } } as unknown as NonNullable<AdapterDeps['client']>, create }
+  const reactCreate = vi.fn(async () => ({ code: 0 }))
+  const client = {
+    im: {
+      message: { create },
+      messageReaction: { create: reactCreate },
+    },
+  } as unknown as NonNullable<AdapterDeps['client']>
+  return { client, create, reactCreate }
 }
 
 const GROUP_EVENT = {
@@ -34,7 +41,7 @@ describe('the feishu channel adapter', () => {
   })
 
   it('normalizes a group text event to an inbound message', () => {
-    expect(toInbound(GROUP_EVENT)).toEqual({ threadId: 'oc_1', sender: 'ou_1', messageId: 'om_1', text: 'hi' })
+    expect(toInbound(GROUP_EVENT)).toEqual({ threadId: 'oc_1', sender: 'ou_1', messageId: 'om_1', isGroup: true, text: 'hi' })
   })
 
   it('normalizes a p2p text event to the sender open_id thread', () => {
@@ -42,7 +49,25 @@ describe('the feishu channel adapter', () => {
       sender: { sender_id: { open_id: 'ou_2' } },
       message: { message_id: 'om_2', chat_id: 'oc_2', chat_type: 'p2p', message_type: 'text', content: '{"text":"hey"}' },
     }
-    expect(toInbound(event)).toEqual({ threadId: 'ou_2', sender: 'ou_2', messageId: 'om_2', text: 'hey' })
+    expect(toInbound(event)).toEqual({ threadId: 'ou_2', sender: 'ou_2', messageId: 'om_2', isGroup: false, text: 'hey' })
+  })
+
+  it('maps a group mention onto wasMentioned when patterns are provided', () => {
+    const event = {
+      sender: { sender_id: { open_id: 'ou_3' } },
+      message: {
+        message_id: 'om_3', chat_id: 'oc_3', chat_type: 'group', message_type: 'text',
+        content: '{"text":"hey"}',
+        mentions: [{ name: 'Clawd' }],
+      },
+    }
+    expect(toInbound(event, [/Clawd/i])).toMatchObject({ isGroup: true, wasMentioned: true })
+    expect(toInbound(event, [/Clawd/i])).toHaveProperty('wasMentioned', true)
+    // A mention that does not match the identity pattern reports `wasMentioned: false`,
+    // letting the ack gate suppress — the presence itself is the capability signal.
+    expect(toInbound(event, [/Otherbot/i])).toHaveProperty('wasMentioned', false)
+    // Without patterns the field is omitted (fail-open): detection is impossible.
+    expect(toInbound(event)).not.toHaveProperty('wasMentioned')
   })
 
   it('drops non-text and empty events', () => {
@@ -92,6 +117,34 @@ describe('the feishu channel adapter', () => {
     const client = { im: { message: { create } } } as unknown as NonNullable<AdapterDeps['client']>
     const adapter = createAdapter(CONFIG, { client })
     await expect(adapter.send({ channel: 'feishu', direction: 'out', threadId: 'oc_1', text: 'x' }))
+      .rejects.toThrow(/boom/)
+  })
+
+  it('attaches an ack emoji via im.messageReaction.create', async () => {
+    const { client, reactCreate } = mockClient()
+    const adapter = createAdapter(CONFIG, { client })
+    expect(adapter.capabilities.react).toBe(true)
+    await adapter.react?.({ channel: 'feishu', direction: 'in', messageId: 'om_1', text: 'hi' }, '👀')
+    expect(reactCreate).toHaveBeenCalledWith({
+      path: { message_id: 'om_1' },
+      data: { reaction_type: { emoji_type: '👀' } },
+    })
+  })
+
+  it('skips the reaction without a message id', async () => {
+    const { client, reactCreate } = mockClient()
+    const adapter = createAdapter(CONFIG, { client })
+    await adapter.react?.({ channel: 'feishu', direction: 'in', text: 'hi' }, '👀')
+    expect(reactCreate).not.toHaveBeenCalled()
+  })
+
+  it('fails loud when the reaction SDK reports a non-zero code', async () => {
+    const reactCreate = vi.fn(async () => ({ code: 99999, msg: 'boom' }))
+    const client = {
+      im: { message: { create: vi.fn(async () => ({ code: 0 })) }, messageReaction: { create: reactCreate } },
+    } as unknown as NonNullable<AdapterDeps['client']>
+    const adapter = createAdapter(CONFIG, { client })
+    await expect(adapter.react?.({ channel: 'feishu', direction: 'in', messageId: 'om_1', text: 'hi' }, '👀'))
       .rejects.toThrow(/boom/)
   })
 })

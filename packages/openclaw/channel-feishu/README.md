@@ -12,8 +12,9 @@ English | [中文](README.zh.md)
 
 ## Design notes
 
-- **inbound**: `Lark.EventDispatcher` registers `im.message.receive_v1`, `Lark.WSClient` starts the long connection (the SDK performs auth and ACK internally, at-least-once delivery); idempotent dedup by `message_id`; text message → `channel/inbound` (group `threadId` = chat_id, p2p/private = sender open_id, `sender` = open_id, text decoded from the `content` JSON string `{"text":"…"}`).
+- **inbound**: `Lark.EventDispatcher` registers `im.message.receive_v1`, `Lark.WSClient` starts the long connection (the SDK performs auth and ACK internally, at-least-once delivery); idempotent dedup by `message_id`; text message → `channel/inbound` (group `threadId` = chat_id, p2p/private = sender open_id, `sender` = open_id, text decoded from the `content` JSON string `{"text":"…"}`). `isGroup` comes from `chat_type === 'group'`; `wasMentioned` is derived by matching `mentions[].name` against the identity-derived patterns (absent patterns omit the field → fail-open).
 - **outbound**: `Lark.Client.im.message.create` (`params.receive_id_type` group = `chat_id`, p2p = `open_id`, `data.receive_id` + `msg_type:'text'` + `content` JSON); `tenant_access_token` is cached and refreshed by the SDK's `tokenManager`, the adapter does not manage it itself.
+- **ack reaction**: `Lark.Client.im.messageReaction.create` (`path.message_id` + `data.reaction_type.emoji_type`); a non-zero `code` throws, mirroring `sendMessage`.
 - **credentials**: `appId`/`appSecret` enter via Config, no secret is stored privately; wiring into `ctx.credentials` is left for the real-e2e wrap-up.
 - **long connection instead of webhook**: no `verificationToken`/`encryptKey`, no inbound HTTP port, no URL-verification challenge (these are only needed in webhook mode; the long connection performs auth via the SDK). `domain` selects Feishu (default) or international Lark.
 
@@ -40,4 +41,4 @@ Append-only through channel-core's user-message write.
 - **real e2e**: the assembly test running a real agent turn inside the Loader needs a real key (see the stage 2 summary for the credential list); currently covered by contract tests (protocol mapping + `send` payload + idempotent dedup) + dump-config smoke.
 - **dedup set**: `seen` evicts the oldest entry past 10000, so a long-running bot does not grow without bound.
 - **send failure throws**: an error is thrown when `im.message.create` returns a non-zero `code`; retry/rate-limit policy deferred to stage 3.
-- **no ack reaction yet**: the adapter declares `react: false`; wiring `POST /open-apis/im/v1/messages/:message_id/reactions` (im v1 message reaction create) waits on confirming the node-sdk schema in this workspace.
+- **mention mapping by display name**: `wasMentioned` matches `mentions[].name` against the identity patterns; resolving the bot's own `open_id` from the mention `id` (and thus a name-agnostic match) needs an extra API round-trip, deferred. A mention whose name does not match any identity pattern reports `wasMentioned: false`.

@@ -12,8 +12,9 @@ English | [中文](README.zh.md)
 
 ## Design notes
 
-- **inbound**: `Bot.on('message:text')` maps each text message to `channel/inbound` (`threadId` = `chat.id`, `sender` = `from.id`); `bot.start({ allowed_updates:['message'], timeout })` long-polls, with grammY advancing `offset` internally (at-least-once delivery idempotence); `bot.catch` as the fallback log.
+- **inbound**: `Bot.on('message:text')` maps each text message to `channel/inbound` (`threadId` = `chat.id`, `sender` = `from.id`); `bot.start({ allowed_updates:['message'], timeout })` long-polls, with grammY advancing `offset` internally (at-least-once delivery idempotence); `bot.catch` as the fallback log. `isGroup` comes from `chat.type` (`group`/`supergroup`); `wasMentioned` comes from `detectBotMention` (the bot's real username against `mention` entities and the `@username` text, plus any identity pattern).
 - **outbound**: `bot.api.sendMessage(chat_id, text)`; grammY throws `GrammyError` on API errors, fail-loud.
+- **ack reaction**: `bot.api.setMessageReaction(chat_id, message_id, [{ type:'emoji', emoji }])`; an unsupported emoji is rejected by the API at runtime and surfaces as the caller's logged warning.
 - **credentials**: `botToken` enters via Config, no secret is stored privately; wiring into `ctx.credentials` is left for the real-e2e wrap-up.
 - **polling offset owned by grammY**: the adapter itself holds no mutable state; the offset is managed by grammY's long-polling loop.
 
@@ -38,3 +39,4 @@ Append-only through channel-core's user-message write.
 - **real e2e**: a real `botToken` + key is needed to run the real closed loop; currently covered by contract tests (protocol mapping + `send` payload + start/stop polling).
 - **quoted replies / attachments**: `reply_parameters` quoting, images/rich text all deferred (stage 3 channel extensions).
 - **runner/throttler**: `@grammyjs/runner` (high-load concurrency) and `@grammyjs/transformer-throttler` (rate limiting) are adopted upstream; this adapter starts with the minimal `bot.start()` long-polling surface, to be introduced when needed.
+- **mention detection depends on getMe**: the bot's real username is read from `bot.botInfo?.username` after grammY's `init()`; before that (or without a username) only the identity patterns can detect a mention, and with neither the adapter omits `wasMentioned` (fail-open, no ack).
