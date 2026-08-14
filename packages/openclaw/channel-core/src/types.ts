@@ -11,6 +11,8 @@ export interface ChannelCapabilities {
   receive: boolean
   /** The adapter can deliver outbound messages back to the platform. */
   send: boolean
+  /** The adapter can attach an ack emoji reaction to an inbound message. */
+  react: boolean
 }
 
 /** A normalized message flowing into or out of the channel seam. */
@@ -23,6 +25,8 @@ export interface ChannelMessage {
   threadId?: string
   /** Sender identity: open_id or `from.id`. */
   sender?: string
+  /** Platform-side message id, when the platform exposes one (ack reactions target it). */
+  messageId?: string
   /** Plain text body. */
   text: string
 }
@@ -37,4 +41,6 @@ export interface ChannelAdapter {
   start(ctx: Context): () => void
   /** Deliver an outbound message back to the platform. */
   send(message: ChannelMessage): Promise<void>
+  /** Attach an ack emoji reaction to an inbound message; required when `capabilities.react` is true. */
+  react?(message: ChannelMessage, emoji: string): Promise<void>
 }

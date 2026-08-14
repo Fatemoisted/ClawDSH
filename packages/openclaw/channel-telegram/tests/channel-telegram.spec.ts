@@ -23,12 +23,12 @@ function mockBot() {
 
 describe('the telegram channel adapter', () => {
   it('maps a text context to an inbound message', () => {
-    expect(toInbound({ message: { text: 'hi' }, chat: { id: 42 }, from: { id: 7 } }))
-      .toMatchObject({ channel: 'telegram', direction: 'in', threadId: '42', sender: '7', text: 'hi' })
+    expect(toInbound({ message: { text: 'hi', message_id: 11 }, chat: { id: 42 }, from: { id: 7 } }))
+      .toMatchObject({ channel: 'telegram', direction: 'in', threadId: '42', sender: '7', messageId: '11', text: 'hi' })
   })
 
   it('omits the sender when the message has no author', () => {
-    expect(toInbound({ message: { text: 'hi' }, chat: { id: 42 } }).sender).toBeUndefined()
+    expect(toInbound({ message: { text: 'hi', message_id: 11 }, chat: { id: 42 } }).sender).toBeUndefined()
   })
 
   it('registers a text handler and starts long polling, then stops on dispose', () => {
@@ -77,9 +77,31 @@ describe('the telegram channel adapter', () => {
     })
     const adapter = createAdapter({ botToken: 't' }, { bot })
     adapter.start(ctx)
-    const handler = on.mock.calls[0]![1] as (c: { message: { text: string }; chat: { id: number }; from?: { id: number } }) => void
-    handler({ message: { text: 'hi' }, chat: { id: 42 }, from: { id: 7 } })
+    type HandlerContext = { message: { text: string; message_id: number }; chat: { id: number }; from?: { id: number } }
+    const handler = on.mock.calls[0]![1] as (c: HandlerContext) => void
+    handler({ message: { text: 'hi', message_id: 11 }, chat: { id: 42 }, from: { id: 7 } })
     const message = await inbound
-    expect(message).toMatchObject({ channel: 'telegram', direction: 'in', threadId: '42', sender: '7', text: 'hi' })
+    expect(message).toMatchObject({ channel: 'telegram', direction: 'in', threadId: '42', sender: '7', messageId: '11', text: 'hi' })
+  })
+
+  it('attaches an ack emoji via setMessageReaction', async () => {
+    const setMessageReaction = vi.fn(async () => ({}))
+    const bot = {
+      api: { sendMessage: vi.fn(async () => ({})), setMessageReaction },
+    } as unknown as NonNullable<AdapterDeps['bot']>
+    const adapter = createAdapter({ botToken: 't' }, { bot })
+    expect(adapter.capabilities.react).toBe(true)
+    await adapter.react?.({ channel: 'telegram', direction: 'in', threadId: '42', messageId: '11', text: 'hi' }, '👀')
+    expect(setMessageReaction).toHaveBeenCalledWith('42', 11, [{ type: 'emoji', emoji: '👀' }])
+  })
+
+  it('skips the reaction without a message id', async () => {
+    const setMessageReaction = vi.fn(async () => ({}))
+    const bot = {
+      api: { sendMessage: vi.fn(async () => ({})), setMessageReaction },
+    } as unknown as NonNullable<AdapterDeps['bot']>
+    const adapter = createAdapter({ botToken: 't' }, { bot })
+    await adapter.react?.({ channel: 'telegram', direction: 'in', threadId: '42', text: 'hi' }, '👀')
+    expect(setMessageReaction).not.toHaveBeenCalled()
   })
 })

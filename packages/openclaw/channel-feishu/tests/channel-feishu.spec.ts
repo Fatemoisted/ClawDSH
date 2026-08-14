@@ -34,7 +34,7 @@ describe('the feishu channel adapter', () => {
   })
 
   it('normalizes a group text event to an inbound message', () => {
-    expect(toInbound(GROUP_EVENT)).toEqual({ threadId: 'oc_1', sender: 'ou_1', text: 'hi' })
+    expect(toInbound(GROUP_EVENT)).toEqual({ threadId: 'oc_1', sender: 'ou_1', messageId: 'om_1', text: 'hi' })
   })
 
   it('normalizes a p2p text event to the sender open_id thread', () => {
@@ -42,7 +42,7 @@ describe('the feishu channel adapter', () => {
       sender: { sender_id: { open_id: 'ou_2' } },
       message: { message_id: 'om_2', chat_id: 'oc_2', chat_type: 'p2p', message_type: 'text', content: '{"text":"hey"}' },
     }
-    expect(toInbound(event)).toEqual({ threadId: 'ou_2', sender: 'ou_2', text: 'hey' })
+    expect(toInbound(event)).toEqual({ threadId: 'ou_2', sender: 'ou_2', messageId: 'om_2', text: 'hey' })
   })
 
   it('drops non-text and empty events', () => {

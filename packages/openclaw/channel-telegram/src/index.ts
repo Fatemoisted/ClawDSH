@@ -14,6 +14,7 @@
  */
 
 import { Bot } from 'grammy'
+import type { ReactionTypeEmoji } from 'grammy/types'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { ChannelAdapter, ChannelMessage } from '@clawdsh/dsh-channel-core'
@@ -43,7 +44,7 @@ export const Config: z<Config> = z.object({
 
 /** The grammY `message:text` context fields this adapter consumes. */
 export interface TelegramTextContext {
-  message: { text: string }
+  message: { text: string; message_id: number }
   chat: { id: number }
   from?: { id: number }
 }
@@ -65,6 +66,7 @@ export function toInbound(ctx: TelegramTextContext): ChannelMessage {
     direction: 'in',
     threadId: String(ctx.chat.id),
     ...(ctx.from === undefined ? {} : { sender: String(ctx.from.id) }),
+    messageId: String(ctx.message.message_id),
     text: ctx.message.text,
   }
 }
@@ -89,6 +91,16 @@ async function sendMessage(bot: Bot, message: ChannelMessage): Promise<void> {
   await bot.api.sendMessage(message.threadId, message.text)
 }
 
+/** Attach an ack emoji reaction to an inbound message through `setMessageReaction`. */
+async function react(bot: Bot, message: ChannelMessage, emoji: string): Promise<void> {
+  if (message.threadId === undefined || message.messageId === undefined) return
+  // The channel contract carries an arbitrary emoji; grammY types the platform's
+  // supported reaction set. An unsupported emoji is rejected by the API at
+  // runtime and surfaces as the caller's logged warning, not silently.
+  const reaction: ReactionTypeEmoji['emoji'] = emoji as ReactionTypeEmoji['emoji']
+  await bot.api.setMessageReaction(message.threadId, Number(message.messageId), [{ type: 'emoji', emoji: reaction }])
+}
+
 /**
  * Build the Telegram adapter from validated config.
  * @param config - validated plugin config carrying the bot token and polling tuning.
@@ -101,9 +113,10 @@ export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAd
   const timeout = config.timeout ?? 30
   return {
     id: 'telegram',
-    capabilities: { receive: polling, send: true },
+    capabilities: { receive: polling, send: true, react: true },
     start: ctx => polling ? startPolling(ctx, bot, timeout) : () => {},
     send: message => sendMessage(bot, message),
+    react: (message, emoji) => react(bot, message, emoji),
   }
 }
 

@@ -13,8 +13,16 @@
     # ctx.channels 注册表 + 双适配器。飞书凭证走环境变量（FEISHU_APP_ID / FEISHU_APP_SECRET），
     # 不落盘；未设置时 boot 会 fail-loud（appId/appSecret required）。适配器 inject 'channels'，
     # 启用时须与 channel-core 同启。
+    # 渠道身份呈现（阶段 3）：identity 只驱动呈现（出站前缀/ack 表情/mention 正则），从不进 prompt。
+    # responsePrefix 'auto' = [name]；ackReaction 缺省回退 identity.emoji → 👀。
     - id: channel-core
       name: '@clawdsh/dsh-channel-core'
+      config:
+        # identity:
+        #   name: ClawDSH
+        #   emoji: 🐚
+        responsePrefix: auto
+        ackReaction: '👀'
 
     - id: channel-telegram
       name: '@clawdsh/dsh-channel-telegram'
