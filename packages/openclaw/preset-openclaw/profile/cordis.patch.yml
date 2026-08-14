@@ -26,3 +26,15 @@
         appId: !!js process.env.FEISHU_APP_ID
         appSecret: !!js process.env.FEISHU_APP_SECRET
         domain: feishu
+
+    # 阶段 2 补漏：memory（Markdown 记忆事实源）+ embeddings-ark（语义召回后端）。
+    # memory 的 root 用 dshHomePath('memory')（~/.dsh/memory）；embeddings-ark 保持 disabled——
+    # 无 ARK_API_KEY 时不得影响 boot；拿到 key 后（根 .env 或 $DSH_HOME/.env）解除 disabled。
+    - id: memory
+      name: '@clawdsh/dsh-memory'
+      config:
+        root: !!js dshHomePath('memory')
+
+    - id: embeddings-ark
+      name: '@clawdsh/dsh-embeddings-ark'
+      disabled: true

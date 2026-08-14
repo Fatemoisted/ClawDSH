@@ -31,7 +31,6 @@ export default defineConfig(({ env }) => {
         'packages/openclaw/_template/**',
         'packages/openclaw/automation/**',
         'packages/openclaw/channel-wechat/**',
-        'packages/openclaw/memory/**',
         'packages/openclaw/preset-openclaw/**',
         'packages/openclaw/skills-hub/**',
       ],

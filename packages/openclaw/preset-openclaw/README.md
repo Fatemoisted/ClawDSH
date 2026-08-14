@@ -17,6 +17,7 @@
 - ✅（阶段 0）profile 解析与层叠机制——`DSH_HOME` 指向含本模板 profile 的目录后 `pnpm dsh --profile openclaw --dump-config` 可解析；
 - ✅（阶段 2）渠道行接线——`profile/cordis.patch.yml` 已 `insert` `channel-core` + `channel-telegram` + `channel-feishu` 三条行；`channel-core` + `channel-feishu` 启用（飞书凭证走 env），`channel-telegram` 保持 `disabled: true`（无账号）；
 - ✅（阶段 2）飞书真实 e2e——`channel-feishu`（长连接入站）→ `channel-core`（per-thread agent turn）→ DeepSeek agent 回复 → `im.message.create` 出站，用户已在飞书确认收到；
+- ✅（阶段 2 补漏）memory 行接线——`profile/cordis.patch.yml` 已 `insert` `memory`（root 默认 `dshHomePath('memory')`）+ `embeddings-ark`（**disabled 起步**：无 ARK_API_KEY 不得影响 boot；拿 key 后解除）；
 - ⏳（阶段 2）headless 形态下把 openclaw preset 挂到真实 agent（agent-spine-demo 目前不带 preset 选择，web 形态由 agent-presets 挂载；接线方案见 docs/specs/roadmap.md 阶段 2）；
 - ⏳（阶段 2）`@clawdsh/*` 包从 profile 目录的解析（包未发布，暂用 `$DSH_HOME/profiles/node_modules/@clawdsh/` 手动 symlink 过渡）；
 - ⏳（阶段 2）soul 文件路径随 preset 目录解析（当前相对 process.cwd()）。
@@ -35,11 +36,16 @@ mkdir -p ~/.dsh/profiles/node_modules/@clawdsh
 ln -sfn "$PWD/packages/openclaw/channel-core" ~/.dsh/profiles/node_modules/@clawdsh/dsh-channel-core
 ln -sfn "$PWD/packages/openclaw/channel-feishu" ~/.dsh/profiles/node_modules/@clawdsh/dsh-channel-feishu
 ln -sfn "$PWD/packages/openclaw/channel-telegram" ~/.dsh/profiles/node_modules/@clawdsh/dsh-channel-telegram
+ln -sfn "$PWD/packages/openclaw/memory" ~/.dsh/profiles/node_modules/@clawdsh/dsh-memory
+ln -sfn "$PWD/packages/openclaw/embeddings" ~/.dsh/profiles/node_modules/@clawdsh/dsh-embeddings
+ln -sfn "$PWD/packages/openclaw/embeddings-ark" ~/.dsh/profiles/node_modules/@clawdsh/dsh-embeddings-ark
 
 # 3. 凭证走环境变量（不落盘）
 export FEISHU_APP_ID=cli_xxx
 export FEISHU_APP_SECRET=xxx
 export DEEPSEEK_API_KEY=sk-xxx
+# 启用 memory 语义召回（可选）：解除 profile/cordis.patch.yml 里 embeddings-ark 的 disabled，
+# 并把 ARK_API_KEY 写入根 .env 或 ~/.dsh/.env（永不入仓库）
 
 # 4. 起 daemon（常驻长连接，等飞书消息）
 pnpm dsh --profile openclaw
