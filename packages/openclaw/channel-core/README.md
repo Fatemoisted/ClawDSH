@@ -10,11 +10,25 @@ English | [中文](README.zh.md)
 
 **Specification**: docs/adr/0002-channel-seam.md · **Status**: implemented
 
+## Usage
+
+```yaml
+- id: channel-core
+  name: '@clawdsh/dsh-channel-core'
+  config:
+    # identity:                 # 呈现专属，绝不进 prompt
+    #   name: ClawDSH
+    #   emoji: 🐚
+    responsePrefix: auto       # 'auto' → [name]；无名字时为空
+    ackReaction: '👀'          # 缺省回退 identity.emoji → 👀
+```
+
 ## Design notes (see ADR-0002)
 
-- A channel = a provider, uniformly implementing `ChannelAdapter`: `receive` (inbound) and `send` (outbound) as the two kinds of capability;
+- A channel = a provider, uniformly implementing `ChannelAdapter`: `receive` (inbound), `send` (outbound), and `react` (optional ack emoji on inbound messages) as the capability kinds;
 - Inbound messages first go through dsh's session mechanism (append-only log), then enter the agent loop — the "model-visible means logged" invariant is inherited naturally;
-- Each channel plugin (telegram/whatsapp/…) implements only the adapter and does not touch routing logic.
+- Each channel plugin (telegram/whatsapp/…) implements only the adapter and does not touch routing logic;
+- Identity presentation (`identity.{name,theme,emoji}`, `responsePrefix`, `ackReaction`, mention patterns) lives here, not in the prompt: `driveTurn` prefixes the extracted reply, fires the ack reaction, and the pure resolvers in `src/presentation.ts` carry OpenClaw's semantics (`'auto'` → `[name]`, ack fallback 👀).
 
 ## Model Experience
 
@@ -37,3 +51,5 @@ Append-only; each inbound turn appends a user message to the reusable request pr
 - **real e2e**: the assembly test running a real agent turn inside the Loader needs a real key; currently covered by MockAdapter contract tests + `--dump-config` smoke.
 - **concurrency**: per-thread tail-chain serialization as the fallback; cross-message interleaving and multi-sender merging deferred to stage 3.
 - **channel features**: attachments/quotes/rich text/interactive cards all deferred (stage 3 channel extensions).
+- **ack scope is always-on**: OpenClaw's `ackReactionScope` (group-mentions gating) needs group-chat mention detection; until then every inbound with a platform message id gets the ack (feishu declares `react: false` until its reaction API is verified).
+- **`deriveMentionPatterns` has no consumer yet**: shipped with contract tests per the ported utility; the future owner is ack scope gating and adapter mention detection.

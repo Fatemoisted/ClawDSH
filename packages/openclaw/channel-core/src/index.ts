@@ -8,15 +8,27 @@
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { Service } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { AgentHandle } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { resolveAckReaction, resolveResponsePrefix, type IdentityConfig, type PresentationConfig } from './presentation.ts'
 import type { ChannelAdapter, ChannelMessage } from './types.ts'
 
 export type { ChannelAdapter, ChannelCapabilities, ChannelMessage } from './types.ts'
+export {
+  AUTO_RESPONSE_PREFIX,
+  DEFAULT_ACK_REACTION,
+  deriveMentionPatterns,
+  resolveAckReaction,
+  resolveMessagePrefix,
+  resolveResponsePrefix,
+  stripMentions,
+} from './presentation.ts'
+export type { IdentityConfig, PresentationConfig } from './presentation.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -83,18 +95,47 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/** Channel registry config: identity presentation (never prompt content). */
+export interface Config {
+  /** Identity the presentation resolves against. */
+  identity?: IdentityConfig
+  /** Outbound prefix; `'auto'` renders `[name]`. */
+  responsePrefix?: string
+  /** Ack emoji; falls back to `identity.emoji`, then `👀`. */
+  ackReaction?: string
+}
+
+export const Config: z<Config> = z.object({
+  // Every inner key defaulted makes the whole object optional in the input,
+  // mirroring the memory row's `flush` sub-config shape.
+  identity: z.object({
+    name: z.string().default(''),
+    theme: z.string().default(''),
+    emoji: z.string().default(''),
+  }),
+  responsePrefix: z.string().default(''),
+  ackReaction: z.string().default(''),
+})
+
 /**
  * Registry of channel adapters plus the inbound routing that turns their
  * messages into agent turns and returns each reply through its adapter.
  */
 export class ChannelRegistry extends Service {
   static inject = ['agents', 'sessions', 'agentDefaultModel']
+  static Config: z<Config> = Config
 
   private readonly adapters = new Map<string, ChannelAdapter>()
   private readonly threads = new Map<string, ThreadEntry>()
+  private readonly presentation: PresentationConfig
 
-  constructor(ctx: Context) {
+  constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'channels')
+    this.presentation = {
+      ...(config.identity === undefined ? {} : { identity: config.identity }),
+      ...(config.responsePrefix === undefined || config.responsePrefix === '' ? {} : { responsePrefix: config.responsePrefix }),
+      ...(config.ackReaction === undefined || config.ackReaction === '' ? {} : { ackReaction: config.ackReaction }),
+    }
     ctx.on('channel/inbound', (message) => {
       this.route(message).catch((error: unknown) => {
         this.ctx.logger.warn(`channels: inbound routing failed: ${describe(error)}`)
@@ -171,6 +212,15 @@ export class ChannelRegistry extends Service {
 
   private async driveTurn(entry: ThreadEntry, message: ChannelMessage): Promise<void> {
     const { agent } = entry.handle
+    const adapter = this.adapters.get(message.channel)
+    if (adapter !== undefined && adapter.capabilities.react && adapter.react !== undefined
+      && message.messageId !== undefined) {
+      // Fire-and-forget: the ack marks receipt; a failed reaction must not block the reply.
+      const emoji = resolveAckReaction(this.presentation)
+      void adapter.react(message, emoji).catch((error: unknown) => {
+        this.ctx.logger.warn(`channels: ack reaction for "${message.channel}" failed: ${describe(error)}`)
+      })
+    }
     const firstSeq = agent.session.seq
     agent.followup(createUserMessage({
       content: [{ type: 'text', text: message.text }],
@@ -179,14 +229,14 @@ export class ChannelRegistry extends Service {
     await agent.whenIdle()
     await this.ctx.sessions.flush(agent.session)
     const text = extractReply(agent.session.events, firstSeq)
-    const adapter = this.adapters.get(message.channel)
     if (adapter === undefined) return
+    const prefix = resolveResponsePrefix(this.presentation)
     const outbound: ChannelMessage = {
       channel: message.channel,
       direction: 'out',
       ...(message.threadId === undefined ? {} : { threadId: message.threadId }),
       ...(message.sender === undefined ? {} : { sender: message.sender }),
-      text,
+      text: text !== '' && prefix !== '' ? `${prefix} ${text}` : text,
     }
     await adapter.send(outbound)
     this.ctx.emit('channel/outbound', outbound)

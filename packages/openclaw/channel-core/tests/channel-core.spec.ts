@@ -29,7 +29,7 @@ async function harness(adapter: MockAdapter): Promise<Context> {
 function fakeAdapter(sent: ChannelMessage[]): ChannelAdapter {
   return {
     id: 'fake',
-    capabilities: { receive: true, send: true },
+    capabilities: { receive: true, send: true, react: false },
     start: () => () => {},
     send: async (message) => { sent.push(message) },
   }
@@ -118,5 +118,62 @@ describe('the channel-core seam', () => {
     expect(reply.text).toBe('channel reply')
     expect(sent).toHaveLength(1)
     expect(sent[0]?.text).toBe('channel reply')
+  })
+
+  it('prefixes the reply with [name] when identity presentation is configured', async () => {
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(AgentLoop, { agents: [] })
+    await ctx.plugin(AgentDefaultModelConfig, { provider: 'mock', model: 'mock' })
+    ctx.llm.registerAdapter(['mock'], new MockAdapter([textResponse('hello there')]))
+    await ctx.plugin(ChannelRegistry, { identity: { name: 'Clawd' } })
+    const sent: ChannelMessage[] = []
+    ctx.channels.registerAdapter(fakeAdapter(sent))
+    const outbound = nextOutbound(ctx)
+
+    ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', sender: 'u1', text: 'hi' })
+
+    const reply = await outbound
+    expect(reply.text).toBe('[Clawd] hello there')
+  })
+
+  it('attaches an ack reaction to the inbound message when the adapter can react', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('hello there')]))
+    const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
+    ctx.channels.registerAdapter({
+      id: 'fake',
+      capabilities: { receive: true, send: true, react: true },
+      start: () => () => {},
+      send: async () => {},
+      react: async (message, emoji) => { reactions.push({ messageId: message.messageId, emoji }) },
+    })
+    const outbound = nextOutbound(ctx)
+
+    ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', sender: 'u1', messageId: 'm-1', text: 'hi' })
+    await outbound
+
+    expect(reactions).toEqual([{ messageId: 'm-1', emoji: '👀' }])
+  })
+
+  it('skips the ack when the inbound message has no platform id', async () => {
+    const ctx = await harness(new MockAdapter([textResponse('hello there')]))
+    let reacted = 0
+    ctx.channels.registerAdapter({
+      id: 'fake',
+      capabilities: { receive: true, send: true, react: true },
+      start: () => () => {},
+      send: async () => {},
+      react: async () => { reacted += 1 },
+    })
+    const outbound = nextOutbound(ctx)
+
+    ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', sender: 'u1', text: 'hi' })
+    await outbound
+
+    expect(reacted).toBe(0)
   })
 })

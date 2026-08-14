@@ -116,7 +116,7 @@ export function extractText(content: string | undefined): string {
  * @param event - the SDK-delivered receive event.
  * @returns the inbound thread id, optional sender, and text, or `undefined`.
  */
-export function toInbound(event: FeishuReceiveEvent): { threadId: string; sender?: string; text: string } | undefined {
+export function toInbound(event: FeishuReceiveEvent): { threadId: string; sender?: string; messageId?: string; text: string } | undefined {
   const message = event.message
   if (message === undefined || message.message_type !== 'text') return undefined
   const text = extractText(message.content)
@@ -129,6 +129,7 @@ export function toInbound(event: FeishuReceiveEvent): { threadId: string; sender
   return {
     threadId,
     ...(senderOpenId === undefined ? {} : { sender: senderOpenId }),
+    ...(message.message_id === undefined ? {} : { messageId: message.message_id }),
     text,
   }
 }
@@ -167,6 +168,7 @@ export function handleReceiveEvent(ctx: Context, state: AdapterState, event: Fei
     direction: 'in',
     threadId: inbound.threadId,
     ...(inbound.sender === undefined ? {} : { sender: inbound.sender }),
+    ...(inbound.messageId === undefined ? {} : { messageId: inbound.messageId }),
     text: inbound.text,
   })
 }
@@ -231,7 +233,9 @@ export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAd
   const state = createAdapterState()
   return {
     id: 'feishu',
-    capabilities: { receive: true, send: true },
+    // Ack reactions are not wired yet: the node-sdk's `im.message.reaction.create`
+    // surface is unverified in this workspace (Known Limitation, channel-feishu README).
+    capabilities: { receive: true, send: true, react: false },
     start: ctx => startLongConnection(ctx, config, state),
     send: message => sendMessage(client, state, message),
   }

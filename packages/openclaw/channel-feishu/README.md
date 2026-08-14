@@ -40,3 +40,4 @@ Append-only through channel-core's user-message write.
 - **real e2e**: the assembly test running a real agent turn inside the Loader needs a real key (see the stage 2 summary for the credential list); currently covered by contract tests (protocol mapping + `send` payload + idempotent dedup) + dump-config smoke.
 - **dedup set**: `seen` evicts the oldest entry past 10000, so a long-running bot does not grow without bound.
 - **send failure throws**: an error is thrown when `im.message.create` returns a non-zero `code`; retry/rate-limit policy deferred to stage 3.
+- **no ack reaction yet**: the adapter declares `react: false`; wiring `POST /open-apis/im/v1/messages/:message_id/reactions` (im v1 message reaction create) waits on confirming the node-sdk schema in this workspace.

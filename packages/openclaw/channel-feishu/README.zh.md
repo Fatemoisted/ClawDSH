@@ -40,3 +40,4 @@ Append-only through channel-core's user-message write.
 - **真实 e2e**：Loader 内跑真实 agent turn 的组装测试需真 key（凭证清单见阶段 2 汇总），当前以契约测试（协议映射 + `send` 载荷 + 幂等去重）+ dump-config 冒烟覆盖。
 - **去重集合**：`seen` 以 10000 条为界逐出最旧，长期运行的 bot 不无限增长。
 - **发送失败即抛**：`im.message.create` 返回非零 `code` 时抛错；重试/限流策略留待阶段 3。
+- **暂无 ack 表情**：适配器声明 `react: false`；接 `POST /open-apis/im/v1/messages/:message_id/reactions`（im v1 message reaction create）需待本 workspace 确认 node-sdk schema。

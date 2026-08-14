@@ -10,11 +10,25 @@
 
 **规格**：docs/adr/0002-channel-seam.md · **状态**：implemented
 
+## 使用
+
+```yaml
+- id: channel-core
+  name: '@clawdsh/dsh-channel-core'
+  config:
+    # identity:                 # 呈现专属，绝不进 prompt
+    #   name: ClawDSH
+    #   emoji: 🐚
+    responsePrefix: auto       # 'auto' → [name]；无名字时为空
+    ackReaction: '👀'          # 缺省回退 identity.emoji → 👀
+```
+
 ## 设计要点（详见 ADR-0002）
 
-- 渠道 = provider，统一实现 `ChannelAdapter`：`receive`（入站）与 `send`（出站）两类能力；
+- 渠道 = provider，统一实现 `ChannelAdapter`：`receive`（入站）、`send`（出站）与 `react`（入站消息的可选 ack 表情）三类能力；
 - 入站消息先走 dsh 的 session 机制（append-only log），再进 agent loop——"model-visible means logged" 不变式自然继承；
-- 每个渠道插件（telegram/whatsapp/…）只实现适配器，不碰路由逻辑。
+- 每个渠道插件（telegram/whatsapp/…）只实现适配器，不碰路由逻辑；
+- 身份呈现（`identity.{name,theme,emoji}`、`responsePrefix`、`ackReaction`、mention 正则）落在这里而非 prompt：`driveTurn` 给提取出的回复加前缀、触发 ack 表情，`src/presentation.ts` 的纯函数携带 OpenClaw 语义（`'auto'` → `[name]`、ack 回退 👀）。
 
 ## Model Experience
 
@@ -37,3 +51,5 @@ Append-only; each inbound turn appends a user message to the reusable request pr
 - **真实 e2e**：Loader 内跑真实 agent turn 的组装测试需真 key，当前以 MockAdapter 契约测试 + `--dump-config` 冒烟覆盖。
 - **并发**：per-thread tail-chain 串行化兜底；跨消息交错、多 sender 归并留待阶段 3。
 - **渠道特性**：附件/引用/富文本/交互卡片一律推迟（阶段 3 渠道扩展）。
+- **ack 范围是恒开的**：OpenClaw 的 `ackReactionScope`（群提及门控）需要群聊提及检测；在此之前凡带平台 message id 的入站都会收到 ack（飞书在验证其表情 API 前声明 `react: false`）。
+- **`deriveMentionPatterns` 暂无消费者**：按移植工具要求随契约测试出；未来 owner 是 ack scope 门控与适配器提及检测。
