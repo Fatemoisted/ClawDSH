@@ -1,16 +1,18 @@
 # @clawdsh/dsh-soul
 
-**定位**：人格系统（Soul）——OpenClaw 的 Soul 概念在 dsh system-prompt 接缝上的落地：每个 agent 作用域可挂载一个"灵魂"（Markdown 文件或内联文本），成为该 agent 的系统提示词身份。这是 ClawDSH 阶段 0 Spike 的验证对象。
+English | [中文](README.zh.md)
 
-**OpenClaw 对应**：Soul 系统（人格、口吻、行为准则）。基线出处：OpenClaw `v2026.1.5` `src/agents/` 的 identity 机制（见 docs/matrix/parity.md）。阶段 2 深读定稿：replace/append 即最终形态，映射见下方「OpenClaw identity 映射」。
+**Purpose**: the persona system (Soul) — OpenClaw's Soul concept realized on the dsh system-prompt seam: each agent scope can mount a "soul" (a Markdown file or inline text) that becomes that agent's system-prompt identity. This is the validation target of the ClawDSH stage 0 Spike.
 
-**接缝**：`ctx.systemPrompt`（`@deepseek-ai/dsh-system-prompt`）+ `@deepseek-ai/dsh-scope` 的作用域原语。**不新增 seam**。与上游 `@deepseek-ai/dsh-persona` 同构（scope-only 行），差异在于：文本来自灵魂文件 + `append` 模式作为独立段落叠加（保留部署人格），而非仅影子替换。
+**OpenClaw correspondence**: the Soul system (persona, tone, code of conduct). Baseline source: the identity mechanism in OpenClaw `v2026.1.5` `src/agents/` (see docs/matrix/parity.md). Finalized in the stage 2 deep read: replace/append is the final form; see "OpenClaw identity mapping" below for the mapping.
 
-**规格**：docs/specs/feature-soul.md · **状态**：implemented（Spike ✅）
+**Seam**: `ctx.systemPrompt` (`@deepseek-ai/dsh-system-prompt`) + the `@deepseek-ai/dsh-scope` scope primitives. **No new seam.** Isomorphic with upstream `@deepseek-ai/dsh-persona` (the scope-only row); the difference is that the text comes from a soul file and `append` mode layers it as an independent section (preserving the deployment persona) rather than only shadow-replacing it.
 
-## 使用
+**Specification**: docs/specs/feature-soul.md · **Status**: implemented (Spike ✅)
 
-挂载在 agent 作用域内（即 agent preset 的 `agent.cordis.yml` 里，见 `../preset-openclaw/`）：
+## Usage
+
+Mounted within an agent scope (i.e. inside the agent preset's `agent.cordis.yml`; see `../preset-openclaw/`):
 
 ```yaml
 - id: soul
@@ -22,37 +24,37 @@
     includeRuntimeContext: true    # false 时抑制该作用域的运行时上下文快照
 ```
 
-## OpenClaw identity 映射（阶段 2 深读定稿）
+## OpenClaw identity mapping (finalized in stage 2 deep read)
 
-OpenClaw 的 identity 由四层组成（`src/gateway/` 无装配代码，全部在 `src/agents/`），soul 的 replace/append 已完整覆盖其中「承载人格」的部分，其余映射到 dsh 既有接缝——完整论证见 [Agent Note](../../../.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping.md)：
+OpenClaw's identity is composed of four layers (there is no assembly code in `src/gateway/`, all of it lives in `src/agents/`); soul's replace/append already fully covers the "persona-bearing" part of it, and the rest maps to existing dsh seams — see the [Agent Note](../../../.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping.md) for the complete argument:
 
-| OpenClaw identity 组成部分 | dsh 对应落地 |
+| OpenClaw identity component | dsh realization |
 |---|---|
-| `system-prompt.ts` 硬编码首行 | `deployment:persona`（order 0，显式部署配置） |
-| `SOUL.md` 人格 | soul `append`（`clawdsh:soul`，order 10） |
-| 「灵魂即完整系统提示」极简形态 | soul `replace`（complete 段独占） |
-| `AGENTS.md` 操作指令 | preset soul 文本承载 |
-| `TOOLS.md` 工具使用偏好 | 工具指引带（order 100–199，各工具包自带） |
-| `IDENTITY.md` name/emoji | 渠道呈现，非 prompt（Deferred） |
-| `USER.md` 用户画像 | preset persona/soul 文本 |
-| `BOOTSTRAP.md` 首启仪式 | 非目标（preset 显式下发灵魂，无冷启动场景） |
-| 每次运行的场景段 | `PromptContext`（不属于 soul） |
-| `system-prompt-report` | `request/header.header.system` 日志链路（已成立） |
+| Hardcoded first line of `system-prompt.ts` | `deployment:persona` (order 0, explicit deployment config) |
+| `SOUL.md` persona | soul `append` (`clawdsh:soul`, order 10) |
+| "Soul as the complete system prompt" minimal form | soul `replace` (the complete section alone) |
+| `AGENTS.md` operating instructions | carried by preset soul text |
+| `TOOLS.md` tool-usage preferences | tool guidance band (order 100–199, carried by each toolkit) |
+| `IDENTITY.md` name/emoji | channel presentation, not prompt (Deferred) |
+| `USER.md` user profile | preset persona/soul text |
+| `BOOTSTRAP.md` first-boot ritual | not a target (preset explicitly hands down the soul; no cold-start scenario) |
+| Per-run scenario section | `PromptContext` (not part of soul) |
+| `system-prompt-report` | `request/header.header.system` log chain (established) |
 
-不补模板自举与 `[MISSING]` 占位符：前者服务于无 preset 的首启（ClawDSH 不存在该场景）；后者与 dsh fail-loud 文化冲突（soul 已对空文本/缺失文件抛错）。
+Does not add template bootstrapping or the `[MISSING]` placeholder: the former serves first boot without a preset (a scenario ClawDSH does not have); the latter conflicts with dsh's fail-loud culture (soul already throws on empty text or a missing file).
 
-## 设计要点
+## Design notes
 
-- **scope-only**：无作用域挂载直接报错（避免发布进程级灵魂），与上游 persona 的约束一致；
-- **挂载即定格**：灵魂文本在挂载时读取一次，运行期不变——提示前缀稳定，KV 缓存复用不受影响（沿用上游设计）；换灵魂 = 重新挂载（patch + 会话重启）；
-- **相对 source 按挂载树解析**：相对路径以 `ctx.baseUrl` 为锚——agent preset 里即组合目录（preset 目录随 `copyComposition` 传播，灵魂文件跟着走）、profile 启动器下即 profile 目录；无 baseUrl 的裸上下文回退 `process.cwd()`。与相对模块说明符同语义（typert-loader/client-modules 同款 seam）；
-- **可逆**：全部注册走 `ctx.effect()`，卸载即回卷（热插拔）；
-- **日志不变式**：灵魂文本作为 prompt section 参与装配，"model-visible means logged" 由上游 session 机制保证。
+- **scope-only**: mounting without a scope errors out immediately (avoiding publishing a process-level soul), consistent with upstream persona's constraint;
+- **fixed at mount**: the soul text is read once at mount and does not change while running — the prompt prefix is stable, so KV-cache reuse is unaffected (following upstream's design); swapping the soul = re-mounting (patch + session restart);
+- **relative `source` resolved against the mount tree**: a relative path is anchored to `ctx.baseUrl` — the composition directory inside an agent preset (the preset directory propagates with `copyComposition`, and the soul file follows it), or the profile directory under a profile launcher; a bare context with no baseUrl falls back to `process.cwd()`. Same semantics as relative module specifiers (the typert-loader/client-modules seam);
+- **reversible**: every registration goes through `ctx.effect()`, so unmounting rolls it back (hot-swappable);
+- **log invariant**: the soul text participates in assembly as a prompt section; "model-visible means logged" is guaranteed by upstream's session mechanism.
 
-## 变更说明
+## Changelog
 
-- 0.1.0：Spike 初始实现（replace/append 双模式 + 文件加载 + 契约测试）。
-- 0.1.0（2026-08-14 深读定稿）：OpenClaw identity 映射文档化（README/规格/矩阵三处一致），代码零改动。
+- 0.1.0: initial Spike implementation (replace/append dual modes + file loading + contract tests).
+- 0.1.0 (2026-08-14 deep-read finalization): documented the OpenClaw identity mapping (README/spec/matrix consistent across all three), zero code changes.
 
 ## Model Experience
 
@@ -72,7 +74,7 @@ Prefix-stable for the life of an agent — the text is read once at mount, befor
 
 ## Known Limitations and Deferred Work
 
-- **挂载即定格**：灵魂文本在挂载时读取一次，运行期不变；换灵魂需重新挂载 + 会话重启。
-- **scope-only**：无作用域挂载直接报错，避免发布进程级灵魂（与上游 persona 约束一致）。
-- **bundle patch 层的相对 source**：由 bundle patch 层提供的行解析到 profile 目录（根树的 baseUrl），不是 bundle 包目录——与相对模块说明符语义一致，非缺陷。
-- **真实 e2e**：系统提示装配的组装测试需真 key，当前以契约测试（12 例）覆盖。
+- **fixed at mount**: the soul text is read once at mount and does not change while running; swapping the soul requires re-mounting + session restart.
+- **scope-only**: mounting without a scope errors out immediately, avoiding publishing a process-level soul (consistent with upstream persona's constraint).
+- **relative `source` at the bundle-patch layer**: a line supplied by the bundle-patch layer resolves to the profile directory (the root tree's baseUrl), not the bundle package directory — same semantics as relative module specifiers, not a defect.
+- **real e2e**: the assembly test for system-prompt composition needs a real key; currently covered by contract tests (12 cases).

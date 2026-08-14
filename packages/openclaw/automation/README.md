@@ -1,14 +1,16 @@
 # @clawdsh/dsh-automation
 
-**定位**：定时任务 / 自动化——用户配置"每天 9 点发摘要""文件变动时提醒"等规则，驱动 agent 主动发起会话。
+English | [中文](README.zh.md)
 
-**OpenClaw 对应**：Cron / Automation（定时触发、事件触发）。
+**Positioning**: scheduled tasks / automation — the user configures rules such as "send a digest at 9 every day" and "alert on file change", driving the agent to initiate sessions proactively.
 
-**接缝**：`ctx.schedule` / `ctx.jobs`（dsh 原生已有调度与后台任务注册）。
+**OpenClaw counterpart**: Cron / Automation (timer-triggered, event-triggered).
 
-**规格**：阶段 3 交付物 · **状态**：planning
+**Seam**: `ctx.schedule` / `ctx.jobs` (dsh natively has scheduling and background-job registration).
 
-## 备注
+**Spec**: phase 3 deliverable · **status**: planning
 
-- 大概率是薄封装：dsh 已有 `schedule`、`jobs` 包，本插件只补"规则→agent 会话"的桥接与用户配置面；
-- 触发产生的消息必须作为事件写入 session log，保证可追溯。
+## Notes
+
+- Most likely a thin wrapper: dsh already has the `schedule` and `jobs` packages; this plugin only adds the "rule → agent session" bridge and the user-facing config surface;
+- Messages produced by a trigger must be written to the session log as events, so they stay traceable.

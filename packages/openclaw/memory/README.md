@@ -1,19 +1,21 @@
 # @clawdsh/dsh-memory
 
-**定位**：个人助手长期记忆——OpenClaw 式「文件是事实源」的记忆系统落在 dsh 既有接缝上：`MEMORY.md`（稳定事实）+ `memory/YYYY-MM-DD.md`（日记式追加）是纯 Markdown 文件，跨会话、人类可编辑；`memory_search` 按语义召回排序片段，`memory_get` 按行号读回。索引是内存派生数据，从文件增量重建，不落盘。
+English | [中文](README.zh.md)
 
-**OpenClaw 对应**：Memory 系统（v2026.1.15 `src/memory/` + `src/agents/memory-search.ts` + `src/agents/tools/memory-tool.ts`）。对齐其形态：无专用写工具（模型经文件工具写入，见下）、按需工具召回（无每请求自动注入）、`## Memory Recall` 指引段、minScore 0.35 / maxResults 6 默认值。
+**Positioning**: long-term memory for a personal assistant — an OpenClaw-style "files are the source of truth" memory system built on dsh's existing seams: `MEMORY.md` (stable facts) + `memory/YYYY-MM-DD.md` (journal-style append) are plain Markdown files, cross-session and human-editable; `memory_search` ranks snippets by semantic recall, `memory_get` reads them back by line number. The index is in-memory derived data, rebuilt incrementally from the files and never persisted to disk.
 
-**接缝**（全部既有，不新增）：
-- `ctx.fs`（声明 inject）：存储与读取——**插件自身零写入**，写由模型的 fs 工具 + 指引段规约承载（OpenClaw 同构）；append-only 幂等由 fs observation policy 的版本守卫兜底；
-- `ctx.tools`：`memory_search` / `memory_get` 两工具（generic 呈现，无 presentCall）；
-- `ctx.systemPrompt`：`clawdsh:memory-recall` 段（order 115，工具指引带 100–199）；
-- `ctx.get('embeddings')`（可选读）：语义向量来自 `@clawdsh/dsh-embeddings` seam；**无 provider 时 `memory_search` fail-loud**（错误指名 `@clawdsh/dsh-embeddings-ark`），不做词汇降级（两个评分空间语义不同，静默切换会误导模型）；
-- **无新 session event**：指引段经 `request/header.header.system` 入日志，召回内容以工具结果入转录——两条重建路径都是既有机制，「model-visible means logged」无需新事件（论证见 `src/invariant.ts`）。
+**OpenClaw counterpart**: the Memory system (v2026.1.15 `src/memory/` + `src/agents/memory-search.ts` + `src/agents/tools/memory-tool.ts`). Aligned to its shape: no dedicated write tool (the model writes via file tools, see below), on-demand tool recall (no per-request auto-injection), the `## Memory Recall` guidance section, and the minScore 0.35 / maxResults 6 defaults.
 
-**规格**：docs/specs/feature-memory.md · docs/adr/0003-embeddings-seam.md · **状态**：implemented
+**Seams** (all pre-existing, none added):
+- `ctx.fs` (declared inject): storage and reads — **the plugin itself performs zero writes**, writes are carried by the model's fs tools + the guidance-section convention (isomorphic with OpenClaw); append-only idempotency is guaranteed by the fs observation policy's version guard;
+- `ctx.tools`: the `memory_search` / `memory_get` tools (generic presentation, no presentCall);
+- `ctx.systemPrompt`: the `clawdsh:memory-recall` section (order 115, tool guidance carries 100–199);
+- `ctx.get('embeddings')` (optional read): semantic vectors come from the `@clawdsh/dsh-embeddings` seam; **with no provider, `memory_search` fails loud** (the error names `@clawdsh/dsh-embeddings-ark`), no lexical fallback (the two scoring spaces are semantically different, and a silent switch would mislead the model);
+- **no new session event**: the guidance section reaches the log via `request/header.header.system`, and recalled content reaches the transcript as tool results — both reconstruction paths are existing mechanisms, so "model-visible means logged" needs no new event (argument in `src/invariant.ts`).
 
-## 使用
+**Spec**: docs/specs/feature-memory.md · docs/adr/0003-embeddings-seam.md · **Status**: implemented
+
+## Usage
 
 ```yaml
 - id: memory
@@ -29,19 +31,19 @@
     # maxReadLines: 1000            # memory_get 行数硬上限
 ```
 
-写入规约（由指引段教给模型）：稳定事实进 `MEMORY.md`，运行笔记追加到 `memory/YYYY-MM-DD.md`，只经文件工具、只追加不改写历史。
+Write convention (taught to the model by the guidance section): stable facts go into `MEMORY.md`, runtime notes are appended to `memory/YYYY-MM-DD.md`, only via file tools, append-only and never rewriting history.
 
-## 设计要点
+## Design notes
 
-- **文件是唯一事实源**：插件只读文件、只维护派生索引；索引以 `(version, size)` 判定变化文件，每次 search 前增量重建（个人记忆规模下成本可忽略；chokidar watch 列 Deferred）；
-- **一次 embed 批**：每次 search 的 embed 调用 = 查询 + 所有未嵌入 chunk，冷启动一次 HTTP、增量编辑一次 HTTP；
-- **路径白名单 + 双保险**：`isMemoryPath`（`MEMORY.md` | `memory/<file>.md`，拒绝绝对路径与 `..`）+ `fs.contains(root, target)` 在解析操作处 enforcement；
-- **fail-loud 文化**：root 必配、无 embeddings provider、路径逃逸、维度漂移（provider 侧）全部响亮失败；
-- **dispose 回卷**：段与两工具注册全部走 `ctx.effect`，卸载即移除（测试覆盖）。
+- **Files are the sole source of truth**: the plugin only reads files and only maintains the derived index; the index detects changed files by `(version, size)` and rebuilds incrementally before each search (negligible cost at personal-memory scale; chokidar watch is deferred);
+- **One embed batch**: each search's embed calls = the query + all un-embedded chunks, one HTTP call on cold start, one HTTP call on incremental edits;
+- **Path allowlist + double safety**: `isMemoryPath` (`MEMORY.md` | `memory/<file>.md`, rejecting absolute paths and `..`) + `fs.contains(root, target)` enforced at the resolution operation;
+- **Fail-loud culture**: root required, no embeddings provider, path escape, dimension drift (provider-side) all fail loudly;
+- **Dispose rollback**: the section and both tool registrations all go through `ctx.effect`, removed on unload (test-covered).
 
-## 变更说明
+## Changelog
 
-- 0.1.0：首版（chunk+增量索引+双工具+指引段；契约测试 13 例，keyless 词袋 stub）。
+- 0.1.0: first release (chunk + incremental index + two tools + guidance section; 13 contract tests, keyless bag-of-words stub).
 
 ## Model Experience
 
@@ -75,10 +77,10 @@ Tool results land mid-transcript, like any tool output; no system-prompt prefix 
 
 ## Known Limitations and Deferred Work
 
-- **无专用写工具**：写入靠模型遵守规约（OpenClaw 同构）；预压缩 memory flush 回合（OpenClaw 的存量写入驱动）留阶段 3，挂 dsh compaction 钩子；
-- **无 chokidar watch**：变更靠 search 前增量重建，不主动推送；
-- **词汇降级**（无 embeddings 时的检索）列为 Deferred——阶段 3 离线场景评估；
-- **超大检索结果 spill**（挂 `ctx.spillStore`）列 Deferred；
-- **多 agent 隔离**：需要各自配置 `root`；共享记忆语义留阶段 3；
-- **sandbox 后端**：`root` 在 workspace 外时模型的 fs 工具可能写不进去，阶段 3 评估记忆专用写工具或沙箱豁免；
-- **真实 e2e 已验**：tools/ark-e2e.ts 对真实 ARK 端点跑通「写记忆 → 真实 embedding 召回」闭环（2048 维、top 命中 0.648、无关查询过滤），契约测试仍以确定性词袋 stub 保持 keyless。
+- **No dedicated write tool**: writes rely on the model following the convention (isomorphic with OpenClaw); the pre-compaction memory flush round (OpenClaw's existing-write driver) is deferred to phase 3, hanging on the dsh compaction hook;
+- **No chokidar watch**: changes rely on pre-search incremental rebuild, no proactive push;
+- **Lexical fallback** (retrieval without embeddings) is deferred — evaluated in phase 3 offline scenarios;
+- **Spill of oversized retrieval results** (hanging on `ctx.spillStore`) is deferred;
+- **Multi-agent isolation**: each needs its own `root`; shared-memory semantics deferred to phase 3;
+- **Sandbox backend**: when `root` is outside the workspace, the model's fs tools may not write there; phase 3 evaluates a memory-specific write tool or sandbox exemption;
+- **Real e2e verified**: tools/ark-e2e.ts runs the "write memory → real embedding recall" loop against a real ARK endpoint (2048 dims, top hit 0.648, unrelated-query filtering); contract tests still stay keyless with a deterministic bag-of-words stub.

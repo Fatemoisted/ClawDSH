@@ -1,34 +1,36 @@
-# ADR-0001：项目基座形态——非 Fork 的本地克隆 + upstream 远程 + monorepo 扩展
+# ADR-0001: Project foundation shape — non-Fork local clone + upstream remote + monorepo extension
 
-- **状态**：Accepted
-- **日期**：2026-08-14
-- **决策人**：项目发起人
+English | [中文](0001-project-foundation.zh.md)
 
-> ADR 约定：一决策一文件，编号递增；必须包含 上下文 / 决策 / 后果 / 备选方案 四节。新增 seam 或架构级变更必须走 ADR。
+- **Status**: Accepted
+- **Date**: 2026-08-14
+- **Decider**: Project initiator
 
-## 上下文
+> ADR convention: one decision per file, numbering increments; must contain four sections — Context / Decision / Consequences / Alternatives. Any new seam or architecture-level change must go through an ADR.
 
-我们要基于 DeepSeek Harness（dsh）重建 OpenClaw 的功能集。dsh 是 pnpm monorepo（`vendor/` + `packages/*/*` + `apps/`），自有插件需要放入其 workspace 才能复用类型系统、构建链与 profile 机制。
+## Context
 
-约束：发起人要求**不 Fork**（GitHub Fork 无法设 Private），而是直接克隆官方仓库，之后推送到自己的私有远程。
+We are rebuilding OpenClaw's feature set on top of DeepSeek Harness (dsh). dsh is a pnpm monorepo (`vendor/` + `packages/*/*` + `apps/`); our own plugins must be placed in its workspace to reuse the type system, build chain, and profile mechanism.
 
-## 决策
+Constraint: the initiator requires **no Fork** (a GitHub Fork cannot be set Private), so clone the official repository directly, then push to a private remote later.
 
-1. **仓库形态**：直接 `git clone` 官方仓库到本地 `/Users/mac/ClawDSH`，将 `origin` 改名为 `upstream`；未来用户自建私有远程时再添加为 `origin`（`git remote add origin <私有仓库> && git push -u origin <分支>`——非 fork 的克隆推送到新建空仓库完全合法且可设 Private）。
-2. **分支策略**：`master` 仅做上游镜像（fast-forward，禁止直接提交）；我们的全部工作提交在 `clawdsh` 分支，定期 `rebase upstream/master`。这样上游同步永远是快进，冲突只出现在我们自己的分支上。
-3. **物理隔离**：自有代码只出现在 `packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal}/`、`tools/`、`.github/workflows/clawdsh-*`。上游其余文件只读。
-4. **品牌层 overlay + 构建编排最小豁免**：上游文件仅允许两类改动——① 置顶品牌段（README/CLAUDE.md→AGENTS.md 符号链接）；② 根级元数据与构建编排：根 `package.json` 的 name 改为 `clawdsh`；`tsdown.config.ts` 的 workspace 排除名单管理 `packages/openclaw/*`（tsdown 以目录粒度扫描、骨架包会被误扫）；**新包接入的注册点**（`tsconfig.base.json` 的 paths 映射、`tsconfig.host.json` 的 references）只允许追加 `@clawdsh/*` 条目、不得改动既有条目。以上改动均为附加性/替换性最小豁免，rebase 冲突时取上游版本、再重放品牌段与注册条目。上游内部包名保持 `@deepseek-ai/*` 不动（改名会摧毁同步能力）。
-5. **基线钉死**：记录当前上游基线 commit（2026-08-14：`47f943859b`，v0.1.0-rc.5），每次同步更新基线记录（见 `docs/standards/upstream-sync.md`）。
-6. **骨架阶段不接入 workspace**：`packages/openclaw/*` 骨架不含 `package.json`（模板以 `.tpl` 存放），保证上游 `pnpm install/build/typecheck` 全绿；实现时再按模板接入。
+## Decision
 
-## 后果
+1. **Repository shape**: `git clone` the official repository directly to local `/Users/mac/ClawDSH`, rename `origin` to `upstream`; add `origin` later when the user creates a private remote (`git remote add origin <private-repo> && git push -u origin <branch>` — pushing a non-fork clone to a newly created empty repository is fully legitimate and can be set Private).
+2. **Branch strategy**: `master` only mirrors upstream (fast-forward, direct commits forbidden); all our work is committed on the `clawdsh` branch, periodically `rebase upstream/master`. This keeps upstream sync always fast-forward, with conflicts appearing only on our own branch.
+3. **Physical isolation**: our own code appears only in `packages/openclaw/`, `docs/{adr,specs,matrix,standards,journal}/`, `tools/`, `.github/workflows/clawdsh-*`. The remaining upstream files are read-only.
+4. **Brand-layer overlay + minimal build-orchestration exemption**: only two kinds of changes are allowed to upstream files — ① a pinned brand section (README/CLAUDE.md→AGENTS.md symlink); ② root-level metadata and build orchestration: the root `package.json` `name` changed to `clawdsh`; the `tsdown.config.ts` workspace exclusion list manages `packages/openclaw/*` (tsdown scans at directory granularity, skeleton packages would be mistakenly scanned); the **registration points for newly added packages** (the `paths` mapping of `tsconfig.base.json`, the `references` of `tsconfig.host.json`) only allow appending `@clawdsh/*` entries and must not modify existing entries. The above changes are all additive/replacement minimal exemptions; on rebase conflict take the upstream version, then replay the brand section and registration entries. Upstream internal package names stay `@deepseek-ai/*` unchanged (renaming would destroy sync capability).
+5. **Baseline pinning**: record the current upstream baseline commit (2026-08-14: `47f943859b`, v0.1.0-rc.5), update the baseline record on each sync (see `docs/standards/upstream-sync.md`).
+6. **Skeleton stage not wired into the workspace**: `packages/openclaw/*` skeletons contain no `package.json` (the template is stored as `.tpl`), guaranteeing upstream `pnpm install/build/typecheck` stays all green; wire into the workspace per template at implementation time.
 
-- ✅ 上游 rebase 零冲突面最小化；私有化无障碍；构建链永远绿色。
-- ⚠️ 品牌段会在每次上游改动 README/AGENTS 时产生一次性冲突，成本低但不可避免。
-- ⚠️ 一旦上游结构调整 `packages/*/*` 通配或构建扫描方式，需要复查本决策（检查点：每次同步）。
+## Consequences
 
-## 备选方案
+- ✅ Upstream rebase minimizes the zero-conflict surface; privatization has no obstacles; the build chain stays forever green.
+- ⚠️ The brand section will produce a one-time conflict each time upstream changes README/AGENTS — low cost but unavoidable.
+- ⚠️ Once upstream restructures the `packages/*/*` glob or build scan approach, revisit this decision (checkpoint: each sync).
 
-- **GitHub Fork（被否决）**：无法设 Private，违反发起人约束。
-- **独立仓库依赖已发布 npm 包（被否决）**：dsh 处于 developer preview，发布物 API 漂移比源码同步更难跟踪；且 profile/patch 与类型 system 的复用优势丢失。
-- **git subtree/submodule 引入上游（被否决）**：dsh 的 pnpm workspace 需要上下游包同处一个 workspace 解析，subtree 的合并噪音和 submodule 的指针开销都不如"直接 clone + 分支策略"简单可靠。
+## Alternatives
+
+- **GitHub Fork (rejected)**: cannot be set Private, violating the initiator's constraint.
+- **Independent repository depending on published npm packages (rejected)**: dsh is in developer preview; published-artifact API drift is harder to track than source sync, and the reuse advantage of profile/patch and the type system is lost.
+- **git subtree/submodule import of upstream (rejected)**: dsh's pnpm workspace requires upstream and downstream packages to resolve within a single workspace; subtree's merge noise and submodule's pointer overhead are both less simple and reliable than "direct clone + branch strategy".

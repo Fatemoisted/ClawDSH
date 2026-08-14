@@ -1,14 +1,16 @@
 # @clawdsh/dsh-skills-hub
 
-**定位**：ClawHub 兼容的技能加载器——让 OpenClaw 生态已有的 Skill（Markdown + 配置头）能直接作为 dsh 技能被加载，实现技能市场的平滑迁移。
+English | [中文](README.zh.md)
 
-**OpenClaw 对应**：Skills / ClawHub（技能目录、市场、版本锁定）。
+**Positioning**: ClawHub-compatible skill loader — lets existing OpenClaw-ecosystem Skills (Markdown + config header) be loaded directly as dsh skills, delivering a smooth skill-market migration.
 
-**接缝**：`ctx.skills`（dsh 原生支持 provider 合并——多个技能来源自然共存）。
+**OpenClaw counterpart**: Skills / ClawHub (skill catalog, market, version locking).
 
-**规格**：阶段 3 交付物 · **状态**：planning
+**Seam**: `ctx.skills` (dsh natively supports provider merging — multiple skill sources coexist naturally).
 
-## 备注
+**Spec**: phase 3 deliverable · **status**: planning
 
-- dsh 的 `ctx.skills` 本身就是"合并多个 provider 技能目录"的设计，ClawHub 只是新增一个 provider：架构红利直接兑现；
-- ClawHub 的"发布即不可变快照、latest 可回滚"语义，用 dsh 的配置锁定即可实现，无需自建 registry。
+## Notes
+
+- dsh's `ctx.skills` is itself designed to "merge skill catalogs from multiple providers"; ClawHub is simply one more provider: the architectural payoff cashes out directly;
+- ClawHub's "publish as an immutable snapshot, `latest` is rollbackable" semantics can be achieved with dsh's config locking, no self-built registry needed.

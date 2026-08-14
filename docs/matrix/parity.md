@@ -1,71 +1,73 @@
-# OpenClaw ↔ dsh 功能对齐矩阵
+# OpenClaw ↔ dsh feature alignment matrix
 
-> 本矩阵是 ClawDSH 的**单一事实源**：OpenClaw 的每个功能域在这里得到唯一分类与状态。任何 PR 涉及功能变更必须同步更新本文件（见 `docs/standards/pr-policy.md`）。
+English | [中文](parity.zh.md)
+
+> This matrix is ClawDSH's **single source of truth**: each OpenClaw feature domain gets its sole classification and status here. Any PR touching a feature change must update this file in sync (see `docs/standards/pr-policy.md`).
 >
-> 分类含义：
-> - **复用**：dsh 原生能力，直接用，不写代码；
-> - **插件**：挂到 dsh 既有接缝上的增量包（`packages/openclaw/*`）；
-> - **新 seam**：dsh 没有对应接缝，需要新增（必须 ADR + upstream-first）；
-> - **暂缓**：本轮不做，记录原因。
+> Classification meanings:
+> - **Reuse**: native dsh capability, used directly, no code written;
+> - **Plugin**: incremental package mounted on an existing dsh seam (`packages/openclaw/*`);
+> - **New seam**: dsh has no corresponding seam, must add (requires ADR + upstream-first);
+> - **Deferred**: not this round, reason recorded.
 
-## 基线（阶段 1 定稿，2026-08-14）
+## Baseline (finalized Phase 1, 2026-08-14)
 
-**OpenClaw 基线 = tag `v2026.1.5`（commit `197b8f7c3b`）**，选定依据（完整分析见 docs/journal/2026-08-14.md 阶段 1 节）：
+**OpenClaw baseline = tag `v2026.1.5` (commit `197b8f7c3b`)**, selection rationale (full analysis in docs/journal/2026-08-14.md Phase 1 section):
 
-| 指标 | 2025-12-31 | **v2026.1.5 ✅** | v2026.1.15 | v2026.1.20 | v2026.1.30 |
+| Metric | 2025-12-31 | **v2026.1.5 ✅** | v2026.1.15 | v2026.1.20 | v2026.1.30 |
 |---|---|---|---|---|---|
-| 文件数 | 1197 | **1537** | 3367（翻倍） | 4041 | 4543 |
-| 渠道 | discord/telegram | **+imessage/signal/slack** | +whatsapp | — | — |
-| channels 抽象 | ✗ | ✗ | ✓ | ✓ | ✓ |
-| memory 目录 | ✗ | ✗ | ✓ | ✓ | ✓ |
-| bloat 迹象（extensions/plugins/docker 部署矩阵） | ✗ | **✗** | 出现 | 加剧 | 加剧 |
+| File count | 1197 | **1537** | 3367 (doubled) | 4041 | 4543 |
+| Channels | discord/telegram | **+imessage/signal/slack** | +whatsapp | — | — |
+| channels abstraction | ✗ | ✗ | ✓ | ✓ | ✓ |
+| memory directory | ✗ | ✗ | ✓ | ✓ | ✓ |
+| Bloat signs (extensions/plugins/docker deploy matrix) | ✗ | **✗** | appears | worsens | worsens |
 
-- **为何 v2026.1.5**：首个发布 tag（1.5-1/2/3 小版本只修 bug），"网关 + 5 渠道 + cron + sessions + tui/wizard" 的个人助手核心体验完整且稳定；所有 tag 中代码量最瘦（1537 文件 / 1.6MB）；无 bloat 迹象；时间 = 项目爆红高峰期。
-- **功能补全参考**：whatsapp / memory / channels 抽象在基线中尚未出现 → 移植时查阅 `v2026.1.15`（`9c4c9c5edd`）；更早的 gateway 雏形参考 `2025-12-31`（`f03605d8ae`）。
-- 参考仓库本地缓存：`/tmp/openclaw-ref`（partial clone，blob:none；机器重启后需重拉，命令见 journal）。
+- **Why v2026.1.5**: first release tag (1.5-1/2/3 minor versions only fix bugs), the "gateway + 5 channels + cron + sessions + tui/wizard" personal-assistant core experience complete and stable; thinnest codebase of all tags (1537 files / 1.6MB); no bloat signs; timing = the project's peak-virality period.
+- **Feature-completion reference**: whatsapp / memory / channels abstraction do not yet appear in the baseline → consult `v2026.1.15` (`9c4c9c5edd`) when porting; earlier gateway prototype reference `2025-12-31` (`f03605d8ae`).
+- Reference repo local cache: `/tmp/openclaw-ref` (partial clone, blob:none; re-pull after machine restart, command in journal).
 
-## 矩阵 v2（基线定稿）
+## Matrix v2 (baseline finalized)
 
-| OpenClaw 功能域 | 基线出处（v2026.1.5） | dsh 对应接缝 | 分类 | 落地包 | 状态 |
+| OpenClaw feature domain | Baseline source (v2026.1.5) | dsh seam | Classification | Landing package | Status |
 |---|---|---|---|---|---|
-| 会话 / 消息历史 | `src/sessions/` | `ctx.sessions`（append-only log） | 复用 | — | 直接可用 |
-| 会话追溯 / 回放 / 分叉 | —（dsh 原生） | Trajectory 视图 / replay | 复用 | — | 直接可用 |
-| 工具执行（bash/文件/浏览器…） | `src/agents/*-tools.ts` | `ctx.tools` / `ctx.shell` / `ctx.fs` / `ctx.web` | 复用 | — | 直接可用 |
-| 技能（Skill） | 顶层 `skills/` | `ctx.skills`（provider 合并） | 插件 | `skills-hub` | planning |
-| 定时 / 自动化 | `src/cron/` | `ctx.schedule` / `ctx.jobs` | 插件 | `automation` | planning |
-| 人格（Soul） | `src/agents/system-prompt.ts` 首行 + workspace 六文件（AGENTS/SOUL/TOOLS/IDENTITY/USER/BOOTSTRAP.md） | system-prompt 装配（persona 首行 / soul append / complete 段 / 工具指引带）+ 渠道呈现（IDENTITY，Deferred） | 插件 | `soul` | **implemented**（阶段 0 ✅ + 阶段 2 深读定稿 ✅） |
-| 记忆（Memory） | 基线无 → 参考 v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`、`memory-tool.ts` | `ctx.fs` 文件事实源 + `ctx.tools` + system-prompt 段 + `ctx.get('embeddings')`（新 seam，ADR-0003） | 插件 | `memory` + `embeddings` + `embeddings-ark` | **implemented**（阶段 2 补漏 ✅） |
-| **渠道网关（Gateway）** | `src/gateway/` | **无** | **新 seam** | `channel-core` | **implemented**（阶段 2 ✅） |
-| 渠道：Telegram | `src/telegram/` | `ctx.channels` | 插件 | `channel-telegram` | **implemented**（阶段 2 ✅） |
-| 渠道：Discord | `src/discord/` | `ctx.channels` | 插件 | `channel-discord`（待建） | planning |
-| 渠道：iMessage / Signal / Slack | `src/imessage/` 等 | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
-| 渠道：WhatsApp | 参考 v2026.1.15 `src/whatsapp/` | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
-| 审批 / 安全策略 | `src/security/`（1.15 起） | `ctx.approval` / guard | 复用（配置） | — | 直接可用 |
-| 联邦节点（clawd） | 基线早期无 | `ctx.subagents`（transport） | 插件 | 待命名 | 暂缓（阶段 3 末评估） |
-| 智能家居（casa） | 基线无 | 无 | 新插件域 | 待命名 | 暂缓 |
-| 桌面/移动客户端 | `ui/`（+ `apps/`） | `apps/web`（dsh Web UI） | 复用 | — | 后续评估定制面 |
+| Sessions / message history | `src/sessions/` | `ctx.sessions` (append-only log) | Reuse | — | directly usable |
+| Session tracing / replay / forking | — (dsh-native) | Trajectory view / replay | Reuse | — | directly usable |
+| Tool execution (bash/file/browser…) | `src/agents/*-tools.ts` | `ctx.tools` / `ctx.shell` / `ctx.fs` / `ctx.web` | Reuse | — | directly usable |
+| Skills (Skill) | top-level `skills/` | `ctx.skills` (provider merge) | Plugin | `skills-hub` | planning |
+| Scheduling / automation | `src/cron/` | `ctx.schedule` / `ctx.jobs` | Plugin | `automation` | planning |
+| Persona (Soul) | `src/agents/system-prompt.ts` first line + workspace six files (AGENTS/SOUL/TOOLS/IDENTITY/USER/BOOTSTRAP.md) | system-prompt assembly (persona first line / soul append / complete section / tool guidance band) + channel presentation (IDENTITY, Deferred) | Plugin | `soul` | **implemented** (Phase 0 ✅ + Phase 2 deep-read finalization ✅) |
+| Memory | baseline absent → reference v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`, `memory-tool.ts` | `ctx.fs` file source-of-fact + `ctx.tools` + system-prompt section + `ctx.get('embeddings')` (new seam, ADR-0003) | Plugin | `memory` + `embeddings` + `embeddings-ark` | **implemented** (Phase 2 gap-fill ✅) |
+| **Channel gateway (Gateway)** | `src/gateway/` | **none** | **new seam** | `channel-core` | **implemented** (Phase 2 ✅) |
+| Channel: Telegram | `src/telegram/` | `ctx.channels` | Plugin | `channel-telegram` | **implemented** (Phase 2 ✅) |
+| Channel: Discord | `src/discord/` | `ctx.channels` | Plugin | `channel-discord` (to be built) | planning |
+| Channel: iMessage / Signal / Slack | `src/imessage/` etc. | `ctx.channels` | Plugin | per-package later | Deferred (Phase 3) |
+| Channel: WhatsApp | reference v2026.1.15 `src/whatsapp/` | `ctx.channels` | Plugin | per-package later | Deferred (Phase 3) |
+| Approval / security policy | `src/security/` (from 1.15) | `ctx.approval` / guard | Reuse (config) | — | directly usable |
+| Federation node (clawd) | absent in early baseline | `ctx.subagents` (transport) | Plugin | to be named | Deferred (evaluated at end of Phase 3) |
+| Smart home (casa) | absent in baseline | none | new plugin domain | to be named | Deferred |
+| Desktop/mobile client | `ui/` (+ `apps/`) | `apps/web` (dsh Web UI) | Reuse | — | customization surface evaluated later |
 
-## 国内平台（原则：OpenClaw 上游有的才实现）
+## Domestic platforms (principle: only implement what OpenClaw upstream has)
 
-> **项目原则（发起人 2026-08-14 确立）**：只实现 OpenClaw 上游有出处的功能，摸着石头过河；不自行发明上游没有的功能域。国内平台按此原则逐一核实：
+> **Project principle (established by the initiator 2026-08-14)**: only implement features that have a source in OpenClaw upstream, feeling for stones while crossing the river; do not invent feature domains upstream lacks. Domestic platforms verified one by one under this principle:
 
-| 平台 | OpenClaw 上游现状 | 判定 |
+| Platform | OpenClaw upstream status | Verdict |
 |---|---|---|
-| **飞书（Lark）** | ✅ 官方 `extensions/feishu`（2026-02-03 引入：`2483f26c23`→`0223416c61`；v2026.2.12 起发布） | **做，且为发起人第一优先**（详见下方矩阵行） |
-| 企业微信 / 微信 / 公众号 / 个人微信 | ❌ 上游（最新 main）无任何微信系渠道（`tencent` 扩展是腾讯云 LLM provider，非渠道） | **不做核心包**——原则性排除；上游将来新增 wecom 时再跟进 |
-| 钉钉 / QQ | ❌ 上游无 | 不做——原则性排除，同上 |
+| **Feishu (Lark)** | ✅ official `extensions/feishu` (introduced 2026-02-03: `2483f26c23`→`0223416c61`; released since v2026.2.12) | **do it, and initiator's first priority** (see matrix row below) |
+| WeCom / WeChat / Official Account / personal WeChat | ❌ upstream (latest main) has no WeChat-family channel (the `tencent` extension is a Tencent Cloud LLM provider, not a channel) | **no core package** — principled exclusion; follow up when upstream adds wecom |
+| DingTalk / QQ | ❌ upstream absent | no — principled exclusion, same as above |
 
-### 飞书渠道（矩阵行）
+### Feishu channel (matrix row)
 
-| 功能域 | 出处 | dsh 接缝 | 分类 | 落地包 | 状态 |
+| Feature domain | Source | dsh seam | Classification | Landing package | Status |
 |---|---|---|---|---|---|
-| 渠道：飞书（Lark） | OpenClaw `extensions/feishu`（v2026.2.12 起；引入提交 `0223416c61`） | `ctx.channels` | 插件 | `channel-feishu` | **implemented**（阶段 2 ✅） |
+| Channel: Feishu (Lark) | OpenClaw `extensions/feishu` (since v2026.2.12; introducing commit `0223416c61`) | `ctx.channels` | Plugin | `channel-feishu` | **implemented** (Phase 2 ✅) |
 
-微信系不落矩阵（不实现），决策记录见 `packages/openclaw/channel-wechat/README.md`。
+WeChat family not in the matrix (not implemented), decision record in `packages/openclaw/channel-wechat/README.md`.
 
-## 维护规则
+## Maintenance rules
 
-1. 新增/删除/重新分类任何功能域 = 改本表 + 提交说明里注明；
-2. "暂缓"条目必须写原因与解除条件；
-3. 每次 dsh 上游同步后复查本表（OpenClaw 基线是功能清单快照，不再变动；若需深读某一功能，按"基线出处"列查 `/tmp/openclaw-ref`）；
-4. 无上游出处的功能域不落矩阵（原则性排除），决策记录在对应包 README 或 journal。
+1. Add/remove/reclassify any feature domain = edit this table + note in commit message;
+2. "Deferred" entries must write the reason and unblocking condition;
+3. Re-review this table after each dsh upstream sync (the OpenClaw baseline is a feature-list snapshot, no longer changing; to deep-read a feature, look up `/tmp/openclaw-ref` by the "baseline source" column);
+4. Feature domains with no upstream source do not enter the matrix (principled exclusion), decision recorded in the corresponding package README or journal.

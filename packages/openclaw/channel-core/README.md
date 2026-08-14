@@ -1,18 +1,20 @@
 # @clawdsh/dsh-channel-core
 
-**定位**：渠道网关 seam——ClawDSH 的**唯一新增 seam**。提供 `ctx.channels` 服务：注册渠道适配器（入站消息→agent 会话、出站回复→渠道推送），并负责会话与渠道的绑定/路由。
+English | [中文](README.zh.md)
 
-**OpenClaw 对应**：Gateway 的消息接入层（WhatsApp/Telegram/Email/Web Chat 等全部渠道的公共骨架）。
+**Purpose**: the channel gateway seam — ClawDSH's **only newly added seam**. Provides the `ctx.channels` service: registers channel adapters (inbound message → agent session, outbound reply → channel push), and is responsible for session-channel binding/routing.
 
-**接缝**：**新增** `ctx.channels`（设计见 docs/adr/0002-channel-seam.md）。上游 dsh 没有消息渠道概念，这是本项目的核心增量；契约设计必须 upstream-first（先向上游提 PR，本地用 patch 过渡）。
+**OpenClaw correspondence**: the message-ingestion layer of the Gateway (the shared skeleton for all channels — WhatsApp/Telegram/Email/Web Chat and so on).
 
-**规格**：docs/adr/0002-channel-seam.md · **状态**：implemented
+**Seam**: **new** `ctx.channels` (design in docs/adr/0002-channel-seam.md). Upstream dsh has no message-channel concept; this is the project's core increment. The contract design must be upstream-first (propose a PR upstream first, bridge locally with a patch).
 
-## 设计要点（详见 ADR-0002）
+**Specification**: docs/adr/0002-channel-seam.md · **Status**: implemented
 
-- 渠道 = provider，统一实现 `ChannelAdapter`：`receive`（入站）与 `send`（出站）两类能力；
-- 入站消息先走 dsh 的 session 机制（append-only log），再进 agent loop——"model-visible means logged" 不变式自然继承；
-- 每个渠道插件（telegram/whatsapp/…）只实现适配器，不碰路由逻辑。
+## Design notes (see ADR-0002)
+
+- A channel = a provider, uniformly implementing `ChannelAdapter`: `receive` (inbound) and `send` (outbound) as the two kinds of capability;
+- Inbound messages first go through dsh's session mechanism (append-only log), then enter the agent loop — the "model-visible means logged" invariant is inherited naturally;
+- Each channel plugin (telegram/whatsapp/…) implements only the adapter and does not touch routing logic.
 
 ## Model Experience
 
@@ -32,6 +34,6 @@ Append-only; each inbound turn appends a user message to the reusable request pr
 
 ## Known Limitations and Deferred Work
 
-- **真实 e2e**：Loader 内跑真实 agent turn 的组装测试需真 key，当前以 MockAdapter 契约测试 + `--dump-config` 冒烟覆盖。
-- **并发**：per-thread tail-chain 串行化兜底；跨消息交错、多 sender 归并留待阶段 3。
-- **渠道特性**：附件/引用/富文本/交互卡片一律推迟（阶段 3 渠道扩展）。
+- **real e2e**: the assembly test running a real agent turn inside the Loader needs a real key; currently covered by MockAdapter contract tests + `--dump-config` smoke.
+- **concurrency**: per-thread tail-chain serialization as the fallback; cross-message interleaving and multi-sender merging deferred to stage 3.
+- **channel features**: attachments/quotes/rich text/interactive cards all deferred (stage 3 channel extensions).

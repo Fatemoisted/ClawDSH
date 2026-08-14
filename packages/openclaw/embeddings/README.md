@@ -1,16 +1,18 @@
 # @clawdsh/dsh-embeddings
 
-**定位**：文本嵌入能力 seam（Service Definition）——`ctx.embeddings` 抽象服务：把文本映射到同一个可比嵌入空间里的稠密向量，供语义检索消费。定义「做什么」不定义「怎么做」；实现包（provider）子类化 `Embeddings` 挂载注册。
+English | [中文](README.zh.md)
 
-**OpenClaw 对应**：OpenClaw memory 的 embeddings 后端选一（v2026.1.15 `src/memory/embeddings.ts` 的 openai-remote / local-gguf 二选一）。本 seam 保持同样的「每 context 单实现」语义；第一个 provider 是 `@clawdsh/dsh-embeddings-ark`（火山方舟）。
+**Positioning**: the text-embedding capability seam (Service Definition) — the `ctx.embeddings` abstract service: maps text into dense vectors in one comparable embedding space, for consumption by semantic retrieval. Defines the "what", not the "how"; an implementation package (provider) subclasses `Embeddings` and registers on mount.
 
-**接缝**：新增 `ctx.embeddings` 单实现服务（ADR-0003）。可选服务访问用 `ctx.get('embeddings')`（缺席返回 `undefined`），不声明 inject。
+**OpenClaw counterpart**: the choice of one embeddings backend for OpenClaw memory (v2026.1.15 `src/memory/embeddings.ts`, the openai-remote / local-gguf one-of-two). This seam keeps the same "one implementation per context" semantics; the first provider is `@clawdsh/dsh-embeddings-ark` (Volcano Ark).
 
-**规格**：docs/adr/0003-embeddings-seam.md · **状态**：implemented
+**Seam**: adds the `ctx.embeddings` single-implementation service (ADR-0003). Optional-service access uses `ctx.get('embeddings')` (returns `undefined` when absent), no declared inject.
 
-## 使用
+**Spec**: docs/adr/0003-embeddings-seam.md · **Status**: implemented
 
-provider 侧：子类化 `Embeddings`，实现 `embed`，作为插件加载即可（构造器 `super(ctx, 'embeddings')` 完成注册，重复加载第二个实现会 throw）：
+## Usage
+
+Provider side: subclass `Embeddings`, implement `embed`, and load it as a plugin (the `super(ctx, 'embeddings')` constructor call completes the registration; loading a second implementation throws):
 
 ```ts
 import { Embeddings } from '@clawdsh/dsh-embeddings'
@@ -23,18 +25,18 @@ export class MyEmbeddings extends Embeddings {
 }
 ```
 
-消费侧（如 `@clawdsh/dsh-memory`）：`ctx.get('embeddings')` 读取；无后端时按各自契约降级或 fail-loud。
+Consumer side (e.g. `@clawdsh/dsh-memory`): read via `ctx.get('embeddings')`; with no backend, degrade or fail-loud per the consumer's own contract.
 
-## 设计要点
+## Design notes
 
-- **单实现**：一个 context 只有一个 embedding 后端——混合 provider 会破坏 cosine 可比性（向量来自不同嵌入空间时排序无意义），这正是 OpenClaw 配置二选一的理由；
-- **批内契约**：输出向量数 == 输入文本数、按输入序；同一次调用内所有向量维度一致；任何失败整体 reject、无部分结果；
-- **signal 透传**：协作取消经 `AbortSignal` 传入 provider（工具超时、会话取消走同一条链）；
-- **不拥有**：chunk、索引、相似度排序归 `@clawdsh/dsh-memory`；凭证归 `@deepseek-ai/dsh-credentials`。
+- **Single implementation**: one context has exactly one embedding backend — mixing providers breaks cosine comparability (ranking is meaningless when vectors come from different embedding spaces), which is precisely why OpenClaw's config is one-of-two;
+- **In-batch contract**: output vector count == input text count, in input order; all vectors within one call share one dimension; any failure rejects the whole batch, no partial results;
+- **Signal passthrough**: cooperative cancellation is passed into the provider via `AbortSignal` (tool timeout and session cancellation ride the same chain);
+- **Does not own**: chunking, indexing, and similarity ranking belong to `@clawdsh/dsh-memory`; credentials belong to `@deepseek-ai/dsh-credentials`.
 
-## 变更说明
+## Changelog
 
-- 0.1.0：Seam 初始形态（单实现 `ctx.embeddings` + `embed` 批内契约 + seam 契约测试 4 例）。
+- 0.1.0: seam initial shape (single-implementation `ctx.embeddings` + `embed` in-batch contract + 4 seam contract tests).
 
 ## Model Experience
 
@@ -54,7 +56,7 @@ No prompt text is produced by the seam; per-call embedding payloads are provider
 
 ## Known Limitations and Deferred Work
 
-- **单 provider**：`ctx.embeddings` 单实现；多 provider 需求出现时在消费侧做注册表升级（本 seam 保持不动）；
-- **无维度协商**：维度以 provider 返回为准，seam 不声明期望维度；跨调用维度漂移由 provider 自行 fail-loud（ark 已实现，实测 2048）；
-- **无本地模型**：本期只有远端 HTTP provider；本地 GGUF（OpenClaw 的 local 路径）留待阶段 3；
-- **真实 e2e 已验**：Ark wire 经 tools/ark-e2e.ts 真实闭环（2026-08-14），见 embeddings-ark README。
+- **Single provider**: `ctx.embeddings` is single-implementation; when a multi-provider need appears, upgrade to a registry on the consumer side (this seam stays unchanged);
+- **No dimension negotiation**: the dimension is whatever the provider returns; the seam declares no expected dimension; cross-call dimension drift is fail-loud on the provider side (ark already implements it, measured 2048);
+- **No local model**: only a remote HTTP provider this cycle; local GGUF (OpenClaw's local path) is deferred to phase 3;
+- **Real e2e verified**: the Ark wire is verified end-to-end via tools/ark-e2e.ts (2026-08-14), see the embeddings-ark README.

@@ -1,14 +1,16 @@
 # @clawdsh/dsh-embeddings-ark
 
-**定位**：`@clawdsh/dsh-embeddings` seam 的第一个 provider——火山方舟（Volcano Ark）文本嵌入。POST Ark 的多模态端点 `/embeddings/multimodal`，只发 `type: "text"` 输入；wire format 与原生 `fetch` 客户端是 provider 私有实现，不走 `ctx.llm`（dsh 的 LLM seam 没有 embedding 端点）。**wire shape 已经 2026-08-14 真实 e2e 实测**（tools/ark-e2e.ts）：`data.embedding` 单向量对象、2048 维、每文本一个请求（该端点把整个 input 数组当作一条多模态条目，无法批量）。
+English | [中文](README.zh.md)
 
-**OpenClaw 对应**：OpenClaw memory 的 openai-remote embedding 后端位（v2026.1.15 `src/memory/embeddings.ts`），配置二选一中的远端分支。local GGUF 分支不在本期（见下）。
+**Positioning**: the first provider of the `@clawdsh/dsh-embeddings` seam — Volcano Ark text embedding. POSTs Ark's multimodal endpoint `/embeddings/multimodal`, sending only `type: "text"` input; the wire format and the native `fetch` client are provider-private, not going through `ctx.llm` (dsh's LLM seam has no embedding endpoint). **The wire shape is verified against real e2e as of 2026-08-14** (tools/ark-e2e.ts): `data.embedding` is a single-vector object, 2048 dims, one request per text (that endpoint treats the whole input array as one multimodal item and cannot batch).
 
-**接缝**：注册为 `ctx.embeddings`（单实现，第二个实现 load 即 throw）。
+**OpenClaw counterpart**: the openai-remote embedding backend slot of OpenClaw memory (v2026.1.15 `src/memory/embeddings.ts`), the remote branch of the one-of-two config. The local GGUF branch is out of scope this cycle (see below).
 
-**规格**：docs/adr/0003-embeddings-seam.md · **状态**：implemented
+**Seam**: registers as `ctx.embeddings` (single implementation, a second implementation throws on load).
 
-## 使用
+**Spec**: docs/adr/0003-embeddings-seam.md · **Status**: implemented
+
+## Usage
 
 ```yaml
 - id: embeddings-ark
@@ -21,19 +23,19 @@
     # timeoutMs: 30000            # 单次 embed 调用截止
 ```
 
-凭证分层（继承 dsh credentials seam）：config `apiKey` 字面量 → credentials seam（env 环境变量 / `$DSH_HOME/.credentials.yaml` / 项目 `.env` / `$DSH_HOME/.env`）→ launch environment 环境快照。**API Key 永不入仓库**：放根 `.env`（`ARK_API_KEY=...`，已 gitignore）。解析不到 key 时 `embed` fail-loud，绝不静默降级。
+Credential layering (inheriting the dsh credentials seam): config `apiKey` literal → credentials seam (env variables / `$DSH_HOME/.credentials.yaml` / project `.env` / `$DSH_HOME/.env`) → launch environment snapshot. **The API key never enters the repo**: put it in the root `.env` (`ARK_API_KEY=...`, already gitignored). When no key resolves, `embed` fails loud, never silently degrades.
 
-## 设计要点
+## Design notes
 
-- **每操作解析凭证**：不缓存 key（credentials seam 铁律），改 `.env` 后无需重挂载即生效；
-- **响应校验**：向量非空且全为有限数；**跨调用维度漂移 fail-loud**——服务端静默换模型不得破坏消费端的 cosine 可比性（实测维度 2048，漂移即报错）；
-- **协作取消**：超时 `AbortSignal.timeout(timeoutMs)` 与调用方 signal 合并，工具超时/会话取消直达 HTTP；
-- **每文本一个请求**：multimodal 端点把整个 input 数组嵌成一条多模态条目，批量不可能——`embed(N)` 按输入序串行发 N 个请求（个人记忆规模可接受；并发化留阶段 3）。
+- **Resolve credentials per operation**: never cache the key (credentials seam rule); a `.env` change takes effect without a remount;
+- **Response validation**: vectors non-empty and all finite; **cross-call dimension drift fails loud** — the server silently swapping models must not break the consumer's cosine comparability (measured 2048 dims; drift errors);
+- **Cooperative cancellation**: `AbortSignal.timeout(timeoutMs)` merged with the caller's signal, so tool timeout / session cancellation reaches HTTP directly;
+- **One request per text**: the multimodal endpoint embeds the whole input array as one multimodal item, batching is impossible — `embed(N)` issues N serial requests in input order (acceptable at personal-memory scale; concurrency deferred to phase 3).
 
-## 变更说明
+## Changelog
 
-- 0.1.0：首版（文本输入 + 凭证分层 + 响应校验 + 契约测试 8 例，mock fetch）。
-- 0.1.0（2026-08-14 真实 e2e 修正）：真实 wire 实测后按 `data.embedding` 单对象/每文本一请求重写解析与调用；移除 `maxBatchTexts`（该端点无法批量）；契约测试 8 例对齐新 wire + tools/ark-e2e.ts 真实闭环（2048 维、语义召回 0.648）。
+- 0.1.0: first release (text input + credential layering + response validation + 8 contract tests, mock fetch).
+- 0.1.0 (2026-08-14 real-e2e correction): after real-wire testing, rewrote parsing and calls around `data.embedding` single-object / one-request-per-text; removed `maxBatchTexts` (the endpoint cannot batch); 8 contract tests aligned to the new wire + tools/ark-e2e.ts real loop (2048 dims, semantic recall 0.648).
 
 ## Model Experience
 
@@ -53,7 +55,7 @@ No prompt text is produced by this provider, so the prompt prefix and its KV cac
 
 ## Known Limitations and Deferred Work
 
-- **仅文本输入**：Ark 端点多模态（image_url 输入类型），本期只发 `type: "text"`；图像嵌入留待有消费者时补；
-- **无批量**：该端点无法批量（每文本一个请求），大语料召回变慢；并发请求化留阶段 3 评估；
-- **无本地模型**：OpenClaw 的 local GGUF 分支未移植；离线部署无嵌入能力（对应 memory 无检索）；
-- **无 settings 集成**：baseURL/model 改动用 patch + 重挂载，无运行时 settings 节（`web-search-deepseek` 有，后续按需对齐）。
+- **Text input only**: the Ark endpoint is multimodal (image_url input type), this cycle only sends `type: "text"`; image embedding is deferred until a consumer needs it;
+- **No batching**: the endpoint cannot batch (one request per text), so large-corpus recall slows down; request concurrency deferred to phase 3 evaluation;
+- **No local model**: OpenClaw's local GGUF branch is not ported; offline deployment has no embedding capability (matching memory's no retrieval);
+- **No settings integration**: baseURL/model changes use patch + remount, no runtime settings section (`web-search-deepseek` has one; align later as needed).

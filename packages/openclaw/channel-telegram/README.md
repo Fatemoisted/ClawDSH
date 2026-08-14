@@ -1,19 +1,21 @@
 # @clawdsh/dsh-channel-telegram
 
-**定位**：Telegram 渠道适配器——实现 `ChannelAdapter`，用 grammY 封装：`Bot` 长轮询入站（`message:text`）+ `bot.api.sendMessage` 出站，是第一个渠道插件，兼作 `ctx.channels` seam 的 spike 载体。
+English | [中文](README.zh.md)
 
-**OpenClaw 对应**：Telegram 渠道（OpenClaw 支持矩阵中最早稳定的一批渠道之一）。上游 `extensions/telegram` 同样用 `grammy` + `@grammyjs/runner` + `@grammyjs/transformer-throttler` 封装；本适配器先取最小面（grammY `Bot` 长轮询），runner/throttler 留待阶段 3 按需引入。
+**Purpose**: Telegram channel adapter — implements `ChannelAdapter`, wrapped with grammY: `Bot` long-polling inbound (`message:text`) + `bot.api.sendMessage` outbound; the first channel plugin, doubling as the spike carrier for the `ctx.channels` seam.
 
-**接缝**：`ctx.channels`（@clawdsh/dsh-channel-core）。
+**OpenClaw correspondence**: the Telegram channel (one of the earliest-stable channels in OpenClaw's support matrix). Upstream `extensions/telegram` likewise wraps `grammy` + `@grammyjs/runner` + `@grammyjs/transformer-throttler`; this adapter starts with the minimal surface (grammY `Bot` long polling), leaving runner/throttler to be introduced on demand in stage 3.
 
-**规格**：阶段 2 交付物 · **状态**：implemented
+**Seam**: `ctx.channels` (@clawdsh/dsh-channel-core).
 
-## 设计要点
+**Specification**: stage 2 deliverable · **Status**: implemented
 
-- **入站**：`Bot.on('message:text')` 把每条文本消息映射成 `channel/inbound`（`threadId` = `chat.id`，`sender` = `from.id`）；`bot.start({ allowed_updates:['message'], timeout })` 长轮询，grammY 内部推进 `offset`（至少一次投递幂等）；`bot.catch` 兜底日志。
-- **出站**：`bot.api.sendMessage(chat_id, text)`；grammY 在 API 错误时抛 `GrammyError`，fail-loud。
-- **凭证**：`botToken` 经 Config 进入，不私存密钥；接入 `ctx.credentials` 留待真实 e2e 收尾。
-- **轮询 offset 归 grammY**：适配器自身不持有任何可变状态，offset 由 grammY 长轮询循环管理。
+## Design notes
+
+- **inbound**: `Bot.on('message:text')` maps each text message to `channel/inbound` (`threadId` = `chat.id`, `sender` = `from.id`); `bot.start({ allowed_updates:['message'], timeout })` long-polls, with grammY advancing `offset` internally (at-least-once delivery idempotence); `bot.catch` as the fallback log.
+- **outbound**: `bot.api.sendMessage(chat_id, text)`; grammY throws `GrammyError` on API errors, fail-loud.
+- **credentials**: `botToken` enters via Config, no secret is stored privately; wiring into `ctx.credentials` is left for the real-e2e wrap-up.
+- **polling offset owned by grammY**: the adapter itself holds no mutable state; the offset is managed by grammY's long-polling loop.
 
 ## Model Experience
 
@@ -33,6 +35,6 @@ Append-only through channel-core's user-message write.
 
 ## Known Limitations and Deferred Work
 
-- **真实 e2e**：需真 `botToken` + key 才能跑通真实闭环，当前以契约测试（协议映射 + `send` 载荷 + 启动/停轮询）覆盖。
-- **引用回复/附件**：`reply_parameters` 引用、图片/富文本一律推迟（阶段 3 渠道扩展）。
-- **runner/throttler**：`@grammyjs/runner`（高负载并发）与 `@grammyjs/transformer-throttler`（限流）上游有采用，本适配器先以 `bot.start()` 长轮询最小面，需要时再引入。
+- **real e2e**: a real `botToken` + key is needed to run the real closed loop; currently covered by contract tests (protocol mapping + `send` payload + start/stop polling).
+- **quoted replies / attachments**: `reply_parameters` quoting, images/rich text all deferred (stage 3 channel extensions).
+- **runner/throttler**: `@grammyjs/runner` (high-load concurrency) and `@grammyjs/transformer-throttler` (rate limiting) are adopted upstream; this adapter starts with the minimal `bot.start()` long-polling surface, to be introduced when needed.

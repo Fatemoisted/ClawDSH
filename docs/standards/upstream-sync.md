@@ -1,6 +1,8 @@
-# 上游同步规范（upstream-sync）
+# Upstream sync specification (upstream-sync)
 
-## 远程与分支布局
+English | [中文](upstream-sync.zh.md)
+
+## Remote and branch layout
 
 ```
 upstream → https://github.com/deepseek-ai/deepseek-harness.git   （官方，只拉不推）
@@ -9,36 +11,33 @@ master   → 上游镜像：只允许 fast-forward，禁止直接提交
 clawdsh  → 我们的开发分支（已推送并跟踪 origin/clawdsh）：全部自有改动提交在这里，定期 rebase
 ```
 
-> 本项目**不是 GitHub Fork**（发起人要求可设 Private）：直接 clone + 推送到自建私有仓库（2026-08-14 已完成）。
-> GitHub 凭据存储在 macOS 钥匙串（`git credential-osxkeychain`），日常 `git push`/`git fetch origin` 免输 token；
-> 移除凭据：`git credential-osxkeychain erase`（输入 host=github.com 后回车两次）。
-> 注意：GitHub 个人访问 token 需含 `workflow` scope，否则推送含 `.github/workflows/` 的分支会被拒。
+> This project **is not a GitHub Fork** (the sponsor requires it to be settable as Private): it was directly cloned and pushed to a self-hosted private repo (done 2026-08-14). GitHub credentials live in the macOS keychain (`git credential-osxkeychain`), so routine `git push`/`git fetch origin` needs no token; to remove credentials run `git credential-osxkeychain erase` (enter host=github.com, then press return twice). Note: a GitHub personal access token must include the `workflow` scope, otherwise pushing a branch that contains `.github/workflows/` is rejected.
 
-## 基线钉死
+## Baseline pinning
 
-| 项 | 值 |
+| Item | Value |
 |---|---|
-| 上游基线 commit | `47f943859b`（2026-08-14 克隆时） |
-| 上游版本 | v0.1.0-rc.5（developer preview，**明示会有破坏性变更**） |
-| 引擎要求 | Node ^22.19 或 ≥24；pnpm 11.7.0（corepack / `npm i -g pnpm@11.7.0`） |
+| Upstream baseline commit | `47f943859b` (at clone on 2026-08-14) |
+| Upstream version | v0.1.0-rc.5 (developer preview, **explicitly with breaking changes**) |
+| Engine requirements | Node ^22.19 or ≥24; pnpm 11.7.0 (corepack / `npm i -g pnpm@11.7.0`) |
 
-dsh 处于 developer preview，上游改动频繁：**基线只向前移动，不跳跃**（每次同步更新上表）。
+dsh is in developer preview and the upstream changes frequently: **the baseline only moves forward, never jumps** (update the table above on every sync).
 
-## 同步流程（tools/sync-upstream.sh）
+## Sync process (tools/sync-upstream.sh)
 
-1. `git fetch upstream`；
-2. 检查上游是否有破坏性变更公告（CHANGELOG / release notes / docs 迁移说明），有则先更新受影响的自有插件；
-3. `git checkout master && git merge --ff-only upstream/master`；
-4. `git checkout clawdsh && git rebase master`——冲突时按优先级解决：
-   - `README.md` / `AGENTS.md`（含 CLAUDE.md 符号链接）/ 根 `package.json`：**取上游版本，再把品牌段重新置顶**（品牌段以 `<!-- ════ ClawDSH` 标记为界）；
-   - `tsdown.config.ts`：取上游版本后，重新添加 `packages/openclaw/*` 骨架排除（带 ClawDSH 注释标记，见 ADR-0001 决策 4）；
-   - `tsconfig.base.json` / `tsconfig.host.json`：取上游版本后，重新追加 `@clawdsh/*` 的 paths 与 references 条目（只追加，不改既有条目）；
-   - `packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal}/`、`tools/`：这些目录上游不动，理论上零冲突；若上游恰好新增同名文件，人工合并并记入 `docs/journal/`；
-5. 全量验证：`pnpm install && pnpm typecheck`，以及 profile 冒烟（阶段 2 起）；
-6. 更新本文件的基线表 + `docs/journal/` 记录。
+1. `git fetch upstream`;
+2. Check whether the upstream announced breaking changes (CHANGELOG / release notes / docs migration notes); if so, update the affected owned plugins first;
+3. `git checkout master && git merge --ff-only upstream/master`;
+4. `git checkout clawdsh && git rebase master` — on conflict, resolve by priority:
+   - `README.md` / `AGENTS.md` (including the CLAUDE.md symlink) / root `package.json`: **take the upstream version, then re-pin the brand section at the top** (the brand section is delimited by the `<!-- ════ ClawDSH` marker);
+   - `tsdown.config.ts`: after taking the upstream version, re-add the `packages/openclaw/*` skeleton exclusion (marked with a ClawDSH comment, see ADR-0001 decision 4);
+   - `tsconfig.base.json` / `tsconfig.host.json`: after taking the upstream version, re-append the `@clawdsh/*` paths and references entries (append only, do not change existing entries);
+   - `packages/openclaw/`, `docs/{adr,specs,matrix,standards,journal}/`, `tools/`: the upstream does not touch these directories, so in theory zero conflicts; if the upstream happens to add a same-named file, merge by hand and record it in `docs/journal/`;
+5. Full verification: `pnpm install && pnpm typecheck`, plus the profile smoke test (from phase 2 onward);
+6. Update the baseline table in this file + a `docs/journal/` entry.
 
-## 红线
+## Red lines
 
-- 永远不 `push` 到 `upstream`；
-- 永远不修改上游文件内容（品牌段除外，见上）；
-- 上游破坏性变更宁可暂缓同步（钉住旧基线），也不要带病 rebase。
+- Never `push` to `upstream`;
+- Never modify upstream file content (except the brand section, see above);
+- For upstream breaking changes, prefer to postpone the sync (pin the old baseline) over rebasing with a known-broken state.
