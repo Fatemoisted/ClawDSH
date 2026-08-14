@@ -37,6 +37,9 @@ export const ARK_DEFAULT_API_KEY_ENV = 'ARK_API_KEY'
 /** Default cooperative deadline for one `embed` call. */
 export const ARK_DEFAULT_TIMEOUT_MS = 30_000
 
+/** Default maximum in-flight text requests per `embed` call (the endpoint cannot batch). */
+export const ARK_DEFAULT_MAX_CONCURRENT_TEXTS = 4
+
 /** Plugin config (all optional — `static Config` supplies the defaults). */
 export interface Config {
   /** Literal Ark API key; prefer {@link apiKeyEnv} so no secret enters configuration files. */
@@ -49,6 +52,8 @@ export interface Config {
   model?: string
   /** Deadline in milliseconds for one `embed` call. */
   timeoutMs?: number
+  /** Maximum in-flight text requests per `embed` call. Defaults to 4. */
+  maxConcurrentTexts?: number
 }
 
 export const Config: z<Config> = z.object({
@@ -60,6 +65,7 @@ export const Config: z<Config> = z.object({
   baseURL: z.string().default(ARK_DEFAULT_BASE_URL),
   model: z.string().default(ARK_DEFAULT_MODEL),
   timeoutMs: z.number().step(1).min(1).max(MAX_TIMER_DELAY_MS).default(ARK_DEFAULT_TIMEOUT_MS),
+  maxConcurrentTexts: z.number().step(1).min(1).max(MAX_TIMER_DELAY_MS).default(ARK_DEFAULT_MAX_CONCURRENT_TEXTS),
 })
 
 /**
@@ -79,6 +85,7 @@ export class ArkEmbeddings extends Embeddings {
   private readonly baseURL: string
   private readonly model: string
   private readonly timeoutMs: number
+  private readonly maxConcurrentTexts: number
   /** Literal key when configured; otherwise resolved per embed via credentials/env. */
   private readonly apiKey: string | undefined
   private readonly apiKeyEnv: CredentialRef
@@ -90,11 +97,13 @@ export class ArkEmbeddings extends Embeddings {
     this.baseURL = config.baseURL ?? ARK_DEFAULT_BASE_URL
     this.model = config.model ?? ARK_DEFAULT_MODEL
     this.timeoutMs = config.timeoutMs ?? ARK_DEFAULT_TIMEOUT_MS
+    this.maxConcurrentTexts = config.maxConcurrentTexts ?? ARK_DEFAULT_MAX_CONCURRENT_TEXTS
     this.apiKey = config.apiKey !== undefined && config.apiKey.length > 0 ? config.apiKey : undefined
     this.apiKeyEnv = credentialRef(config.apiKeyEnv ?? ARK_DEFAULT_API_KEY_ENV)
   }
 
   override async embed(texts: readonly string[], signal?: AbortSignal): Promise<EmbeddingVector[]> {
+    if (texts.length === 0) return []
     const apiKey = this.apiKey ?? await this.resolveApiKey()
     if (apiKey === undefined) {
       throw new Error(
@@ -103,12 +112,25 @@ export class ArkEmbeddings extends Embeddings {
       )
     }
     // The multimodal endpoint embeds one input array as ONE multimodal item, so
-    // batching is impossible with this model: one request per text, in order.
-    const vectors: EmbeddingVector[] = []
-    for (const text of texts) {
-      vectors.push(await this.embedOne(text, apiKey, signal))
-    }
-    return vectors
+    // batching is impossible with this model: one request per text. A bounded
+    // worker pool runs up to maxConcurrentTexts requests at once; each worker
+    // claims the next index, so results land in input order and one failure
+    // rejects the whole call (the embeddings seam contract). In-flight requests
+    // are not force-cancelled on a sibling failure.
+    const results = new Array<EmbeddingVector>(texts.length)
+    let next = 0
+    const workers = Array.from({ length: Math.min(this.maxConcurrentTexts, texts.length) }, async () => {
+      while (true) {
+        const index = next
+        next += 1
+        if (index >= texts.length) return
+        const text = texts[index]
+        if (text === undefined) return
+        results[index] = await this.embedOne(text, apiKey, signal)
+      }
+    })
+    await Promise.all(workers)
+    return results
   }
 
   /**

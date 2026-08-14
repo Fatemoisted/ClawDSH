@@ -11,6 +11,146 @@
 
 `Requires:` 行列出插件通过 `inject` 注入的服务键：其 `cordis.yml` 树还必须加载这些服务的提供者。范围限定为 harness 层级（`packages/`）；配置树还可能加载的 vendored cordis 插件（`hmr`、控制台日志记录器等）固定为上游源代码（参见 [vendoring policy](../vendor/README.md)），未收录于此目录。
 
+<a id="clawdshdsh-channel-feishu"></a>
+
+## `@clawdsh/dsh-channel-feishu`
+
+需要：`channels`
+
+```ts config-catalog
+/** Plugin config: app identity plus which Open Platform region to dial. */
+export interface Config {
+  /** Feishu app ID (from the developer console); must not be committed. */
+  appId: string
+  /** Feishu app secret; must not be committed. */
+  appSecret: string
+  /** Open Platform region; `feishu` (default) or `lark`. */
+  domain?: FeishuDomain
+}
+
+/** Feishu API domain: mainland Feishu or international Lark. */
+export type FeishuDomain = 'feishu' | 'lark'
+```
+
+来源：[`packages/openclaw/channel-feishu/src/index.ts:37`](../packages/openclaw/channel-feishu/src/index.ts)
+
+<a id="clawdshdsh-channel-telegram"></a>
+
+## `@clawdsh/dsh-channel-telegram`
+
+需要：`channels`
+
+```ts config-catalog
+/** Plugin config: the bot token plus long-polling tuning. */
+export interface Config {
+  /** Bot token from `@BotFather`; must not be committed. */
+  botToken: string
+  /** When `false`, the adapter is send-only and does not poll for inbound messages. */
+  polling?: boolean
+  /** Long-poll hold timeout in seconds (Telegram clamps to 1–60). */
+  timeout?: number
+}
+```
+
+来源：[`packages/openclaw/channel-telegram/src/index.ts:28`](../packages/openclaw/channel-telegram/src/index.ts)
+
+<a id="clawdshdsh-embeddings-ark"></a>
+
+## `@clawdsh/dsh-embeddings-ark`
+
+```ts config-catalog
+/** Plugin config (all optional — `static Config` supplies the defaults). */
+export interface Config {
+  /** Literal Ark API key; prefer {@link apiKeyEnv} so no secret enters configuration files. */
+  apiKey?: string
+  /** Credential reference resolved per embed; defaults to `ARK_API_KEY`. */
+  apiKeyEnv?: string
+  /** Endpoint base; `/embeddings/multimodal` is appended. */
+  baseURL?: string
+  /** Embedding model name. Defaults to {@link ARK_DEFAULT_MODEL}. */
+  model?: string
+  /** Deadline in milliseconds for one `embed` call. */
+  timeoutMs?: number
+  /** Maximum in-flight text requests per `embed` call. Defaults to 4. */
+  maxConcurrentTexts?: number
+}
+```
+
+来源：[`packages/openclaw/embeddings-ark/src/index.ts:41`](../packages/openclaw/embeddings-ark/src/index.ts)
+
+<a id="clawdshdsh-memory"></a>
+
+## `@clawdsh/dsh-memory`
+
+需要：`tools` · `systemPrompt` · `fs`
+
+```ts config-catalog
+/** Plugin config; `root` is required — the memory directory a deployment owns. */
+export interface Config {
+  /** Memory root directory (absolute or resolved against `process.cwd()`). Required, fail-loud. */
+  root: string
+  /** Character budget per index chunk. Defaults to 1600. */
+  chunkSizeChars?: number
+  /** Sentence-aligned overlap from the previous chunk's tail. Defaults to 160. */
+  chunkOverlapChars?: number
+  /** Maximum hits returned by one memory_search call. Defaults to 6. */
+  maxResults?: number
+  /** Minimum cosine similarity for a hit. Defaults to 0.35. */
+  minScore?: number
+  /** Character cap per hit snippet. Defaults to 700. */
+  snippetChars?: number
+  /** Cooperative search deadline in milliseconds. Defaults to 30000. */
+  timeoutMs?: number
+  /** Maximum lines one memory_get call reads. Defaults to 1000. */
+  maxReadLines?: number
+  /** Pre-compaction memory flush turn; enabled by default, thresholds OpenClaw's 20000/4000. */
+  flush?: FlushConfig
+}
+
+/** Flush sub-config of the memory row. */
+export interface FlushConfig {
+  /** Whether the flush turn participates; defaults to true. */
+  enabled?: boolean
+  /** Tokens kept free below the context window; the flush becomes due only above `window − reserve − soft`. Defaults to 20000. */
+  reserveTokensFloor?: number
+  /** Soft band below the reserve; defaults to 4000. */
+  softThresholdTokens?: number
+  /** The flush turn's prompt; defaults to the OpenClaw wording. */
+  prompt?: string
+}
+```
+
+来源：[`packages/openclaw/memory/src/index.ts:58`](../packages/openclaw/memory/src/index.ts)
+
+<a id="clawdshdsh-soul"></a>
+
+## `@clawdsh/dsh-soul`
+
+需要：`systemPrompt`
+
+```ts config-catalog
+/** Plugin config: where the soul text comes from and how it lands. */
+export interface Config {
+  /**
+   * Path to a soul file (markdown). Wins over `text`. A relative path resolves
+   * against the mount tree's `ctx.baseUrl` — the preset composition directory
+   * for agent presets, the profile directory under the profile launcher — and
+   * against `process.cwd()` when the context has no base (raw test contexts).
+   * An absolute path is used as-is. This mirrors how relative module
+   * specifiers resolve under the Loader, so a preset's soul file travels with it.
+   */
+  source?: string
+  /** Inline soul text; used when `source` is absent or empty. */
+  text?: string
+  /** `replace` makes the soul the complete system prompt; `append` (default) adds it as a section. */
+  mode?: 'replace' | 'append'
+  /** Suppress dynamic runtime-context snapshots for this agent scope. */
+  includeRuntimeContext?: boolean
+}
+```
+
+来源：[`packages/openclaw/soul/src/index.ts:45`](../packages/openclaw/soul/src/index.ts)
+
 <a id="deepseek-aidsh-acp"></a>
 
 ## `@deepseek-ai/dsh-acp`
@@ -3027,6 +3167,7 @@ export interface Config {
 
 这些插件通过 `cordis.yml` 中不含 `config:` 块的条目加载；它们未声明任何配置接口。
 
+- `@clawdsh/dsh-channel-core` — 需要 `agents` · `sessions` · `agentDefaultModel`（[`packages/openclaw/channel-core/src/index.ts`](../packages/openclaw/channel-core/src/index.ts)）
 - `@deepseek-ai/dsh-agent`（[`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts)）
 - `@deepseek-ai/dsh-api-gateway` — 需要 `typert`（[`packages/api/gateway/src/index.ts`](../packages/api/gateway/src/index.ts)）
 - `@deepseek-ai/dsh-api-remotes`（[`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts)）
@@ -3097,6 +3238,7 @@ export interface Config {
 
 抽象服务类——部署时应改为加载具体的实现包（参见[能力 seam](../.agents/notes/implemented/architecture/2026-06-13-capability-seams.md)）。
 
+- `@clawdsh/dsh-embeddings` — 抽象 `Embeddings`（[`packages/openclaw/embeddings/src/index.ts`](../packages/openclaw/embeddings/src/index.ts)）
 - `@deepseek-ai/dsh-attachment` — 抽象 `AttachmentStore`（[`packages/attachment/attachment/src/index.ts`](../packages/attachment/attachment/src/index.ts)）
 - `@deepseek-ai/dsh-code-runtime` — 抽象 `CodeRuntime`（[`packages/code-runtime/code-runtime/src/index.ts`](../packages/code-runtime/code-runtime/src/index.ts)）
 - `@deepseek-ai/dsh-compaction` — 抽象 `CompactionEngine`（[`packages/compaction/compaction/src/index.ts`](../packages/compaction/compaction/src/index.ts)）

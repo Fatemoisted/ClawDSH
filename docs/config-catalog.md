@@ -125,10 +125,12 @@ export interface Config {
   model?: string
   /** Deadline in milliseconds for one `embed` call. */
   timeoutMs?: number
+  /** Maximum in-flight text requests per `embed` call. Defaults to 4. */
+  maxConcurrentTexts?: number
 }
 ```
 
-Source: [`packages/openclaw/embeddings-ark/src/index.ts:41`](../packages/openclaw/embeddings-ark/src/index.ts)
+Source: [`packages/openclaw/embeddings-ark/src/index.ts:44`](../packages/openclaw/embeddings-ark/src/index.ts)
 
 <a id="clawdshdsh-memory"></a>
 

@@ -135,4 +135,86 @@ describe('ark embeddings provider', () => {
     await ctx.embeddings.embed(['a'])
     expect(firstFetchInit(fetchMock).headers).toMatchObject({ Authorization: 'Bearer stub-key-MY_CUSTOM_KEY' })
   })
+
+  it('caps in-flight requests at maxConcurrentTexts and completes the full batch', async () => {
+    let openGate: () => void = () => {}
+    const gate = new Promise<void>((resolve) => { openGate = resolve })
+    let inFlight = 0
+    let peak = 0
+    const fetchMock = vi.fn(async () => {
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await gate
+      inFlight -= 1
+      return new Response(responseBody([0.1]), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const ctx = new Context()
+    await ctx.plugin(ArkEmbeddings, { apiKey: 'test-key', maxConcurrentTexts: 4 })
+    const embedding = ctx.embeddings.embed(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+    expect(peak).toBe(4)
+    openGate()
+    const vectors = await embedding
+    expect(vectors).toHaveLength(10)
+    expect(fetchMock).toHaveBeenCalledTimes(10)
+    expect(peak).toBe(4)
+  })
+
+  it('returns vectors in input order even when requests resolve out of order', async () => {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const text = (JSON.parse(init.body as string).input as { text: string }[])[0]!.text
+      const index = Number(text)
+      // The first request is the slowest; completion order is the reverse of input order.
+      await new Promise(resolve => setTimeout(resolve, (10 - index) * 2))
+      return new Response(responseBody([index]), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const ctx = new Context()
+    await ctx.plugin(ArkEmbeddings, { apiKey: 'test-key', maxConcurrentTexts: 4 })
+    const texts = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+    const vectors = await ctx.embeddings.embed(texts)
+    expect(vectors).toEqual([[0], [1], [2], [3], [4], [5], [6], [7], [8], [9]])
+  })
+
+  it('rejects the whole batch when one request fails', async () => {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const text = (JSON.parse(init.body as string).input as { text: string }[])[0]!.text
+      if (text === 'bad') return new Response('boom', { status: 500 })
+      return new Response(responseBody([0.1]), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const ctx = new Context()
+    await ctx.plugin(ArkEmbeddings, { apiKey: 'test-key', maxConcurrentTexts: 4 })
+    await expect(ctx.embeddings.embed(['a', 'b', 'bad', 'c', 'd', 'e'])).rejects.toThrow(/HTTP 500/)
+  })
+
+  it('runs strictly serially with maxConcurrentTexts 1', async () => {
+    let openGate: () => void = () => {}
+    const gate = new Promise<void>((resolve) => { openGate = resolve })
+    let inFlight = 0
+    let peak = 0
+    const fetchMock = vi.fn(async () => {
+      inFlight += 1
+      peak = Math.max(peak, inFlight)
+      await gate
+      inFlight -= 1
+      return new Response(responseBody([0.1]), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const ctx = new Context()
+    await ctx.plugin(ArkEmbeddings, { apiKey: 'test-key', maxConcurrentTexts: 1 })
+    const embedding = ctx.embeddings.embed(['a', 'b', 'c'])
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(peak).toBe(1)
+    openGate()
+    await embedding
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(peak).toBe(1)
+  })
+
+  it('rejects maxConcurrentTexts below 1 at mount', async () => {
+    const ctx = new Context()
+    await expect(ctx.plugin(ArkEmbeddings, { apiKey: 'test-key', maxConcurrentTexts: 0 })).rejects.toThrow()
+  })
 })
