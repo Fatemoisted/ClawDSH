@@ -140,10 +140,7 @@ export class SoulSettingsHost extends Service {
    */
   forSession(entry: Config): Config {
     const user = this.settings?.describe().find(descriptor => descriptor.ns === SOUL_SETTINGS_NAMESPACE)?.user
-    return Config({
-      ...entry,
-      ...(isRecord(user) ? user : {}),
-    })
+    return Config(Object.assign({}, entry, isRecord(user) ? user : {}))
   }
 }
 
@@ -166,12 +163,13 @@ export function apply(ctx: Context, config: Config): void {
   if (scopeOf(ctx) === undefined) {
     throw new Error('soul: mounts only inside an agent scope (an unscoped mount would publish a process-global soul)')
   }
-  if (config.mode !== undefined && config.mode !== 'replace' && config.mode !== 'append') {
-    throw new Error(`soul: unknown mode ${JSON.stringify(config.mode)}; expected "replace" or "append"`)
+  const requestedMode: unknown = Reflect.get(config, 'mode')
+  if (requestedMode !== undefined && requestedMode !== 'replace' && requestedMode !== 'append') {
+    throw new Error(`soul: unknown mode ${JSON.stringify(requestedMode)}; expected "replace" or "append"`)
   }
   const resolved = ctx.get('clawdshSoulSettings')?.forSession(config) ?? Config(config)
   if (!(resolved.enabled ?? true)) return
-  const mode = resolved.mode ?? 'append'
+  const mode: unknown = Reflect.get(resolved, 'mode') ?? 'append'
   if (mode !== 'replace' && mode !== 'append') {
     throw new Error(`soul: unknown mode ${JSON.stringify(mode)}; expected "replace" or "append"`)
   }

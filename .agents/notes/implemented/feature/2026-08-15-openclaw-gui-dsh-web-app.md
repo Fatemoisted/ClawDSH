@@ -6,7 +6,9 @@ English | [中文](2026-08-15-openclaw-gui-dsh-web-app.zh.md)
 
 ## Problem
 
-OpenClaw has two usage modes: a local CLI and a Gateway that bridges to messaging apps (Feishu etc.). ClawDSH already ships the channel frontend through `ctx.channels`; the "GUI" mode had no home. DeepSeek Harness ships a full browser GUI (`@deepseek-ai/dsh-web-app`), and because it drives turns through the same `ctx.agents` / `ctx.sessions` / agent-loop seams that `channel-core` uses, the GUI can front OpenClaw's features with no upstream change — it is a composition problem, not a code problem.
+OpenClaw has two usage modes: a local CLI and a Gateway that bridges to messaging apps (Feishu etc.). DeepSeek Harness ships a full browser GUI (`@deepseek-ai/dsh-web-app`), and because it drives turns through the public `ctx.agents` / `ctx.sessions` / agent-loop seams, the GUI can front OpenClaw's features with no upstream change — it is a composition problem, not a code problem.
+
+Current-state amendment (2026-08-15): the [product-shell runtime Note](2026-08-15-clawdsh-product-shell-runtime.md) supersedes this Note's original stock-GUI-only surface while retaining its public Harness conversation runtime and profile composition. ADR-0008 and the channel-plane rebuild also supersede the original description of `channel-core` as the `ctx.channels` path. The canonical seam is now provided only by the locked OpenClaw sidecar through `ctx.channels`; the retained in-process router and Telegram, Discord, and Feishu adapters use the isolated `ctx.legacyChannels` seam. Neither communication plane is enabled by the GUI decision or certified by its tests.
 
 ## Decision
 
@@ -19,8 +21,8 @@ The physical `preset-openclaw` assembly composes the web bundle and ships the fu
 
 ## Consequences
 
-- `pnpm dsh --profile clawdsh` serves `http://127.0.0.1:3080`; a GUI conversation surfaces the same soul persona, `clawdsh:memory-recall` section, `memory_search`/`memory_get` tools, and skills catalog as the channel path does, plus the full standard toolset.
-- The Web server starts independently of optional external integrations. Feishu, Telegram, and Automation are disabled in a clean install; enabling their Loader entries preserves their existing behavior and validation.
+- `pnpm dsh --profile clawdsh` serves `http://127.0.0.1:3080`; a GUI conversation surfaces the soul persona, `clawdsh:memory-recall` section, `memory_search`/`memory_get` tools, skills catalog, and the full standard toolset independently of either channel plane.
+- The Web server starts independently of optional external integrations. The canonical sidecar, the complete legacy group (Telegram, Discord, and Feishu), and Automation are disabled in a clean install; their separate Loader switches preserve the canonical/legacy boundary.
 - `mode: append` is kept for `soul`; if the web-runtime's "coding agent" section leaks into the assembled prompt, switch `soul` to `mode: replace` (a complete persona suppresses both the host default and the web-runtime section).
 
 ## Alternatives considered

@@ -13,6 +13,9 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import * as yaml from 'js-yaml'
+import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
+import { evaluate } from '@deepseek-ai/cordis-plugin-loader'
 
 const repositoryRoot = resolve(import.meta.dirname, '../../../..')
 const assemblyRoot = join(repositoryRoot, 'packages/openclaw/preset-openclaw')
@@ -28,6 +31,10 @@ const linkedPackages = [
   'channel',
   'channel-agent',
   'channel-openclaw',
+  'channel-core',
+  'channel-telegram',
+  'channel-discord',
+  'channel-feishu',
   'memory',
   'embeddings',
   'embeddings-ark',
@@ -78,6 +85,36 @@ function profileOverride(config: string, id: string): string {
   return config.slice(start, next === -1 ? undefined : next)
 }
 
+interface LoaderRow {
+  id?: string
+  disabled?: { __jsExpr?: string }
+  config?: LoaderRow[]
+}
+
+function profileRows(): LoaderRow[] {
+  const parsed: unknown = yaml.load(read(join(profileSource, 'cordis.patch.yml')), {
+    schema: entryListSchema,
+  })
+  if (!Array.isArray(parsed)) throw new TypeError('ClawDSH profile patch must be a list')
+  return parsed.flatMap((patch): LoaderRow[] => {
+    if (typeof patch !== 'object' || patch === null || !('insert' in patch)) return []
+    const insert = patch.insert
+    return Array.isArray(insert) ? insert as LoaderRow[] : []
+  })
+}
+
+function rowById(rows: readonly LoaderRow[], id: string): LoaderRow {
+  const row = rows.find(candidate => candidate.id === id)
+  if (row === undefined) throw new Error(`missing loader row ${id}`)
+  return row
+}
+
+function isDisabled(row: LoaderRow, env: Readonly<Record<string, string>>): boolean {
+  const expression = row.disabled?.__jsExpr
+  if (expression === undefined) return false
+  return Boolean(evaluate({ process: { env } }, expression))
+}
+
 afterEach(() => {
   for (const home of temporaryHomes.splice(0)) rmSync(home, { recursive: true, force: true })
 })
@@ -112,7 +149,47 @@ describe('ClawDSH installed profile identity', () => {
     )
     expect(entry.match(stagingRoot)).toHaveLength(2)
     expect(entry).toMatch(/gatewayInstanceId: !!js process\.env\.CLAWDSH_OPENCLAW_GATEWAY_INSTANCE_ID \|\| 'clawdsh-managed'/)
-    expect(entry).not.toMatch(/dsh-channel-(?:feishu|telegram|core)/)
+    expect(entry).not.toMatch(/dsh-channel-(?:discord|feishu|telegram|core)/)
+  })
+
+  it('keeps the legacy compatibility plane opt-in and separate from the Settings-managed Gateway', () => {
+    const entry = loaderEntry(read(join(profileSource, 'cordis.patch.yml')), 'clawdsh-legacy-channel-plane')
+    expect(entry).toContain("process.env.CLAWDSH_LEGACY_CHANNELS_ENABLED !== '1'")
+    expect(entry).not.toContain('CLAWDSH_OPENCLAW_CHANNELS_ENABLED')
+    expect(entry).toMatch(/name: '@clawdsh\/dsh-channel-core'/)
+    expect(entry).toMatch(/name: '@clawdsh\/dsh-channel-telegram'/)
+    expect(entry).toMatch(/name: '@clawdsh\/dsh-channel-discord'/)
+    expect(entry).toMatch(/name: '@clawdsh\/dsh-channel-feishu'/)
+    expect(entry).toContain("process.env.CLAWDSH_LEGACY_TELEGRAM_ENABLED !== '1'")
+    expect(entry).toContain("process.env.CLAWDSH_LEGACY_DISCORD_ENABLED !== '1'")
+    expect(entry).toContain("process.env.CLAWDSH_LEGACY_FEISHU_ENABLED !== '1'")
+    expect(entry).not.toMatch(/name: '@clawdsh\/dsh-channel'$/m)
+    expect(entry).not.toMatch(/dsh-channel-(?:agent|openclaw)/)
+  })
+
+  it('evaluates the legacy master and per-adapter switch matrix', () => {
+    const rows = profileRows()
+    const legacy = rowById(rows, 'clawdsh-legacy-channel-plane')
+    const children = legacy.config ?? []
+    const core = rowById(children, 'channel-core')
+    const telegram = rowById(children, 'channel-telegram')
+    const discord = rowById(children, 'channel-discord')
+    const feishu = rowById(children, 'channel-feishu')
+
+    const enabled = (parent: LoaderRow, child: LoaderRow | undefined, env: Readonly<Record<string, string>>): boolean =>
+      !isDisabled(parent, env) && (child === undefined || !isDisabled(child, env))
+
+    expect(enabled(legacy, core, {})).toBe(false)
+    expect(enabled(legacy, telegram, {})).toBe(false)
+
+    const legacyTelegram = {
+      CLAWDSH_LEGACY_CHANNELS_ENABLED: '1',
+      CLAWDSH_LEGACY_TELEGRAM_ENABLED: '1',
+    }
+    expect(enabled(legacy, core, legacyTelegram)).toBe(true)
+    expect(enabled(legacy, telegram, legacyTelegram)).toBe(true)
+    expect(enabled(legacy, discord, legacyTelegram)).toBe(false)
+    expect(enabled(legacy, feishu, legacyTelegram)).toBe(false)
   })
 
   it('mounts settings-owning capabilities with fail-closed defaults', () => {

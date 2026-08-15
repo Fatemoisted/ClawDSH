@@ -136,6 +136,16 @@ interface RuleState {
   anchorMs: number
 }
 
+/** Minimal optional persistence surface used to distinguish absent sessions from resume failures. */
+interface SessionPersistenceReader {
+  list(): Promise<SessionHeader[]>
+}
+
+/** Narrow an optional Cordis service without importing a persistence implementation. */
+function isSessionPersistenceReader(value: unknown): value is SessionPersistenceReader {
+  return typeof value === 'object' && value !== null && 'list' in value && typeof value.list === 'function'
+}
+
 /** Parse a config value into defaults and schedule facts; a malformed value throws. */
 function resolveRule(rule: AutomationRule): ResolvedRule {
   if (!RULE_ID.test(rule.id)) {
@@ -186,7 +196,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   const runtime = new AutomationRuntime(ctx, rules)
   void runtime.initialize()
   ctx.effect(function* () {
-    yield () => runtime.dispose()
+    yield () => { runtime.dispose() }
   }, 'automation.runtime()')
 }
 
@@ -227,7 +237,7 @@ class AutomationRuntime {
     for (const state of this.states) {
       await this.acquireAgent(state)
       if (state.handle === undefined) continue
-      if (await this.atAlreadyCompleted(state)) {
+      if (this.atAlreadyCompleted(state)) {
         state.completed = true
         continue
       }
@@ -255,9 +265,9 @@ class AutomationRuntime {
     const setup = (agentCtx: Context) => {
       installModelSelection(agentCtx, { current: selection, assembled: undefined })
     }
-    const persistence = this.ctx.get('sessionPersistence')
+    const persistence: unknown = this.ctx.get('sessionPersistence')
     try {
-      if (persistence !== undefined) {
+      if (isSessionPersistenceReader(persistence)) {
         try {
           state.handle = await this.ctx.agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
           await state.handle.agent.whenIdle()
@@ -280,7 +290,7 @@ class AutomationRuntime {
   }
 
   /** Whether a one-shot `at` rule already recorded an `ok` run for its occurrence in the session log. */
-  private async atAlreadyCompleted(state: RuleState): Promise<boolean> {
+  private atAlreadyCompleted(state: RuleState): boolean {
     if (state.rule.schedule.kind !== 'at' || state.handle === undefined) return false
     const scheduledAt = new Date(state.rule.atMs).toISOString()
     return state.handle.agent.session.events.some((event: SessionEvent) =>
@@ -325,7 +335,7 @@ class AutomationRuntime {
     if (!Number.isFinite(earliest)) return
     const delay = Math.min(Math.max(earliest - Date.now(), 0), MAX_TIMER_DELAY_MS)
     this.timer = setTimeout(() => { void this.tick() }, delay)
-    this.timer.unref?.()
+    this.timer.unref()
   }
 
   /** Run all due occurrences sequentially (OpenClaw's wake shape), then re-arm. */

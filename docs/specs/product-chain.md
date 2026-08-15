@@ -17,7 +17,7 @@ English | [中文](product-chain.zh.md)
 |---|---|---|---|
 | ClawDSH local GUI | `preset-openclaw`, `activity` | public dsh Web assembly, Session history, optional Activity service | ✅ product shell, writable Settings, and semantic Activity |
 | Current channel plane | `channel`, `channel-agent`, `channel-openclaw` | owned `ctx.channels` V1 | ✅ foundation; ⚠️ no certified or enabled channel |
-| Legacy channel path | `channel-core`, `channel-telegram`, `channel-feishu` | `ctx.legacyChannels` | ✅ retained compatibility; ⚠️ no current certification |
+| Legacy channel path | `channel-core`, `channel-telegram`, `channel-discord`, `channel-feishu` | `ctx.legacyChannels` | ✅ retained, default-disabled compatibility; ⚠️ no current certification |
 | Persona | `soul` | `ctx.systemPrompt` | ✅ implemented |
 | Memory | `memory`, `embeddings`, `embeddings-ark` | filesystem, tools, system prompt, owned embeddings seam | ✅ implemented |
 | Skills | `skills-hub` | `ctx.skills` | ✅ implemented |
@@ -29,7 +29,7 @@ English | [中文](product-chain.zh.md)
 
 ### Current product slice
 
-The nested build emits `@clawdsh/dsh-product-runtime` and its browser assets before `tools/link-clawdsh.sh` installs the `clawdsh` profile and presets. `pnpm dsh --profile clawdsh` prints only the `/clawdsh/` product URL after Loader settlement; `/` remains the native dsh Web client, and new Sessions default to `ClawDSH 模式`. OpenClaw Gateway and Automation are disabled, so a clean home starts without platform credentials or an OpenClaw artifact.
+The nested build emits `@clawdsh/dsh-product-runtime` and its browser assets before `tools/link-clawdsh.sh` installs the `clawdsh` profile and presets. `pnpm dsh --profile clawdsh` prints only the `/clawdsh/` product URL after Loader settlement; `/` remains the native dsh Web client, and new Sessions default to `ClawDSH 模式`. Automation, the canonical sidecar, the legacy compatibility group, and every legacy adapter are disabled in the clean-install baseline, so a clean home starts without their credentials or an OpenClaw artifact.
 
 ### Product chain
 
@@ -85,16 +85,17 @@ Inbound images are confined to a canonical staging root, checked for symlinks, s
 | Windows IPC authorization | unsupported and fail-closed until named-pipe ACL enforcement exists |
 | Plugin Session events | `channel/*` names disabled because downstream append cannot mark them ignorable |
 | Keyless assembled transcript | missing because the upstream snapshot lane does not discover owned packages |
-| Telegram / Feishu live traffic | no current certification evidence; neither sidecar nor legacy path is enabled |
+| Telegram / Feishu / Discord live traffic | no current sidecar certification evidence; neither channel group is enabled by default |
 
 ## Legacy channel path
 
-`channel-core` registers in-process text adapters under `ctx.legacyChannels`; Telegram uses grammY polling and Feishu uses the Lark long connection. Identity prefix, mention handling, and acknowledgement reactions belong to this legacy path.
+`channel-core` registers in-process adapters under `ctx.legacyChannels`; Telegram uses grammY polling, Discord uses discord.js Gateway/REST, and Feishu uses the Lark long connection. Identity prefix, mention handling, acknowledgements, legacy image handling, and provider address continuity belong to this path.
 
-- ✅ Packages remain available for replacement verification, and their historical tests describe their behavior.
-- ⚠️ The contract has no exact OpenClaw host identity, durable route/idempotency/delivery ledgers, media path, or native action negotiation.
-- ⚠️ Historical transport work does not satisfy the current release's certification requirements. Telegram and Feishu are at most installable.
-- ⏳ Delete the three packages together only after the sidecar assembles, an owned keyless snapshot exists, and fresh Telegram and Feishu certification passes. Archive their Agent Notes only with that removal.
+- ✅ The `clawdsh-legacy-channel-plane` group and each provider entry have separate opt-ins. While the legacy opt-in is present, Gateway startup and Settings preflight reject canonical enablement, preventing one profile from double-logging into the same account.
+- ✅ Historical credentialed evidence exists for Feishu text (2026-08-14) and Telegram text/caption plus recovery/tool paths (2026-08-15). Discord has keyless behavior and lifecycle coverage only.
+- ⚠️ Later Telegram image/rotation/migration and later Feishu credential-reference/hot-rotation revisions are keyless-only. Discord has no credentialed live-server E2E.
+- ⚠️ The legacy path has no exact OpenClaw host identity or durable ingress/idempotency/delivery ledgers. Its evidence cannot certify the sidecar.
+- ⏳ Delete all four packages together only after the sidecar assembles, an owned keyless snapshot exists, and fresh certification covers every platform still used for migration. Archive their Agent Notes only with that removal.
 
 ## Persona, Memory, Skills, and Automation
 
@@ -110,7 +111,7 @@ Inbound images are confined to a canonical staging root, checked for symlinks, s
 
 ## Profile composition
 
-`preset-openclaw` is the internal source for the `clawdsh` Agent preset, example soul, and profile. The profile composes dsh base and Web bundles, then mounts Memory, Embeddings, Skills, opt-in Automation, and a default-disabled `channel → channel-agent → channel-openclaw` group. The physical directory name does not become a user-visible id.
+`preset-openclaw` is the internal source for the `clawdsh` Agent preset, example soul, and profile. The profile composes dsh base and Web bundles, then mounts Memory, Embeddings, Skills, opt-in Automation, a default-disabled `channel → channel-agent → channel-openclaw` canonical group, and a lower-priority default-disabled legacy compatibility group. The physical directory name does not become a user-visible id.
 
 - ✅ New Web Sessions default to `clawdsh`, displayed as `ClawDSH 模式`.
 - ✅ Owner channel turns use `clawdsh`; every non-owner or group turn uses `clawdsh-messaging-safe` after OpenClaw admission.
@@ -149,7 +150,7 @@ Inbound images are confined to a canonical staging root, checked for symlinks, s
 1. Add an owned keyless Gateway-to-Agent snapshot lane and complete exact per-channel assembly evidence.
 2. Keep Windows fail-closed until named-pipe ACL enforcement provides equivalent authorization.
 3. Add durable non-image attachments and outbound staging before enabling those media paths.
-4. Run fresh Telegram and Feishu certification before enabling either route.
+4. Run fresh sidecar Telegram and Feishu certification before enabling either route; certify Discord too before migrating an active legacy Discord deployment.
 5. Obtain an ignorable append mechanism before persisting namespaced `channel/*` Session events.
 6. Remove legacy adapters and archive their Notes only after every replacement condition passes.
 7. Select and separately authorize the bootstrap archives and version, then create all thirteen package objects through interactive 2FA; this repository does not execute that bootstrap.

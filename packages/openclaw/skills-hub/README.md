@@ -8,6 +8,7 @@ English | [中文](README.zh.md)
 
 **Seam** (pre-existing, none added):
 - `ctx.skills` (declared inject): the provider registers via `registerProvider`; the registry merges its candidates with every other provider, resolves duplicates (nearest layer, then rank, then registration order), and owns disposal and cache invalidation;
+- `ctx.subprocess` (declared inject): its execution-world resolver owns PATH lookup, including Windows `PATHEXT` and case-insensitive environment semantics; skills-hub only turns resolution success into a gate result;
 - Model surface: `tool-skill` publishes catalog entries and loads bodies by name — no new tool, no new event. The "model-visible means logged" invariant holds through existing paths (catalog injection and tool results).
 
 **Spec**: docs/specs/feature-skills-hub.md · **Status**: implemented (Phase 3 ✅)
@@ -31,14 +32,14 @@ The `clawdsh-skills-hub` settings namespace is restart-applied. A disabled start
 
 - **Why a thin provider, not a reimplementation**: the skill registry already owns layered merging, within-layer rank ordering, registration disposal, catalog caching, and the model-facing catalog/load tools. skills-hub contributes only the OpenClaw source conventions and gating (see the [skills-domain mapping Agent Note](../../../.agents/notes/implemented/architecture/2026-08-14-openclaw-skills-domain-mapping.md));
 - **Rank contract**: workspace `<cwd>/skills` = 300 (the custom slot: below dsh-native project dirs, above user dirs), extra dirs = 350, managed `~/.clawdbot/skills` = 450 (below dsh-native user dirs: the native dir outranks the legacy clawdbot dir); same-rank ties resolve by provider registration order;
-- **Gating at list time**: `requires.bins` (all on PATH), `requires.anyBins` (at least one), `requires.env` (env var set); gated-out skills are excluded from the catalog; bins are probed on PATH without child processes;
+- **Gating at list time**: `requires.bins` (all on PATH), `requires.anyBins` (at least one), `requires.env` (env var set); gated-out skills are excluded from the catalog; bins use the Harness execution-world resolver without spawning them;
 - **Directory + SKILL.md only**: matches OpenClaw's convention; a directory without `SKILL.md` is not a skill, a missing root yields no skills (OpenClaw-style silent skip), invalid files warn and are skipped;
 - **No install execution, no remote registry**: the OpenClaw baseline distributes ClawHub skills through an external CLI; this package loads what is already on disk.
 - **Provider-level disable**: `enabled: false` registers no provider, so no ClawHub root participates in catalog collection.
 
 ## Changelog
 
-- 0.1.0: first release (workspace/managed/extra roots, `metadata.clawdbot` gating, JSON-string metadata normalization; 10 contract tests, keyless).
+- 0.1.0: first release (workspace/managed/extra roots, `metadata.clawdbot` gating, JSON-string metadata normalization; 11 contract tests, keyless).
 
 ## Model Experience
 
@@ -61,5 +62,5 @@ Catalog entries live in the injected catalog block; adding, removing, or editing
 - **No ClawHub install execution**: `metadata.clawdbot.install` specs (brew/node/go/uv) are ignored; skills must already be present in a scanned directory;
 - **No remote ClawHub registry**: no pull, version locking, or rollback (the baseline distributes via an external CLI; a registry client would be a new surface);
 - **No fs watcher**: changes appear on the next catalog collect (`skills/change` invalidation covers other providers' mutations; a watcher for these roots is deferred);
-- **Best-effort gating**: bins are probed via PATH with `X_OK` access semantics (POSIX; on Windows `X_OK` is always granted); config-driven OpenClaw gates (`requires.config`, `os`) are not ported;
+- **Gating scope**: bin gates resolve through `ctx.subprocess` (including Windows `PATHEXT`); config-driven OpenClaw gates (`requires.config`, `os`) are not ported;
 - **`~/.clawdbot/skills` is the default managed root**: existing OpenClaw installs work out of the box; set `managedDir` to point elsewhere.

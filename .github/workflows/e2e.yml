@@ -6,10 +6,14 @@ name: E2E (real DeepSeek API)
 # https://api.deepseek.com (DEEPSEEK_BASE_URL is pinned to it explicitly so a
 # stray repo-root .env can't redirect the run).
 #
-# pull_request IS a trigger, but GitHub withholds repo secrets from BOTH forked
-# PRs and Dependabot PRs (the latter are same-repo, fork==false, but still
-# keyless). The job-level `if:` below skips the whole job for those untrusted
-# PRs. The Dependabot test keys on the PR AUTHOR (pull_request.user.login), not
+# pull_request IS a trigger, but GitHub withholds repo secrets from BOTH
+# cross-repository PRs and Dependabot PRs (the latter are same-repository, but
+# still keyless). The canonical repository runs trusted events by default;
+# mirrors must explicitly opt in with DSH_REAL_API_E2E_ENABLED=true. The
+# job-level `if:` below skips keyless PRs even after repository opt-in. A
+# cross-repository PR is identified by comparing the head repository's full
+# name, not by trusting the mutable `fork` flag. The Dependabot test keys on the
+# PR AUTHOR (pull_request.user.login), not
 # github.actor (the run trigger) — a maintainer reopening a Dependabot PR would
 # make github.actor human while the PR is still keyless. When the job runs, the
 # secret is expected, so the preflight hard-fails if it's missing (a missing
@@ -50,16 +54,21 @@ env:
   # CI runs must never report to the production telemetry endpoint baked
   # into apps/cli/cordis.yml (AppCLIEntry disables the row when set).
   DSH_TELEMETRY_DISABLED: '1'
+  NODE_OPTIONS: --max-old-space-size=4096
 
 jobs:
   e2e:
     runs-on: ubuntu-latest
     name: e2e
-    # Run on every trusted event. Skip untrusted PRs (forks + Dependabot) where
-    # the secret is withheld — they would otherwise hard-fail the preflight.
+    # The canonical repository runs every trusted event. Mirrors opt in
+    # explicitly; once enabled, the preflight below still fails loud if their
+    # secret is absent, so opt-in can never produce a false green.
     if: >-
-      github.event_name != 'pull_request'
-      || !(github.event.pull_request.head.repo.fork || github.event.pull_request.user.login == 'dependabot[bot]')
+      (github.repository == 'deepseek-ai/deepseek-harness'
+        || vars.DSH_REAL_API_E2E_ENABLED == 'true')
+      && (github.event_name != 'pull_request'
+        || (github.event.pull_request.head.repo.full_name == github.repository
+          && github.event.pull_request.user.login != 'dependabot[bot]'))
     # Bounded file parallelism (DSH_E2E_MAX_WORKERS), 120s/test, retry 2. 45m
     # still bounds retry storms against a slow API while the happy path fans out.
     timeout-minutes: 45

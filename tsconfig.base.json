@@ -44,6 +44,7 @@
       "@clawdsh/dsh-soul": ["./packages/openclaw/soul/src"],
       "@clawdsh/dsh-soul/settings-host": ["./packages/openclaw/soul/src/startup.ts"],
       "@clawdsh/dsh-channel-core": ["./packages/openclaw/channel-core/src"],
+      "@clawdsh/dsh-channel-discord": ["./packages/openclaw/channel-discord/src"],
       "@clawdsh/dsh-channel-telegram": ["./packages/openclaw/channel-telegram/src"],
       "@clawdsh/dsh-channel-feishu": ["./packages/openclaw/channel-feishu/src"],
       "@clawdsh/dsh-channel": ["./packages/openclaw/channel/src"],

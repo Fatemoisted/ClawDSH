@@ -62,6 +62,28 @@ function firstFetchInit(fetchMock: ReturnType<typeof vi.fn>): RequestInit {
   return first[1] as RequestInit
 }
 
+/** Parse the JSON request body without leaking `JSON.parse`'s `any` into assertions. */
+function requestBody(init: RequestInit): unknown {
+  if (typeof init.body !== 'string') throw new Error('request body was not JSON text')
+  const body: unknown = JSON.parse(init.body)
+  return body
+}
+
+/** Read the sole text input from the Ark multimodal request fixture. */
+function requestText(init: RequestInit): string {
+  const body = requestBody(init)
+  if (typeof body !== 'object' || body === null || !('input' in body)) {
+    throw new Error('request body had no input array')
+  }
+  const input: unknown = body.input
+  if (!Array.isArray(input)) throw new Error('request body input was not an array')
+  const first: unknown = input[0]
+  if (typeof first !== 'object' || first === null || !('text' in first) || typeof first.text !== 'string') {
+    throw new Error('request body had no text input')
+  }
+  return first.text
+}
+
 beforeEach(() => {
   vi.stubEnv('ARK_API_KEY', 'test-key')
 })
@@ -85,21 +107,39 @@ describe('ark embeddings provider', () => {
     await ctx.plugin(ArkEmbeddings, { model: 'base-model' })
     await ctx.embeddings.embed(['a'])
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://settings.example/v3/embeddings/multimodal')
-    expect(JSON.parse(firstFetchInit(fetchMock).body as string)).toMatchObject({ model: 'settings-model' })
+    expect(requestBody(firstFetchInit(fetchMock))).toMatchObject({ model: 'settings-model' })
     expect(ctx.settings.describe().find(entry => entry.ns === ARK_SETTINGS_NAMESPACE))
       .toMatchObject({ applies: 'restart' })
 
     await ctx.settings.update(ARK_SETTINGS_NAMESPACE, { model: 'changed-model' })
     vi.stubEnv('ARK_API_KEY', 'rotated-key')
     await ctx.embeddings.embed(['b'])
-    expect(JSON.parse((fetchMock.mock.calls[1]?.[1] as RequestInit).body as string)).toMatchObject({ model: 'settings-model' })
-    expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).toMatchObject({ Authorization: 'Bearer rotated-key' })
+    const second = fetchMock.mock.calls[1]
+    if (second === undefined) throw new Error('second fetch never ran')
+    const secondInit = second[1] as RequestInit
+    expect(requestBody(secondInit)).toMatchObject({ model: 'settings-model' })
+    expect(secondInit.headers).toMatchObject({ Authorization: 'Bearer rotated-key' })
     await ctx.fiber.dispose()
+  })
+
+  it('keeps constructor defaults and the empty-input fast path when called through the service class', async () => {
+    const fetchMock = okFetch(responseBody([0.1]))
+    vi.stubGlobal('fetch', fetchMock)
+    const provider = new ArkEmbeddings(new Context(), {})
+    const signal = new AbortController().signal
+
+    await expect(provider.embed([])).resolves.toEqual([])
+    await expect(provider.embed(['a'], signal)).resolves.toEqual([[0.1]])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal')
+    expect(requestBody(init)).toMatchObject({ model: 'doubao-embedding-vision-251215' })
+    expect(init.signal).toBeInstanceOf(AbortSignal)
   })
 
   it('sends one text-only request per text and parses vectors in order', async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const text = (JSON.parse(init.body as string).input as { text: string }[])[0]!.text
+      const text = requestText(init)
       return new Response(responseBody(text === '天很蓝' ? [0.1, 0.2] : [0.3, 0.4]), { status: 200 })
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -111,9 +151,9 @@ describe('ark embeddings provider', () => {
     const first = fetchMock.mock.calls[0]
     if (first === undefined) throw new Error('fetch was never called')
     const [url, init] = first
-    expect(String(url)).toBe('https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal')
-    expect((init as RequestInit).headers).toMatchObject({ Authorization: 'Bearer test-key' })
-    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+    expect(url).toBe('https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal')
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer test-key' })
+    expect(requestBody(init)).toEqual({
       model: 'doubao-embedding-vision-251215',
       input: [{ type: 'text', text: '天很蓝' }],
     })
@@ -126,11 +166,27 @@ describe('ark embeddings provider', () => {
     await expect(ctx.embeddings.embed(['a'])).rejects.toThrow(/data\.embedding/)
   })
 
-  it('throws on an empty or non-finite embedding vector', async () => {
-    vi.stubGlobal('fetch', okFetch(JSON.stringify({ data: { embedding: [0.1, Number.NaN] } })))
-    const ctx = await testContext()
-    await ctx.plugin(ArkEmbeddings, {})
-    await expect(ctx.embeddings.embed(['a'])).rejects.toThrow(/invalid embedding vector/)
+  it.each([
+    ['a primitive body', 1, /no data field/],
+    ['a null body', null, /no data field/],
+    ['an object without data', {}, /no data field/],
+    ['null data', { data: null }, /data\.embedding/],
+    ['data without an embedding', { data: {} }, /data\.embedding/],
+    ['a non-array embedding', { data: { embedding: 'invalid' } }, /data\.embedding/],
+  ])('rejects malformed Ark responses: %s', async (_label, body, message) => {
+    vi.stubGlobal('fetch', okFetch(JSON.stringify(body)))
+    const provider = new ArkEmbeddings(new Context(), {})
+    await expect(provider.embed(['a'])).rejects.toThrow(message)
+  })
+
+  it.each([
+    ['empty', []],
+    ['non-numeric', [0.1, 'invalid']],
+    ['non-finite', [0.1, Number.NaN]],
+  ])('throws on an %s embedding vector', async (_label, embedding) => {
+    vi.stubGlobal('fetch', okFetch(JSON.stringify({ data: { embedding } })))
+    const provider = new ArkEmbeddings(new Context(), {})
+    await expect(provider.embed(['a'])).rejects.toThrow(/invalid embedding vector/)
   })
 
   it('throws when the dimension drifts across calls', async () => {
@@ -166,6 +222,16 @@ describe('ark embeddings provider', () => {
     expect(failure).toBeInstanceOf(Error)
     expect(String(failure)).toMatch(/malformed JSON embedding response/)
     expect(String(failure)).not.toContain(secret)
+  })
+
+  it('does not let a failed HTTP error-body read mask the status failure', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      text: async () => await Promise.reject(new Error('body unavailable')),
+    } as Response)))
+    const provider = new ArkEmbeddings(new Context(), {})
+    await expect(provider.embed(['a'])).rejects.toThrow(/HTTP 503/)
   })
 
   it('fails loudly when no key is resolvable', async () => {
@@ -214,7 +280,7 @@ describe('ark embeddings provider', () => {
     const ctx = await testContext()
     await ctx.plugin(ArkEmbeddings, { maxConcurrentTexts: 4 })
     const embedding = ctx.embeddings.embed(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+    await vi.waitFor(() => { expect(fetchMock).toHaveBeenCalledTimes(4) })
     expect(peak).toBe(4)
     openGate()
     const vectors = await embedding
@@ -225,7 +291,7 @@ describe('ark embeddings provider', () => {
 
   it('returns vectors in input order even when requests resolve out of order', async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const text = (JSON.parse(init.body as string).input as { text: string }[])[0]!.text
+      const text = requestText(init)
       const index = Number(text)
       // The first request is the slowest; completion order is the reverse of input order.
       await new Promise(resolve => setTimeout(resolve, (10 - index) * 2))
@@ -241,7 +307,7 @@ describe('ark embeddings provider', () => {
 
   it('rejects the whole batch when one request fails', async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const text = (JSON.parse(init.body as string).input as { text: string }[])[0]!.text
+      const text = requestText(init)
       if (text === 'bad') return new Response('boom', { status: 500 })
       return new Response(responseBody([0.1]), { status: 200 })
     })
@@ -267,12 +333,21 @@ describe('ark embeddings provider', () => {
     const ctx = await testContext()
     await ctx.plugin(ArkEmbeddings, { maxConcurrentTexts: 1 })
     const embedding = ctx.embeddings.embed(['a', 'b', 'c'])
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => { expect(fetchMock).toHaveBeenCalledTimes(1) })
     expect(peak).toBe(1)
     openGate()
     await embedding
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(peak).toBe(1)
+  })
+
+  it('fails loudly before sending a request for a sparse-array hole', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const provider = new ArkEmbeddings(new Context(), {})
+    const sparse = new Array<string>(1)
+    await expect(provider.embed(sparse)).rejects.toThrow(/texts\[0\] must be a string/)
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('rejects maxConcurrentTexts below 1 at mount', async () => {

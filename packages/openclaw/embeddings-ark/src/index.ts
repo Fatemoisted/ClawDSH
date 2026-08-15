@@ -103,6 +103,11 @@ export class ArkEmbeddings extends Embeddings {
 
   override async embed(texts: readonly string[], signal?: AbortSignal): Promise<EmbeddingVector[]> {
     if (texts.length === 0) return []
+    for (let index = 0; index < texts.length; index += 1) {
+      if (typeof texts[index] !== 'string') {
+        throw new TypeError(`@clawdsh/dsh-embeddings-ark: texts[${index}] must be a string`)
+      }
+    }
     const apiKey = await this.resolveApiKey()
     if (apiKey === undefined) {
       throw new Error(
@@ -123,8 +128,8 @@ export class ArkEmbeddings extends Embeddings {
         const index = next
         next += 1
         if (index >= texts.length) return
-        const text = texts[index]
-        if (text === undefined) return
+        // The dense runtime validation above makes this indexed access safe.
+        const text = texts[index] as string
         results[index] = await this.embedOne(text, apiKey, signal)
       }
     })
@@ -198,9 +203,9 @@ function parseResponse(payload: unknown): EmbeddingVector {
   if (typeof payload !== 'object' || payload === null || !('data' in payload)) {
     throw new Error('@clawdsh/dsh-embeddings-ark: malformed embedding response (no data field)')
   }
-  const data = (payload as { data: unknown }).data
+  const data = payload.data
   if (typeof data !== 'object' || data === null || !('embedding' in data)
-    || !Array.isArray((data as { embedding: unknown }).embedding)) {
+    || !Array.isArray(data.embedding)) {
     throw new Error('@clawdsh/dsh-embeddings-ark: malformed embedding response (no data.embedding vector)')
   }
   const embedding = (data as { embedding: unknown[] }).embedding

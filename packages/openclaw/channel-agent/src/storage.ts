@@ -1,7 +1,6 @@
 /** Durable route mapping and idempotency ledger. @module @clawdsh/dsh-channel-agent/storage */
 
-import { createHash } from 'node:crypto'
-import { z } from 'zod'
+import { z, type RefinementCtx } from 'zod'
 import {
   ChannelAccountId,
   ChannelConversationId,
@@ -9,12 +8,14 @@ import {
   ChannelThreadId,
   GatewayInstanceId,
   OpenClawSessionKey,
+  canonicalJson,
   channelDeliveryReceiptV1Schema,
   channelSessionCloseV1Schema,
   channelSessionResetResultV1Schema,
   channelSessionResetV1Schema,
   channelTurnEnvelopeV1Schema,
   channelTurnResultV1Schema,
+  digestJson,
   type ChannelRouteV1,
   type ChannelSessionCloseV1,
   type ChannelSessionResetV1,
@@ -25,6 +26,22 @@ import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 
 const safeTimestampSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 const digestSchema = z.string().regex(/^[a-f0-9]{64}$/)
+const timestampRecordShape = {
+  createdAt: safeTimestampSchema,
+  updatedAt: safeTimestampSchema,
+}
+
+/** Reject a record whose last-update time predates its creation. */
+function validateTimestampOrder(
+  record: { readonly createdAt: number; readonly updatedAt: number },
+  ctx: RefinementCtx,
+): void {
+  if (record.updatedAt < record.createdAt) {
+    ctx.addIssue({ code: 'custom', path: ['updatedAt'], message: 'must not precede createdAt' })
+  }
+}
+
+export { canonicalJson, digestJson }
 
 /** Reject blank or padded opaque ids before restoring their brands. */
 function opaqueId<T extends string>(factory: (value: string) => T): z.ZodType<T> {
@@ -59,12 +76,9 @@ export const channelSessionBindingRecordSchema = z.object({
   sessionId: opaqueId(SessionId),
   preset: z.string().min(1),
   state: z.enum(['active', 'closed']),
-  createdAt: safeTimestampSchema,
-  updatedAt: safeTimestampSchema,
+  ...timestampRecordShape,
 }).strict().superRefine((record, ctx) => {
-  if (record.updatedAt < record.createdAt) {
-    ctx.addIssue({ code: 'custom', path: ['updatedAt'], message: 'must not precede createdAt' })
-  }
+  validateTimestampOrder(record, ctx)
   if (record.sessionId !== sessionIdFor(record.route)) {
     ctx.addIssue({ code: 'custom', path: ['sessionId'], message: 'must match the deterministic route binding' })
   }
@@ -155,12 +169,9 @@ export const channelLedgerRecordSchema = z.object({
   sessionId: opaqueId(SessionId).optional(),
   result: channelTurnResultV1Schema.optional(),
   delivery: channelDeliveryReceiptV1Schema.optional(),
-  createdAt: safeTimestampSchema,
-  updatedAt: safeTimestampSchema,
+  ...timestampRecordShape,
 }).strict().superRefine((record, ctx) => {
-  if (record.updatedAt < record.createdAt) {
-    ctx.addIssue({ code: 'custom', path: ['updatedAt'], message: 'must not precede createdAt' })
-  }
+  validateTimestampOrder(record, ctx)
   if (digestJson(record.envelope) !== record.envelopeDigest) {
     ctx.addIssue({ code: 'custom', path: ['envelopeDigest'], message: 'must match the stored envelope' })
   }
@@ -219,35 +230,6 @@ export const channelAgentDomainSpec = defineDomain({
     ledger: domainTable<string, ChannelLedgerRecord>(channelLedgerRecordSchema),
   },
 })
-
-/**
- * Canonical JSON text with lexicographically sorted object keys.
- * @param value - Lossless JSON value to encode.
- * @returns Deterministic JSON text for the complete value.
- */
-export function canonicalJson(value: unknown): string {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value)
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) throw new Error('channel-agent: canonical identity value contains a non-finite number')
-    return JSON.stringify(value)
-  }
-  if (Array.isArray(value)) return `[${value.map(item => canonicalJson(item)).join(',')}]`
-  if (typeof value !== 'object' || (Object.getPrototypeOf(value) !== Object.prototype
-    && Object.getPrototypeOf(value) !== null)) {
-    throw new Error('channel-agent: canonical identity value is not plain JSON')
-  }
-  const entries = Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
-  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(',')}}`
-}
-
-/**
- * SHA-256 of a lossless JSON value, used only for identity and equality.
- * @param value - Lossless JSON value to hash canonically.
- * @returns Lowercase hexadecimal SHA-256 digest.
- */
-export function digestJson(value: unknown): string {
-  return createHash('sha256').update(canonicalJson(value)).digest('hex')
-}
 
 /**
  * Derive the durable key for one route generation.

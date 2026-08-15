@@ -4,6 +4,12 @@ import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { valid } from 'semver'
 import { installedProjectTreeDigest } from './file-integrity.ts'
+import {
+  installIdentity,
+  installedPackageDirectories,
+  isPackageLockPath,
+  requireOrdinaryDirectory,
+} from './npm-tree.ts'
 import { supportsCurrentPlatform } from './npm-platform.ts'
 
 /** Immutable identity of one opt-in OpenClaw Channel plugin installation. */
@@ -189,7 +195,12 @@ async function verifyExtensionProject(
   const primaryKey = `node_modules/${lock.packageName}`
   verifyLockedPackage(checkedPackages[primaryKey], lock, 'checked')
   verifyLockedPackage(hiddenPackages[primaryKey], lock, 'installed')
-  const discovered = await installedPackageDirectories(projectRoot, openClawPeer)
+  const discovered = await installedPackageDirectories({
+    root: projectRoot,
+    kind: 'extension',
+    ...(openClawPeer === undefined ? {} : { allowedPackageLink: openClawPeer }),
+    rootLabel: 'extension project node_modules',
+  })
   for (const [path, installed] of Object.entries(hiddenPackages)) {
     if (!isPackageLockPath(path) || !isRecord(installed) || !isRecord(checkedPackages[path])
       || installIdentity(installed) !== installIdentity(checkedPackages[path])) {
@@ -228,63 +239,6 @@ async function verifyOpenClawPeer(rootDir: string, hostRoot: string, pluginId: s
     if (isMissing(error)) return undefined
     throw error
   }
-}
-
-/** Enumerate actual package directories while allowing only the verified OpenClaw peer link. */
-async function installedPackageDirectories(projectRoot: string, openClawPeer: string | undefined): Promise<Set<string>> {
-  const packages = new Set<string>()
-  const visit = async (nodeModules: string): Promise<void> => {
-    for (const entry of await readdir(nodeModules, { withFileTypes: true })) {
-      if (entry.name === '.bin' || entry.name === '.package-lock.json') continue
-      const entryPath = resolve(nodeModules, entry.name)
-      if (entry.isSymbolicLink()) {
-        if (openClawPeer === entryPath) continue
-        throw new Error(`channel-openclaw: extension node_modules contains an unverified package link ${entryPath}`)
-      }
-      if (!entry.isDirectory()) throw new Error(`channel-openclaw: extension node_modules contains a non-directory entry ${entryPath}`)
-      if (entry.name.startsWith('@')) {
-        for (const child of await readdir(entryPath, { withFileTypes: true })) {
-          const childPath = resolve(entryPath, child.name)
-          if (child.isSymbolicLink() || !child.isDirectory()) {
-            throw new Error(`channel-openclaw: extension package scope contains a non-directory entry ${childPath}`)
-          }
-          await addPackage(childPath)
-        }
-      } else {
-        await addPackage(entryPath)
-      }
-    }
-  }
-  const addPackage = async (packagePath: string): Promise<void> => {
-    const key = relative(projectRoot, packagePath).split(sep).join('/')
-    packages.add(key)
-    const nested = resolve(packagePath, 'node_modules')
-    try {
-      await requireOrdinaryDirectory(nested, `nested node_modules for ${key}`)
-      await visit(nested)
-    } catch (error) {
-      if (!isMissing(error)) throw error
-    }
-  }
-  await requireOrdinaryDirectory(resolve(projectRoot, 'node_modules'), 'extension project node_modules')
-  await visit(resolve(projectRoot, 'node_modules'))
-  return packages
-}
-
-/** Require one canonical node_modules-relative package-lock key. */
-function isPackageLockPath(path: string): boolean {
-  if (!path.startsWith('node_modules/')) return false
-  const parts = path.split('/')
-  if (parts.some(part => part === '' || part === '.' || part === '..')) return false
-  for (let index = 0; index < parts.length;) {
-    if (parts[index] !== 'node_modules') return false
-    index += 1
-    const packageHead = parts[index]
-    if (packageHead === undefined) return false
-    index += packageHead.startsWith('@') ? 2 : 1
-    if (index > parts.length) return false
-  }
-  return true
 }
 
 /** Verify one package directory's immutable name and version facts. */
@@ -340,24 +294,6 @@ function sameStrings(value: unknown, expected: readonly string[]): boolean {
   return Array.isArray(value) && value.every(item => typeof item === 'string')
     && new Set(value).size === value.length
     && [...value].sort().join('\0') === [...expected].sort().join('\0')
-}
-
-/** Compare registry identity fields shared by npm's checked and hidden locks. */
-function installIdentity(value: Record<string, unknown>): string {
-  return JSON.stringify({
-    version: value.version,
-    resolved: value.resolved,
-    integrity: value.integrity,
-    link: value.link,
-    os: value.os,
-    cpu: value.cpu,
-  })
-}
-
-/** Require an ordinary directory rather than a mutable filesystem indirection. */
-async function requireOrdinaryDirectory(path: string, label: string): Promise<void> {
-  const info = await lstat(path)
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`channel-openclaw: ${label} must be an ordinary directory`)
 }
 
 /** Parse strict JSON text or a previously parsed value as an object. */

@@ -7,6 +7,96 @@ const root = resolve(import.meta.dirname, '..')
 const runnerPrivatePnpmDestination = '${{ runner.temp }}/setup-pnpm'
 
 describe('CI workflow', () => {
+  it('uses the same Host TypeScript aggregate in package and Wine builds', () => {
+    const packageJson: unknown = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
+    if (!isRecord(packageJson) || !isRecord(packageJson.scripts)) {
+      throw new TypeError('package.json must define scripts')
+    }
+
+    expect(packageJson.scripts['build:lib:host']).toBe(
+      'tsc -b tsconfig.host.json && tsdown --env.DSH_BUILD_FACE host',
+    )
+
+    const wineScript = readFileSync(resolve(root, 'scripts/wine-windows-gates.sh'), 'utf8')
+    const wineHostTypeScriptCommands = wineScript
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.startsWith('wine_node "$scratch/logs/host-tsc.log"'))
+
+    expect(wineHostTypeScriptCommands).toEqual([
+      'wine_node "$scratch/logs/host-tsc.log" "$tsc_js" -b tsconfig.host.json --pretty false || return $?',
+    ])
+  })
+
+  it('keeps canonical-only automation and real-API trust boundaries exact', () => {
+    const lifecycle = workflowJob(loadWorkflow('.github/workflows/issue-lifecycle.yml'), 'lifecycle')
+    const policy = workflowJob(loadWorkflow('.github/workflows/issue-policy.yml'), 'policy')
+    const e2e = workflowJob(loadWorkflow('.github/workflows/e2e.yml'), 'e2e')
+
+    expect(normalizeWorkflowCondition(lifecycle.if)).toBe(
+      "${{ github.repository == 'deepseek-ai/deepseek-harness' && (github.event_name == 'issues' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && (github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested')) }}",
+    )
+    expect(normalizeWorkflowCondition(policy.if)).toBe(
+      "${{ github.repository == 'deepseek-ai/deepseek-harness' }}",
+    )
+    expect(normalizeWorkflowCondition(e2e.if)).toBe(
+      "(github.repository == 'deepseek-ai/deepseek-harness' || vars.DSH_REAL_API_E2E_ENABLED == 'true') && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]'))",
+    )
+  })
+
+  it('keeps the ClawDSH smoke checkout read-only and both product planes covered', () => {
+    const workflow = loadWorkflow('.github/workflows/clawdsh-smoke.yml')
+    const smoke = workflowJob(workflow, 'smoke')
+    if (!isRecord(workflow.permissions) || !Array.isArray(smoke.steps)) {
+      throw new TypeError('ClawDSH smoke workflow must define permissions and steps')
+    }
+    const checkout = smoke.steps.filter(isRecord).find(
+      step => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
+    )
+    expect(workflow.permissions).toEqual({ contents: 'read' })
+    expect(checkout).toMatchObject({ with: { 'persist-credentials': false } })
+
+    const productInstall = namedWorkflowStep(smoke.steps.filter(isRecord), 'Install ClawDSH product shell')
+    const productLifecycle = namedWorkflowStep(smoke.steps.filter(isRecord), 'ClawDSH product shell')
+    expect(productInstall.run).toContain(
+      'pnpm --dir packages/openclaw/preset-openclaw/product-shell install --frozen-lockfile',
+    )
+    for (const command of ['typecheck', 'test', 'build']) {
+      expect(productLifecycle.run).toContain(
+        `pnpm --dir packages/openclaw/preset-openclaw/product-shell run ${command}`,
+      )
+    }
+
+    const channelGates = namedWorkflowStep(smoke.steps.filter(isRecord), 'ClawDSH communication-plane gates')
+    for (const packageName of [
+      'channel-core',
+      'channel-telegram',
+      'channel-discord',
+      'channel-feishu',
+    ]) {
+      expect(channelGates.run).toContain(`packages/openclaw/${packageName}/tests`)
+    }
+  })
+
+  it('gives every root-build workflow enough Node heap for the ClawDSH aggregate', () => {
+    for (const filename of [
+      '.github/workflows/build-exe-for-python-sdk.yml',
+      '.github/workflows/ci.yml',
+      '.github/workflows/clawdsh-publish.yml',
+      '.github/workflows/clawdsh-smoke.yml',
+      '.github/workflows/e2b-e2e.yml',
+      '.github/workflows/e2e.yml',
+      '.github/workflows/release-vendor.yml',
+      '.github/workflows/release.yml',
+      '.github/workflows/sandbox.yml',
+    ]) {
+      const workflow = loadWorkflow(filename)
+      expect(workflow.env, filename).toMatchObject({
+        NODE_OPTIONS: '--max-old-space-size=4096',
+      })
+    }
+  })
+
   it('isolates every pnpm action setup destination per runner', () => {
     const workflow: unknown = yaml.load(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'))
     if (!isRecord(workflow) || !isRecord(workflow.jobs)) throw new TypeError('CI workflow must define jobs')
@@ -70,6 +160,10 @@ describe('CI workflow', () => {
     expect(windowsNative['runs-on']).toContain('self-hosted')
     expect(windowsNative['runs-on']).toContain('dsh-win-ci')
     expect(windowsNative['runs-on']).toContain('dsh-windows-2025-16core')
+    expect(windowsNative['runs-on']).toContain("github.repository == 'deepseek-ai/deepseek-harness'")
+    expect(windowsNative['runs-on']).toContain('windows-2025')
+    expect(JSON.stringify(windowsNative.env), 'Windows mirrors must use serial worker bounds')
+      .toContain("|| '1'")
     expect(windowsNative.name).toBe('windows node 24 / native complete')
     expect(windowsNative.if).toBe("github.event_name == 'pull_request'")
     const nativeCommandSteps = (windowsNative.steps as unknown[]).filter((step): step is Record<string, unknown> & { run: string } => (
@@ -99,6 +193,12 @@ describe('CI workflow', () => {
       expect(job['runs-on'], `${jobName} runs-on must use the Linux failover switch`).toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on'], `${jobName} runs-on must not use the Windows failover switch`).not.toContain('DSH_CI_FAILOVER_WINDOWS')
       expect(job['runs-on']).toContain('vm-backup')
+      expect(job['runs-on']).toContain("github.repository == 'deepseek-ai/deepseek-harness'")
+      expect(job['runs-on']).toContain('ubuntu-latest')
+      expect(JSON.stringify(job.env), `${jobName} mirrors must use serial worker bounds`)
+        .toContain("github.repository == 'deepseek-ai/deepseek-harness'")
+      expect(JSON.stringify(job.env), `${jobName} mirrors must use one worker`)
+        .toContain("|| '1'")
     }
     expect(aggregate['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
     expect(aggregate['runs-on']).not.toContain('DSH_CI_FAILOVER_WINDOWS')
@@ -178,6 +278,16 @@ describe('CI workflow', () => {
     expect(config).not.toContain('packages/lsp/lsp-stdio/src/connection.ts')
     expect(config).not.toContain('packages/lsp/lsp-stdio/src/index.ts')
     expect(config).not.toContain('packages/lsp/lsp-stdio/src/instance.ts')
+  })
+
+  it('limits native Windows OpenClaw coverage exclusions to the fail-closed POSIX transport', () => {
+    const config = readFileSync(resolve(root, 'vitest.config.ts'), 'utf8')
+
+    expect(config).toContain("const windowsPosixOpenClawCoverageExclusions = process.platform === 'win32'")
+    expect(config).toContain("'packages/openclaw/channel-openclaw/src/server.ts'")
+    expect(config).toContain("'packages/openclaw/channel-openclaw/src/supervisor.ts'")
+    expect(config).toContain('...windowsPosixOpenClawCoverageExclusions')
+    expect(config).not.toContain("'packages/openclaw/channel-openclaw/src/**/*.ts'")
   })
 
   it('requires one release-shaped Python runtime target on every pull request', () => {
@@ -383,8 +493,8 @@ describe('Issue lifecycle workflow', () => {
     expect(lifecyclePullRequest.types).not.toContain('ready_for_review')
     expect(lifecyclePullRequest.types).toContain('review_requested')
     expect(lifecycleReview.types).toEqual(['submitted'])
-    expect(lifecycleJob.if).toBe(
-      "${{ github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested') }}",
+    expect(normalizeWorkflowCondition(lifecycleJob.if)).toBe(
+      "${{ github.repository == 'deepseek-ai/deepseek-harness' && (github.event_name == 'issues' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]')) && (github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested')) }}",
     )
     expect(policyPullRequest.types).toContain('ready_for_review')
   })
@@ -426,6 +536,19 @@ function workflowJob(workflow: Record<string, unknown>, job: string): Record<str
     throw new TypeError(`workflow must define the ${job} job`)
   }
   return workflow.jobs[job]
+}
+
+function normalizeWorkflowCondition(value: unknown): string {
+  if (typeof value !== 'string') throw new TypeError('workflow job must define a string if condition')
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function namedWorkflowStep(steps: readonly Record<string, unknown>[], name: string): Record<string, unknown> & { run: string } {
+  const step = steps.find(candidate => candidate.name === name)
+  if (!isRecord(step) || typeof step.run !== 'string') {
+    throw new TypeError(`workflow must define a ${name} command step`)
+  }
+  return step as Record<string, unknown> & { run: string }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

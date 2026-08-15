@@ -43,7 +43,7 @@ The production channel plane is locked to OpenClaw `v2026.7.1-2`, commit `0790d9
 | Channel Service Definition | current Gateway integration | owned `ctx.channels` | New seam | `channel` | V1 implemented |
 | Channel Agent Driver | dsh Session and Agent lifecycle | `ctx.channels`, Agents, Sessions, attachments | Plugin | `channel-agent` | foundation implemented; certification incomplete |
 | OpenClaw communication Provider | locked Gateway and plugins | `ctx.channels`, subprocess, storage | Plugin | `channel-openclaw` | foundation implemented; disabled by default |
-| Legacy in-process channel path | ADR-0002 experiment | `ctx.legacyChannels` | Deferred removal | `channel-core`, `channel-telegram`, `channel-feishu` | retained until the ADR-0008 replacement conditions pass |
+| Legacy in-process channel path | ADR-0002 experiment | `ctx.legacyChannels` | Deferred removal | `channel-core`, `channel-telegram`, `channel-discord`, `channel-feishu` | compatibility-only; default-disabled until ADR-0008 replacement gates pass |
 | Approval / security policy | later OpenClaw security reference | approvals and guards | Reuse/config | — | directly usable |
 | Federation node | outside early baseline | `ctx.subagents` transport | Plugin | `clawd-federation` | ADR-0005 evaluation only; implementation deferred |
 | Smart home | outside selected scope | no accepted seam | Deferred | — | requires a reviewed source and capability design |
@@ -56,6 +56,10 @@ The channel Agent path stores complete sanitized model provenance on the known `
 
 The distribution CLI pins `@deepseek-ai/dsh@0.1.0-rc.6`, and the prepared release workflow targets only public npm `next` with OIDC trusted publishing and provenance. None of the thirteen package names exists, so the release is `bootstrap-required`, not `OIDC-ready`: initial creation requires separately authorized interactive 2FA publication, staged publishing is unavailable for new packages, and subsequent OIDC authority requires all thirteen trust records, the branch-restricted GitHub `npm` environment, and exact `refs/heads/clawdsh`. The repository remains private and no bootstrap, trust configuration, or publication has occurred.
 
+### Legacy evidence boundary
+
+The retained `clawdsh-legacy-channel-plane` group is disabled by default. If its opt-in is present, Gateway startup and Settings preflight reject enabling the canonical sidecar. Its 2026-08-14 Feishu text round trip and 2026-08-15 Telegram real-client matrix are historical implementation evidence; Discord has keyless coverage only. These runs used the in-process adapter host, not the locked OpenClaw Gateway, and therefore do not promote any sidecar Channel. The [evidence journal](../journal/2026-08-15.md) and [Telegram cookbook](../cookbook/telegram-e2e.md) own the exact passed/not-run boundary.
+
 ## Production channel catalog
 
 The stable public chat catalog contains 27 entries: **1 core + 2 bundled + 21 repository-official + 3 external = 24+3**. Exact names, package versions, integrities, source paths, and observation times live in `tools/openclaw-channel-host/channels.production.json`.
@@ -64,8 +68,9 @@ The stable public chat catalog contains 27 entries: **1 core + 2 bundled + 21 re
 |---|---:|---|---|
 | Core + bundled + repository-official | 24 | **cataloged** | Exact stable host source and per-entry provenance are locked; per-channel assembly and certification are incomplete |
 | External | 3 | **cataloged** | WeChat, Yuanbao, and Zalo ClawBot have exact package identities; external review and the same assembly and certification requirements still apply |
-| Legacy Telegram adapter | 1 | **installable** | Local package exists; no current credentialed live smoke establishes certification or enablement |
-| Legacy Feishu adapter | 1 | **installable** | Local package exists; historical smoke does not establish certification or enablement for the current release |
+| Legacy Telegram adapter | 1 | **installable** | Local package and historical credentialed text/caption evidence exist; later image/rotation/migration work is keyless only; disabled by default |
+| Legacy Discord adapter | 1 | **installable** | Local package and keyless Gateway/REST lifecycle evidence exist; no credentialed real-server E2E; disabled by default |
+| Legacy Feishu adapter | 1 | **installable** | Local package and historical credentialed text evidence exist; later credential-reference/hot-rotation work is keyless only; disabled by default |
 
 Catalog provenance is not a runtime support claim. A verified npm integrity does not make a channel installable until its compatible locked host and bridge composition assemble. The canary catalog contains 31 entries but remains cataloged audit input only.
 

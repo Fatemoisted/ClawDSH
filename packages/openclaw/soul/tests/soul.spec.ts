@@ -50,7 +50,7 @@ function installActivity(ctx: Context, write: (input: PromptActivityInput) => Pr
 function emitRequestHeader(ctx: Context, scope: ScopeKey, sessionId: string, system: string, seq: number): void {
   const session = { id: sessionId }
   const event = { type: 'request/header', seq, data: { header: { system }, reason: 'initial' } }
-  const emit = ctx.emit as unknown as (
+  const emit = ctx.emit.bind(ctx) as unknown as (
     target: object,
     name: 'session/event',
     subject: typeof session,
@@ -300,6 +300,27 @@ describe('the soul row', () => {
       .rejects.toThrow(/non-empty/)
   })
 
+  it('keeps apply-level defaults for raw callers that bypass schema materialization', async () => {
+    const ctx = await harness('deployment identity')
+    const key: ScopeKey = { agent: 'a1' }
+    const scope = createScope(ctx, key)
+
+    await scope.ctx.plugin({
+      name: 'raw-soul-defaults',
+      inject: ['systemPrompt'],
+      apply(pluginCtx) { Soul.apply(pluginCtx, { text: 'raw identity' }) },
+    })
+
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBe('raw identity')
+  })
+
+  it('rejects a raw config with neither a source nor inline text', async () => {
+    const ctx = await harness('deployment identity')
+    const key: ScopeKey = { agent: 'a1' }
+
+    expect(() => { Soul.apply(createScope(ctx, key).ctx, {}) }).toThrow(/non-empty/)
+  })
+
   it('fails loud on an unknown mode', async () => {
     const ctx = await harness('')
     const key: ScopeKey = { agent: 'a1' }
@@ -308,7 +329,7 @@ describe('the soul row', () => {
     // guard remains as defense for direct apply() calls.
     await expect(createScope(ctx, key).ctx.plugin(Soul, { text: 'x', mode: 'overwrite' as 'append' }))
       .rejects.toThrow(/\$\.mode expected/)
-    expect(() => Soul.apply(createScope(ctx, key).ctx, { text: 'x', mode: 'overwrite' as 'append' }))
+    expect(() => { Soul.apply(createScope(ctx, key).ctx, { text: 'x', mode: 'overwrite' as 'append' }) })
       .toThrow(/unknown mode/)
   })
 

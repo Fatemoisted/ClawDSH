@@ -32,6 +32,7 @@
     "lint:fix:contracts-ready": "tsx scripts/run-oxlint.ts --config .oxlintrc.staged.json packages/typert/generator/tests/fixtures/type-model --fix && tsx scripts/run-oxlint.ts . --fix",
     "duplication": "jscpd --config .jscpd.json packages scripts",
     "test": "vitest run",
+    "test:openclaw": "vitest run packages/openclaw",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:issue-management": "node .github/issue-management/policy.test.mjs",

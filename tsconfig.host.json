@@ -276,6 +276,7 @@
     // ClawDSH: 自有插件域（packages/openclaw/*）的新包在此注册 host 聚合。
     { "path": "./packages/openclaw/soul" },
     { "path": "./packages/openclaw/channel-core" },
+    { "path": "./packages/openclaw/channel-discord" },
     { "path": "./packages/openclaw/channel-telegram" },
     { "path": "./packages/openclaw/channel-feishu" },
     { "path": "./packages/openclaw/channel" },

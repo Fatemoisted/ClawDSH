@@ -25,6 +25,7 @@ English | [中文](context-map.zh.md)
 | `channel-openclaw/` | Service Provider | channels, subprocess, storage | locked OpenClaw supervision, authenticated IPC, health, actions, delivery ledger |
 | `channel-core/` | legacy Service | Agents, Sessions, default model | superseded in-process registry under `ctx.legacyChannels`; retained for replacement verification |
 | `channel-telegram/` | legacy adapter | legacy channel service | Telegram polling adapter; no current certification |
+| `channel-discord/` | legacy adapter | legacy channel service | Discord Gateway/REST adapter; keyless coverage only |
 | `channel-feishu/` | legacy adapter | legacy channel service | Feishu long-connection adapter; no current certification |
 | `channel-wechat/` | historical decision record | — | non-executable record superseded as availability guidance by the locked catalog |
 | `soul/` | function plugin | system prompt | replace or append persona sections |

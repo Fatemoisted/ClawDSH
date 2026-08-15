@@ -10,6 +10,8 @@ English | [中文](feature-gui-web.zh.md)
 
 The `clawdsh` profile starts one dsh Host process with two browser applications. `/clawdsh/` is the ClawDSH product entry point, while `/` remains the unmodified dsh Web application exposed as Harness Advanced. Both applications use the same Host services, Sessions, Connection transport, and persistence. A separately started `dsh --profile web` process remains the pure Harness entry point.
 
+In a clean installation, the canonical channel-plane group, the legacy group containing channel-core plus Telegram, Discord, and Feishu, and Automation are disabled, so the Host starts without their credentials or a Gateway artifact. While legacy opt-in is present, Gateway startup and Settings preflight reject canonical enablement, as required by [ADR-0008](../adr/0008-openclaw-channel-plane.md) and the [test1 rebuild decision](../../.agents/notes/implemented/architecture/2026-08-15-test1-channel-plane-rebuild.md).
+
 The product boundary is the process-level `clawdsh` profile, not a per-Session preset selection. New Sessions default to the `clawdsh` preset displayed as `ClawDSH 模式`; selecting another preset changes only that Session's Agent composition and does not unmount ClawDSH Host plugins.
 
 The product shell adds no model-visible input. Conversation requests continue to use the selected agent preset and mounted capability plugins.
@@ -54,9 +56,9 @@ Loader composition state and channel-support evidence are separate concepts:
 - Loader state is `disabled`, `starting`, `active`, `failed`, or `misconfigured` and derives from the configured entry and observed Fiber lifecycle.
 - Channel support is `cataloged`, `installable`, `certified`, or `enabled` and derives from explicit product evidence, never from a running Gateway process.
 
-The disabled state of the managed communication-plane parent is authoritative for Channels even though Cordis keeps the group carrier itself active and omits its disabled children. Soul is reported active only when the default `clawdsh` preset contains the exact enabled managed Soul row and its standing composition mounts successfully.
+The disabled state of the managed communication-plane parent is authoritative for Channels even though Cordis keeps the group carrier itself active and omits its disabled children. Channel Core starts only inside the explicitly enabled legacy group, each legacy transport needs its own opt-in, and canonical Gateway enablement is rejected while that group is requested. Soul is reported active only when the default `clawdsh` preset contains the exact enabled managed Soul row and its standing composition mounts successfully. Implementation dependencies such as Embeddings appear under their owning product capability instead of as unrelated top-level switches.
 
-Channels contain three components: Channel Protocol (`@clawdsh/dsh-channel`), Agent Bridge (`@clawdsh/dsh-channel-agent`), and OpenClaw Gateway Provider (`@clawdsh/dsh-channel-openclaw`). Feishu, Telegram, and the other locked production entries appear beneath the Gateway as catalog items with `cataloged` support; they are not standalone dsh plugin cards. Legacy `channel-core`, `channel-feishu`, and `channel-telegram` entries may appear in the raw Loader inventory but do not affect product health.
+Channels contain three components: Channel Protocol (`@clawdsh/dsh-channel`), Agent Bridge (`@clawdsh/dsh-channel-agent`), and OpenClaw Gateway Provider (`@clawdsh/dsh-channel-openclaw`). Feishu, Telegram, Discord, and the other locked production entries appear beneath the Gateway as catalog items with `cataloged` support; they are not standalone dsh plugin cards. Legacy `channel-core`, `channel-feishu`, `channel-telegram`, and `channel-discord` entries may appear in the raw Loader inventory but do not affect product health.
 
 Package provenance follows one fixed mapping: `@clawdsh/*` is ClawDSH, `@deepseek-ai/*` and `cordis:*` are Platform, and every other source is Community.
 

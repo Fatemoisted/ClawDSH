@@ -1,4 +1,4 @@
-/** Read-only legacy Telegram/Feishu migration inventory for the OpenClaw Gateway cutover. */
+/** Read-only legacy Telegram/Discord/Feishu migration inventory for the OpenClaw Gateway cutover. */
 
 import { readFile } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
@@ -6,12 +6,14 @@ import { pathToFileURL } from 'node:url'
 
 const LEGACY_ADAPTERS = {
   telegram: '@clawdsh/dsh-channel-telegram',
+  discord: '@clawdsh/dsh-channel-discord',
   feishu: '@clawdsh/dsh-channel-feishu',
 } as const
 
 /** Credential-shaped legacy names whose presence may be reported without exposing values. */
 export const LEGACY_CHANNEL_ENV_NAMES = [
   'TELEGRAM_BOT_TOKEN',
+  'DISCORD_BOT_TOKEN',
   'FEISHU_APP_ID',
   'FEISHU_APP_SECRET',
   'LARK_APP_ID',

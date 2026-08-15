@@ -21,6 +21,7 @@ interface CssRule {
 
 const STYLES = new URL('../src/styles/', import.meta.url)
 const PACKAGES_DIR = fileURLToPath(new URL('../../../', import.meta.url))
+const PRODUCT_SHELL_WEB = join(PACKAGES_DIR, 'openclaw', 'preset-openclaw', 'product-shell', 'runtime', 'web')
 const read = (name: string): string => readFileSync(fileURLToPath(new URL(name, STYLES)), 'utf8')
 
 const platformCss = read('design-platform.css')
@@ -107,7 +108,9 @@ function packageStylesheets(): string[] {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name)
       if (entry.isDirectory()) {
-        if (entry.name !== 'node_modules' && entry.name !== 'lib' && entry.name !== 'dist') walk(path)
+        const generated = entry.name === 'node_modules' || entry.name === 'lib' || entry.name === 'dist'
+          || path === PRODUCT_SHELL_WEB
+        if (!generated) walk(path)
       } else if (entry.name.endsWith('.css')) found.push(path)
     }
   }

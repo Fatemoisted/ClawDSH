@@ -58,7 +58,7 @@ cp packages/openclaw/preset-openclaw/profile/package.template.json "$PROFILE_DIR
 
 echo "==> 3/4 建立 @clawdsh 包 symlink（过渡，发布后移除）"
 mkdir -p "$LINK_DIR"
-for pkg in channel channel-agent channel-openclaw memory embeddings embeddings-ark skills-hub automation activity soul; do
+for pkg in channel channel-agent channel-openclaw channel-core channel-telegram channel-discord channel-feishu memory embeddings embeddings-ark skills-hub automation activity soul; do
   ln -sfn "$PWD/packages/openclaw/$pkg" "$LINK_DIR/dsh-$pkg"
   echo "    $LINK_DIR/dsh-$pkg -> packages/openclaw/$pkg"
 done

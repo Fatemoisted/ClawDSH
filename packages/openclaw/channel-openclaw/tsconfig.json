@@ -9,9 +9,11 @@
     { "path": "../../../vendor/cordis" },
     { "path": "../../../vendor/schemastery" },
     { "path": "../channel" },
+    { "path": "../../credentials/credentials" },
     { "path": "../../settings/settings" },
     { "path": "../../storage/storage-domain" },
     { "path": "../../subprocess/subprocess" },
+    { "path": "../../util/launch-environment" },
     { "path": "../../runtime-diagnostics/invariants" }
   ]
 }

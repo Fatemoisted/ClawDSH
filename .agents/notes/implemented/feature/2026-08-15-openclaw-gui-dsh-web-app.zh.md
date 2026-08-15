@@ -6,7 +6,9 @@ Status: implemented
 
 ## 问题
 
-OpenClaw 有两种用法：本机命令行，以及经 Gateway 桥接到通讯软件（飞书等）。ClawDSH 已通过 `ctx.channels` 交付渠道前台；「GUI」模式却无家可归。DeepSeek Harness 自带完整浏览器 GUI（`@deepseek-ai/dsh-web-app`），且它经与 `channel-core` 相同的 `ctx.agents` / `ctx.sessions` / agent-loop seam 驱动回合，所以 GUI 无需任何上游改动即可承载 OpenClaw 功能——这是组合问题，不是代码问题。
+OpenClaw 有两种用法：本机命令行，以及经 Gateway 桥接到通讯软件（飞书等）。DeepSeek Harness 自带完整浏览器 GUI（`@deepseek-ai/dsh-web-app`），且它经公开的 `ctx.agents` / `ctx.sessions` / agent-loop seam 驱动回合，所以 GUI 无需任何上游改动即可承载 OpenClaw 功能——这是组合问题，不是代码问题。
+
+当前状态修订（2026-08-15）：[产品壳 runtime Note](2026-08-15-clawdsh-product-shell-runtime.md)已取代本 Note 原先仅有 stock GUI 的产品表面，但保留了其公开 Harness 对话 runtime 与 profile 组合。ADR-0008 与 channel-plane rebuild 也取代了原先把 `channel-core` 描述为 `ctx.channels` 路径的说法。Canonical seam 现在只由锁定的 OpenClaw sidecar 经 `ctx.channels` 提供；保留的进程内 router 及 Telegram、Discord、飞书 adapter 使用隔离的 `ctx.legacyChannels` seam。GUI 决策不会启用任一通信平面，其测试也不认证任一通信平面。
 
 ## 决策
 
@@ -19,8 +21,8 @@ OpenClaw 有两种用法：本机命令行，以及经 Gateway 桥接到通讯�
 
 ## 影响
 
-- `pnpm dsh --profile clawdsh` 服务 `http://127.0.0.1:3080`；GUI 对话呈现与渠道路径相同的 soul 人格、`clawdsh:memory-recall` 段、`memory_search`/`memory_get` 工具与 skills 目录，外加全套 standard 工具。
-- Web server 独立于可选外部集成启动。干净安装默认禁用飞书、Telegram 与 Automation；显式启用相应 Loader entry 后保留其既有行为与校验。
+- `pnpm dsh --profile clawdsh` 服务 `http://127.0.0.1:3080`；GUI 对话独立于两条 channel plane，呈现 soul 人格、`clawdsh:memory-recall` 段、`memory_search`/`memory_get` 工具、skills 目录与全套 standard 工具。
+- Web server 独立于可选外部集成启动。干净安装默认禁用 canonical sidecar、完整 legacy group（Telegram、Discord 与飞书）及 Automation；各自独立的 Loader 开关保持 canonical/legacy 边界。
 - `soul` 保留 `mode: append`；若 web-runtime 的「coding agent」段漏进组装后的 prompt，则把 `soul` 切 `mode: replace`（complete persona 会同时抑制 host 默认与 web-runtime 段）。
 
 ## 考虑过的替代方案

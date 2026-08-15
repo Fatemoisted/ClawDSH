@@ -4,7 +4,8 @@
 
 - **状态**：已接受（产品壳、Settings 控制面与语义 Activity 已实现）
 - **日期**：2026-08-15
-- **依赖**：ADR-0001（自有代码隔离）、[当前 dsh Web GUI 组装](../../.agents/notes/implemented/feature/2026-08-15-openclaw-gui-dsh-web-app.md)
+- **修订**：2026-08-15 — channel Settings 遵循 ADR-0008 与 test1 重建的 canonical/legacy 拆分
+- **依赖**：ADR-0001（自有代码隔离）、[ADR-0008](0008-openclaw-channel-plane.md)、[当前 dsh Web GUI 组装](../../.agents/notes/implemented/feature/2026-08-15-openclaw-gui-dsh-web-app.md)
 
 ## Context
 
@@ -20,7 +21,7 @@ dsh 公开 Web 组装已经提供 Session runtime、浏览器模块图、RPC car
 2. **ClawDSH 拥有顶层导航。** 产品壳提供「对话」「ClawDSH 设置」「ClawDSH 活动」与「Harness 高级」。Harness 继续拥有对话实现及其内部诊断导航。
 3. **复用完整 dsh 浏览器 root，不分叉 Chat。** 产品壳消费公开 boot manifest、模块图、加载状态与 `buildRenderApp()` root renderer。v1 的「对话」挂载包含原生 frame 与诊断在内的完整 Harness root；ClawDSH 不通过 CSS、私有 Slot 或私有 import 抽取 Chat-only subtree。ClawDSH 只拥有外层壳、路由、控制 runtime、Settings 视图与 Activity 视图；Session 状态、agent loop、RPC transport、Chat、审批、流式输出、持久化与原始 Trajectory 继续归 dsh 所有。
 4. **产品壳是应用组装，不是 Client Slot contribution。** 源码位于 `packages/openclaw/preset-openclaw/`，不进入根 Client aggregate。ClawDSH 自有 shell 代码不注册 `dsh.client` 包或新 Slot，不进入 shipped occupant catalog，也不修改 `api-proxy`、Agent Loop、Client Catalog、生成文件或上游源码。被复用的 dsh graph 继续注册其既有 Slot。
-5. **Settings 控制 ClawDSH 能力，不控制任意 Loader row。** 主视图呈现能力来源、依赖、启用状态、凭据就绪状态与生效时机。原始 Loader inventory 只保留为高级只读诊断。Host 绝不返回秘密值。秘密只在 write-only input draft 与其发出的 `credentials.set` 请求中短暂存在，请求完成后即清空，也不会保留在 Settings state、日志、Session 文件或 Activity 存储中。Business plugin 保持 mounted，让 Config schema 持续可用，经过校验的 `enabled` 字段则控制可选 runtime effect。OpenClaw 独占 platform credential；ClawDSH credential allowlist 只包含 dsh 自有 reference。
+5. **Settings 控制 ClawDSH 能力，不控制任意 Loader row。** 主视图呈现能力来源、依赖、启用状态、凭据就绪状态与生效时机。原始 Loader inventory 只保留为高级只读诊断。Host 绝不返回秘密值。秘密只在 write-only input draft 与其发出的 `credentials.set` 请求中短暂存在，请求完成后即清空，也不会保留在 Settings state、日志、Session 文件或 Activity 存储中。Business plugin 保持 mounted，让 Config schema 持续可用，经过校验的 `enabled` 字段则控制可选 runtime effect。OpenClaw 独占 canonical platform credential；ClawDSH credential allowlist 只包含 dsh 自有 reference。Compatibility-only legacy group（Telegram、Discord 与飞书）留在独立的 `ctx.legacyChannels` seam，默认关闭，并保持在 Settings capability surface 之外。[test1 重建决策](../../.agents/notes/implemented/architecture/2026-08-15-test1-channel-plane-rebuild.md)负责其迁移与认证边界。
 6. **控制面使用独立的 loopback RPC 前缀。** 静态产品路由拥有 `/clawdsh/`，因此控制 method 使用不重叠的 `/clawdsh-rpc` Connection channel。它以 `{ authority: 'loopback' }` 注册，在空 trusted-host 集合下复用 JSON、Host 与 same-origin fence；配置的 trusted host 不能调用它。
 7. **Activity 补充而不替换 Trajectory。** ClawDSH Activity 用产品语言解释 Soul/Prompt、Memory、Channels、Skills 与 Automation。原始 Trajectory 继续作为权威 Harness 诊断视图。Prompt 记录描述 ClawDSH 贡献，不声称能够还原最终扁平化 prompt 的全部分段。
 8. **产品身份是 ClawDSH。** 用户可见模式为 `ClawDSH 模式`，profile 与 preset id 均为 `clawdsh`。物理 `preset-openclaw` 源码目录只因仓库既有层级检查把它视为组装目录而保留；它不是用户术语。
@@ -35,6 +36,7 @@ dsh 公开 Web 组装已经提供 Session runtime、浏览器模块图、RPC car
 - 仓库需要拥有并测试一个新增 Web 应用壳与控制 runtime；它们与所消费的 dsh 公开浏览器 API 之间必须固定兼容关系。
 - 产品路由与高级路由共享同一个 Host 进程和持久化，但可以拥有相互独立的页面本地 UI 状态。
 - 能力开关描述 ClawDSH 行为，不暴露不受限制的 Cordis Loader mutation。
+- Channel Core 不是必需的规范能力：它只存在于默认关闭的 legacy group。存在该 legacy opt-in 时，Gateway 启动与 Settings preflight 会拒绝 canonical enablement。
 - 托管的 `clawdsh` preset 暂时位于 dsh 用户 preset 根目录。ClawDSH Settings 不提供删除操作，但未修改的 Harness preset 管理器仍可把它作为用户 preset 删除；公共发行的 `clawdsh doctor` 会显式修复该状态。
 - 产品壳拥有路由、导航、能力 Settings 与语义 Activity。Activity 有界、限制隐私并保持 fail-open，不是 Session history 或 raw Trajectory 的权威替代。
 

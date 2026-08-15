@@ -3,6 +3,8 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@clawdsh/dsh-channel'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import type {} from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import { deepEqualJson, settingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -35,6 +37,9 @@ export const name = 'channel-openclaw'
 
 /** User-settings namespace for managed Gateway enablement and runtime limits. */
 export const CHANNEL_OPENCLAW_SETTINGS_NAMESPACE = settingsNamespace('clawdsh-channel-openclaw')
+
+/** Harness credential/environment reference controlling the temporary legacy channel plane. */
+const LEGACY_CHANNELS_ENABLED_REF = credentialRef('CLAWDSH_LEGACY_CHANNELS_ENABLED')
 
 /** Complete capability-seam dependencies for managed Gateway supervision. */
 export const inject = ['channels', 'storageDomain', 'subprocess', 'settings']
@@ -92,6 +97,7 @@ export class ClawdshOpenClawControl extends Service {
     const resolved = Config(desired)
     assertManagedConfig(resolved, this.applied)
     if (!resolved.enabled) return
+    await assertLegacyChannelPlaneDisabled(this.ctx)
     await preflightOpenClawDeployment(this.ctx, resolved)
   }
 
@@ -153,6 +159,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     },
   }).get() ?? config
   assertManagedConfig(runtimeConfig, config)
+  if (runtimeConfig.enabled) await assertLegacyChannelPlaneDisabled(ctx)
   const control = new ClawdshOpenClawControl(ctx, runtimeConfig)
   if (!runtimeConfig.enabled) return
   const supervisor = await OpenClawSupervisor.start(ctx, runtimeConfig)
@@ -178,6 +185,49 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     (outcome) => { if (outcome === 'failed') control.markFailed() },
     () => { control.markFailed() },
   )
+}
+
+/**
+ * Refuse a managed Gateway while the temporary in-process channel adapters are enabled.
+ * @param ctx Plugin context carrying the Harness credential and launch-environment seams.
+ * @returns Completion once the legacy-plane flag has been resolved and found disabled.
+ */
+async function assertLegacyChannelPlaneDisabled(ctx: Context): Promise<void> {
+  const credentials = ctx.get('credentials')
+  const raw = credentials === undefined
+    ? launchEnvironmentOf(ctx).get(String(LEGACY_CHANNELS_ENABLED_REF))?.value
+    : (await credentials.resolve(LEGACY_CHANNELS_ENABLED_REF))?.value
+  if (!parseEnabledFlag(raw)) return
+  throw new Error(
+    'channel-openclaw: managed Gateway cannot be enabled while ' +
+    'CLAWDSH_LEGACY_CHANNELS_ENABLED enables the legacy channel plane',
+  )
+}
+
+/**
+ * Parse an environment-backed enabled flag using the repository's boolean vocabulary.
+ * @param value Raw credential or launch-environment value.
+ * @returns Whether the flag enables its feature.
+ */
+function parseEnabledFlag(value: string | undefined): boolean {
+  if (value === undefined || value === '') return false
+  switch (value.toLowerCase()) {
+    case '1':
+    case 'true':
+    case 'yes':
+    case 'on':
+      return true
+    case '0':
+    case 'false':
+    case 'no':
+    case 'off':
+      return false
+    default:
+      throw new TypeError(
+        'channel-openclaw: CLAWDSH_LEGACY_CHANNELS_ENABLED must be ' +
+        '1/true/yes/on or 0/false/no/off when set',
+      )
+  }
 }
 
 /** Refuse user-layer replacement of installer-owned Gateway deployment identities. */

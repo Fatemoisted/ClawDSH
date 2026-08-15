@@ -35,7 +35,7 @@ ClawDSH 本地产品现在由 11 个可复用包、可安装 profile layer、托
 12. `@clawdsh/dsh-bundle`
 13. `@clawdsh/cli`
 
-旧 `channel-core`、`channel-feishu` 与 `channel-telegram` 包保持 private 并排除在外。源码 manifest 对发布集合内部依赖使用 `workspace:0.1.0-rc.1`；打包后的 manifest 必须包含精确 `0.1.0-rc.1`，且不得包含 `workspace:`、`file:`、symlink、私有 registry URL 或未声明资产。CLI 精确依赖 `@deepseek-ai/dsh@0.1.0-rc.6`；兼容失败会阻塞候选版，而不是把版本改成 `latest` 或范围。
+旧 `channel-core`、`channel-discord`、`channel-feishu` 与 `channel-telegram` 包保持 private 并排除在外。源码 manifest 对发布集合内部依赖使用 `workspace:0.1.0-rc.1`；打包后的 manifest 必须包含精确 `0.1.0-rc.1`，且不得包含 `workspace:`、`file:`、symlink、私有 registry URL 或未声明资产。CLI 精确依赖 `@deepseek-ai/dsh@0.1.0-rc.6`；兼容失败会阻塞候选版，而不是把版本改成 `latest` 或范围。
 
 ### 2. 让 bundle 成为不可变产品层
 

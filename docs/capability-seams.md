@@ -7,6 +7,24 @@ A service can be a core spine service, a swappable capability seam, or a bundle/
 
 ```mermaid
 flowchart LR
+  pkg_activity["activity"]
+  svc_clawdshActivity["ctx.clawdshActivity<br/>Privacy-limited semantic Activity"]
+  pkg_channel_agent["channel-agent"]
+  pkg_memory["memory"]
+  pkg_soul["soul"]
+  pkg_channel_openclaw["channel-openclaw"]
+  svc_clawdshOpenClawControl["ctx.clawdshOpenClawControl<br/>Managed OpenClaw control seam"]
+  svc_clawdshSoulSettings["ctx.clawdshSoulSettings<br/>Session-scoped Soul settings"]
+  pkg_channel["channel"]
+  svc_channels["ctx.channels<br/>Canonical channel plane"]
+  pkg_channel_core["channel-core"]
+  svc_legacyChannels["ctx.legacyChannels<br/>Legacy channel compatibility registry"]
+  pkg_channel_telegram["channel-telegram"]
+  pkg_channel_discord["channel-discord"]
+  pkg_channel_feishu["channel-feishu"]
+  pkg_embeddings["embeddings"]
+  svc_embeddings["ctx.embeddings<br/>Text embedding seam"]
+  pkg_embeddings_ark["embeddings-ark"]
   pkg_attachment["attachment"]
   svc_attachments["ctx.attachments<br/>Durable binary attachment storage"]
   pkg_attachment_local["attachment-local"]
@@ -194,6 +212,7 @@ flowchart LR
   svc_dynamicCordisRunner["ctx.dynamicCordisRunner<br/>Dynamic Cordis package host runner"]
   svc_cordisInspect["ctx.cordisInspect<br/>Dynamic Cordis inspect registry"]
   pkg_acp --> svc_approval
+  pkg_activity --> svc_clawdshActivity
   pkg_agent --> svc_agents
   pkg_agent_default_model --> svc_agentDefaultModel
   pkg_agent_loop --> svc_agentLoop
@@ -205,6 +224,14 @@ flowchart LR
   pkg_attachment_local --> svc_attachments
   pkg_bash_local --> svc_shell
   pkg_bash_sandbox --> svc_shell
+  pkg_channel --> svc_channels
+  pkg_channel_agent --> svc_channels
+  pkg_channel_core --> svc_legacyChannels
+  pkg_channel_discord --> svc_legacyChannels
+  pkg_channel_feishu --> svc_legacyChannels
+  pkg_channel_openclaw --> svc_channels
+  pkg_channel_openclaw --> svc_clawdshOpenClawControl
+  pkg_channel_telegram --> svc_legacyChannels
   pkg_code_runtime --> svc_codeRuntime
   pkg_code_runtime_worker --> svc_codeRuntime
   pkg_commands --> svc_commands
@@ -219,6 +246,8 @@ flowchart LR
   pkg_directory_picker_browse --> svc_directoryPicker
   pkg_directory_picker_native --> svc_directoryPicker
   pkg_e2b --> svc_e2b
+  pkg_embeddings --> svc_embeddings
+  pkg_embeddings_ark --> svc_embeddings
   pkg_fs --> svc_fs
   pkg_fs_e2b --> svc_fs
   pkg_fs_local --> svc_fs
@@ -262,6 +291,7 @@ flowchart LR
   pkg_skill --> svc_skills
   pkg_skill_badge --> svc_skills
   pkg_skill_filesystem --> svc_skills
+  pkg_soul --> svc_clawdshSoulSettings
   pkg_spill --> svc_spillStore
   pkg_spill_local --> svc_spillStore
   pkg_storage --> svc_storage
@@ -305,6 +335,10 @@ flowchart LR
   svc_approval --> pkg_tools
   svc_attachments --> pkg_host_runtime
   svc_attachments --> pkg_llm_pi_ai
+  svc_channels --> pkg_channel_agent
+  svc_clawdshActivity --> pkg_channel_agent
+  svc_clawdshActivity --> pkg_memory
+  svc_clawdshActivity --> pkg_soul
   svc_clientModules --> pkg_hmr
   svc_codeRuntime --> pkg_tools
   svc_compaction --> pkg_compaction_basic
@@ -316,6 +350,7 @@ flowchart LR
   svc_dynamicCordisRunner --> pkg_tool_cordis
   svc_e2b --> pkg_fs_e2b
   svc_e2b --> pkg_subprocess_e2b
+  svc_embeddings --> pkg_memory
   svc_fs --> pkg_tool_fs
   svc_invariants --> pkg_agent
   svc_invariants --> pkg_agent_loop
@@ -411,6 +446,12 @@ flowchart LR
 
 | ctx key | Role | Owner | Implementations | Direct consumers | Companion plugins | Note |
 | --- | --- | --- | --- | --- | --- | --- |
+| `ctx.clawdshActivity` | `core` | `activity` | - | `channel-agent`, `memory`, `soul` | - | Projects product semantics from standard Session history and bounded sidecars without copying message bodies, credentials, platform identities, or raw diagnostics. |
+| `ctx.clawdshOpenClawControl` | `core` | `channel-openclaw` | - | - | - | Exposes secret-free lifecycle state and validates desired Settings with managed-identity, legacy-plane exclusion, and deployment preflight checks before persistence. |
+| `ctx.clawdshSoulSettings` | `core` | `soul` | - | - | - | Resolves the restart-scoped base and optional per-session mode used by Soul prompt composition without creating a second settings runtime. |
+| `ctx.channels` | `seam` | `channel` | `channel-openclaw`, `channel-agent` | `channel-agent` | - | The locked OpenClaw provider owns platform communication; the Harness-first driver owns admission, Agent and Session execution, tools, and durable result projection. |
+| `ctx.legacyChannels` | `seam` | `channel-core` | `channel-telegram`, `channel-discord`, `channel-feishu` | - | - | Private source-checkout adapters register only here. This service never aliases ctx.channels, remains disabled by default, and blocks canonical Gateway enablement while its opt-in is present. |
+| `ctx.embeddings` | `seam` | `embeddings` | `embeddings-ark` | `memory` | - | One provider maps ordered text batches into one comparable vector space; memory owns chunking, indexing, ranking, and model-facing retrieval. |
 | `ctx.attachments` | `seam` | [`attachment`](../packages/attachment/attachment) | [`attachment-local`](../packages/attachment/attachment-local) | `host-runtime`, [`llm-pi-ai`](../packages/llm/llm-pi-ai) | - | The host commits accepted images before session events; provider adapters resolve authorized durable references into provider-native content. |
 | `ctx.llm` | `seam` | [`llm`](../packages/llm/llm) | [`llm-deepseek`](../packages/llm/llm-deepseek), [`llm-pi-ai`](../packages/llm/llm-pi-ai), [`llm-replay`](../packages/test-support/llm-replay) | [`agent-loop`](../packages/core/agent-loop), [`compaction-basic`](../packages/compaction/compaction-basic) | - | Adapters register provider implementations; the loop and compaction call the provider-neutral stream service. |
 | `ctx.tokenMeter` | `core` | [`token-meter`](../packages/llm/token-meter) | - | [`compaction-basic`](../packages/compaction/compaction-basic) | - | Owns isolated per-session replay folds; pressure consumers share immutable revisioned measurements. |
