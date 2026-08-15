@@ -1,10 +1,11 @@
+import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
-import { createScope, type ScopeKey } from '@deepseek-ai/dsh-scope'
+import { createScope, scopeTarget, type ScopeKey } from '@deepseek-ai/dsh-scope'
 import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { describe, expect, it } from 'vitest'
 import * as Soul from '@clawdsh/dsh-soul'
@@ -32,6 +33,32 @@ function sectionText(assembly: { sections: { name: string; text: string }[] }, n
   return assembly.sections.find(section => section.name === name)?.text
 }
 
+interface PromptActivityInput {
+  readonly sessionId: string
+  readonly producer: 'soul'
+  readonly section: 'persona' | 'clawdsh:soul'
+  readonly mode: 'append' | 'replace'
+  readonly characters: number
+  readonly sha256: string
+  readonly seq: number
+}
+
+function installActivity(ctx: Context, write: (input: PromptActivityInput) => Promise<unknown>): void {
+  ctx.provide('clawdshActivity', { promptContribution: write } as never)
+}
+
+function emitRequestHeader(ctx: Context, scope: ScopeKey, sessionId: string, system: string, seq: number): void {
+  const session = { id: sessionId }
+  const event = { type: 'request/header', seq, data: { header: { system }, reason: 'initial' } }
+  const emit = ctx.emit as unknown as (
+    target: object,
+    name: 'session/event',
+    subject: typeof session,
+    entry: typeof event,
+  ) => void
+  emit(scopeTarget(session, scope), 'session/event', session, event)
+}
+
 describe('the soul row', () => {
   it('declares Host Settings and session snapshot dependencies', () => {
     expect(Soul.SoulSettingsHost.inject).toEqual(['settings'])
@@ -52,6 +79,98 @@ describe('the soul row', () => {
     expect(sectionText(await ctx.systemPrompt.assemble({ scope: second }), SOUL_SECTION)).toBeUndefined()
     expect(ctx.settings.describe().find(entry => entry.ns === Soul.SOUL_SETTINGS_NAMESPACE)?.base)
       .toMatchObject({ enabled: true, text: 'base identity' })
+    await ctx.fiber.dispose()
+  })
+
+  it('records only the rendered Soul contribution that matches a committed request header', async () => {
+    const ctx = await harness('deployment identity')
+    const records: PromptActivityInput[] = []
+    installActivity(ctx, async (input) => { records.push(input) })
+    const agent = { id: 'soul-activity-session' }
+    const scope = createScope(ctx, agent)
+    const secretText = 'soul-private-canary-71b3'
+    const dir = mkdtempSync(join(tmpdir(), 'clawdsh-soul-activity-'))
+    const source = join(dir, 'private-soul.md')
+    try {
+      writeFileSync(source, secretText, 'utf8')
+      await scope.ctx.plugin(Soul, { source, mode: 'append' })
+
+      const assembly = await ctx.systemPrompt.assemble({
+        scope: agent,
+        signal: new AbortController().signal,
+        agent,
+      } as never)
+      const system = renderPrompt(assembly)
+      emitRequestHeader(ctx, agent, agent.id, system, 17)
+
+      expect(records).toEqual([{
+        sessionId: agent.id,
+        producer: 'soul',
+        section: 'clawdsh:soul',
+        mode: 'append',
+        characters: secretText.length,
+        sha256: createHash('sha256').update(secretText).digest('hex'),
+        seq: 17,
+      }])
+      expect(JSON.stringify(records)).not.toContain(secretText)
+      expect(JSON.stringify(records)).not.toContain(source)
+    } finally {
+      await ctx.fiber.dispose()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not report an append section suppressed by a complete section', async () => {
+    const ctx = await harness('deployment identity')
+    const records: PromptActivityInput[] = []
+    installActivity(ctx, async (input) => { records.push(input) })
+    const agent = { id: 'soul-suppressed-session' }
+    const scope = createScope(ctx, agent)
+    await scope.ctx.plugin(Soul, { text: 'suppressed-soul-canary', mode: 'append' })
+    await scope.ctx.plugin(Object.assign((pluginCtx: Context) => {
+      pluginCtx.systemPrompt.section({ name: 'test:complete', order: 20, text: 'complete override', complete: true })
+    }, { inject: ['systemPrompt'] }))
+
+    const assembly = await ctx.systemPrompt.assemble({
+      scope: agent,
+      signal: new AbortController().signal,
+      agent,
+    } as never)
+    expect(renderPrompt(assembly)).toBe('complete override')
+    emitRequestHeader(ctx, agent, agent.id, renderPrompt(assembly), 19)
+
+    expect(records).toEqual([])
+    await ctx.fiber.dispose()
+  })
+
+  it('records replace mode and contains a rejected Activity write', async () => {
+    const ctx = await harness('deployment identity')
+    const attempts: PromptActivityInput[] = []
+    installActivity(ctx, async (input) => {
+      attempts.push(input)
+      throw new Error('activity-write-secret-canary')
+    })
+    const agent = { id: 'soul-replace-session' }
+    const scope = createScope(ctx, agent)
+    const text = 'replacement soul'
+    await scope.ctx.plugin(Soul, { text, mode: 'replace' })
+    const assembly = await ctx.systemPrompt.assemble({
+      scope: agent,
+      signal: new AbortController().signal,
+      agent,
+    } as never)
+
+    expect(() => { emitRequestHeader(ctx, agent, agent.id, renderPrompt(assembly), 23) }).not.toThrow()
+    await Promise.resolve()
+    expect(attempts).toEqual([{
+      sessionId: agent.id,
+      producer: 'soul',
+      section: 'persona',
+      mode: 'replace',
+      characters: text.length,
+      sha256: createHash('sha256').update(text).digest('hex'),
+      seq: 23,
+    }])
     await ctx.fiber.dispose()
   })
 

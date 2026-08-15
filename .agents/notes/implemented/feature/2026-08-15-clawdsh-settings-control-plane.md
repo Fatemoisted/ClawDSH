@@ -4,7 +4,7 @@ Status: implemented
 
 English | [中文](2026-08-15-clawdsh-settings-control-plane.zh.md)
 
-The [local GUI specification](../../../../docs/specs/feature-gui-web.md) owns the current user-visible behavior. This decision implements the Settings portion of the broader [product-shell proposal](../../proposed/architecture/2026-08-15-clawdsh-product-shell.md); semantic Activity remains separate work.
+The [local GUI specification](../../../../docs/specs/feature-gui-web.md) owns the current user-visible behavior. This decision owns the Settings portion of the broader [product-shell decision](../../implemented/architecture/2026-08-15-clawdsh-product-shell.md); semantic Activity has separate storage and projection rules in its [feature specification](../../../../docs/specs/feature-activity.md).
 
 ## Problem
 
@@ -28,7 +28,7 @@ The fixed Settings namespaces are:
 | Ark Embeddings | `clawdsh-embeddings-ark` | Memory dependency; API key is a separate fixed credential reference |
 | Skills Hub | `clawdsh-skills-hub` | Enabled by default; provider registration changes after restart |
 | Automation | `clawdsh-automation` | Disabled by default; rules save as one atomic field |
-| Activity | `clawdsh-activity` | Reserved internal namespace with managed fields only |
+| Activity | `clawdsh-activity` | Required package namespace with managed fields only |
 
 Each namespace registers its existing Config schema with the dsh Settings service. Resolution is `schema default → profile base → user settings`; `reset` removes the complete user layer for that namespace and never rewrites profile base configuration. The Host returns the resolved value, schema, base and user layers when present, field permissions, effect timing, and separate `desiredRevision` and `runtimeRevision` values.
 
@@ -48,7 +48,7 @@ Protocol and runtime tests pin exact-object parsing, static allowlists, pollutio
 
 Browser tests pin independent drafts, schema controls, the atomic Automation editor, managed Gateway fields, conflict-and-reload behavior, and credential cleanup after both successful and failed requests. The keyless real-profile journey starts without an OpenClaw artifact or external credential, discovers every mounted capability namespace, confirms Gateway is disabled, and confirms that platform credentials are absent from the product control plane. Focused Host tests cover mutation, reset, restart state, and stale-write rejection.
 
-The named coverage gap is semantic Activity. Settings exposes the reserved managed Activity namespace, but this decision does not add Session-history projection, sidecar records, Activity pagination, or Activity UI records.
+The required Activity package registers the managed Activity namespace. Its Session-history projection, sidecar records, pagination, and UI remain governed by the separate Activity specification rather than the Settings mutation model.
 
 ## Alternatives considered
 
@@ -68,4 +68,4 @@ Users can configure ClawDSH through one product page without receiving arbitrary
 
 The server-owned product manifest must stay synchronized with capability schemas and managed installer fields. Restart-bound settings intentionally do not mutate mounted plugin effects, and a new Session is required for Soul changes. OpenClaw deployment remains unavailable until its managed runtime passes preflight, while platform account readiness continues to require OpenClaw-owned evidence.
 
-The control plane remains local-only. Remote trusted-host users may use Conversation, but they cannot read or mutate product Settings or credentials. Semantic Activity and public distribution are not part of this decision.
+The control plane remains local-only. Remote trusted-host users may use Conversation, but they cannot read or mutate product Settings or credentials. Semantic Activity composes on the same local channel under its own read protocol; public distribution is not part of this decision.

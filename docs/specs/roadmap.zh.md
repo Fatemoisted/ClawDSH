@@ -51,7 +51,7 @@
 - 导航为对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级。
 - 对话复用公开 dsh client plugin graph 与 renderer；ClawDSH 拥有 shell、Settings、Activity 与 Control Runtime。
 - ClawDSH 设置把只读 capability 与 Loader 总览同 schema-driven mutation、optimistic revision、desired/runtime state、restart requirement 以及不含 secret 的 dsh credential metadata 组合起来。
-- ClawDSH 活动当前明确显示 deferred 状态；Prompt、Memory、Channels、Skills 与 Automation 语义记录仍待完成，raw Trajectory 留在 Harness 高级。
+- ClawDSH 活动跟随当前 Session，并呈现从 standard history 与有界 sidecar 合并而来的限制隐私 Prompt、Memory、Channels、Skills 与 Automation 记录；raw Trajectory 留在 Harness 高级。
 - `dsh --profile web` 保持纯 Harness 入口。
 - real-profile browser 旅程从没有模型 key 或 OpenClaw artifact 的 clean home 启动，并验证两个 route、四个目的地、已挂载的 Settings namespace、关闭的 Gateway 状态、secret absence、未知 route 处理与 keyless 产品 snapshot。Focused control-plane test 覆盖 mutation、reset 与 stale-revision 拒绝。
 
@@ -59,7 +59,7 @@
 
 [ADR-0008](../adr/0008-openclaw-channel-plane.md)把 production OpenClaw Gateway 锁定为 `v2026.7.1-2` / commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`，记录 source-only canary，并建立 **24 个 core/bundled/repository-official + 3 个 external** public chat transport 的 production catalog。
 
-基础由 `@clawdsh/dsh-channel`、`@clawdsh/dsh-channel-agent`、`@clawdsh/dsh-channel-openclaw` 与 `tools/openclaw-channel-host` 组成。Profile 把三个 runtime package 装配为默认关闭的 group。没有渠道 certified 或 enabled；逐渠道 assembly、自有 keyless snapshot evidence、当前 live smoke、Windows endpoint authorization 与剩余 media support 尚未完成。
+基础由 `@clawdsh/dsh-channel`、`@clawdsh/dsh-channel-agent`、`@clawdsh/dsh-channel-openclaw` 与 `tools/openclaw-channel-host` 组成。Profile 始终挂载三个 runtime package；Channel Protocol 与 Agent Bridge 保持可用，OpenClaw Gateway 业务 setting 则默认关闭。没有渠道 certified 或 enabled；逐渠道 assembly、自有 keyless snapshot evidence、当前 live smoke、Windows endpoint authorization 与剩余 media support 尚未完成。
 
 旧渠道 package 在 `ctx.legacyChannels` 下单独保留，用于替换验证。它们不得与 OpenClaw 通信平面连接同一 platform account，并且只能在替换条件通过后删除。
 
@@ -73,7 +73,7 @@
 
 1. ✅ nested ClawDSH Web entry、产品 runtime、`/clawdsh/` route、四目的地导航、capability overview 与 keyless real-profile 旅程已经实现。
 2. ✅ schema-driven Settings、credential reference、optimistic revision check、desired/runtime state、restart requirement 以及专用 Automation 与 Gateway editor 已经实现。
-3. 增加 current-Session Activity，使用有界且受权限限制的 sidecar JSONL，并从 standard Session history 提供 fallback projection。
+3. ✅ Current-Session Activity 使用有界且受权限限制的 sidecar JSONL，并从 standard Session history 提供 fallback projection。
 4. 在 browser 与 real-profile regression test 中持续保留 native GUI、raw Trajectory 与 `dsh --profile web`。
 
 ### 渠道顺序
@@ -105,7 +105,7 @@
 
 - [x] 实现 ClawDSH 产品壳与只读 capability overview。
 - [x] 实现 Settings control plane 与 credential-safe mutation flow。
-- [ ] 实现 semantic Activity 与 sidecar degradation behavior。
+- [x] 实现 semantic Activity 与 sidecar degradation behavior。
 - [x] 为产品壳增加自有 real-profile browser 与 keyless snapshot。
 - [ ] 在把任何 production entry 提升为 installable 前增加逐渠道 configuration、capability probe 与 keyless contract evidence。
 - [ ] 完成新的 Telegram 与 Feishu certification；两者都未 certified 或 enabled。

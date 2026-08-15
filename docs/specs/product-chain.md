@@ -15,7 +15,7 @@ English | [中文](product-chain.zh.md)
 
 | Feature | Landing packages | Primary seam | Current result |
 |---|---|---|---|
-| ClawDSH local GUI | `preset-openclaw` | public dsh Web assembly | ✅ product shell and writable Settings; ⏳ semantic Activity |
+| ClawDSH local GUI | `preset-openclaw`, `activity` | public dsh Web assembly, Session history, optional Activity service | ✅ product shell, writable Settings, and semantic Activity |
 | Current channel plane | `channel`, `channel-agent`, `channel-openclaw` | owned `ctx.channels` V1 | ✅ foundation; ⚠️ no certified or enabled channel |
 | Legacy channel path | `channel-core`, `channel-telegram`, `channel-feishu` | `ctx.legacyChannels` | ✅ retained compatibility; ⚠️ no current certification |
 | Persona | `soul` | `ctx.systemPrompt` | ✅ implemented |
@@ -28,7 +28,7 @@ English | [中文](product-chain.zh.md)
 
 ### Current product slice
 
-The nested build emits `@clawdsh/dsh-product-runtime` and its browser assets before `tools/link-clawdsh.sh` installs the `clawdsh` profile and presets. `pnpm dsh --profile clawdsh` prints only the `/clawdsh/` product URL after Loader settlement; `/` remains the native dsh Web client, and new Sessions default to `ClawDSH 模式`. Feishu, Telegram, and Automation are disabled, so a clean home starts without their credentials or an OpenClaw artifact.
+The nested build emits `@clawdsh/dsh-product-runtime` and its browser assets before `tools/link-clawdsh.sh` installs the `clawdsh` profile and presets. `pnpm dsh --profile clawdsh` prints only the `/clawdsh/` product URL after Loader settlement; `/` remains the native dsh Web client, and new Sessions default to `ClawDSH 模式`. OpenClaw Gateway and Automation are disabled, so a clean home starts without platform credentials or an OpenClaw artifact.
 
 ### Product chain
 
@@ -37,11 +37,11 @@ The nested build emits `@clawdsh/dsh-product-runtime` and its browser assets bef
 | Entry | `/clawdsh/` is the ClawDSH product route; `/` remains native dsh Web |
 | Conversation | reuse the public dsh client module graph, loading state, and chat renderer |
 | Settings | capability and Loader evidence remain read-only; allowlisted Config fields use optimistic revisions, desired/runtime state, managed Gateway deployment, and secret-free dsh credential metadata |
-| Activity | the current destination identifies the deferred state; the next increment adds current-Session Prompt, Memory, Channels, Skills, and Automation records while raw Trajectory stays in Harness Advanced |
+| Activity | current-Session Prompt, Memory, Channels, Skills, and Automation records merge standard history with bounded private sidecars; failures degrade only this view and raw Trajectory stays in Harness Advanced |
 | Harness Advanced | explicit route to the unmodified native dsh GUI and diagnostics |
 | Isolation | no new Client Slot and no changes to `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source |
 
-✅ The shell, both routes, four destinations, capability overview, conflict-safe Settings, unknown-route state, and keyless real-profile snapshot are implemented. ⏳ Semantic Activity remains deferred. `dsh --profile web` remains a pure Harness path.
+✅ The shell, both routes, four destinations, capability overview, conflict-safe Settings, semantic Activity, unknown-route state, and keyless real-profile snapshot are implemented. `dsh --profile web` remains a pure Harness path.
 
 ## Current OpenClaw channel plane
 

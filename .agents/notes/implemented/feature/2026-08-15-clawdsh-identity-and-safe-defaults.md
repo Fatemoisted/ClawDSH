@@ -18,7 +18,7 @@ The profile keeps `channel-core` mounted but marks Feishu, Telegram, and Automat
 
 `tools/link-clawdsh.sh` checks the legacy `$DSH_HOME/profiles/openclaw/` and `$DSH_HOME/.agent-presets/openclaw/` paths before installing the new assets. It prints migration guidance when either exists and leaves both untouched. ClawDSH does not install an `openclaw` alias, and the script never automatically deletes, moves, rewrites, or adopts a legacy directory. Users retain an old preset while any saved Session still references its id.
 
-The ClawDSH preset remains a managed copy in the dsh user preset root; it is not system-trusted or undeletable, and stock Harness controls can remove it. The [product-shell proposal](../../proposed/architecture/2026-08-15-clawdsh-product-shell.md) excludes a deletion entry from the ClawDSH product UI without changing that trust model. This increment does not ship the product shell, a `clawdsh` executable, `clawdsh doctor`, or a managed-install manifest. The development refresh script is the available repair path; the public distribution increment owns manifest-based installation and doctor repair.
+The ClawDSH preset remains a managed copy in the dsh user preset root; it is not system-trusted or undeletable, and stock Harness controls can remove it. The [product-shell decision](../../implemented/architecture/2026-08-15-clawdsh-product-shell.md) excludes a deletion entry from the ClawDSH product UI without changing that trust model. This increment does not ship a `clawdsh` executable, `clawdsh doctor`, or a managed-install manifest. The development refresh script is the available repair path; the public distribution increment owns manifest-based installation and doctor repair.
 
 ## Alternatives considered
 

@@ -4,7 +4,7 @@ Status: implemented
 
 [English](2026-08-15-clawdsh-product-shell-runtime.md) | 中文
 
-[本地 GUI 规格](../../../../docs/specs/feature-gui-web.md)拥有当前用户可见行为。更广泛的[产品壳提案](../../proposed/architecture/2026-08-15-clawdsh-product-shell.md)仍处于 proposed，用于语义 Activity；可编辑 Settings 由对应的[已实现决策](2026-08-15-clawdsh-settings-control-plane.md)所有。
+[本地 GUI 规格](../../../../docs/specs/feature-gui-web.md)拥有当前用户可见行为。更广泛的[产品壳决策](../../implemented/architecture/2026-08-15-clawdsh-product-shell.md)拥有完整组装；可编辑 Settings 由对应的[已实现决策](2026-08-15-clawdsh-settings-control-plane.md)所有，语义 Activity 则由其[功能规格](../../../../docs/specs/feature-activity.md)所有。
 
 ## Problem
 
@@ -18,7 +18,7 @@ Status: implemented
 
 产品代码是 `packages/openclaw/preset-openclaw/product-shell/` 下的嵌套非 workspace build：
 
-- `browser/` 拥有产品导航、能力总览、可编辑 Settings、Activity 空状态，以及加载公开 boot manifest 与 Client module table 的 `ClawdshWebEntry`。
+- `browser/` 拥有产品导航、能力总览、可编辑 Settings、语义 Activity 呈现，以及加载公开 boot manifest 与 Client module table 的 `ClawdshWebEntry`。
 - `runtime/` 拥有静态 Host route、Loader-settled ready URL、能力 projection 与 Connection RPC registration。
 - `shared/` 拥有两端共同使用的严格 protocol-v1 request 与 response data-transfer type。
 
@@ -28,7 +28,7 @@ Status: implemented
 
 能力总览把 Loader 组装与产品支持证据分开。Loader entry 映射为 `disabled`、`starting`、`active`、`failed` 或 `misconfigured`；锁定渠道独立映射为 `cataloged`、`installable`、`certified` 或 `enabled`。Channels 把 Channel Protocol、Agent Bridge 与 OpenClaw Gateway Provider 显示为组件，飞书、Telegram 与其他锁定 entry 则作为 catalog item 嵌套在 Gateway 下。Legacy channel plugin 只在 raw Loader inventory 中可见，不参与产品健康状态。
 
-语义 Activity 仍不属于本决策。Activity route 渲染明确空状态，RPC channel 没有 activity method，Raw Trajectory 留在 Harness 高级。可编辑 Settings 在该能力总览旁组装，并由独立的 validation、revision、credential 与 lifecycle 决策所有。
+语义 Activity 通过独立所有的 `@clawdsh/dsh-activity` Host service 与 `activity/list` 控制 method 组合。Activity route 跟随当前 Session 并呈现其限制隐私的 page，Raw Trajectory 则留在 Harness 高级。可编辑 Settings 同样在能力总览旁组装，并由独立的 validation、revision、credential 与 lifecycle 决策所有。
 
 产品壳是应用组装，而不是可复用 Harness Client contribution。它不注册 Client Slot，不调用 `ctx.slots.register()` 注入产品 UI，不进入根 Client aggregate 或 Client Catalog，不导入上游 `src/*` 路径，也不修改 `api-proxy`、Agent Loop、generated file 或上游自有源码。该决策只部分取代旧决策中「不拥有 ClawDSH browser UI」的选择；复用原生对话 runtime、profile 组装与 `clawdsh` preset 保持不变。
 
@@ -38,7 +38,7 @@ Status: implemented
 
 真实 profile keyless journey 构建嵌套项目，将它安装进隔离 dsh home，在没有外部凭据或 OpenClaw artifact 时启动 `clawdsh` profile，并访问 `/clawdsh/`、Settings、Activity、产品 404 与 `/`。它验证原生应用不含 ClawDSH 产品导航，安装后的默认 preset 仍为 `clawdsh` / `ClawDSH 模式`，受管 Soul composition 能够挂载，始终挂载的 Gateway 会通过业务设置让 Channels 显示为关闭，并且 27 个 production channel 仍只是 cataloged 而不是 certified。
 
-明确的 coverage gap 是 Activity：语义 projection、sidecar storage、隐私 mapping 与 pagination 在本决策中没有已交付 runtime behavior。
+Activity package、控制面与 browser test 覆盖语义 projection、sidecar degradation、privacy mapping、当前 Session 选择与 pagination，同时没有把产品壳 ownership 扩展到 Raw Trajectory。
 
 ## Alternatives considered
 
@@ -58,4 +58,4 @@ ClawDSH 在不修改上游 GUI 代码的情况下获得稳定的本地产品入�
 
 嵌套项目有独立的 install、typecheck、test 与 build lifecycle，因为它有意处于根 Client aggregate 之外。开发安装在 runtime 与 browser artifact 构建前会失败。产品页与 Harness 高级页可能保留不同的临时 browser state，尽管两者共享持久 Host Session。
 
-产品壳现已组合独立所有的 Settings 控制面，而 Activity 仍不能解释 Session 行为。语义记录需要自身的 projection、storage、privacy 与 degradation 决策，不能从 Loader 证据推断。
+产品壳组合独立所有的 Settings 与 Activity 能力。语义记录使用自身的 projection、storage、privacy 与 degradation 规则，不能从 Loader 证据推断。

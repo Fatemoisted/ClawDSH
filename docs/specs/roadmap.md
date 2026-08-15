@@ -51,7 +51,7 @@ The `clawdsh` profile composes the stock dsh Web application with the owned nest
 - Navigation is Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced.
 - Conversation reuses the public dsh client plugin graph and renderer; ClawDSH owns the shell, Settings, Activity, and Control Runtime.
 - ClawDSH Settings combines the read-only capability and Loader overview with schema-driven mutation, optimistic revisions, desired/runtime state, restart requirements, and secret-free dsh credential metadata.
-- ClawDSH Activity currently identifies its deferred state; semantic Prompt, Memory, Channels, Skills, and Automation records remain pending while raw Trajectory stays available in Harness Advanced.
+- ClawDSH Activity follows the current Session and presents privacy-limited Prompt, Memory, Channels, Skills, and Automation records merged from standard history and bounded sidecars; raw Trajectory stays available in Harness Advanced.
 - `dsh --profile web` remains a pure Harness entry point.
 - The real-profile browser journey starts from a clean home without model keys or OpenClaw artifacts and verifies both routes, all four destinations, mounted Settings namespaces, disabled Gateway state, secret absence, unknown-route handling, and the keyless product snapshot. Focused control-plane tests cover mutation, reset, and stale-revision rejection.
 
@@ -59,7 +59,7 @@ The `clawdsh` profile composes the stock dsh Web application with the owned nest
 
 [ADR-0008](../adr/0008-openclaw-channel-plane.md) locks the production OpenClaw Gateway to `v2026.7.1-2` / commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`, records a source-only canary, and establishes a production catalog of **24 core/bundled/repository-official + 3 external** public chat transports.
 
-The foundation comprises `@clawdsh/dsh-channel`, `@clawdsh/dsh-channel-agent`, `@clawdsh/dsh-channel-openclaw`, and `tools/openclaw-channel-host`. The profile assembles the three runtime packages in a default-disabled group. No channel is certified or enabled; per-channel assembly, owned keyless snapshot evidence, current live smoke, Windows endpoint authorization, and remaining media support are incomplete.
+The foundation comprises `@clawdsh/dsh-channel`, `@clawdsh/dsh-channel-agent`, `@clawdsh/dsh-channel-openclaw`, and `tools/openclaw-channel-host`. The profile always mounts the three runtime packages; Channel Protocol and Agent Bridge remain available while the OpenClaw Gateway business setting defaults to disabled. No channel is certified or enabled; per-channel assembly, owned keyless snapshot evidence, current live smoke, Windows endpoint authorization, and remaining media support are incomplete.
 
 The legacy channel packages remain separately available under `ctx.legacyChannels` for replacement verification. They must not connect to the same platform accounts as the OpenClaw communication plane and are removed only after the replacement conditions pass.
 
@@ -73,7 +73,7 @@ The legacy channel packages remain separately available under `ctx.legacyChannel
 
 1. ✅ The nested ClawDSH Web entry, product runtime, `/clawdsh/` routes, four-destination navigation, capability overview, and keyless real-profile journey are implemented.
 2. ✅ Schema-driven Settings, credential references, optimistic revision checks, desired/runtime state, restart requirements, and dedicated Automation and Gateway editors are implemented.
-3. Add current-Session Activity with bounded, permission-restricted sidecar JSONL plus fallback projection from standard Session history.
+3. ✅ Current-Session Activity uses bounded, permission-restricted sidecar JSONL plus fallback projection from standard Session history.
 4. Preserve the native GUI, raw Trajectory, and `dsh --profile web` throughout browser and real-profile regression tests.
 
 ### Channel sequence
@@ -105,7 +105,7 @@ The legacy channel packages remain separately available under `ctx.legacyChannel
 
 - [x] Implement the ClawDSH product shell and read-only capability overview.
 - [x] Implement the Settings control plane and credential-safe mutation flow.
-- [ ] Implement semantic Activity and sidecar degradation behavior.
+- [x] Implement semantic Activity and sidecar degradation behavior.
 - [x] Add owned real-profile browser and keyless snapshots for the product shell.
 - [ ] Add per-channel configuration, capability probes, and keyless contract evidence before promoting any production entry to installable.
 - [ ] Complete fresh Telegram and Feishu certification; neither is certified or enabled.

@@ -1,10 +1,10 @@
 # Agent Note: 构建于 dsh Web 应用之上的 ClawDSH 产品壳
 
-Status: proposed
+Status: implemented
 
 [English](2026-08-15-clawdsh-product-shell.md) | 中文
 
-产品形态已由 [ADR-0007](../../../../docs/adr/0007-clawdsh-local-gui-product.md) 接受，用户可见目标由 [ClawDSH 本地 GUI 功能规格](../../../../docs/specs/feature-gui-web.md)定义。[产品壳 runtime](../../implemented/feature/2026-08-15-clawdsh-product-shell-runtime.md)与 [Settings 控制面](../../implemented/feature/2026-08-15-clawdsh-settings-control-plane.md)已经实现本设计的对应部分；本 Note 只为语义 Activity 保持 proposed。
+产品形态已由 [ADR-0007](../../../../docs/adr/0007-clawdsh-local-gui-product.md) 接受，用户可见行为由 [ClawDSH 本地 GUI](../../../../docs/specs/feature-gui-web.md)与[语义 Activity](../../../../docs/specs/feature-activity.md)规格定义。[产品壳 runtime](../../implemented/feature/2026-08-15-clawdsh-product-shell-runtime.md)与 [Settings 控制面](../../implemented/feature/2026-08-15-clawdsh-settings-control-plane.md)拥有各自更窄的实现决策。
 
 ## Problem
 
@@ -18,7 +18,7 @@ Status: proposed
 
 原始 [Trajectory ledger](../../implemented/feature/2026-07-27-trajectory-inspection-ledger.md)是有序 Harness 证据的权威记录，却不会把 ClawDSH 行为分成 Soul/Prompt、Memory、Channels、Skills 与 Automation。替换 Trajectory 会丢失诊断细节，只保留它一个视图又会让产品行为难以理解。
 
-## Proposal
+## Decision
 
 ### 产品与引擎职责
 
@@ -34,7 +34,7 @@ ClawDSH profile 启动一个 dsh Host 进程，并暴露两个浏览器应用。
 
 产品壳消费 [Web Client 架构](../../implemented/architecture/2026-07-19-gui-web-client-architecture.md)、[Client 插件加载模型](../../implemented/architecture/2026-07-23-client-plugin-loading-model.md)与 [GUI RPC 分层](../../implemented/architecture/2026-07-19-gui-layering-and-rpc-protocol.md)所描述的公开 boot manifest、静态浏览器模块表、加载状态、Connection protocol 与完整 root 渲染组装。其浏览器、runtime 与发行源码嵌套在 `packages/openclaw/preset-openclaw/` 下，不进入根 Client aggregate。ClawDSH 不用 CSS、私有 Slot 或私有 import 移除原生 Harness frame。
 
-这是应用组装，不是可复用 Client contribution。它不注册新 Slot，不增加 `dsh.client` 包，不进入 shipped occupant catalog，也不修改 `api-proxy`、Agent Loop、生成文件或上游源码。它也不会使用 runtime package injection 或 scanner exception 模仿 catalog entry。proposed 的[动态 package runtime](2026-08-08-cordis-web-dynamic-packages.md)具有不同的信任与生命周期模型，不是本产品壳的依赖。
+这是应用组装，不是可复用 Client contribution。它不注册新 Slot，不增加 `dsh.client` 包，不进入 shipped occupant catalog，也不修改 `api-proxy`、Agent Loop、生成文件或上游源码。它也不会使用 runtime package injection 或 scanner exception 模仿 catalog entry。proposed 的[动态 package runtime](../../proposed/architecture/2026-08-08-cordis-web-dynamic-packages.md)具有不同的信任与生命周期模型，不是本产品壳的依赖。
 
 物理 `preset-openclaw` 目录暂时保留，因为仓库当前层级 gate 识别该组装路径。产品文案、安装后的 profile 与 preset id、默认选择、命令、安全的干净安装默认值与旧资产处理遵循 [ClawDSH 身份决策](../../implemented/feature/2026-08-15-clawdsh-identity-and-safe-defaults.md)；该目录名不作为兼容承诺暴露。
 
@@ -48,9 +48,11 @@ ClawDSH Settings 对产品能力 namespace 与 credential reference 使用静态
 
 凭据保留在 dsh credentials provider 中。RPC method 只接受 allowlist 内的 reference，绝不返回秘密值，并用 metadata 暴露就绪状态。秘密只在 write-only input draft 与其发出的 `credentials.set` 请求中短暂存在；draft 在请求完成后清空，秘密也不会保留在 Settings state，或持久化到日志、Settings 文件、Session log 与 Activity sidecar。关闭的可选能力可以缺少凭据；启用能力时，如果缺少必需 reference，就在最早能够判断的位置失败。
 
-ClawDSH Activity 是补充 Trajectory 的语义 projection。当标准 Session history 已经拥有某项事实时，它从中推导记录；对于 ClawDSH 独有事实，则使用相互独立且有容量上限的 sidecar stream。记录携带 Session id、category、kind、status、summary 与限制隐私的 scalar metadata；Prompt 记录存储贡献身份与 digest，不存 prompt 正文，Channel 记录排除用户、群、thread、message id 与消息正文。
+ClawDSH Activity 是补充 Trajectory 的语义 projection。始终挂载的 `@clawdsh/dsh-activity` Host service 在标准 Session history 已经拥有某项事实时从中推导记录；对于 ClawDSH 独有事实，则使用相互独立且有容量上限的 sidecar stream。记录携带 Session id、category、固定 kind、可选 status、包生成的 summary 与限制隐私的 scalar metadata；Prompt 记录存储贡献身份与 digest，不存 prompt 正文，Channel 记录排除 sender、account、conversation、thread、message、delivery identifier、消息正文与错误。
 
-sidecar 按子系统拥有，避免多个 appender 争用。目录和文件使用仅 owner 可访问的权限，append 串行化，存储按可配置上限轮转，解析失败容忍损坏尾部。sidecar 失败会把 Activity 标为降级，但不能让模型执行、渠道投递、Memory、Skills 或 Automation 失败。没有 sidecar 的旧 Session 仍显示能从标准 history 推导的记录。
+Sidecar 按子系统拥有，避免多个 appender 争用。Session id 的 SHA-256 选择目录；五个固定 producer file 使用仅 owner 可访问的权限、8 KiB 记录上限、1 MiB active-file 上限与两个轮转。Append 按 Session 与 producer 串行，dispose 会清空已接收写入，解析会跳过损坏行或尾部而不重写源数据。Sidecar 失败会把 Activity 标为降级，但不能让模型执行、渠道投递、Memory、Skills 或 Automation 失败。没有 sidecar 的旧 Session 仍显示能从标准 history 推导的记录。
+
+Loopback-only `activity/list` request 跟随所选 Session，并把 live 或 inspected history 与 sidecar 合并。它支持五类 filter，按 timestamp 与 id 排序，默认返回 50 条，最多接受 100 条，并使用绑定 Session、filter、order、timestamp 与 id 的 versioned base64url cursor。Session 切换时浏览器会中止旧请求并清除 cursor，通过每个 kind 的固定 component 呈现记录且不提供 raw JSON，同时继续通过 Harness 高级链接 Raw Trajectory。
 
 ### 安全与扩展边界
 
@@ -58,7 +60,7 @@ sidecar 按子系统拥有，避免多个 appender 争用。目录和文件使�
 
 能力 namespace、字段名、credential reference、Activity metadata 与 route ownership 都使用显式 allowlist。未知名称在存储或 runtime mutation 前失败。控制 runtime 返回产品 DTO，而不是 live Cordis object、Loader entry、Config provider 或 credential record。
 
-如果实现需要一项公开组装未暴露的 dsh capability 或任何上游改动，ClawDSH PR 会在该依赖处停止，并在批准的 local-only 边界内修改本 GUI 设计。本工作流不会发起上游 PR，也不能据此增加上游 Slot 或修改 catalog。
+如果后续工作需要公开组装未暴露的 dsh capability 或任何上游改动，实现会在该依赖处停止，并在批准的 local-only 边界内修改本 GUI 设计。本决策不能据此增加上游 Slot 或修改 catalog。
 
 ## Alternatives considered
 
@@ -76,7 +78,7 @@ sidecar 按子系统拥有，避免多个 appender 争用。目录和文件使�
 
 **用 Activity 替换 Trajectory，或把每项 Activity 事实都写入 Session log。** Activity 无法保留全部原始诊断证据，ClawDSH 专属 observability 也不足以证明需要上游 Session event type。两种视图保持互补，限制隐私的 sidecar 覆盖产品专属事实。
 
-## Acceptance criteria
+## Verification
 
 - `clawdsh` profile 启动 `/clawdsh/`，在 `/` 保留原生应用，并只在 Loader settle 后打印产品 URL。
 - 两个浏览器路由使用同一个 Host Session service 与持久化；「对话」挂载现有完整 Client root，不重新实现或私下抽取 Chat。
@@ -87,15 +89,16 @@ sidecar 按子系统拥有，避免多个 appender 争用。目录和文件使�
 - 秘密值只通过 write-only input draft 与其发出的请求跨越浏览器边界；Host 绝不返回，draft 在请求完成后清空，Settings state、日志、Session 文件与 Activity 存储都不保留秘密值。
 - Activity 呈现限制隐私的 Prompt、Memory、Channel、Skill 与 Automation 记录；sidecar 缺失、损坏或不可写只让视图降级。
 - 原始 Trajectory 继续通过 Harness 高级访问，Prompt Activity 标为 ClawDSH 贡献，不描述成最终 System Prompt 的重建。
-- 在本 Note 移入 implemented 前，keyless clean-home 启动、browser typecheck、真实 profile Playwright 旅程与产品 snapshot 验证完整组装应用。
+- Keyless clean-home 启动、browser 与 runtime typecheck、focused package 与控制面 test、真实 profile Playwright 旅程和产品 snapshot 验证完整组装应用。
 
-## Risks
+## Consequences
 
-- dsh 公开浏览器 API 可能变化。导入私有模块会把上游同步变成隐式 fork，因此兼容测试必须固定每个被消费的公开 export。
-- 嵌套浏览器 build 可能漏过仓库 gate，或产出 base path 错误的 asset。发行 build 与真实 profile 浏览器旅程必须从 clean tree 运行，并验证 `/clawdsh/` asset resolution。
-- 产品应用与高级应用可能持有不同的页面本地选择或 draft 状态，尽管它们共享 Host Session。产品文案不得暗示短暂 UI 状态已经同步。
-- 独立 RPC channel 可能误用 `trusted-host` authority 或绕过共享 request check。安全测试必须验证 `/clawdsh-rpc` 接受成功的 loopback same-origin 路径，并拒绝已配置的 trusted host、非 loopback Host 与 cross-origin marker。
-- setting 可能已经成功持久化，而 mounted capability 仍使用旧 runtime 配置。desired/runtime revision 与显式生效时间用于防止 UI 错报 applied state。
-- 现有插件可能只在 mount 时读取 config。Soul 挂载在每个 Agent scope 内，因此不能再由每个 Session 注册同一个全局 Settings namespace；控制面需要一个 Host-singleton settings owner，而 Soul 变更按记录的生命周期在新 Session 或 remount 后生效。
-- Activity 可能泄露个人 identifier，或与业务成功耦合。metadata allowlist、按子系统分文件、仅 owner 权限、有界轮转与 fail-open observability 必须同时成立。
-- 保留的 `preset-openclaw` 路径可能把旧品牌泄露到命令或 UI 中。identity test 必须检查安装资产与渲染文案，同时只把目录名视为内部实现。
+产品壳在不 fork Chat 的情况下提供独立 ClawDSH 产品，完整原生应用则继续用于高级诊断。它同时带来独立 nested browser/runtime build；兼容测试必须固定每个被消费的 dsh 公开 export，并验证 `/clawdsh/` asset resolution。
+
+产品应用与高级应用可能持有不同的页面本地选择或 draft 状态，尽管它们共享 Host Session；产品文案不能暗示短暂 UI 状态已同步。独立控制 channel 也需要持续的 loopback、Host、same-origin 与严格 schema test，防止 trusted remote host 获得产品控制权限。
+
+Restart-bound capability 的持久 desired setting 可能与 mounted runtime value 不同。Desired/runtime value 与生效时间暴露该成本，Host-singleton Soul settings owner 则保证修改只影响新 Session，而不会改写运行中 prompt。
+
+语义 Activity 提高可解释性，但有意保持不完整且不具权威性。Privacy allowlist、按子系统分文件、仅 owner 权限、有界轮转与 fail-open observability 必须协同保留；缺少任何一项都会泄露个人数据，或把业务成功与诊断耦合。
+
+保留的 `preset-openclaw` source path 仍是内部仓库例外。Identity test 检查安装资产与渲染文案，确保旧品牌不会变成命令、id 或兼容承诺。

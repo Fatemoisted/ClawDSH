@@ -13,7 +13,13 @@
       "path": "../../../vendor/schemastery"
     },
     {
+      "path": "../../core/agent"
+    },
+    {
       "path": "../../core/scope"
+    },
+    {
+      "path": "../../core/session"
     },
     {
       "path": "../../settings/settings"

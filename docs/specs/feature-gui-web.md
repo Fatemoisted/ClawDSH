@@ -2,7 +2,7 @@
 
 English | [中文](feature-gui-web.zh.md)
 
-- **Status**: the ClawDSH product shell, capability overview, and editable Settings control plane are implemented; semantic Activity records are not available
+- **Status**: the ClawDSH product shell, capability overview, editable Settings control plane, and semantic Activity are implemented
 - **Assembly**: `packages/openclaw/preset-openclaw/product-shell/`
 - **Product role**: the local ClawDSH frontend alongside Gateway-connected messaging frontends
 
@@ -41,6 +41,7 @@ The frozen protocol-v1 Connection channel is `/clawdsh-rpc`. It is registered wi
 - `capabilities/list`, which returns JSON-only product capabilities, sanitized Loader evidence, and the locked OpenClaw channel catalog.
 - `settings/describe`, `settings/mutate`, and `settings/reset`, which expose only product-allowlisted schemas and fields with optimistic revisions.
 - `credentials/describe`, `credentials/set`, and `credentials/unset`, which expose secret-free state and write-only mutation for allowlisted dsh-owned references.
+- `activity/list`, which returns one privacy-limited current-Session page merged from standard Session history and bounded ClawDSH sidecars.
 
 The control runtime returns data-transfer objects rather than live Cordis objects. The browser also refuses product-control calls when the Connection is not loopback. Remote trusted-host pages can continue to use the Harness conversation, but ClawDSH Settings, credentials, and Activity control data remain local-only.
 
@@ -61,7 +62,7 @@ Package provenance follows one fixed mapping: `@clawdsh/*` is ClawDSH, `@deepsee
 
 ## Settings semantics
 
-The fixed namespaces are `clawdsh-soul`, `clawdsh-channel-agent`, `clawdsh-channel-openclaw`, `clawdsh-memory`, `clawdsh-embeddings-ark`, `clawdsh-skills-hub`, `clawdsh-automation`, and the managed `clawdsh-activity` placeholder. Channel Protocol is required infrastructure and has no user namespace. A server-owned manifest controls field order, copy, editor selection, dependencies, and whether each exact field is editable or installer-managed; the browser cannot expand this allowlist.
+The fixed namespaces are `clawdsh-soul`, `clawdsh-channel-agent`, `clawdsh-channel-openclaw`, `clawdsh-memory`, `clawdsh-embeddings-ark`, `clawdsh-skills-hub`, `clawdsh-automation`, and the required managed `clawdsh-activity` namespace. Channel Protocol is required infrastructure and has no user namespace. A server-owned manifest controls field order, copy, editor selection, dependencies, and whether each exact field is editable or installer-managed; the browser cannot expand this allowlist.
 
 Each capability registers its existing Config schema. Values resolve in `schema default → profile base → user settings` order. Reset removes only the namespace's user layer. A mutation carries `expectedRevision` and a bounded, non-empty set of distinct `set` or `unset` operations; the Host validates and persists the complete set atomically. A stale write returns `settings-conflict` without merge or retry. Responses distinguish `desiredRevision` from `runtimeRevision`, calculate `restartRequired` from desired and runtime values, and label effect timing as `live`, `new-session`, `next-call`, or `restart`.
 
@@ -73,11 +74,11 @@ Ark Embeddings uses only the fixed `ARK_API_KEY` credential reference and resolv
 
 Each Settings card owns an independent draft and revision. The generic editor supports schema-described strings, numbers, booleans, enums, nested objects, and string arrays; Automation saves the complete `rules` field atomically, and Gateway uses a dedicated managed-deployment view. A conflict keeps the draft and disables another save until explicit reload. Credential inputs clear in `finally` after both success and failure, and responses retain only secret-free descriptors.
 
-## Activity gap
+## Semantic Activity
 
-The Activity route currently renders an explicit empty state. It does not read Session history, create sidecars, expose filters, or claim that semantic Prompt, Memory, Channel, Skill, or Automation records exist. Raw Trajectory remains available in Harness Advanced.
+The Activity route follows the Harness client's current Session and presents Prompt, Memory, Channel, Skill, and Automation records. It supports category filtering, ascending or descending time order, and cursor pagination; changing Session aborts the old request and resets its continuation. A missing current Session links back to Conversation, while Raw Trajectory remains available in Harness Advanced.
 
-The current RPC protocol does not implement `activity/list`, and no `@clawdsh/dsh-activity` package is mounted. Activity persistence, history projection, privacy mapping, degradation, filtering, and pagination remain proposal scope.
+The always-mounted `@clawdsh/dsh-activity` service merges privacy-safe facts projected from standard Session history with bounded owner-private sidecars for ClawDSH-only contributions. Missing, malformed, or unwritable sidecars degrade only this view; history and sidecars remain independently usable, and no product response returns source paths or errors. Fixed kind-specific components render records without a raw JSON expansion. The [Activity specification](feature-activity.md) owns the record vocabulary, privacy mapping, storage, pagination, and degradation behavior.
 
 ## Integration constraints
 
@@ -89,4 +90,4 @@ The current RPC protocol does not implement `activity/list`, and no `@clawdsh/ds
 
 ## Current verification
 
-The nested build has independent browser and runtime typechecks, focused tests, and build output checks. The real-profile keyless journey builds the nested application, installs it into an isolated dsh home, waits for the Loader-settled product URL, verifies all product destinations and capability namespaces, confirms Gateway is disabled and Ark is unconfigured, confirms unknown product routes render the product 404, and confirms `/` contains no ClawDSH product navigation. Focused protocol, runtime, and browser coverage verifies strict requests, mutation and reset, stale revisions, restart state, managed fields, independent drafts, preflight-before-persist behavior, secret-free responses, credential cleanup, the `clawdsh` preset, and idempotent development installation.
+The nested build has independent browser and runtime typechecks, focused tests, and build output checks. The real-profile keyless journey builds the nested application, installs it into an isolated dsh home, waits for the Loader-settled product URL, verifies all product destinations and capability namespaces, confirms Gateway is disabled and Ark is unconfigured, confirms unknown product routes render the product 404, and confirms `/` contains no ClawDSH product navigation. Focused package, protocol, runtime, and browser coverage verifies strict requests, mutation and reset, stale revisions, restart state, managed fields, independent drafts, preflight-before-persist behavior, secret-free responses, credential cleanup, Activity privacy and degradation, current-Session cancellation, filtering, cursor pagination, the `clawdsh` preset, and idempotent development installation.

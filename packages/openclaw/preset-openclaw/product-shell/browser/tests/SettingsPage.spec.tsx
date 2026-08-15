@@ -8,6 +8,7 @@ import { SettingsPage } from '../src/pages/SettingsPage.tsx'
 import {
   CAPABILITIES_FIXTURE,
   CREDENTIALS_FIXTURE,
+  ACTIVITY_FIXTURE,
   SETTINGS_FIXTURE,
 } from './fixtures.ts'
 
@@ -24,6 +25,7 @@ function controlFixture(overrides: Partial<ClawdshControlClient> = {}): ClawdshC
     resetSettings: async () => ({ version: 1, namespace }),
     setCredential: async () => ({ version: 1, credential }),
     unsetCredential: async () => ({ version: 1, credential }),
+    listActivity: async () => ACTIVITY_FIXTURE,
     ...overrides,
   }
 }

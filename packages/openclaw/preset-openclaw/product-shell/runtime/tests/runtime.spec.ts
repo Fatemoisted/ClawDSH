@@ -63,28 +63,25 @@ function entry(
 }
 
 function controlServices(): { settings: object; credentials: object } {
-  let activity: {
+  const schema = z.object({ enabled: z.const(true).default(true) })
+  const activity: {
     ns: string
     schema: unknown
     value: unknown
     revision: number
     base: unknown
     applies: 'restart'
-  } | undefined
+  } = {
+    ns: 'clawdsh-activity',
+    schema: schema.toJSON(),
+    value: { enabled: true },
+    revision: 0,
+    base: { enabled: true },
+    applies: 'restart',
+  }
   return {
     settings: {
-      register(ns: string, schema: z, options: { base: unknown; applies: 'restart' }) {
-        activity = {
-          ns,
-          schema: schema.toJSON(),
-          value: schema(options.base),
-          revision: 0,
-          base: options.base,
-          applies: options.applies,
-        }
-        return {}
-      },
-      describe: () => activity === undefined ? [] : [activity],
+      describe: () => [activity],
     },
     credentials: {},
   }
@@ -416,6 +413,15 @@ describe('ClawDSH control channel and readiness', () => {
         ok: false,
         error: { code: 'internal', message: 'ClawDSH control is starting; retry shortly' },
       })
+      const startingActivity = await handler?.(
+        CLAWDSH_RPC_ENDPOINTS.activityList,
+        { version: 1, sessionId: 'session-starting' },
+        new AbortController().signal,
+      )
+      expect(startingActivity).toMatchObject({
+        ok: false,
+        error: { code: 'internal', message: 'ClawDSH control is starting; retry shortly' },
+      })
       const invalid = await handler?.(
         CLAWDSH_RPC_ENDPOINTS.capabilitiesList,
         { version: 1, extra: true },
@@ -433,6 +439,21 @@ describe('ClawDSH control channel and readiness', () => {
         new AbortController().signal,
       )
       expect(readyBootstrap).toMatchObject({ ok: true, value: { runtimeState: 'ready' } })
+      const activity = await handler?.(
+        CLAWDSH_RPC_ENDPOINTS.activityList,
+        { version: 1, sessionId: 'session-ready' },
+        new AbortController().signal,
+      )
+      expect(activity).toEqual({
+        ok: true,
+        value: {
+          version: 1,
+          records: [],
+          availability: { history: 'unavailable', sidecar: 'unavailable' },
+          degraded: true,
+          warnings: ['activity-history-unavailable', 'activity-data-incomplete'],
+        },
+      })
     } finally {
       internals.resolveDistIndex = previousResolver
       await Promise.all(disposers.map(dispose => dispose()))
@@ -452,26 +473,22 @@ describe('ClawDSH control channel and readiness', () => {
     let soulEnabled = true
     let soulRevision = 0
     let soulUser: { enabled: boolean } | undefined
-    let activity: {
+    const activity: {
       ns: string
       schema: unknown
       value: unknown
       revision: number
       base: unknown
       applies: 'restart'
-    } | undefined
+    } = {
+      ns: 'clawdsh-activity',
+      schema: z.object({ enabled: z.const(true).default(true) }).toJSON(),
+      value: { enabled: true },
+      revision: 0,
+      base: { enabled: true },
+      applies: 'restart',
+    }
     const settings = {
-      register(ns: string, schema: z, options: { base: unknown; applies: 'restart' }) {
-        activity = {
-          ns,
-          schema: schema.toJSON(),
-          value: schema(options.base),
-          revision: 0,
-          base: options.base,
-          applies: options.applies,
-        }
-        return {}
-      },
       describe: vi.fn(() => [{
         ns: 'clawdsh-soul',
         schema: soulSchema.toJSON(),
@@ -480,7 +497,7 @@ describe('ClawDSH control channel and readiness', () => {
         base: { enabled: true },
         ...(soulUser === undefined ? {} : { user: soulUser }),
         applies: 'new-session' as const,
-      }, ...(activity === undefined ? [] : [activity])]),
+      }, activity]),
       mutate: vi.fn(async (
         _ns: unknown,
         operations: Array<{ op: string; path: string[]; value?: unknown }>,

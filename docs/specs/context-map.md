@@ -2,9 +2,9 @@
 
 English | [中文](context-map.zh.md)
 
-- **Status**: Phase 4 productization; the product shell and Settings control plane are implemented
+- **Status**: Phase 4 productization; the product shell, Settings control plane, and semantic Activity are implemented
 - **Purpose**: entry point for ClawDSH ownership, package roles, and the upstream material an implementation needs to read
-- **Companions**: [documentation inventory](doc-inventory.md) · [roadmap](roadmap.md) · [GUI spec](feature-gui-web.md) · [channel bridge spec](feature-channel-plane-bridge.md)
+- **Companions**: [documentation inventory](doc-inventory.md) · [roadmap](roadmap.md) · [GUI spec](feature-gui-web.md) · [Activity spec](feature-activity.md) · [channel bridge spec](feature-channel-plane-bridge.md)
 
 ## 1. Owned build surface
 
@@ -33,7 +33,8 @@ English | [中文](context-map.zh.md)
 | `embeddings-ark/` | Service Provider | embeddings | Volcano Ark embeddings |
 | `skills-hub/` | Service Provider | skills | ClawHub-compatible skill directory |
 | `automation/` | function plugin | Agents, Sessions, default model | opt-in scheduled Agent turns |
-| `preset-openclaw/` | product assembly | public dsh Web and Host APIs | `clawdsh` profile and preset plus the nested product-shell browser, Host runtime, shared protocol, editable Settings control plane, and Activity empty state |
+| `activity/` | optional semantic Activity service | Session history, Settings, filesystem sidecars | privacy-limited projection, bounded storage, and cursor pagination |
+| `preset-openclaw/` | product assembly | public dsh Web and Host APIs | `clawdsh` profile and preset plus the nested product-shell browser, Host runtime, shared protocol, editable Settings control plane, and Activity view |
 | `preset-clawdsh-messaging-safe/` | preset carrier | soul | restricted channel preset installed as `clawdsh-messaging-safe` |
 | `_template/` | skeleton | — | starting point for a new owned plugin |
 
@@ -61,13 +62,13 @@ A dsh runtime is a plugin tree. Services, events, and registrations are scoped e
 
 The local GUI is a ClawDSH product over the public dsh Web runtime, not another dsh agent preset. `/clawdsh/` owns the product navigation—Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced—while `/` retains the native dsh Web GUI. Conversation reuses the public client module graph, Loader, Slot renderer, and complete `buildRenderApp()` root. The nested non-workspace build under `preset-openclaw/product-shell/` owns the outer shell, static routes, Host runtime, shared DTOs, and `/clawdsh-rpc` Connection channel.
 
-The loopback-authorized control channel implements `bootstrap/get`, `capabilities/list`, Settings describe/mutate/reset, and secret-free dsh credential describe/set/unset. Settings keeps capability and Loader evidence read-only while exposing only manifest-allowlisted Config fields with optimistic revisions; Activity remains an explicit empty state without semantic records or sidecar storage. This assembly does not register a new Client Slot and does not modify `api-proxy`, Client Catalog, Agent Loop, upstream generated files, or upstream GUI source. `dsh --profile web` remains a pure Harness entry point.
+The loopback-authorized control channel implements `bootstrap/get`, `capabilities/list`, Settings describe/mutate/reset, secret-free dsh credential describe/set/unset, and `activity/list`. Settings keeps capability and Loader evidence read-only while exposing only manifest-allowlisted Config fields with optimistic revisions. Activity follows the current Session and merges privacy-safe standard-history facts with bounded sidecars; missing or damaged data degrades only that view. This assembly does not register a new Client Slot and does not modify `api-proxy`, Client Catalog, Agent Loop, upstream generated files, or upstream GUI source. `dsh --profile web` remains a pure Harness entry point.
 
 ### Profile layering and identity
 
 `dsh --profile <name>` stacks the profile bundles, its `cordis.patch.yml`, the home-level patch, and later `--patch` overlays. `tools/link-clawdsh.sh` installs the internal profile source as `clawdsh`, installs the `clawdsh` and `clawdsh-messaging-safe` presets under the dsh user preset root, and links owned packages for development.
 
-The clean-install profile keeps the complete `channel → channel-agent → channel-openclaw` group and Automation disabled, so the Web Host starts without platform credentials. Legacy `openclaw` profile and preset directories are warning-only inputs and remain untouched; no compatibility alias is installed. The public CLI owns the managed manifest, integrity repair, and `clawdsh doctor` flow.
+The clean-install profile always mounts `channel → channel-agent → channel-openclaw`, Activity, and the other capability plugins. OpenClaw Gateway and Automation business settings default to disabled, so the Web Host starts without platform credentials or an OpenClaw artifact. Legacy `openclaw` profile and preset directories are warning-only inputs and remain untouched; no compatibility alias is installed. The public CLI owns the managed manifest, integrity repair, and `clawdsh doctor` flow.
 
 ### Complete capability seams
 

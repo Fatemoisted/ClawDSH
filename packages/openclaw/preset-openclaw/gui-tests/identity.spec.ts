@@ -33,6 +33,7 @@ const linkedPackages = [
   'embeddings-ark',
   'skills-hub',
   'automation',
+  'activity',
   'soul',
 ] as const
 
@@ -112,10 +113,14 @@ describe('ClawDSH installed profile identity', () => {
 
   it('mounts settings-owning capabilities with fail-closed defaults', () => {
     const patch = read(join(profileSource, 'cordis.patch.yml'))
+    const activity = loaderEntry(patch, 'clawdsh-activity')
     const memory = loaderEntry(patch, 'memory')
     const skills = loaderEntry(patch, 'skills-hub')
     const automation = loaderEntry(patch, 'automation')
 
+    expect(activity).not.toMatch(/^      disabled:/m)
+    expect(activity).toMatch(/name: '@clawdsh\/dsh-activity'/)
+    expect(activity).toMatch(/^        enabled: true$/m)
     expect(memory).toMatch(/^        enabled: true$/m)
     expect(skills).toMatch(/^        enabled: true$/m)
     expect(automation).not.toMatch(/^      disabled:/m)

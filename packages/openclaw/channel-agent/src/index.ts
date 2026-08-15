@@ -118,6 +118,17 @@ interface InFlightTurn {
   readonly promise: Promise<ChannelTurnResultV1>
 }
 
+interface ChannelActivitySink {
+  channelDelivery(input: {
+    readonly sessionId: SessionId
+    readonly adapter: string
+    readonly conversation: 'direct' | 'group'
+    readonly mention: boolean | null
+    readonly seq: number
+    readonly status?: 'started' | 'failed' | 'sent'
+  }): Promise<unknown>
+}
+
 /** Exact pre-Agent cancellation requested through `turn.cancel`. */
 class ChannelTurnCancelledError extends Error {
   constructor(readonly reason: ChannelTurnCancelV1['reason']) {
@@ -433,7 +444,42 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       }
     }
     const phase = deliveryPhase(report.receipt)
-    await this.ledger.put(key, { ...record, phase, delivery: report.receipt, updatedAt: Date.now() })
+    const committed = { ...record, phase, delivery: report.receipt, updatedAt: Date.now() }
+    await this.ledger.put(key, committed)
+    this.recordDeliveryActivity(committed)
+  }
+
+  /** Project a committed receipt without retaining provider identities or errors in Activity. */
+  private recordDeliveryActivity(record: ChannelLedgerRecord): void {
+    const activity = this.ctx.get('clawdshActivity') as ChannelActivitySink | undefined
+    if (activity === undefined || record.sessionId === undefined || record.delivery === undefined) return
+    const status = deliveryActivityStatus(record.delivery)
+    const safe = {
+      sessionId: record.sessionId,
+      adapter: String(record.envelope.route.channel),
+      conversation: record.envelope.route.kind,
+      mention: record.envelope.wasMentioned ?? null,
+      ...status === undefined ? {} : { status },
+    }
+    void this.latestSessionSeq(record.sessionId).then((seq) => {
+      if (seq === undefined) return
+      try {
+        void activity.channelDelivery({ ...safe, seq }).catch((_activityWriteFailed: unknown) => {
+          // Activity is a best-effort projection and cannot own the durable receipt.
+        })
+      } catch (_activityWriteFailed) {
+        // Activity is a best-effort projection and cannot own the durable receipt.
+      }
+    }).catch((_activityProjectionFailed: unknown) => {
+      // Missing or unreadable Session history degrades only Activity completeness.
+    })
+  }
+
+  /** Resolve a source Session sequence from the live log, then its immutable persisted inspection. */
+  private async latestSessionSeq(sessionId: SessionId): Promise<number | undefined> {
+    const live = this.ctx.sessions.get(sessionId)
+    if (live !== undefined) return live.events.at(-1)?.seq
+    return (await this.ctx.sessionPersistence.inspect(sessionId)).events.at(-1)?.seq
   }
 
   private async executeTurn(
@@ -1062,6 +1108,24 @@ function deliveryPhase(receipt: ChannelDeliveryReceiptV1): ChannelLedgerRecord['
     case 'dead-letter': return 'dead-letter'
     case 'accepted':
     case 'retrying': return 'completed'
+    /* v8 ignore next 3 -- ChannelDeliveryReceiptV1 is closed and every status is handled above. */
+    default: {
+      const exhaustive: never = receipt
+      throw new Error(`channel-agent: unknown delivery status ${String(exhaustive)}`)
+    }
+  }
+}
+
+/** Map provider receipt states to the intentionally smaller Activity lifecycle vocabulary. */
+function deliveryActivityStatus(
+  receipt: ChannelDeliveryReceiptV1,
+): 'started' | 'failed' | 'sent' | undefined {
+  switch (receipt.status) {
+    case 'accepted':
+    case 'retrying': return 'started'
+    case 'confirmed': return 'sent'
+    case 'dead-letter': return 'failed'
+    case 'ambiguous': return undefined
     /* v8 ignore next 3 -- ChannelDeliveryReceiptV1 is closed and every status is handled above. */
     default: {
       const exhaustive: never = receipt

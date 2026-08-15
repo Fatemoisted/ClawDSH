@@ -20,14 +20,23 @@
  * @module @clawdsh/dsh-soul
  */
 
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import type {} from '@deepseek-ai/dsh-agent'
 import { scopeOf } from '@deepseek-ai/dsh-scope'
+import type {} from '@deepseek-ai/dsh-session'
 import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
-import { PERSONA_ORDER, PERSONA_SECTION } from '@deepseek-ai/dsh-system-prompt'
+import {
+  PERSONA_ORDER,
+  PERSONA_SECTION,
+  renderPrompt,
+  type AssembleContext,
+  type PromptAssembly,
+} from '@deepseek-ai/dsh-system-prompt'
 
 export { PERSONA_ORDER, PERSONA_SECTION }
 
@@ -64,6 +73,24 @@ export interface Config {
   mode?: 'replace' | 'append'
   /** Suppress dynamic runtime-context snapshots for this agent scope. */
   includeRuntimeContext?: boolean
+}
+
+interface PromptActivitySink {
+  promptContribution(input: {
+    readonly sessionId: string
+    readonly producer: 'soul'
+    readonly section: 'persona' | 'clawdsh:soul'
+    readonly mode: 'append' | 'replace'
+    readonly characters: number
+    readonly sha256: string
+    readonly seq: number
+  }): Promise<unknown>
+}
+
+interface SoulPromptCandidate {
+  readonly sessionId: string
+  readonly system: string
+  readonly contribution: string
 }
 
 /** Runtime schema for the soul row. */
@@ -159,5 +186,79 @@ export function apply(ctx: Context, config: Config): void {
     text,
     ...(mode === 'replace' ? { complete: true } : {}),
   }), 'soul.section()')
+  installPromptActivity(ctx, mode, text)
   if (!(resolved.includeRuntimeContext ?? true)) ctx.systemPrompt.suppressRuntimeContext()
+}
+
+/** Attribute a Soul section only after its rendered assembly matches the committed request header. */
+function installPromptActivity(ctx: Context, mode: 'replace' | 'append', text: string): void {
+  let candidate: SoulPromptCandidate | undefined
+  ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
+    const transformed = await next()
+    const sessionId = assemblySessionId(context)
+    if (sessionId === undefined || context.signal === undefined) return transformed
+    try {
+      const contribution = mode === 'replace'
+        ? renderSection(transformed, PERSONA_SECTION, text)
+        : appendContribution(transformed, text)
+      candidate = contribution === undefined || contribution === ''
+        ? undefined
+        : {
+          sessionId,
+          contribution,
+          system: mode === 'replace' ? contribution : renderPrompt(transformed),
+        }
+    } catch (_promptRenderFailed) {
+      // The Agent loop owns prompt-render failures; optional Activity records no candidate.
+      candidate = undefined
+    }
+    return transformed
+  }, { prepend: true })
+  ctx.on('session/event', (session, event) => {
+    if (event.type !== 'request/header') return
+    const current = candidate
+    candidate = undefined
+    if (current === undefined || current.sessionId !== String(session.id)) return
+    if (event.data.header.system !== current.system) return
+    recordPromptContribution(ctx, current, event.seq, mode)
+  })
+}
+
+function assemblySessionId(context: AssembleContext): string | undefined {
+  return context.agent === undefined ? undefined : String(context.agent.id)
+}
+
+function appendContribution(assembly: PromptAssembly, text: string): string | undefined {
+  const section = assembly.sections.find(candidate => candidate.name === SOUL_SECTION)
+  if (section === undefined || section.text !== text) return undefined
+  return renderPrompt({ ...assembly, sections: [section] })
+}
+
+function renderSection(assembly: PromptAssembly, name: string, text: string): string {
+  return renderPrompt({ ...assembly, sections: [{ name, text }] })
+}
+
+function recordPromptContribution(
+  ctx: Context,
+  candidate: SoulPromptCandidate,
+  seq: number,
+  mode: 'replace' | 'append',
+): void {
+  const activity = ctx.get('clawdshActivity') as PromptActivitySink | undefined
+  if (activity === undefined) return
+  try {
+    void activity.promptContribution({
+      sessionId: candidate.sessionId,
+      producer: 'soul',
+      section: mode === 'replace' ? 'persona' : 'clawdsh:soul',
+      mode,
+      characters: candidate.contribution.length,
+      sha256: createHash('sha256').update(candidate.contribution).digest('hex'),
+      seq,
+    }).catch((_activityWriteFailed: unknown) => {
+      // Activity is a best-effort projection and cannot own prompt assembly.
+    })
+  } catch (_activityWriteFailed) {
+    // Activity is a best-effort projection and cannot own prompt assembly.
+  }
 }

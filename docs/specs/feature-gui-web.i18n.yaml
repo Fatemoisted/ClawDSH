@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/specs/feature-gui-web.md
-feature-gui-web.md: dea374bf5e8f12fe2bf15d59f9d5a9122d0d4d6e
-feature-gui-web.zh.md: 8c3c329636a4f1ced13a042e5828780fc2b19f56
+feature-gui-web.md: 41eb9d60605734d8ddd4bdfe6719088595e04390
+feature-gui-web.zh.md: 33ac6662b0a32a0f49782e6f6a83a8ff79a739d0

@@ -1,12 +1,14 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useState } from 'react'
 import { ProductShell } from '../src/ProductShell.tsx'
 import type { ClawdshControlClient } from '../src/control-client.ts'
+import type { ISessions } from '@deepseek-ai/dsh-client-runtime/client'
 import { createMemoryRouter } from '../src/router.ts'
 import {
   CAPABILITIES_FIXTURE,
   CREDENTIALS_FIXTURE,
+  ACTIVITY_FIXTURE,
   SETTINGS_FIXTURE,
 } from './fixtures.ts'
 
@@ -26,7 +28,40 @@ function controlFixture(overrides: Partial<ClawdshControlClient> = {}): ClawdshC
     resetSettings: async () => ({ version: 1, namespace: SETTINGS_FIXTURE.namespaces[0]! }),
     setCredential: async () => ({ version: 1, credential: CREDENTIALS_FIXTURE.credentials[0]! }),
     unsetCredential: async () => ({ version: 1, credential: CREDENTIALS_FIXTURE.credentials[0]! }),
+    listActivity: async () => ACTIVITY_FIXTURE,
     ...overrides,
+  }
+}
+
+function sessionsFixture(current = 'session-one'): Pick<ISessions, 'list'> {
+  return {
+    list: {
+      getSnapshot: () => ({ current }),
+      subscribe: () => () => undefined,
+    },
+  } as unknown as Pick<ISessions, 'list'>
+}
+
+function mutableSessionsFixture(initial?: string): {
+  readonly sessions: Pick<ISessions, 'list'>
+  readonly select: (sessionId: string | undefined) => void
+} {
+  let current = initial
+  const listeners = new Set<() => void>()
+  return {
+    sessions: {
+      list: {
+        getSnapshot: () => ({ current }),
+        subscribe: (listener: () => void) => {
+          listeners.add(listener)
+          return () => { listeners.delete(listener) }
+        },
+      },
+    } as unknown as Pick<ISessions, 'list'>,
+    select(sessionId) {
+      current = sessionId
+      for (const listener of listeners) listener()
+    },
   }
 }
 
@@ -37,6 +72,7 @@ describe('ClawDSH product shell', () => {
         renderConversation={() => <ConversationFixture />}
         control={controlFixture()}
         localControlAvailable
+        sessions={sessionsFixture()}
         router={createMemoryRouter()}
       />,
     )
@@ -54,6 +90,7 @@ describe('ClawDSH product shell', () => {
         renderConversation={renderConversation}
         control={controlFixture()}
         localControlAvailable
+        sessions={sessionsFixture()}
         router={createMemoryRouter()}
       />,
     )
@@ -79,6 +116,7 @@ describe('ClawDSH product shell', () => {
         renderConversation={() => <ConversationFixture />}
         control={controlFixture()}
         localControlAvailable
+        sessions={sessionsFixture()}
         router={createMemoryRouter('/clawdsh/chat')}
       />,
     )
@@ -96,6 +134,7 @@ describe('ClawDSH product shell', () => {
         renderConversation={() => <ConversationFixture />}
         control={controlFixture({ loadCapabilities })}
         localControlAvailable
+        sessions={sessionsFixture()}
         router={createMemoryRouter('/clawdsh/settings')}
       />,
     )
@@ -114,6 +153,7 @@ describe('ClawDSH product shell', () => {
         renderConversation={() => <ConversationFixture />}
         control={controlFixture({ loadCapabilities })}
         localControlAvailable={false}
+        sessions={sessionsFixture()}
         router={router}
       />,
     )
@@ -124,5 +164,28 @@ describe('ClawDSH product shell', () => {
     expect(screen.getByRole('status').textContent).toContain('ClawDSH 活动仅本机可用')
     fireEvent.click(screen.getByRole('link', { name: '对话' }))
     expect(screen.getByRole('button', { name: 'conversation 0' })).toBeTruthy()
+  })
+
+  it('follows the current Session from the public Client sessions snapshot', async () => {
+    const selected = mutableSessionsFixture()
+    const listActivity = vi.fn<ClawdshControlClient['listActivity']>(async () => ACTIVITY_FIXTURE)
+    render(
+      <ProductShell
+        renderConversation={() => <ConversationFixture />}
+        control={controlFixture({ listActivity })}
+        localControlAvailable
+        sessions={selected.sessions}
+        router={createMemoryRouter('/clawdsh/activity')}
+      />,
+    )
+
+    expect(screen.getByRole('status').textContent).toContain('请先选择一个对话')
+    expect(listActivity).not.toHaveBeenCalled()
+    act(() => { selected.select('session-one') })
+    await waitFor(() => { expect(listActivity).toHaveBeenCalledTimes(1) })
+    expect(listActivity.mock.calls[0]?.[0]).toMatchObject({ sessionId: 'session-one' })
+    act(() => { selected.select('session-two') })
+    await waitFor(() => { expect(listActivity).toHaveBeenCalledTimes(2) })
+    expect(listActivity.mock.calls[1]?.[0]).toMatchObject({ sessionId: 'session-two' })
   })
 })

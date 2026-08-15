@@ -16,11 +16,27 @@
 
 - heading "ClawDSH 总览" [level=2]
 
-# Deferred activity
+# Semantic activity
 
 - heading "ClawDSH 活动" [level=1]
 
-- paragraph: Prompt、Memory、渠道、Skills 与 Automation 活动将在后续阶段显示在这里。
+- article:
+  - text: Soul / Prompt
+  - heading "ClawDSH Prompt 贡献" [level=3]
+  - text: 已完成
+  - time: 2026年8月15日 20:00:00
+  - term: 区段
+  - definition:
+    - code: clawdsh:soul
+  - term: 方式
+  - definition: 追加
+  - term: 字符数
+  - definition: "128"
+  - term: SHA-256
+  - definition:
+    - code: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  - term: Session Seq
+  - definition: "1"
 
 # Unknown product page
 

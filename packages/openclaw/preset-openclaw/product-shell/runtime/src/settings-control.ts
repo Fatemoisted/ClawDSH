@@ -57,10 +57,6 @@ type SettingsControlResult = RpcResult<
 >
 
 const GATEWAY_NAMESPACE = 'clawdsh-channel-openclaw'
-const ACTIVITY_NAMESPACE = 'clawdsh-activity'
-const ACTIVITY_SETTINGS_SCHEMA = Schema.object({
-  enabled: Schema.const(true).default(true),
-})
 
 function settingsRejected(namespace: string): RpcResult<never> {
   const publicNamespace = SETTINGS_MANIFEST.some(entry => entry.namespace === namespace)
@@ -432,16 +428,6 @@ export class ClawdshSettingsControl {
 
   /** @param ctx - Host context carrying public Settings and Credentials services. */
   constructor(private readonly ctx: Context) {}
-
-  /** Register product-owned namespaces before the control route becomes reachable. */
-  registerManagedNamespaces(): void {
-    const settings = this.settings()
-    if (settings === undefined) return
-    settings.register(settingsNamespace(ACTIVITY_NAMESPACE), ACTIVITY_SETTINGS_SCHEMA, {
-      base: { enabled: true },
-      applies: 'restart',
-    })
-  }
 
   /**
    * Freeze runtime values for every registered product namespace after the Loader settles.

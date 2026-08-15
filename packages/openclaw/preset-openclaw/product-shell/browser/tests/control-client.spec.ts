@@ -7,6 +7,7 @@ import {
 import {
   createClawdshControlClient,
   loadClawdshCapabilities,
+  loadClawdshActivity,
   loadClawdshCredentials,
   loadClawdshSettings,
   mutateClawdshSetting,
@@ -16,6 +17,7 @@ import {
 import {
   CAPABILITIES_FIXTURE,
   CREDENTIALS_FIXTURE,
+  ACTIVITY_FIXTURE,
   SETTINGS_FIXTURE,
 } from './fixtures.ts'
 
@@ -94,9 +96,60 @@ describe('ClawDSH control client', () => {
     await expect(setClawdshCredential(connection, 'ark-api-key', secret)).rejects.toThrow('unknown field')
   })
 
+  it('uses the cancellable Activity endpoint and rejects metadata outside a fixed kind', async () => {
+    const call = vi.fn()
+      .mockResolvedValueOnce({ ok: true, value: ACTIVITY_FIXTURE })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: {
+          ...ACTIVITY_FIXTURE,
+          records: [{
+            ...ACTIVITY_FIXTURE.records[1]!,
+            metadata: { ...ACTIVITY_FIXTURE.records[1]!.metadata, message: 'secret-message-canary' },
+          }],
+        },
+      })
+    const connection = { isLoopback: true, rpc: { call } } as unknown as ClawdshControlConnection
+    const controller = new AbortController()
+    const request = {
+      version: 1 as const,
+      sessionId: 'session-one',
+      categories: ['channel' as const],
+      order: 'desc' as const,
+      limit: 50,
+    }
+
+    await expect(loadClawdshActivity(connection, request, controller.signal)).resolves.toEqual(ACTIVITY_FIXTURE)
+    expect(call).toHaveBeenNthCalledWith(
+      1,
+      CLAWDSH_RPC_CHANNEL,
+      CLAWDSH_RPC_ENDPOINTS.activityList,
+      request,
+      controller.signal,
+    )
+    await expect(loadClawdshActivity(connection, request)).rejects.toThrow('unknown field')
+  })
+
+  it('rejects Activity records from a Session other than the requested one', async () => {
+    const call = vi.fn().mockResolvedValue({
+      ok: true,
+      value: {
+        ...ACTIVITY_FIXTURE,
+        records: ACTIVITY_FIXTURE.records.map(record => ({ ...record, sessionId: 'session-two' })),
+      },
+    })
+    const connection = { isLoopback: true, rpc: { call } } as unknown as ClawdshControlConnection
+
+    await expect(loadClawdshActivity(connection, {
+      version: 1,
+      sessionId: 'session-one',
+    })).rejects.toThrow('another Session')
+  })
+
   it('binds the complete product-control face to one Connection', () => {
     const connection = { isLoopback: true, rpc: { call: vi.fn() } } as unknown as ClawdshControlConnection
     expect(Object.keys(createClawdshControlClient(connection)).sort()).toEqual([
+      'listActivity',
       'loadCapabilities',
       'loadCredentials',
       'loadSettings',

@@ -2,13 +2,13 @@
 
 [English](0007-clawdsh-local-gui-product.md) | 中文
 
-- **状态**：已接受（产品壳与 Settings 控制面已实现；语义 Activity 待完成）
+- **状态**：已接受（产品壳、Settings 控制面与语义 Activity 已实现）
 - **日期**：2026-08-15
 - **依赖**：ADR-0001（自有代码隔离）、[当前 dsh Web GUI 组装](../../.agents/notes/implemented/feature/2026-08-15-openclaw-gui-dsh-web-app.md)
 
 ## Context
 
-本地 GUI 把原生 `dsh-web-app` bundle、显示为 `ClawDSH 模式` 的 `clawdsh` agent preset 与自有产品 runtime 组合起来。`/clawdsh/` 提供 ClawDSH 导航、能力总览与 allowlist Settings 控制面，`/` 保留完整 DeepSeek Harness 应用。语义 Activity 记录仍属于独立实现增量。
+本地 GUI 把原生 `dsh-web-app` bundle、显示为 `ClawDSH 模式` 的 `clawdsh` agent preset 与自有产品 runtime 组合起来。`/clawdsh/` 提供 ClawDSH 导航、能力总览、allowlist Settings 控制面与语义 Activity，`/` 保留完整 DeepSeek Harness 应用。
 
 profile 与 agent preset 的生命周期不同。profile 为进程挂载 Host 插件，preset 则组合某个 Session 的 Agent plane。因此，在 ClawDSH profile 内选择 `standard` preset 不会卸载 ClawDSH 的渠道、Memory、Skills 或 Automation，也不能诚实地表示「纯净 DeepSeek Harness」。
 
@@ -26,7 +26,7 @@ dsh 公开 Web 组装已经提供 Session runtime、浏览器模块图、RPC car
 8. **产品身份是 ClawDSH。** 用户可见模式为 `ClawDSH 模式`，profile 与 preset id 均为 `clawdsh`。物理 `preset-openclaw` 源码目录只因仓库既有层级检查把它视为组装目录而保留；它不是用户术语。
 9. **旧身份只触发警告。** `tools/link-clawdsh.sh` 检测到旧 `openclaw` profile 或 preset 目录时给出警告并保持原状，既不删除，也不创建兼容别名。托管安装 manifest、完整性检查与 `clawdsh doctor` 修复操作属于公共发行 CLI。
 
-详细的所有权与验证依据见 [ClawDSH 产品壳 Agent Note](../../.agents/notes/proposed/architecture/2026-08-15-clawdsh-product-shell.md)与已实现的 [Settings 控制面决策](../../.agents/notes/implemented/feature/2026-08-15-clawdsh-settings-control-plane.md)。
+详细的所有权与验证依据见已实现的 [ClawDSH 产品壳 Agent Note](../../.agents/notes/implemented/architecture/2026-08-15-clawdsh-product-shell.md)与 [Settings 控制面决策](../../.agents/notes/implemented/feature/2026-08-15-clawdsh-settings-control-plane.md)。
 
 ## Consequences
 
@@ -36,7 +36,7 @@ dsh 公开 Web 组装已经提供 Session runtime、浏览器模块图、RPC car
 - 产品路由与高级路由共享同一个 Host 进程和持久化，但可以拥有相互独立的页面本地 UI 状态。
 - 能力开关描述 ClawDSH 行为，不暴露不受限制的 Cordis Loader mutation。
 - 托管的 `clawdsh` preset 暂时位于 dsh 用户 preset 根目录。ClawDSH Settings 不提供删除操作，但未修改的 Harness preset 管理器仍可把它作为用户 preset 删除；公共发行的 `clawdsh doctor` 会显式修复该状态。
-- 产品壳拥有路由、导航、能力 Settings 与明确的 deferred Activity 状态；它不宣称语义 Activity 存储已经交付。
+- 产品壳拥有路由、导航、能力 Settings 与语义 Activity。Activity 有界、限制隐私并保持 fail-open，不是 Session history 或 raw Trajectory 的权威替代。
 
 ## Alternatives
 

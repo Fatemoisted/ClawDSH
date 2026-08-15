@@ -3,12 +3,16 @@ import {
   CLAWDSH_READ_REQUEST,
   CLAWDSH_RPC_CHANNEL,
   CLAWDSH_RPC_ENDPOINTS,
+  parseClawdshActivityListRequest,
+  parseClawdshActivityListResponse,
   parseClawdshCapabilitiesResponse,
   parseClawdshCredentialResponse,
   parseClawdshCredentialsDescribeResponse,
   parseClawdshSettingsDescribeResponse,
   parseClawdshSettingsNamespaceResponse,
   type ClawdshCapabilitiesResponse,
+  type ClawdshActivityListRequest,
+  type ClawdshActivityListResponse,
   type ClawdshCredentialResponse,
   type ClawdshCredentialsDescribeResponse,
   type ClawdshSettingsDescribeResponse,
@@ -29,6 +33,10 @@ export interface ClawdshControlClient {
   readonly loadCredentials: () => Promise<ClawdshCredentialsDescribeResponse>
   readonly setCredential: (id: string, value: string) => Promise<ClawdshCredentialResponse>
   readonly unsetCredential: (id: string) => Promise<ClawdshCredentialResponse>
+  readonly listActivity: (
+    request: ClawdshActivityListRequest,
+    signal?: AbortSignal,
+  ) => Promise<ClawdshActivityListResponse>
 }
 
 /** Stable product-control failure retaining the server's public error code. */
@@ -48,9 +56,12 @@ async function call(
   connection: ClawdshControlConnection,
   endpoint: string,
   payload: unknown,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   assertLoopback(connection)
-  const result = await connection.rpc.call(CLAWDSH_RPC_CHANNEL, endpoint, payload)
+  const result = signal === undefined
+    ? await connection.rpc.call(CLAWDSH_RPC_CHANNEL, endpoint, payload)
+    : await connection.rpc.call(CLAWDSH_RPC_CHANNEL, endpoint, payload, signal)
   if (!result.ok) throw new ClawdshControlError(result.error.code, result.error.message)
   return result.value
 }
@@ -137,6 +148,25 @@ export async function unsetClawdshCredential(
   ))
 }
 
+/** Read one Session-bound semantic Activity page with caller cancellation. */
+export async function loadClawdshActivity(
+  connection: ClawdshControlConnection,
+  request: ClawdshActivityListRequest,
+  signal?: AbortSignal,
+): Promise<ClawdshActivityListResponse> {
+  const parsedRequest = parseClawdshActivityListRequest(request)
+  const response = parseClawdshActivityListResponse(await call(
+    connection,
+    CLAWDSH_RPC_ENDPOINTS.activityList,
+    parsedRequest,
+    signal,
+  ))
+  if (response.records.some(record => record.sessionId !== parsedRequest.sessionId)) {
+    throw new TypeError('activity response contains a record from another Session')
+  }
+  return response
+}
+
 /** Bind all product-control operations to one live Connection. */
 export function createClawdshControlClient(connection: ClawdshControlConnection): ClawdshControlClient {
   return {
@@ -147,5 +177,6 @@ export function createClawdshControlClient(connection: ClawdshControlConnection)
     loadCredentials: () => loadClawdshCredentials(connection),
     setCredential: (id, value) => setClawdshCredential(connection, id, value),
     unsetCredential: id => unsetClawdshCredential(connection, id),
+    listActivity: (request, signal) => loadClawdshActivity(connection, request, signal),
   }
 }

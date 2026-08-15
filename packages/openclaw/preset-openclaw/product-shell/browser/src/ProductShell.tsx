@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { ClawdshControlClient } from './control-client.ts'
+import type { ISessions } from '@deepseek-ai/dsh-client-runtime/client'
 import { ActivityPage } from './pages/ActivityPage.tsx'
 import { NotFoundPage } from './pages/NotFoundPage.tsx'
 import { SettingsPage } from './pages/SettingsPage.tsx'
@@ -21,6 +22,7 @@ interface ProductShellProps {
   readonly renderConversation: () => ReactNode
   readonly control: ClawdshControlClient
   readonly localControlAvailable: boolean
+  readonly sessions: Pick<ISessions, 'list'>
   readonly router?: ClawdshRouter
 }
 
@@ -48,11 +50,17 @@ export function ProductShell({
   renderConversation,
   control,
   localControlAvailable,
+  sessions,
   router: suppliedRouter,
 }: ProductShellProps): ReactNode {
   const [router] = useState<ClawdshRouter>(() => suppliedRouter ?? new BrowserClawdshRouter())
   const [conversation] = useState<ReactNode>(() => renderConversation())
   const route = useSyncExternalStore(router.subscribe, router.getSnapshot, router.getSnapshot)
+  const currentSessionId = useSyncExternalStore(
+    sessions.list.subscribe,
+    () => sessions.list.getSnapshot().current,
+    () => sessions.list.getSnapshot().current,
+  )
 
   useEffect(() => suppliedRouter === undefined ? () => { router.dispose() } : undefined, [router, suppliedRouter])
   useEffect(() => { document.title = TITLE[route.id] }, [route.id])
@@ -108,7 +116,13 @@ export function ProductShell({
           </div>
         ) : null}
         {route.id === 'activity' ? (
-          <div className={css.page}><ActivityPage localControlAvailable={localControlAvailable} /></div>
+          <div className={css.page}>
+            <ActivityPage
+              control={control}
+              localControlAvailable={localControlAvailable}
+              {...currentSessionId === undefined ? {} : { sessionId: String(currentSessionId) }}
+            />
+          </div>
         ) : null}
         {route.id === 'not-found' ? (
           <div className={css.page}>

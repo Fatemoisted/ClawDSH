@@ -2,7 +2,7 @@
 
 [English](feature-gui-web.md) | 中文
 
-- **状态**：ClawDSH 产品壳、能力总览与可编辑 Settings 控制面已经实现；语义 Activity 记录尚不可用
+- **状态**：ClawDSH 产品壳、能力总览、可编辑 Settings 控制面与语义 Activity 已经实现
 - **组装位置**：`packages/openclaw/preset-openclaw/product-shell/`
 - **产品角色**：与 Gateway 接入的通讯前台并列的 ClawDSH 本地前台
 
@@ -41,6 +41,7 @@ Browser、Host runtime 与 shared protocol 组成 `preset-openclaw/product-shell
 - `capabilities/list`：返回仅含 JSON 的产品能力、净化后的 Loader 证据与锁定的 OpenClaw channel catalog。
 - `settings/describe`、`settings/mutate` 与 `settings/reset`：只暴露产品 allowlist 中的 schema 与字段，并使用 optimistic revision。
 - `credentials/describe`、`credentials/set` 与 `credentials/unset`：为 allowlist 中的 dsh 自有 reference 暴露不含 secret 的状态与只写 mutation。
+- `activity/list`：返回一个限制隐私的当前 Session 页面，数据由 standard Session history 与有界 ClawDSH sidecar 合并而成。
 
 控制 runtime 返回 data-transfer object，而不是 live Cordis object。Connection 不是 loopback 时，浏览器也会拒绝产品控制调用。远程 trusted-host 页面仍可使用 Harness 对话，但 ClawDSH Settings、credential 与 Activity 控制数据只在本机提供。
 
@@ -61,7 +62,7 @@ Package 来源遵循固定映射：`@clawdsh/*` 属于 ClawDSH，`@deepseek-ai/*
 
 ## Settings 语义
 
-固定 namespace 是 `clawdsh-soul`、`clawdsh-channel-agent`、`clawdsh-channel-openclaw`、`clawdsh-memory`、`clawdsh-embeddings-ark`、`clawdsh-skills-hub`、`clawdsh-automation` 与受管 `clawdsh-activity` placeholder。Channel Protocol 是必需基础设施，没有用户 namespace。Server 自有 manifest 控制字段顺序、文案、editor 选择、依赖，以及每个准确字段是可编辑还是 installer-managed；浏览器不能扩大该 allowlist。
+固定 namespace 是 `clawdsh-soul`、`clawdsh-channel-agent`、`clawdsh-channel-openclaw`、`clawdsh-memory`、`clawdsh-embeddings-ark`、`clawdsh-skills-hub`、`clawdsh-automation` 与必需且受管的 `clawdsh-activity` namespace。Channel Protocol 是必需基础设施，没有用户 namespace。Server 自有 manifest 控制字段顺序、文案、editor 选择、依赖，以及每个准确字段是可编辑还是 installer-managed；浏览器不能扩大该 allowlist。
 
 每项能力注册自身已有 Config schema。值按 `schema default → profile base → user settings` 顺序解析。Reset 只移除 namespace 的 user layer。Mutation 携带 `expectedRevision` 与数量受限、非空且 path 不重复的 `set` 或 `unset` operation 集合；Host 原子校验并持久化完整集合。过期写入返回 `settings-conflict`，不 merge，也不 retry。Response 区分 `desiredRevision` 与 `runtimeRevision`，通过 desired/runtime value 计算 `restartRequired`，并把生效时间标为 `live`、`new-session`、`next-call` 或 `restart`。
 
@@ -73,11 +74,11 @@ Ark Embeddings 只使用固定 `ARK_API_KEY` credential reference，并在每次
 
 每张 Settings card 拥有独立 draft 与 revision。通用 editor 支持 schema 描述的 string、number、boolean、enum、nested object 与 string array；Automation 原子保存完整 `rules` 字段，Gateway 使用专用 managed-deployment view。发生冲突时保留 draft，并禁止再次保存，直到显式重新加载。Credential input 在成功或失败后的 `finally` 中清空，response 只保留不含 secret 的 descriptor。
 
-## Activity 缺口
+## 语义 Activity
 
-Activity route 当前渲染明确的空状态。它不读取 Session history，不创建 sidecar，不提供 filter，也不声称已经存在 Prompt、Memory、Channel、Skill 或 Automation 语义记录。Raw Trajectory 继续由 Harness 高级提供。
+Activity route 跟随 Harness client 当前选择的 Session，并呈现 Prompt、Memory、Channel、Skill 与 Automation 记录。它支持 category filter、正反时间排序与 cursor pagination；切换 Session 会中止旧请求并重置 continuation。没有当前 Session 时会链接回对话，Raw Trajectory 则继续由 Harness 高级提供。
 
-当前 RPC protocol 不实现 `activity/list`，也没有挂载 `@clawdsh/dsh-activity` package。Activity persistence、history projection、privacy mapping、degradation、filter 与 pagination 仍属于 proposal 范围。
+始终挂载的 `@clawdsh/dsh-activity` service 会把从 standard Session history 投影出的隐私安全事实，与保存 ClawDSH 独有贡献的有界 owner-private sidecar 合并。Sidecar 缺失、损坏或不可写只会让该视图降级；history 与 sidecar 可以分别继续使用，任何产品 response 都不会返回 source path 或 error。固定的 kind 专用 component 呈现记录，不提供 raw JSON 展开。[Activity 规格](feature-activity.md)拥有记录词汇、privacy mapping、存储、分页与降级行为。
 
 ## 集成约束
 
@@ -89,4 +90,4 @@ Activity route 当前渲染明确的空状态。它不读取 Session history，�
 
 ## 当前验证
 
-嵌套 build 拥有独立 browser/runtime typecheck、focused test 与 build output 检查。真实 profile keyless journey 会构建嵌套应用，把它安装到隔离 dsh home，等待 Loader-settled 产品 URL，验证全部产品目的地与能力 namespace，确认 Gateway 关闭且 Ark 未配置，确认未知产品 route 渲染产品 404，并确认 `/` 不包含 ClawDSH 产品导航。Focused protocol、runtime 与 browser coverage 校验严格 request、mutation 与 reset、stale revision、restart state、受管字段、独立 draft、preflight-before-persist 行为、不含 secret 的 response、credential cleanup、`clawdsh` preset 与幂等开发安装。
+嵌套 build 拥有独立 browser/runtime typecheck、focused test 与 build output 检查。真实 profile keyless journey 会构建嵌套应用，把它安装到隔离 dsh home，等待 Loader-settled 产品 URL，验证全部产品目的地与能力 namespace，确认 Gateway 关闭且 Ark 未配置，确认未知产品 route 渲染产品 404，并确认 `/` 不包含 ClawDSH 产品导航。Focused package、protocol、runtime 与 browser coverage 校验严格 request、mutation 与 reset、stale revision、restart state、受管字段、独立 draft、preflight-before-persist 行为、不含 secret 的 response、credential cleanup、Activity privacy 与 degradation、当前 Session cancellation、filter、cursor pagination、`clawdsh` preset 与幂等开发安装。

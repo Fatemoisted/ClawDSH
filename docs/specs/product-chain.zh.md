@@ -15,7 +15,7 @@
 
 | 功能 | 落地包 | 主要 seam | 当前结果 |
 |---|---|---|---|
-| ClawDSH 本地 GUI | `preset-openclaw` | 公开 dsh Web 组装 | ✅ 产品壳与可写 Settings；⏳ 语义 Activity |
+| ClawDSH 本地 GUI | `preset-openclaw`、`activity` | 公开 dsh Web 组装、Session history、可选 Activity service | ✅ 产品壳、可写 Settings 与语义 Activity |
 | 当前渠道平面 | `channel`、`channel-agent`、`channel-openclaw` | 自有 `ctx.channels` V1 | ✅ 基础；⚠️ 没有 certified 或 enabled 渠道 |
 | 旧渠道路径 | `channel-core`、`channel-telegram`、`channel-feishu` | `ctx.legacyChannels` | ✅ 保留 compatibility；⚠️ 没有当前认证 |
 | Persona | `soul` | `ctx.systemPrompt` | ✅ 已实现 |
@@ -28,7 +28,7 @@
 
 ### 当前产品增量
 
-nested build 在 `tools/link-clawdsh.sh` 安装 `clawdsh` profile 与 preset 前产出 `@clawdsh/dsh-product-runtime` 及其 browser asset。`pnpm dsh --profile clawdsh` 在 Loader 结算后只打印 `/clawdsh/` 产品 URL；`/` 保留原生 dsh Web client，新 Session 默认使用 `ClawDSH 模式`。Feishu、Telegram 与 Automation 保持关闭，因此 clean home 无需其凭证或 OpenClaw artifact 即可启动。
+nested build 在 `tools/link-clawdsh.sh` 安装 `clawdsh` profile 与 preset 前产出 `@clawdsh/dsh-product-runtime` 及其 browser asset。`pnpm dsh --profile clawdsh` 在 Loader 结算后只打印 `/clawdsh/` 产品 URL；`/` 保留原生 dsh Web client，新 Session 默认使用 `ClawDSH 模式`。OpenClaw Gateway 与 Automation 保持关闭，因此 clean home 无需 platform credential 或 OpenClaw artifact 即可启动。
 
 ### 产品链
 
@@ -37,11 +37,11 @@ nested build 在 `tools/link-clawdsh.sh` 安装 `clawdsh` profile 与 preset 前
 | 入口 | `/clawdsh/` 是 ClawDSH 产品 route；`/` 保留原生 dsh Web |
 | 对话 | 复用公开 dsh client module graph、loading state 与 chat renderer |
 | Settings | capability 与 Loader 证据保持只读；allowlist Config 字段使用 optimistic revision、desired/runtime state、managed Gateway deployment 与不含 secret 的 dsh credential metadata |
-| Activity | 当前目的地明确标示 deferred 状态；下一增量增加当前 Session 的 Prompt、Memory、Channels、Skills 与 Automation 记录，raw Trajectory 留在 Harness 高级 |
+| Activity | 当前 Session 的 Prompt、Memory、Channels、Skills 与 Automation 记录合并 standard history 与有界 private sidecar；失败只让该视图降级，raw Trajectory 留在 Harness 高级 |
 | Harness 高级 | 显式进入未修改的原生 dsh GUI 与 diagnostics |
 | 隔离 | 不新增 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source |
 
-✅ 产品壳、两个 route、四个目的地、capability overview、conflict-safe Settings、未知 route 状态与 keyless real-profile snapshot 已实现。⏳ 语义 Activity 仍为 deferred。`dsh --profile web` 保持纯 Harness 路径。
+✅ 产品壳、两个 route、四个目的地、capability overview、conflict-safe Settings、语义 Activity、未知 route 状态与 keyless real-profile snapshot 已实现。`dsh --profile web` 保持纯 Harness 路径。
 
 ## 当前 OpenClaw 渠道平面
 

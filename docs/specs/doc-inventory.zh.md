@@ -69,13 +69,13 @@ Rebase 时先取上游版本，再只重放这些精确增量。例外不会转�
 |---|---|
 | 产品形态、route 与禁止的上游修改 | ADR-0007 |
 | 用户可见页面与验收行为 | `feature-gui-web` |
-| `/clawdsh/` shell、静态路由、Settings 控制面、Activity 空状态、Control Runtime 与 nested build | `preset-openclaw/product-shell` |
+| `/clawdsh/` shell、静态路由、Settings 控制面、语义 Activity、Control Runtime 与 nested build | `preset-openclaw/product-shell` 加 `activity` |
 | `/` 下原生 dsh Web GUI 与 raw Trajectory | 上游 dsh，不修改源码直接消费 |
 | Profile 与 preset identity | `clawdsh`；物理 `preset-openclaw` source directory 是唯一保留的旧路径名 |
 | 开发安装 | `tools/link-clawdsh.sh`；它要求已构建产品 artifact，并把 runtime 链接进托管开发 profile |
 | Managed installation、integrity repair 与 `clawdsh doctor` | 当前没有 package；不属于开发安装器职责 |
 
-当前 ClawDSH GUI 使用公开 dsh Web boot 与 rendering API、Loader observation、静态 Host route、index transform、Settings/Credentials service 与 Connection RPC。它不注册 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。`/clawdsh-rpc` 只允许 loopback，并暴露 product identity、capability evidence、allowlist Settings mutation 与只写 dsh credential operation。Activity persistence 与 query 尚未接入。
+当前 ClawDSH GUI 使用公开 dsh Web boot 与 rendering API、Loader observation、静态 Host route、index transform、Settings/Credentials service、Session history、有界 Activity sidecar 与 Connection RPC。它不注册 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。`/clawdsh-rpc` 只允许 loopback，并暴露 product identity、capability evidence、allowlist Settings mutation、只写 dsh credential operation 与限制隐私的 `activity/list` query。
 
 ## 5. 渠道平面所有权
 
@@ -101,7 +101,7 @@ OpenClaw source archive 与 npm tarball 是外部输入，不是仓库自有 sou
 - 上游 snapshot runner 不发现自有 channel package，且上游 `examples/` tree 保持只读。
 - Downstream `channel/*` Session event 在可运行路径中保持禁用，直到存在 ignorable append mechanism；持久 channel ledger 与已知 `user/message` source 是当前权威。
 - `clawdsh` 与 `clawdsh-messaging-safe` preset 在公共安装器拥有 manifest 与 repair flow 前仍是 managed user preset。
-- ClawDSH Settings 提供只读 capability 与 Loader 证据，以及 allowlist mutation 和不含 secret 的 dsh credential method。ClawDSH Activity 是不含 Session projection 与 sidecar 的空状态。
+- ClawDSH Settings 提供只读 capability 与 Loader 证据，以及 allowlist mutation 和不含 secret 的 dsh credential method。ClawDSH Activity 通过限制隐私的 loopback query 投影 standard Session history 与有界 sidecar。
 
 ## 7. Rebase checklist
 

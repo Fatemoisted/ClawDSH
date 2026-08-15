@@ -1,6 +1,7 @@
 import type { ChildProcess } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -52,6 +53,11 @@ interface PageLike {
   getByText(text: string | RegExp, options?: { exact?: boolean }): LocatorLike
   /** Locate browser elements by a CSS selector. */
   locator(selector: string): LocatorLike
+  /** Evaluate a serializable function in this page. */
+  evaluate<Result, Argument>(
+    pageFunction: (argument: Argument) => Result | Promise<Result>,
+    argument: Argument,
+  ): Promise<Result>
 }
 
 interface BrowserLike {
@@ -169,6 +175,54 @@ function compareOrRefresh(snapshot: string): void {
   expect(snapshot).toBe(readFileSync(expectedSnapshot, 'utf8').trimEnd())
 }
 
+async function rpc<T>(baseUrl: string, method: string, payload: unknown): Promise<T> {
+  const response = await fetch(new URL(`/api/${method}`, baseUrl), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      type: 'client-request',
+      rpcId: `clawdsh-real-profile-${method}`,
+      method,
+      payload,
+    }),
+  })
+  if (!response.ok) throw new Error(`${method} failed over HTTP ${String(response.status)}: ${await response.text()}`)
+  const body = await response.json() as {
+    result: { ok: true; value: T } | { ok: false; error: { code: string; message: string } }
+  }
+  if (!body.result.ok) throw new Error(`${method} failed: ${body.result.error.code}: ${body.result.error.message}`)
+  return body.result.value
+}
+
+function writeActivityFixture(harnessHome: string, sessionId: string): void {
+  const activityRoot = join(harnessHome, 'clawdsh', 'activity', 'v1')
+  const sessionDirectory = join(activityRoot, createHash('sha256').update(sessionId).digest('hex'))
+  mkdirSync(sessionDirectory, { recursive: true, mode: 0o700 })
+  for (const directory of [join(harnessHome, 'clawdsh'), join(harnessHome, 'clawdsh', 'activity'), activityRoot, sessionDirectory]) {
+    chmodSync(directory, 0o700)
+  }
+  const sidecar = join(sessionDirectory, 'soul.jsonl')
+  writeFileSync(sidecar, `${JSON.stringify({
+    version: 1,
+    id: '8bf0627d-d6e5-4e29-a963-5cb6579e5d56',
+    timestamp: '2026-08-15T12:00:00.000Z',
+    sessionId,
+    category: 'prompt',
+    kind: 'prompt.contribution',
+    status: 'succeeded',
+    summary: 'ClawDSH Prompt contribution recorded',
+    metadata: {
+      producer: 'soul',
+      section: 'clawdsh:soul',
+      mode: 'append',
+      characters: 128,
+      sha256: 'a'.repeat(64),
+      seq: 1,
+    },
+  })}\n`, { mode: 0o600 })
+  chmodSync(sidecar, 0o600)
+}
+
 describe('ClawDSH isolated real profile browser entry', () => {
   it('boots both routes keyless and exposes secret-free product settings', async () => {
     expect(existsSync(builtCli), 'built CLI missing; run `pnpm run build` before this lane').toBe(true)
@@ -216,6 +270,8 @@ describe('ClawDSH isolated real profile browser entry', () => {
       const harnessUrl = new URL('/', ready.productUrl).href
       expect((await fetch(ready.productUrl)).status).toBe(200)
       expect((await fetch(harnessUrl)).status).toBe(200)
+      const created = await rpc<{ sessionId: string }>(harnessUrl, 'session.create', {})
+      writeActivityFixture(harnessHome, created.sessionId)
 
       const chromium = await chromiumLauncher()
       const channel = process.env.DSH_PLAYWRIGHT_CHANNEL
@@ -258,6 +314,12 @@ describe('ClawDSH isolated real profile browser entry', () => {
       await settings.getByRole('button', { name: '关闭', exact: true }).click()
       await settings.waitFor({ state: 'detached', timeout: 10_000 })
 
+      await page.evaluate(({ sessionId }) => {
+        localStorage.setItem('dsh.sessions.current', JSON.stringify({ sessionId }))
+      }, created)
+      await page.goto(ready.productUrl, { waitUntil: 'load' })
+      await page.getByRole('button', { name: 'ClawDSH 模式', exact: true }).waitFor({ timeout: 30_000 })
+
       await settingsLink.click()
       const settingsPage = page.getByRole('heading', { name: 'ClawDSH 设置', exact: true })
       await settingsPage.waitFor({ timeout: 10_000 })
@@ -298,10 +360,11 @@ describe('ClawDSH isolated real profile browser entry', () => {
       await activityLink.click()
       const activity = page.getByRole('heading', { name: 'ClawDSH 活动', exact: true })
       await activity.waitFor({ timeout: 10_000 })
-      const activityDeferred = page.getByText(/后续阶段/, { exact: false })
-      await activityDeferred.waitFor({ timeout: 10_000 })
+      const activityRecord = page.locator('[data-kind="prompt.contribution"]')
+      await activityRecord.waitFor({ timeout: 10_000 })
+      await activityRecord.getByRole('heading', { name: 'ClawDSH Prompt 贡献', exact: true }).waitFor({ timeout: 10_000 })
       const activitySnapshot = (await activity.ariaSnapshot()).trim()
-      const activityDeferredSnapshot = (await activityDeferred.ariaSnapshot()).trim()
+      const activityRecordSnapshot = (await activityRecord.ariaSnapshot()).trim()
 
       await page.goto(new URL('not-found', ready.productUrl).href, { waitUntil: 'load' })
       const notFound = page.getByRole('heading', { name: '页面不存在', exact: true })
@@ -318,9 +381,9 @@ describe('ClawDSH isolated real profile browser entry', () => {
         ...navigationSnapshot,
         '# Read-only overview',
         overviewSnapshot,
-        '# Deferred activity',
+        '# Semantic activity',
         activitySnapshot,
-        activityDeferredSnapshot,
+        activityRecordSnapshot,
         '# Unknown product page',
         notFoundSnapshot,
         '# Installed preset identity',

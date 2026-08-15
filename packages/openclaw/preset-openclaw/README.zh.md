@@ -8,7 +8,7 @@
 
 1. `clawdsh` Agent preset（`preset.yml`、`agent.cordis.yml` 与 `souls/assistant.md`），显示为 `ClawDSH 模式`；
 2. `clawdsh` profile template（`profile/`），把 dsh base 与 Web bundle 和 ClawDSH Host plugin 组合；
-3. nested ClawDSH browser shell 与 `@clawdsh/dsh-product-runtime`，包含能力总览、可编辑 Settings 控制面与明确的 deferred Activity 状态；
+3. nested ClawDSH browser shell 与 `@clawdsh/dsh-product-runtime`，包含能力总览、可编辑 Settings 控制面与跟随当前 Session 的语义 Activity；
 4. 供 `tools/link-clawdsh.sh` 消费的开发安装源。
 
 OpenClaw Gateway 是产品内的外部通信平面 provider。它不定义产品、profile 或 Agent preset identity。
@@ -73,17 +73,17 @@ pnpm exec tsx tools/openclaw-channel-migration.ts --input /absolute/path/to/old-
 
 ## Clean-install 默认值
 
-Memory 与 Skills Hub 保持启用。Ark Embeddings 只在 embedding call 需要时解析固定 `ARK_API_KEY` credential reference。Automation 与 OpenClaw Gateway 保持关闭。Disabled capability 可以缺少 credential；enabled capability 缺少所需配置时在最早 validation point 失败。
+Memory、Skills Hub 与 Activity 保持启用。Activity 是必需能力，并且只记录限制隐私的产品语义；它的失败不能阻断业务能力。Ark Embeddings 只在 embedding call 需要时解析固定 `ARK_API_KEY` credential reference。Automation 与 OpenClaw Gateway 保持关闭。Disabled capability 可以缺少 credential；enabled capability 缺少所需配置时在最早 validation point 失败。
 
 Optional business plugin 保持 mounted，并暴露自身 Config schema。经过校验的 `enabled` setting 控制 runtime effect，ClawDSH Settings 则显示 desired/runtime revision、restart requirement、field ownership 与不含 secret 的 credential state。Reset 只移除 user layer，并恢复 profile base 加 schema default。
 
 ## 产品壳
 
-[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md)与[本地 GUI 规格](../../../docs/specs/feature-gui-web.md)定义产品壳。`/clawdsh/` 拥有对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级；`/` 保留原生 dsh Web。对话复用公开 dsh client graph 与 renderer。ClawDSH Settings 把 capability health 与 allowlist schema editing、optimistic revision、managed Gateway deployment、Automation rules 以及只写 dsh credential update 组合起来；Activity 则明确标示 deferred 状态。未知产品 path 会渲染明确的未找到页面，不会落入 Harness。
+[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md)与[本地 GUI 规格](../../../docs/specs/feature-gui-web.md)定义产品壳。`/clawdsh/` 拥有对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级；`/` 保留原生 dsh Web。对话复用公开 dsh client graph 与 renderer。ClawDSH Settings 把 capability health 与 allowlist schema editing、optimistic revision、managed Gateway deployment、Automation rules 以及只写 dsh credential update 组合起来。Activity 跟随当前 Session，合并 standard history 与有界 sidecar，并通过 filter 与 cursor pagination 呈现固定且隐私安全的 Prompt、Memory、Channel、Skill 与 Automation 记录。未知产品 path 会渲染明确的未找到页面，不会落入 Harness。
 
 Profile 关闭原生 `dsh web:` readiness line，并挂载 `@clawdsh/dsh-product-runtime`。Loader 结算后，该 runtime 打印 `clawdsh web: http://127.0.0.1:<port>/clawdsh/`，拥有产品静态 route，同时保持 `/` 的原生 fallback 不变。Nested browser build 把 asset 写入 `product-shell/runtime/web/`；两个 nested package 都不进入根 workspace 或 Client aggregate。
 
-该组装不注册新的 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。Raw Trajectory 留在 Harness 高级，`dsh --profile web` 保持纯 Harness 入口。
+该组装不注册新的 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。Activity 不增加上游 Session event type，Raw Trajectory 留在 Harness 高级，`dsh --profile web` 保持纯 Harness 入口。[Activity 规格](../../../docs/specs/feature-activity.md)拥有其存储、隐私与降级行为。
 
 ## Managed-preset 限制
 

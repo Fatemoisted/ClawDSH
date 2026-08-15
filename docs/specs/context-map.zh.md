@@ -2,9 +2,9 @@
 
 [English](context-map.md) | 中文
 
-- **状态**：阶段 4 产品化；产品壳与 Settings 控制面已经实现
+- **状态**：阶段 4 产品化；产品壳、Settings 控制面与语义 Activity 已经实现
 - **用途**：ClawDSH 所有权、包角色与实现所需上游材料的入口
-- **配套文档**：[文档清单](doc-inventory.md) · [路线图](roadmap.md) · [GUI 规格](feature-gui-web.md) · [渠道 bridge 规格](feature-channel-plane-bridge.md)
+- **配套文档**：[文档清单](doc-inventory.md) · [路线图](roadmap.md) · [GUI 规格](feature-gui-web.md) · [Activity 规格](feature-activity.md) · [渠道 bridge 规格](feature-channel-plane-bridge.md)
 
 ## 1. 自有构建范围
 
@@ -33,7 +33,8 @@
 | `embeddings-ark/` | Service Provider | embeddings | Volcano Ark embeddings |
 | `skills-hub/` | Service Provider | skills | ClawHub-compatible skill directory |
 | `automation/` | function plugin | Agents、Sessions、default model | opt-in scheduled Agent turns |
-| `preset-openclaw/` | 产品组装 | 公开 dsh Web 与 Host API | `clawdsh` profile 与 preset，以及嵌套的 product-shell browser、Host runtime、shared protocol、可编辑 Settings 控制面与 Activity 空状态 |
+| `activity/` | 可选语义 Activity service | Session history、Settings、filesystem sidecar | 限制隐私的 projection、有界存储与 cursor pagination |
+| `preset-openclaw/` | 产品组装 | 公开 dsh Web 与 Host API | `clawdsh` profile 与 preset，以及嵌套的 product-shell browser、Host runtime、shared protocol、可编辑 Settings 控制面与 Activity 视图 |
 | `preset-clawdsh-messaging-safe/` | preset carrier | soul | 以 `clawdsh-messaging-safe` 安装的受限渠道 preset |
 | `_template/` | skeleton | — | 新自有 plugin 的起点 |
 
@@ -61,13 +62,13 @@ dsh runtime 是 plugin tree。Service、event 与 registration 都是随 plugin 
 
 本地 GUI 是公开 dsh Web runtime 之上的 ClawDSH 产品，不是另一个 dsh agent preset。`/clawdsh/` 拥有产品导航——对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级——而 `/` 保留原生 dsh Web GUI。「对话」复用公开 client module graph、Loader、Slot renderer 与完整 `buildRenderApp()` root。`preset-openclaw/product-shell/` 下的嵌套非 workspace build 拥有外层 shell、静态路由、Host runtime、shared DTO 与 `/clawdsh-rpc` Connection channel。
 
-Loopback-authorized 控制 channel 实现 `bootstrap/get`、`capabilities/list`、Settings describe/mutate/reset，以及不含 secret 的 dsh credential describe/set/unset。Settings 保持 capability 与 Loader 证据只读，同时只通过 optimistic revision 暴露 manifest allowlist 中的 Config 字段；Activity 仍是没有语义记录或 sidecar 存储的明确空状态。该组装不注册新的 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、上游 generated file 或上游 GUI source。`dsh --profile web` 保持纯 Harness 入口。
+Loopback-authorized 控制 channel 实现 `bootstrap/get`、`capabilities/list`、Settings describe/mutate/reset、不含 secret 的 dsh credential describe/set/unset，以及 `activity/list`。Settings 保持 capability 与 Loader 证据只读，同时只通过 optimistic revision 暴露 manifest allowlist 中的 Config 字段。Activity 跟随当前 Session，并把隐私安全的 standard-history 事实与有界 sidecar 合并；数据缺失或损坏只让该视图降级。该组装不注册新的 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、上游 generated file 或上游 GUI source。`dsh --profile web` 保持纯 Harness 入口。
 
 ### Profile layering 与 identity
 
 `dsh --profile <name>` 依次叠加 profile bundles、其 `cordis.patch.yml`、home-level patch 与后续 `--patch` overlay。`tools/link-clawdsh.sh` 把内部 profile source 安装为 `clawdsh`，把 `clawdsh` 与 `clawdsh-messaging-safe` preset 安装到 dsh user preset root，并为开发链接自有 package。
 
-Clean-install profile 保持完整的 `channel → channel-agent → channel-openclaw` group 与 Automation 关闭，因此 Web Host 无平台凭证也能启动。旧 `openclaw` profile 与 preset directory 只是 warning-only input，保持不变；不会安装 compatibility alias。公共 CLI 拥有 managed manifest、integrity repair 与 `clawdsh doctor` flow。
+Clean-install profile 始终挂载 `channel → channel-agent → channel-openclaw`、Activity 与其他 capability plugin。OpenClaw Gateway 与 Automation 的业务 setting 默认关闭，因此 Web Host 无 platform credential 或 OpenClaw artifact 也能启动。旧 `openclaw` profile 与 preset directory 只是 warning-only input，保持不变；不会安装 compatibility alias。公共 CLI 拥有 managed manifest、integrity repair 与 `clawdsh doctor` flow。
 
 ### 完整能力 seam
 

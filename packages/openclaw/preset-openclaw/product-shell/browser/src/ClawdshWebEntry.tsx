@@ -7,6 +7,7 @@ import type {
   DshWindow,
 } from '@deepseek-ai/dsh-client-modules/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
+import type { ISessions } from '@deepseek-ai/dsh-client-runtime/client'
 import type { LoaderStatusStore, KernelValueSignal } from '@deepseek-ai/dsh-client-web'
 import { ClawdshBootRoot } from './ClawdshBootRoot.tsx'
 import { ProductShell } from './ProductShell.tsx'
@@ -117,12 +118,15 @@ export class ClawdshWebEntry {
           if (shell === undefined) throw new Error('ClawDSH browser: assembly service missing after settlement')
           const connection = ctx.get('connection') as ConnectionHandle | undefined
           if (connection === undefined) throw new Error('ClawDSH browser: Connection service unavailable')
+          const sessions = ctx.get('sessions') as ISessions | undefined
+          if (sessions === undefined) throw new Error('ClawDSH browser: Sessions service unavailable')
           this.control ??= createClawdshControlClient(connection)
           return (
             <ProductShell
               renderConversation={shell.renderConversation}
               control={this.control}
               localControlAvailable={connection.isLoopback}
+              sessions={sessions}
             />
           )
         }}

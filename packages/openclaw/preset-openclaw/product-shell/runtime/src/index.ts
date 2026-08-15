@@ -30,6 +30,7 @@ import {
   type ClawdshPluginOrigin,
 } from '../../shared/src/protocol.ts'
 import { PRODUCTION_CHANNEL_CATALOG } from './production-channel-catalog.ts'
+import { ClawdshActivityControl } from './activity-control.ts'
 import { ClawdshSettingsControl } from './settings-control.ts'
 
 /** Stable Cordis plugin name. */
@@ -590,9 +591,10 @@ function registerProductRoutes(ctx: Context, distIndex: string): void {
 function registerRpc(
   ctx: Context,
   settingsControl: ClawdshSettingsControl,
+  activityControl: ClawdshActivityControl,
   runtimeState: ProductRuntimeState,
 ): void {
-  ctx.connection.rpc.handle(CLAWDSH_RPC_CHANNEL, async (endpoint, payload) => {
+  ctx.connection.rpc.handle(CLAWDSH_RPC_CHANNEL, async (endpoint, payload, signal) => {
     if (endpoint === CLAWDSH_RPC_ENDPOINTS.bootstrapGet
       || endpoint === CLAWDSH_RPC_ENDPOINTS.capabilitiesList) {
       try {
@@ -622,6 +624,10 @@ function registerRpc(
           enabled,
         ),
       }
+    }
+    if (endpoint === CLAWDSH_RPC_ENDPOINTS.activityList) {
+      if (!settingsControl.isReady()) return starting()
+      return activityControl.handle(payload, signal)
     }
     const controlled = await settingsControl.handle(endpoint, payload)
     if (controlled !== undefined) return controlled
@@ -658,10 +664,10 @@ function scheduleReadyLine(
 export function apply(ctx: Context): void {
   const distIndex = internals.resolveDistIndex()
   const settingsControl = new ClawdshSettingsControl(ctx)
-  settingsControl.registerManagedNamespaces()
+  const activityControl = new ClawdshActivityControl(ctx)
   const runtimeState: ProductRuntimeState = {}
   registerProductRoutes(ctx, distIndex)
-  registerRpc(ctx, settingsControl, runtimeState)
+  registerRpc(ctx, settingsControl, activityControl, runtimeState)
   scheduleReadyLine(ctx, settingsControl, runtimeState)
 }
 

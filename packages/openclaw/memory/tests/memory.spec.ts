@@ -9,13 +9,17 @@
  * deletion, path whitelist/containment, the guidance section, and disposal.
  */
 
+import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
+import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { Embeddings } from '@clawdsh/dsh-embeddings'
@@ -94,6 +98,32 @@ function text(result: { content: { type: string; text?: string }[] }): string {
   return result.content.filter(block => block.type === 'text').map(block => block.text).join('')
 }
 
+interface PromptActivityInput {
+  readonly sessionId: string
+  readonly producer: 'memory'
+  readonly section: 'clawdsh:memory-recall'
+  readonly mode: 'append'
+  readonly characters: number
+  readonly sha256: string
+  readonly seq: number
+}
+
+function installActivity(write: (input: PromptActivityInput) => Promise<unknown>): void {
+  ctx.provide('clawdshActivity', { promptContribution: write } as never)
+}
+
+function emitRequestHeader(scope: object, sessionId: string, system: string, seq: number): void {
+  const session = { id: sessionId }
+  const event = { type: 'request/header', seq, data: { header: { system }, reason: 'initial' } }
+  const emit = ctx.emit as unknown as (
+    target: object,
+    name: 'session/event',
+    subject: typeof session,
+    entry: typeof event,
+  ) => void
+  emit(scopeTarget(session, scope), 'session/event', session, event)
+}
+
 async function writeMemoryFile(rel: string, content: string): Promise<void> {
   await ctx.fs.writeText(await ctx.fs.resolve(join(dir, rel)), content)
 }
@@ -168,6 +198,69 @@ describe('memory settings lifecycle', () => {
     await ctx.settings.update(Memory.MEMORY_SETTINGS_NAMESPACE, { enabled: true })
     expect(ctx.tools.get('memory_search')).toBeUndefined()
     expect((await ctx.systemPrompt.assemble()).sections.find(section => section.name === MEMORY_RECALL_SECTION)).toBeUndefined()
+  })
+})
+
+describe('memory prompt Activity', () => {
+  it('records the recall section only after the rendered header is committed', async () => {
+    const records: PromptActivityInput[] = []
+    installActivity(async (input) => { records.push(input) })
+    await ctx.plugin(Memory, { root: dir })
+    const agent = { id: 'memory-activity-session' } as unknown as Agent
+    const assembly = await ctx.systemPrompt.assemble({
+      scope: agent,
+      signal: new AbortController().signal,
+      agent,
+    })
+    emitRequestHeader(agent, String(agent.id), renderPrompt(assembly), 31)
+
+    expect(records).toEqual([{
+      sessionId: String(agent.id),
+      producer: 'memory',
+      section: 'clawdsh:memory-recall',
+      mode: 'append',
+      characters: RECALL_TEXT.length,
+      sha256: createHash('sha256').update(RECALL_TEXT).digest('hex'),
+      seq: 31,
+    }])
+    expect(JSON.stringify(records)).not.toContain(dir)
+  })
+
+  it('does not report a recall section suppressed by a complete prompt', async () => {
+    const records: PromptActivityInput[] = []
+    installActivity(async (input) => { records.push(input) })
+    await ctx.plugin(Memory, { root: dir })
+    ctx.systemPrompt.section({ name: 'test:complete', order: 1_000, text: 'complete override', complete: true })
+    const agent = { id: 'memory-suppressed-session' } as unknown as Agent
+    const assembly = await ctx.systemPrompt.assemble({
+      scope: agent,
+      signal: new AbortController().signal,
+      agent,
+    })
+    expect(renderPrompt(assembly)).toBe('complete override')
+    emitRequestHeader(agent, String(agent.id), renderPrompt(assembly), 33)
+
+    expect(records).toEqual([])
+  })
+
+  it('contains a rejected Activity write without changing prompt assembly', async () => {
+    const attempts: PromptActivityInput[] = []
+    installActivity(async (input) => {
+      attempts.push(input)
+      throw new Error('activity-write-secret-canary')
+    })
+    await ctx.plugin(Memory, { root: dir })
+    const agent = { id: 'memory-degraded-session' } as unknown as Agent
+    const assembly = await ctx.systemPrompt.assemble({
+      scope: agent,
+      signal: new AbortController().signal,
+      agent,
+    })
+
+    expect(() => { emitRequestHeader(agent, String(agent.id), renderPrompt(assembly), 35) }).not.toThrow()
+    await Promise.resolve()
+    expect(attempts).toHaveLength(1)
+    expect(renderPrompt(assembly)).toContain(RECALL_TEXT)
   })
 })
 

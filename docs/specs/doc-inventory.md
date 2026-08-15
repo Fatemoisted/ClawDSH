@@ -69,13 +69,13 @@ During a rebase, take the upstream version first and replay only these exact add
 |---|---|
 | Product posture, routes, and prohibited upstream modifications | ADR-0007 |
 | User-visible pages and acceptance behavior | `feature-gui-web` |
-| `/clawdsh/` shell, static routes, Settings control plane, Activity empty state, Control Runtime, and nested build | `preset-openclaw/product-shell` |
+| `/clawdsh/` shell, static routes, Settings control plane, semantic Activity, Control Runtime, and nested build | `preset-openclaw/product-shell` plus `activity` |
 | Native dsh Web GUI at `/` and raw Trajectory | upstream dsh, consumed without source changes |
 | Profile and preset identity | `clawdsh`; the physical `preset-openclaw` source directory is the only retained legacy path name |
 | Development installation | `tools/link-clawdsh.sh`; it requires built product artifacts and links the runtime into the managed development profile |
 | Managed installation, integrity repair, and `clawdsh doctor` | no current package; outside the development installer's responsibilities |
 
-The current ClawDSH GUI uses public dsh Web boot and rendering APIs, Loader observation, static Host routing, index transforms, Settings and Credentials services, and Connection RPC. It does not register a Client Slot or modify `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source. `/clawdsh-rpc` is loopback-only and exposes product identity, capability evidence, allowlisted Settings mutation, and write-only dsh credential operations. Activity persistence and queries are not connected yet.
+The current ClawDSH GUI uses public dsh Web boot and rendering APIs, Loader observation, static Host routing, index transforms, Settings and Credentials services, Session history, bounded Activity sidecars, and Connection RPC. It does not register a Client Slot or modify `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source. `/clawdsh-rpc` is loopback-only and exposes product identity, capability evidence, allowlisted Settings mutation, write-only dsh credential operations, and privacy-limited `activity/list` queries.
 
 ## 5. Channel-plane ownership
 
@@ -101,7 +101,7 @@ OpenClaw source archives and npm tarballs are external inputs, not repository-ow
 - The upstream snapshot runner does not discover owned channel packages, and the upstream `examples/` tree remains read-only.
 - Downstream `channel/*` Session events are disabled in the runnable path until an ignorable append mechanism exists; durable channel ledgers and the known `user/message` source are current authority.
 - The `clawdsh` and `clawdsh-messaging-safe` presets remain managed user presets until the public installer owns their manifest and repair flow.
-- ClawDSH Settings exposes read-only capability and Loader evidence plus allowlisted mutation and secret-free dsh credential methods. ClawDSH Activity is an empty state without Session projection or sidecars.
+- ClawDSH Settings exposes read-only capability and Loader evidence plus allowlisted mutation and secret-free dsh credential methods. ClawDSH Activity projects standard Session history and bounded sidecars through a privacy-limited loopback query.
 
 ## 7. Rebase checklist
 

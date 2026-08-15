@@ -86,36 +86,27 @@ describe('ClawDSH Settings control', () => {
     expect(credentialSet).not.toHaveBeenCalled()
   })
 
-  it('owns the required Activity namespace as a managed enabled placeholder', async () => {
-    let registered: SettingsDescriptor | undefined
-    const register = vi.fn((ns: ReturnType<typeof settingsNamespace>, schema: z, options: {
-      base: { enabled: true }
-      applies: 'restart'
-    }) => {
-      registered = {
-        ns,
-        schema: schema.toJSON(),
-        value: schema(options.base),
-        revision: 0,
-        base: options.base,
-        applies: options.applies,
-      }
-      return {}
-    })
+  it('projects the required Activity namespace registered by the Activity plugin', async () => {
+    const schema = z.object({ enabled: z.const(true).default(true) })
+    const register = vi.fn()
+    const registered = descriptor(
+      'clawdsh-activity',
+      schema,
+      { enabled: true },
+      0,
+      { enabled: true },
+    )
     const settings = {
       register,
-      describe: () => registered === undefined ? [] : [registered],
+      describe: () => [registered],
     }
     const control = new ClawdshSettingsControl(contextWith({ settings }))
 
-    control.registerManagedNamespaces()
     expect(control.captureRuntime()).toBe(true)
     control.markReady()
     const result = await control.handle(CLAWDSH_RPC_ENDPOINTS.settingsDescribe, CLAWDSH_READ_REQUEST)
 
-    expect(register).toHaveBeenCalledOnce()
-    expect(register.mock.calls[0]?.[0]).toBe('clawdsh-activity')
-    expect(register.mock.calls[0]?.[2]).toEqual({ base: { enabled: true }, applies: 'restart' })
+    expect(register).not.toHaveBeenCalled()
     expect(result).toMatchObject({
       ok: true,
       value: {

@@ -18,7 +18,7 @@ profile 保持 `channel-core` 挂载，但把飞书、Telegram 与 Automation Lo
 
 `tools/link-clawdsh.sh` 在安装新资产前检查旧 `$DSH_HOME/profiles/openclaw/` 与 `$DSH_HOME/.agent-presets/openclaw/` 路径。任一路径存在时，它打印迁移说明，并让两者保持原样。ClawDSH 不安装 `openclaw` 别名，脚本也绝不自动删除、移动、改写或接管旧目录。只要已保存 Session 仍引用旧 id，用户就保留旧 preset。
 
-ClawDSH preset 仍是 dsh 用户 preset 根目录中的受管副本；它不具备 system-trusted 或不可删除属性，原生 Harness 控件仍可移除它。[产品壳提案](../../proposed/architecture/2026-08-15-clawdsh-product-shell.md)不向 ClawDSH 产品 UI 提供删除入口，但不改变该信任模型。本增量不交付产品壳、`clawdsh` 可执行文件、`clawdsh doctor` 或受管安装 manifest；可用的修复路径是重新运行开发刷新脚本。公共发行增量负责基于 manifest 的安装与 doctor 修复。
+ClawDSH preset 仍是 dsh 用户 preset 根目录中的受管副本；它不具备 system-trusted 或不可删除属性，原生 Harness 控件仍可移除它。[产品壳决策](../../implemented/architecture/2026-08-15-clawdsh-product-shell.md)不向 ClawDSH 产品 UI 提供删除入口，但不改变该信任模型。本增量不交付 `clawdsh` 可执行文件、`clawdsh doctor` 或受管安装 manifest；可用的修复路径是重新运行开发刷新脚本。公共发行增量负责基于 manifest 的安装与 doctor 修复。
 
 ## 考虑过的替代方案
 

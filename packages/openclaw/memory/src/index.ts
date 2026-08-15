@@ -12,14 +12,17 @@
  * @module @clawdsh/dsh-memory
  */
 
+import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@clawdsh/dsh-embeddings'
+import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-fs'
 import type { FsTarget } from '@deepseek-ai/dsh-fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { renderPrompt, type AssembleContext } from '@deepseek-ai/dsh-system-prompt'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { readLineSlice, resolveMemoryTarget } from './memory-files.ts'
 import { MemoryIndex } from './search.ts'
@@ -121,6 +124,23 @@ interface ResolvedConfig {
   readonly flush: ReturnType<typeof resolveFlushConfig>
 }
 
+interface PromptActivitySink {
+  promptContribution(input: {
+    readonly sessionId: string
+    readonly producer: 'memory'
+    readonly section: 'clawdsh:memory-recall'
+    readonly mode: 'append'
+    readonly characters: number
+    readonly sha256: string
+    readonly seq: number
+  }): Promise<unknown>
+}
+
+interface PromptCandidate {
+  readonly system: string
+  readonly contribution: string
+}
+
 const TEXT_OUTPUT = {
   schema: { type: 'string' as const },
   render: (_args: unknown, value: string) => [{ type: 'text' as const, text: value }],
@@ -176,6 +196,7 @@ export function apply(ctx: Context, config: Config): void {
       order: MEMORY_RECALL_ORDER,
       text: RECALL_TEXT,
     })
+    const disposePromptActivity = installPromptActivity(ctx)
     const disposeSearch = ctx.tools.register(defineTool({
       name: 'memory_search',
       description: 'Semantically search MEMORY.md and memory/*.md and return ranked snippets with source lines.',
@@ -217,9 +238,72 @@ export function apply(ctx: Context, config: Config): void {
       disposeGet()
       disposeSearch()
       disposeSection()
+      disposePromptActivity()
       disposeFlush()
     }
   }, 'memory.section() + memory tools + flush hooks')
+}
+
+/** Track only a Memory section whose complete rendered assembly later becomes a committed request header. */
+function installPromptActivity(ctx: Context): () => void {
+  const candidates = new Map<string, PromptCandidate>()
+  const disposeAssembly = ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
+    const transformed = await next()
+    const sessionId = assemblySessionId(context)
+    if (sessionId === undefined || context.signal === undefined) return transformed
+    const section = transformed.sections.find(candidate => candidate.name === MEMORY_RECALL_SECTION)
+    if (section === undefined || section.text !== RECALL_TEXT) {
+      candidates.delete(sessionId)
+      return transformed
+    }
+    try {
+      const contribution = renderPrompt({ ...transformed, sections: [section] })
+      if (contribution === '') candidates.delete(sessionId)
+      else candidates.set(sessionId, { system: renderPrompt(transformed), contribution })
+    } catch (_promptRenderFailed) {
+      // The Agent loop owns prompt-render failures; optional Activity records no candidate.
+      candidates.delete(sessionId)
+    }
+    return transformed
+  }, { prepend: true })
+  const disposeSession = ctx.on('session/event', (session, event) => {
+    if (event.type !== 'request/header') return
+    const sessionId = String(session.id)
+    const candidate = candidates.get(sessionId)
+    candidates.delete(sessionId)
+    if (candidate === undefined || event.data.header.system !== candidate.system) return
+    recordPromptContribution(ctx, sessionId, event.seq, candidate.contribution)
+  })
+  return () => {
+    disposeSession()
+    disposeAssembly()
+    candidates.clear()
+  }
+}
+
+function assemblySessionId(context: AssembleContext): string | undefined {
+  const id = context.agent?.id
+  return id === undefined ? undefined : String(id)
+}
+
+function recordPromptContribution(ctx: Context, sessionId: string, seq: number, contribution: string): void {
+  const activity = ctx.get('clawdshActivity') as PromptActivitySink | undefined
+  if (activity === undefined) return
+  try {
+    void activity.promptContribution({
+      sessionId,
+      producer: 'memory',
+      section: 'clawdsh:memory-recall',
+      mode: 'append',
+      characters: contribution.length,
+      sha256: createHash('sha256').update(contribution).digest('hex'),
+      seq,
+    }).catch((_activityWriteFailed: unknown) => {
+      // Activity is a best-effort projection and cannot own Memory execution.
+    })
+  } catch (_activityWriteFailed) {
+    // Activity is a best-effort projection and cannot own Memory execution.
+  }
 }
 
 function resolveConfig(config: Config): ResolvedConfig {

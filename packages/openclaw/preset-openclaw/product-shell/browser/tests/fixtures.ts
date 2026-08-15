@@ -1,6 +1,7 @@
 import type {
   ClawdshCapabilitiesResponse,
   ClawdshCredentialsDescribeResponse,
+  ClawdshActivityListResponse,
   ClawdshSettingsDescribeResponse,
 } from '../../shared/src/protocol.ts'
 
@@ -124,4 +125,47 @@ export const CREDENTIALS_FIXTURE: ClawdshCredentialsDescribeResponse = {
       effectTime: 'next-call',
     },
   ],
+}
+
+/** Privacy-safe Activity page with one history and one sidecar-style record. */
+export const ACTIVITY_FIXTURE: ClawdshActivityListResponse = {
+  version: 1,
+  records: [
+    {
+      version: 1,
+      id: 'history:prompt-1',
+      timestamp: '2026-08-15T12:00:00.000Z',
+      sessionId: 'session-one',
+      category: 'prompt',
+      kind: 'prompt.contribution',
+      status: 'succeeded',
+      summary: 'ClawDSH Prompt contribution recorded',
+      metadata: {
+        producer: 'soul',
+        section: 'clawdsh:soul',
+        mode: 'append',
+        characters: 128,
+        sha256: 'a'.repeat(64),
+        seq: 4,
+      },
+    },
+    {
+      version: 1,
+      id: '2e24da12-8204-4e4e-9b4a-c27c230d7676',
+      timestamp: '2026-08-15T12:01:00.000Z',
+      sessionId: 'session-one',
+      category: 'channel',
+      kind: 'channel.received',
+      summary: 'Channel message received',
+      metadata: {
+        adapter: 'telegram',
+        conversation: 'direct',
+        mention: null,
+        seq: 5,
+      },
+    },
+  ],
+  availability: { history: 'live', sidecar: 'missing' },
+  degraded: false,
+  warnings: ['activity-sidecar-missing'],
 }

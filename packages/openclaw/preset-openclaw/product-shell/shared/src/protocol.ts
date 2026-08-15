@@ -16,6 +16,7 @@ export const CLAWDSH_RPC_ENDPOINTS = {
   credentialsDescribe: 'credentials/describe',
   credentialsSet: 'credentials/set',
   credentialsUnset: 'credentials/unset',
+  activityList: 'activity/list',
 } as const
 
 /** Endpoint accepted by the v1 product control runtime. */
@@ -210,6 +211,76 @@ export interface ClawdshCredentialResponse {
   readonly credential: ClawdshCredentialDescriptor
 }
 
+/** Product-facing semantic Activity categories. */
+export type ClawdshActivityCategory = 'prompt' | 'memory' | 'channel' | 'skill' | 'automation'
+
+/** Closed semantic Activity kinds emitted by ClawDSH capabilities. */
+export type ClawdshActivityKind =
+  | 'prompt.contribution'
+  | 'memory.search'
+  | 'memory.read'
+  | 'memory.flush'
+  | 'channel.received'
+  | 'channel.delivery'
+  | 'skill.catalog'
+  | 'skill.loaded'
+  | 'skill.invoked'
+  | 'automation.run'
+
+/** Optional sanitized lifecycle state for one Activity record. */
+export type ClawdshActivityStatus = 'started' | 'succeeded' | 'failed' | 'sent'
+
+/** Primitive-only metadata selected by the Activity package for one fixed kind. */
+export type ClawdshActivityMetadata = Record<string, string | number | boolean | null>
+
+/** One privacy-preserving semantic Activity record. */
+export interface ClawdshActivityRecord {
+  readonly version: 1
+  readonly id: string
+  readonly timestamp: string
+  readonly sessionId: string
+  readonly category: ClawdshActivityCategory
+  readonly kind: ClawdshActivityKind
+  readonly status?: ClawdshActivityStatus
+  readonly summary: string
+  readonly metadata: ClawdshActivityMetadata
+}
+
+/** Stable ordering supported by Activity pagination. */
+export type ClawdshActivityOrder = 'asc' | 'desc'
+
+/** Session-bound Activity page request. */
+export interface ClawdshActivityListRequest {
+  readonly version: typeof CLAWDSH_PROTOCOL_VERSION
+  readonly sessionId: string
+  readonly categories?: readonly ClawdshActivityCategory[]
+  readonly order?: ClawdshActivityOrder
+  readonly limit?: number
+  readonly cursor?: string
+}
+
+/** Sanitized availability of the standard history and ClawDSH sidecars. */
+export interface ClawdshActivityAvailability {
+  readonly history: 'live' | 'inspect' | 'unavailable'
+  readonly sidecar: 'available' | 'missing' | 'unavailable'
+}
+
+/** Stable Activity warnings with no storage paths or source diagnostics. */
+export type ClawdshActivityWarning =
+  | 'activity-data-incomplete'
+  | 'activity-history-unavailable'
+  | 'activity-sidecar-missing'
+
+/** One merged Activity page returned by the loopback-only control plane. */
+export interface ClawdshActivityListResponse {
+  readonly version: typeof CLAWDSH_PROTOCOL_VERSION
+  readonly records: readonly ClawdshActivityRecord[]
+  readonly nextCursor?: string
+  readonly availability: ClawdshActivityAvailability
+  readonly degraded: boolean
+  readonly warnings: readonly ClawdshActivityWarning[]
+}
+
 /** Exact v1 request value. */
 export const CLAWDSH_READ_REQUEST: ClawdshReadRequest = { version: CLAWDSH_PROTOCOL_VERSION }
 
@@ -279,6 +350,32 @@ export function parseClawdshCredentialUnsetRequest(value: unknown): ClawdshCrede
   const record = versionedRecord(value, ['version', 'id'], 'credential unset request')
   stringField(record.id, 'credential id')
   return value as ClawdshCredentialUnsetRequest
+}
+
+/** Parse a strict Session-bound Activity page request. */
+export function parseClawdshActivityListRequest(value: unknown): ClawdshActivityListRequest {
+  const record = exactRecord(
+    value,
+    ['version', 'sessionId', 'categories', 'order', 'limit', 'cursor'],
+    'activity list request',
+    ['categories', 'order', 'limit', 'cursor'],
+  )
+  if (record.version !== CLAWDSH_PROTOCOL_VERSION) {
+    throw new TypeError('activity list request.version must be 1')
+  }
+  stringField(record.sessionId, 'activity sessionId')
+  if (record.categories !== undefined) {
+    activityCategories(record.categories, 'activity categories')
+  }
+  if (record.order !== undefined) {
+    enumField(record.order, ['asc', 'desc'], 'activity order')
+  }
+  if (record.limit !== undefined
+    && (!Number.isSafeInteger(record.limit) || (record.limit as number) < 1 || (record.limit as number) > 100)) {
+    throw new TypeError('activity limit must be a safe integer from 1 through 100')
+  }
+  if (record.cursor !== undefined) activityCursor(record.cursor)
+  return value as ClawdshActivityListRequest
 }
 
 /** Validate bootstrap data received by the browser. */
@@ -358,6 +455,49 @@ export function parseClawdshCredentialResponse(value: unknown): ClawdshCredentia
   const record = versionedRecord(value, ['version', 'credential'], 'credential response')
   parseCredentialDescriptor(record.credential)
   return value as ClawdshCredentialResponse
+}
+
+/** Validate one sanitized Activity page received by the browser. */
+export function parseClawdshActivityListResponse(value: unknown): ClawdshActivityListResponse {
+  const record = exactRecord(
+    value,
+    ['version', 'records', 'nextCursor', 'availability', 'degraded', 'warnings'],
+    'activity list response',
+    ['nextCursor'],
+  )
+  if (record.version !== CLAWDSH_PROTOCOL_VERSION) {
+    throw new TypeError('activity list response.version must be 1')
+  }
+  if (!Array.isArray(record.records) || record.records.length > 100) {
+    throw new TypeError('activity records must be an array of at most 100 records')
+  }
+  for (const activityRecord of record.records) parseActivityRecord(activityRecord)
+  if (record.nextCursor !== undefined) activityCursor(record.nextCursor)
+  const availability = exactRecord(
+    record.availability,
+    ['history', 'sidecar'],
+    'activity availability',
+  )
+  enumField(availability.history, ['live', 'inspect', 'unavailable'], 'activity history availability')
+  enumField(availability.sidecar, ['available', 'missing', 'unavailable'], 'activity sidecar availability')
+  booleanField(record.degraded, 'activity degraded')
+  if (!Array.isArray(record.warnings)) throw new TypeError('activity warnings must be an array')
+  const warnings = new Set<string>()
+  for (const warning of record.warnings) {
+    enumField(
+      warning,
+      ['activity-data-incomplete', 'activity-history-unavailable', 'activity-sidecar-missing'],
+      'activity warning',
+    )
+    if (warnings.has(warning)) throw new TypeError('activity warnings must be unique')
+    warnings.add(warning)
+  }
+  if (warnings.has('activity-data-incomplete') !== record.degraded
+    || warnings.has('activity-history-unavailable') !== (availability.history === 'unavailable')
+    || warnings.has('activity-sidecar-missing') !== (availability.sidecar === 'missing')) {
+    throw new TypeError('activity warnings do not match availability and degradation')
+  }
+  return value as ClawdshActivityListResponse
 }
 
 function parseSettingsDescriptor(value: unknown): void {
@@ -476,6 +616,205 @@ function parseLoaderEntry(value: unknown): void {
   enumField(record.source, ['clawdsh', 'platform', 'community'], 'loader.source')
 }
 
+const ACTIVITY_KINDS = [
+  'prompt.contribution',
+  'memory.search',
+  'memory.read',
+  'memory.flush',
+  'channel.received',
+  'channel.delivery',
+  'skill.catalog',
+  'skill.loaded',
+  'skill.invoked',
+  'automation.run',
+] as const satisfies readonly ClawdshActivityKind[]
+
+const ACTIVITY_CATEGORY_BY_KIND: Readonly<Record<ClawdshActivityKind, ClawdshActivityCategory>> = {
+  'prompt.contribution': 'prompt',
+  'memory.search': 'memory',
+  'memory.read': 'memory',
+  'memory.flush': 'memory',
+  'channel.received': 'channel',
+  'channel.delivery': 'channel',
+  'skill.catalog': 'skill',
+  'skill.loaded': 'skill',
+  'skill.invoked': 'skill',
+  'automation.run': 'automation',
+}
+
+const ACTIVITY_SUMMARY_BY_KIND: Readonly<Record<ClawdshActivityKind, string>> = {
+  'prompt.contribution': 'ClawDSH Prompt contribution recorded',
+  'memory.search': 'Memory search activity recorded',
+  'memory.read': 'Memory read activity recorded',
+  'memory.flush': 'Memory flush activity recorded',
+  'channel.received': 'Channel message received',
+  'channel.delivery': 'Channel delivery state recorded',
+  'skill.catalog': 'Skill catalog activity recorded',
+  'skill.loaded': 'Skill load activity recorded',
+  'skill.invoked': 'Skill invocation activity recorded',
+  'automation.run': 'Automation run activity recorded',
+}
+
+function parseActivityRecord(value: unknown): void {
+  const record = exactRecord(
+    value,
+    ['version', 'id', 'timestamp', 'sessionId', 'category', 'kind', 'status', 'summary', 'metadata'],
+    'activity record',
+    ['status'],
+  )
+  if (record.version !== 1) throw new TypeError('activity record.version must be 1')
+  activityLabel(record.id, 'activity record.id')
+  canonicalTimestamp(record.timestamp, 'activity record.timestamp')
+  stringField(record.sessionId, 'activity record.sessionId')
+  enumField(record.kind, ACTIVITY_KINDS, 'activity record.kind')
+  const kind = record.kind as ClawdshActivityKind
+  if (record.category !== ACTIVITY_CATEGORY_BY_KIND[kind]) {
+    throw new TypeError('activity record.category does not match its kind')
+  }
+  if (record.summary !== ACTIVITY_SUMMARY_BY_KIND[kind]) {
+    throw new TypeError('activity record.summary does not match its kind')
+  }
+  if (record.status !== undefined) {
+    enumField(record.status, ['started', 'succeeded', 'failed', 'sent'], 'activity record.status')
+  }
+  const metadata = record.metadata
+  switch (kind) {
+    case 'prompt.contribution': {
+      const fields = activityMetadata(
+        metadata,
+        ['producer', 'section', 'mode', 'characters', 'sha256', 'seq'],
+      )
+      enumField(fields.producer, ['soul', 'memory'], 'prompt producer')
+      const validContribution = fields.producer === 'soul'
+        ? (fields.section === 'persona' && fields.mode === 'replace')
+          || (fields.section === 'clawdsh:soul' && fields.mode === 'append')
+        : fields.section === 'clawdsh:memory-recall' && fields.mode === 'append'
+      if (!validContribution || record.status !== 'succeeded') {
+        throw new TypeError('prompt Activity fields are inconsistent')
+      }
+      nonNegativeInteger(fields.characters, 'prompt characters')
+      nonNegativeInteger(fields.seq, 'prompt seq')
+      if (typeof fields.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(fields.sha256)) {
+        throw new TypeError('prompt sha256 must be a lowercase SHA-256 digest')
+      }
+      break
+    }
+    case 'memory.search':
+    case 'memory.read':
+    case 'memory.flush': {
+      const fields = activityMetadata(metadata, ['seq'])
+      nonNegativeInteger(fields.seq, 'memory seq')
+      workStatus(record.status, 'memory status')
+      break
+    }
+    case 'channel.received':
+      if (record.status !== undefined) throw new TypeError('received Channel Activity must not carry a status')
+      parseChannelActivityMetadata(metadata)
+      break
+    case 'channel.delivery':
+      if (record.status !== undefined
+        && record.status !== 'started'
+        && record.status !== 'failed'
+        && record.status !== 'sent') {
+        throw new TypeError('Channel delivery status is unsupported')
+      }
+      parseChannelActivityMetadata(metadata)
+      break
+    case 'skill.catalog': {
+      const fields = activityMetadata(metadata, ['count', 'seq'])
+      nonNegativeInteger(fields.count, 'skill catalog count')
+      nonNegativeInteger(fields.seq, 'skill catalog seq')
+      if (record.status !== 'succeeded') throw new TypeError('skill catalog status must be succeeded')
+      break
+    }
+    case 'skill.loaded':
+      parseNamedActivityMetadata(metadata, 'skill')
+      if (record.status !== 'succeeded') throw new TypeError('skill load status must be succeeded')
+      break
+    case 'skill.invoked':
+      parseNamedActivityMetadata(metadata, 'skill')
+      workStatus(record.status, 'skill invocation status')
+      break
+    case 'automation.run': {
+      const fields = activityMetadata(metadata, ['ruleId', 'scheduledAt', 'seq'])
+      activityLabel(fields.ruleId, 'automation ruleId')
+      canonicalTimestamp(fields.scheduledAt, 'automation scheduledAt')
+      nonNegativeInteger(fields.seq, 'automation seq')
+      workStatus(record.status, 'automation status')
+      break
+    }
+  }
+}
+
+function activityMetadata(value: unknown, keys: readonly string[]): Record<string, unknown> {
+  return exactRecord(value, keys, 'activity metadata')
+}
+
+function parseChannelActivityMetadata(value: unknown): void {
+  const fields = activityMetadata(value, ['adapter', 'conversation', 'mention', 'seq'])
+  activityLabel(fields.adapter, 'Channel adapter')
+  enumField(fields.conversation, ['direct', 'group'], 'Channel conversation')
+  if (fields.mention !== null && typeof fields.mention !== 'boolean') {
+    throw new TypeError('Channel mention must be boolean or null')
+  }
+  nonNegativeInteger(fields.seq, 'Channel seq')
+}
+
+function parseNamedActivityMetadata(value: unknown, key: 'skill'): void {
+  const fields = activityMetadata(value, [key, 'seq'])
+  activityLabel(fields[key], `Activity ${key}`)
+  nonNegativeInteger(fields.seq, `Activity ${key} seq`)
+}
+
+function workStatus(value: unknown, label: string): void {
+  enumField(value, ['started', 'succeeded', 'failed'], label)
+}
+
+function activityCategories(value: unknown, label: string): asserts value is ClawdshActivityCategory[] {
+  if (!Array.isArray(value) || value.length > 5) {
+    throw new TypeError(`${label} must be an array of at most five categories`)
+  }
+  const selected = new Set<string>()
+  for (const category of value) {
+    enumField(category, ['prompt', 'memory', 'channel', 'skill', 'automation'], label)
+    if (selected.has(category)) throw new TypeError(`${label} must not contain duplicates`)
+    selected.add(category)
+  }
+}
+
+function activityCursor(value: unknown): asserts value is string {
+  if (typeof value !== 'string'
+    || value.length === 0
+    || value.length > 2048
+    || !/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new TypeError('activity cursor must be canonical base64url of at most 2048 characters')
+  }
+}
+
+function activityLabel(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string'
+    || value.length === 0
+    || value.length > 256
+    || value !== value.trim()
+    || /[\u0000-\u001f\u007f]/.test(value)) {
+    throw new TypeError(`${label} must be a safe non-empty label`)
+  }
+}
+
+function canonicalTimestamp(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string') throw new TypeError(`${label} must be a timestamp`)
+  const parsed = Date.parse(value)
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
+    throw new TypeError(`${label} must be a canonical ISO timestamp`)
+  }
+}
+
+function nonNegativeInteger(value: unknown, label: string): asserts value is number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new TypeError(`${label} must be a non-negative safe integer`)
+  }
+}
+
 function loaderState(value: unknown, label: string): void {
   enumField(value, ['disabled', 'starting', 'active', 'failed', 'misconfigured'], label)
 }
@@ -500,9 +839,7 @@ function settingsPath(value: unknown): asserts value is string[] {
 }
 
 function revisionField(value: unknown, label: string): asserts value is number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) {
-    throw new TypeError(`${label} must be a non-negative safe integer`)
-  }
+  nonNegativeInteger(value, label)
 }
 
 function jsonField(value: unknown, label: string): void {

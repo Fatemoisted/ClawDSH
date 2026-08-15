@@ -4,7 +4,7 @@ Status: implemented
 
 [English](2026-08-15-clawdsh-settings-control-plane.md) | 中文
 
-[本地 GUI 规格](../../../../docs/specs/feature-gui-web.md)拥有当前用户可见行为。本决策实现了更广泛[产品壳提案](../../proposed/architecture/2026-08-15-clawdsh-product-shell.md)中的 Settings 部分；语义 Activity 仍是独立工作。
+[本地 GUI 规格](../../../../docs/specs/feature-gui-web.md)拥有当前用户可见行为。本决策拥有更广泛[产品壳决策](../../implemented/architecture/2026-08-15-clawdsh-product-shell.md)中的 Settings 部分；语义 Activity 的独立存储与 projection 规则见其[功能规格](../../../../docs/specs/feature-activity.md)。
 
 ## Problem
 
@@ -28,7 +28,7 @@ ClawDSH 产品壳能够识别能力归属与 Loader 健康状态，但只读清�
 | Ark Embeddings | `clawdsh-embeddings-ark` | Memory 依赖；API key 是独立的固定 credential reference |
 | Skills Hub | `clawdsh-skills-hub` | 默认启用；重启后改变 provider registration |
 | Automation | `clawdsh-automation` | 默认关闭；rules 作为一个原子字段保存 |
-| Activity | `clawdsh-activity` | 预留的内部 namespace，仅包含受管字段 |
+| Activity | `clawdsh-activity` | 必需 package namespace，仅包含受管字段 |
 
 每个 namespace 都向 dsh Settings service 注册自身已有 Config schema。解析顺序是 `schema default → profile base → user settings`；`reset` 会移除该 namespace 的完整 user layer，绝不改写 profile base 配置。Host 返回 resolved value、schema、存在时的 base 与 user layer、字段权限、生效时间，以及相互独立的 `desiredRevision` 与 `runtimeRevision` 值。
 
@@ -48,7 +48,7 @@ Protocol 与 runtime test 固定了严格 object parsing、静态 allowlist、�
 
 Browser test 固定了独立 draft、schema control、原子 Automation editor、受管 Gateway 字段、冲突后重新加载行为，以及成功和失败 request 后的 credential cleanup。Keyless real-profile journey 在没有 OpenClaw artifact 或外部 credential 时启动，发现所有已挂载的能力 namespace，确认 Gateway 处于关闭状态，并确认 platform credential 不在产品控制面中。Focused Host test 覆盖 mutation、reset、restart state 与 stale-write rejection。
 
-明确的 coverage gap 是语义 Activity。Settings 暴露预留的受管 Activity namespace，但本决策不增加 Session-history projection、sidecar record、Activity pagination 或 Activity UI record。
+必需 Activity package 注册受管 Activity namespace。其 Session-history projection、sidecar record、pagination 与 UI 由独立 Activity 规格管理，不属于 Settings mutation model。
 
 ## Alternatives considered
 
@@ -68,4 +68,4 @@ Browser test 固定了独立 draft、schema control、原子 Automation editor�
 
 Server 自有 product manifest 必须与 capability schema 和受管 installer 字段保持同步。Restart-bound setting 不会刻意修改已挂载 plugin effect，Soul 修改需要新 Session。OpenClaw deployment 在 managed runtime 通过 preflight 前保持不可用，platform account readiness 继续要求 OpenClaw 自有证据。
 
-控制面保持仅本机可用。Remote trusted-host 用户可以使用「对话」，但不能读取或修改产品 Settings 或 credential。语义 Activity 与公共发行不属于本决策。
+控制面保持仅本机可用。Remote trusted-host 用户可以使用「对话」，但不能读取或修改产品 Settings 或 credential。语义 Activity 通过自身 read protocol 组合在同一 local channel 上；公共发行不属于本决策。

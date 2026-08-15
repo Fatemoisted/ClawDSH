@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/adr/0007-clawdsh-local-gui-product.md
-0007-clawdsh-local-gui-product.md: 078bf7c8f1dda1b2c95f9dd59ef08808620008af
-0007-clawdsh-local-gui-product.zh.md: e21e8de7046a8cc7de5cf1a6c023b08ac8ee078e
+0007-clawdsh-local-gui-product.md: 4dd929f0d67a8c9cf800d8219b2a7887769bcbff
+0007-clawdsh-local-gui-product.zh.md: be29f8f1c86d906a0cc9e1bd1d133e19f59b27bf

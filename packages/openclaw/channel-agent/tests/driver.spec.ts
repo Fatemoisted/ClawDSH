@@ -158,6 +158,19 @@ interface Harness {
   readonly stagingRoot: string
 }
 
+interface ChannelDeliveryActivityInput {
+  readonly sessionId: string
+  readonly adapter: string
+  readonly conversation: 'direct' | 'group'
+  readonly mention: boolean | null
+  readonly seq: number
+  readonly status?: 'started' | 'failed' | 'sent'
+}
+
+function installActivity(ctx: Context, write: (input: ChannelDeliveryActivityInput) => Promise<unknown>): void {
+  ctx.provide('clawdshActivity', { channelDelivery: write } as never)
+}
+
 const contexts: Context[] = []
 const roots: string[] = []
 
@@ -1062,9 +1075,21 @@ describe('channel session and ledger lifecycle', () => {
 
   it('records monotonic delivery receipts and treats an exact terminal replay as a no-op', async () => {
     const app = await harness([textResponse('reply')])
+    const activity = vi.fn(async (_input: ChannelDeliveryActivityInput) => {})
+    installActivity(app.ctx, activity)
     const result = await app.ctx.channels.runTurn(turn(), execution())
     await app.ctx.channels.reportDelivery(report())
     await app.ctx.channels.reportDelivery(report())
+    await vi.waitFor(() => { expect(activity).toHaveBeenCalledOnce() })
+    const activityInput = activity.mock.calls[0]?.[0]
+    expect(activityInput).toMatchObject({
+      adapter: 'telegram',
+      conversation: 'direct',
+      mention: null,
+      status: 'sent',
+    })
+    expect(typeof activityInput?.sessionId).toBe('string')
+    expect(Number.isSafeInteger(activityInput?.seq)).toBe(true)
     if (result.status !== 'completed') throw new Error('expected completed result')
     const session = app.ctx.agents.get(result.sessionId)?.session
     expect(session?.events.some(event => event.type.startsWith('channel/'))).toBe(false)
@@ -1079,6 +1104,8 @@ describe('channel session and ledger lifecycle', () => {
 
   it('tracks accepted, retrying, ambiguous, and dead-letter delivery states without blind resend', async () => {
     const app = await harness([textResponse('one'), textResponse('two'), textResponse('three')])
+    const activity: ChannelDeliveryActivityInput[] = []
+    installActivity(app.ctx, async (input) => { activity.push(input) })
     const turns = [
       turn(),
       turn({ idempotencyKey: 'ambiguous', turnId: 'ambiguous', runId: 'ambiguous', messageId: 'ambiguous' }),
@@ -1148,6 +1175,34 @@ describe('channel session and ledger lifecycle', () => {
     expect((table?.get(ledgerKey(turns[0]!)) as ChannelLedgerRecord).delivery?.status).toBe('retrying')
     expect((table?.get(ledgerKey(turns[1]!)) as ChannelLedgerRecord).phase).toBe('ambiguous')
     expect((table?.get(ledgerKey(turns[2]!)) as ChannelLedgerRecord).phase).toBe('dead-letter')
+    await vi.waitFor(() => { expect(activity).toHaveLength(5) })
+    expect(activity.map(input => input.status)).toEqual(['started', 'started', 'started', undefined, 'failed'])
+    expect(activity.every(input => input.adapter === 'telegram'
+      && input.conversation === 'direct'
+      && input.mention === null
+      && Number.isSafeInteger(input.seq))).toBe(true)
+    const serialized = JSON.stringify(activity)
+    expect(serialized).not.toContain('account-1')
+    expect(serialized).not.toContain('conversation-1')
+    expect(serialized).not.toContain('sender-1')
+    expect(serialized).not.toContain('delivery-')
+    expect(serialized).not.toContain('retry later')
+    expect(serialized).not.toContain('receipt lost')
+  })
+
+  it('keeps a durable receipt successful when the optional Activity sink rejects', async () => {
+    const app = await harness([textResponse('reply')])
+    const activity = vi.fn(async (_input: ChannelDeliveryActivityInput) => {
+      throw new Error('activity-failure-secret-canary')
+    })
+    installActivity(app.ctx, activity)
+    await app.ctx.channels.runTurn(turn(), execution())
+
+    await expect(app.ctx.channels.reportDelivery(report())).resolves.toBeUndefined()
+    await vi.waitFor(() => { expect(activity).toHaveBeenCalledOnce() })
+    const ledger = app.facility.get('clawdsh_channel_agent')?.table('ledger').get(ledgerKey(turn())) as ChannelLedgerRecord
+    expect(ledger.phase).toBe('delivered')
+    expect(ledger.delivery?.status).toBe('confirmed')
   })
 
   it('rejects reports before results, unknown turns, and ambiguous turn/run identities', async () => {

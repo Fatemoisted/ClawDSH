@@ -8,7 +8,7 @@ The directory is not a Cordis plugin. It supplies:
 
 1. the `clawdsh` Agent preset (`preset.yml`, `agent.cordis.yml`, and `souls/assistant.md`), displayed as `ClawDSH 模式`;
 2. the `clawdsh` profile template (`profile/`), which composes dsh base and Web bundles with ClawDSH Host plugins;
-3. the nested ClawDSH browser shell and `@clawdsh/dsh-product-runtime`, with the capability overview, editable Settings control plane, and explicit deferred Activity state;
+3. the nested ClawDSH browser shell and `@clawdsh/dsh-product-runtime`, with the capability overview, editable Settings control plane, and current-Session semantic Activity;
 4. the development installation source consumed by `tools/link-clawdsh.sh`.
 
 The OpenClaw Gateway is an external communication-plane provider inside this product. It does not define the product, profile, or Agent preset identity.
@@ -73,17 +73,17 @@ The checked deployment paths form the installer-managed profile base and remain 
 
 ## Clean-install defaults
 
-Memory and Skills Hub remain enabled. Ark Embeddings resolves the fixed `ARK_API_KEY` credential reference only when an embedding call needs it. Automation and OpenClaw Gateway remain disabled. Disabled capabilities may omit credentials; an enabled capability fails at its earliest validation point when required configuration is absent.
+Memory, Skills Hub, and Activity remain enabled. Activity is required and records only privacy-limited product semantics; its failure cannot block a business capability. Ark Embeddings resolves the fixed `ARK_API_KEY` credential reference only when an embedding call needs it. Automation and OpenClaw Gateway remain disabled. Disabled capabilities may omit credentials; an enabled capability fails at its earliest validation point when required configuration is absent.
 
 Optional business plugins remain mounted and expose their Config schemas. Validated `enabled` settings control their runtime effects, while ClawDSH Settings displays desired and runtime revisions, restart requirements, field ownership, and secret-free credential state. Reset removes only the user layer and restores the profile base plus schema defaults.
 
 ## Product shell
 
-[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md) and the [local GUI spec](../../../docs/specs/feature-gui-web.md) define the product shell. `/clawdsh/` owns Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced; `/` retains native dsh Web. Conversation reuses the public dsh client graph and renderer. ClawDSH Settings combines capability health with allowlisted schema editing, optimistic revisions, managed Gateway deployment, Automation rules, and write-only dsh credential updates; Activity identifies its deferred state. Unknown product paths render an explicit not-found page instead of falling through to Harness.
+[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md) and the [local GUI spec](../../../docs/specs/feature-gui-web.md) define the product shell. `/clawdsh/` owns Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced; `/` retains native dsh Web. Conversation reuses the public dsh client graph and renderer. ClawDSH Settings combines capability health with allowlisted schema editing, optimistic revisions, managed Gateway deployment, Automation rules, and write-only dsh credential updates. Activity follows the current Session, merges standard history with bounded sidecars, and renders fixed privacy-safe Prompt, Memory, Channel, Skill, and Automation records with filtering and cursor pagination. Unknown product paths render an explicit not-found page instead of falling through to Harness.
 
 The profile suppresses the native `dsh web:` readiness line and mounts `@clawdsh/dsh-product-runtime`. After the Loader settles, that runtime prints `clawdsh web: http://127.0.0.1:<port>/clawdsh/`, owns the product static routes, and leaves the stock fallback at `/` unchanged. The nested browser build writes assets into `product-shell/runtime/web/`; neither nested package enters the root workspace or Client aggregate.
 
-The assembly does not register a new Client Slot and does not modify `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source. Raw Trajectory remains in Harness Advanced, and `dsh --profile web` remains a pure Harness entry point.
+The assembly does not register a new Client Slot and does not modify `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source. Activity adds no upstream Session event type, Raw Trajectory remains in Harness Advanced, and `dsh --profile web` remains a pure Harness entry point. The [Activity specification](../../../docs/specs/feature-activity.md) owns its storage, privacy, and degradation behavior.
 
 ## Managed-preset limitation
 

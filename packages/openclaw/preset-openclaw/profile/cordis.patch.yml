@@ -23,6 +23,12 @@
         source: ./souls/assistant.md
         mode: append
 
+    # Activity 是必需的 Host 服务；生产者把它视为可选观测 sink，记录失败不阻断业务。
+    - id: clawdsh-activity
+      name: '@clawdsh/dsh-activity'
+      config:
+        enabled: true
+
     - id: clawdsh-product-runtime
       name: '@clawdsh/dsh-product-runtime'
 

@@ -2,13 +2,13 @@
 
 English | [中文](0007-clawdsh-local-gui-product.zh.md)
 
-- **Status**: Accepted (product shell and Settings control plane implemented; semantic Activity pending)
+- **Status**: Accepted (product shell, Settings control plane, and semantic Activity implemented)
 - **Date**: 2026-08-15
 - **Depends on**: ADR-0001 (own-code isolation), the [current dsh Web GUI assembly](../../.agents/notes/implemented/feature/2026-08-15-openclaw-gui-dsh-web-app.md)
 
 ## Context
 
-The local GUI composes the stock `dsh-web-app` bundle, the `clawdsh` agent preset displayed as `ClawDSH 模式`, and an owned product runtime. `/clawdsh/` provides the ClawDSH navigation, capability overview, and allowlisted Settings control plane, while `/` preserves the complete DeepSeek Harness application. Semantic Activity records remain a separate implementation increment.
+The local GUI composes the stock `dsh-web-app` bundle, the `clawdsh` agent preset displayed as `ClawDSH 模式`, and an owned product runtime. `/clawdsh/` provides the ClawDSH navigation, capability overview, allowlisted Settings control plane, and semantic Activity, while `/` preserves the complete DeepSeek Harness application.
 
 A profile and an agent preset have different lifecycles. The profile mounts Host plugins for the process, while a preset composes one Session's Agent plane. Selecting the `standard` preset inside the ClawDSH profile therefore does not unload ClawDSH channels, Memory, Skills, or Automation and cannot truthfully mean “pure DeepSeek Harness.”
 
@@ -26,7 +26,7 @@ The public dsh Web assembly already supplies the Session runtime, browser module
 8. **The product identity is ClawDSH.** The user-visible mode is `ClawDSH 模式`; the profile and preset ids are `clawdsh`. The physical `preset-openclaw` source directory remains only because the repository's existing hierarchy check treats it as the assembly directory; it is not a user-facing term.
 9. **Legacy identity is warning-only.** `tools/link-clawdsh.sh` warns when legacy `openclaw` profile or preset directories exist and leaves them untouched; it neither deletes them nor creates compatibility aliases. The managed install manifest, integrity checks, and `clawdsh doctor` repair operation belong to the public-distribution CLI.
 
-The detailed ownership and verification rationale lives in the [ClawDSH product-shell Agent Note](../../.agents/notes/proposed/architecture/2026-08-15-clawdsh-product-shell.md) and the implemented [Settings control-plane decision](../../.agents/notes/implemented/feature/2026-08-15-clawdsh-settings-control-plane.md).
+The detailed ownership and verification rationale lives in the implemented [ClawDSH product-shell Agent Note](../../.agents/notes/implemented/architecture/2026-08-15-clawdsh-product-shell.md) and [Settings control-plane decision](../../.agents/notes/implemented/feature/2026-08-15-clawdsh-settings-control-plane.md).
 
 ## Consequences
 
@@ -36,7 +36,7 @@ The detailed ownership and verification rationale lives in the [ClawDSH product-
 - The product and advanced routes share one Host process and persistence, but they may have separate page-local UI state.
 - Capability switches describe ClawDSH behavior. They do not expose unrestricted Cordis Loader mutation.
 - The managed `clawdsh` preset temporarily lives in dsh's user preset root. ClawDSH Settings offers no delete action, while the unmodified Harness preset manager can still delete it as a user preset; the public-distribution `clawdsh doctor` repairs that state explicitly.
-- The product shell owns routing, navigation, capability Settings, and the explicit deferred Activity state. It does not claim that semantic Activity storage has shipped.
+- The product shell owns routing, navigation, capability Settings, and semantic Activity. Activity is bounded, privacy-limited, and fail-open rather than an authoritative replacement for Session history or raw Trajectory.
 
 ## Alternatives
 
