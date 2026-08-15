@@ -66,7 +66,7 @@ The profile always mounts the complete communication seam in this order:
 
 The same always-mounted communication group includes a package-filtered invariant registry plus the Service Definition, Agent, and Provider invariant companions. Enabled deployments therefore validate restored Channel provenance and each seam role's owned runtime relations.
 
-Channel Protocol always provides the Service Definition, and Agent Bridge always registers its network-inert Driver. OpenClaw Gateway remains mounted with its validated `enabled` setting false, so it performs no artifact check, socket binding, process launch, or Provider registration. The legacy in-process Telegram and Feishu packages are absent from the active profile, and external extension selection defaults to empty. OpenClaw remains the only owner of platform credentials; this profile neither reads nor copies them. Never connect a legacy adapter and the OpenClaw communication plane to the same platform account.
+Channel Protocol always provides the Service Definition, and Agent Bridge always registers its network-inert Driver. OpenClaw Gateway remains mounted with its validated `enabled` setting false, so it performs no artifact check, socket binding, process launch, or Provider registration. External extension selection defaults to empty. To preserve verified test1 behavior, the profile also exposes an explicitly opt-in in-process Telegram, Discord, and Feishu compatibility plane. It uses the separate `ctx.legacyChannels` seam and never registers with canonical `ctx.channels`. OpenClaw owns credentials on the canonical path; the legacy adapters resolve their own credential references only when explicitly enabled. Never connect both planes to the same platform account.
 
 The Provider's configuration, artifact checks, admission defaults, and runtime limitations are documented in the [channel-openclaw README](../channel-openclaw/README.md). The checked support catalog is conservative: presence in OpenClaw's catalog does not mean a channel is installable, certified, or enabled. [ADR-0008](../../../docs/adr/0008-openclaw-channel-plane.md) owns the architecture and replacement conditions.
 
@@ -101,9 +101,22 @@ pnpm exec tsx tools/openclaw-channel-migration.ts --input /absolute/path/to/old-
 
 The checked deployment paths form the installer-managed profile base and remain read-only in ClawDSH Settings. After the runtime is assembled, enable OpenClaw Gateway from the Settings page; the Host completes deployment preflight before persisting the change. A failed preflight leaves the setting and its revision unchanged. When enabled, admitted owner direct messages use `clawdsh`; every non-owner or group conversation uses `clawdsh-messaging-safe`.
 
+### Legacy adapter compatibility entry
+
+This entry is only for transition and regression verification. Enable both the master switch and the switch for each desired channel. For example, to start only Telegram:
+
+```bash
+export CLAWDSH_LEGACY_CHANNELS_ENABLED=1
+export CLAWDSH_LEGACY_TELEGRAM_ENABLED=1
+# Supply TELEGRAM_BOT_TOKEN through a Harness credential source or the launch environment.
+pnpm dsh --profile clawdsh
+```
+
+Discord and Feishu use `CLAWDSH_LEGACY_DISCORD_ENABLED=1` and `CLAWDSH_LEGACY_FEISHU_ENABLED=1`, respectively. Before enabling any legacy adapter, keep OpenClaw Gateway disabled in ClawDSH Settings and never reuse the same platform account across both planes. While the legacy master opt-in is present, Gateway startup and Settings preflight reject canonical enablement before side effects. Legacy live evidence is not OpenClaw sidecar certification.
+
 ## Clean-install defaults
 
-Memory, Skills Hub, and Activity remain enabled. Activity is required and records only privacy-limited product semantics; its failure cannot block a business capability. Ark Embeddings resolves the fixed `ARK_API_KEY` credential reference only when an embedding call needs it. Automation and OpenClaw Gateway remain disabled. Disabled capabilities may omit credentials; an enabled capability fails at its earliest validation point when required configuration is absent.
+Memory, Skills Hub, and Activity remain enabled. Activity is required and records only privacy-limited product semantics; its failure cannot block a business capability. Ark Embeddings resolves the fixed `ARK_API_KEY` credential reference only when an embedding call needs it. Automation, OpenClaw Gateway, the legacy compatibility group, and every legacy adapter remain disabled. Disabled capabilities may omit credentials; an enabled capability fails at its earliest validation point when required configuration is absent.
 
 Optional business plugins remain mounted and expose their Config schemas. Validated `enabled` settings control their runtime effects, while ClawDSH Settings displays desired and runtime revisions, restart requirements, field ownership, and secret-free credential state. Reset removes only the user layer and restores the profile base plus schema defaults.
 
@@ -127,4 +140,4 @@ The release workflow targets only public npm and the `next` tag. A dry run packs
 
 ## Verification boundary
 
-The locked production host, local IPC handshake, Provider and Driver ledgers, fail-closed model route, extension-integrity checks, and keyless protocol tests establish the current channel foundation. Real Telegram, Feishu, or other platform certification still requires dedicated accounts, current credentials, and recorded live-smoke evidence. Until that evidence exists, the profile keeps every channel disabled and the support catalog promotes none to `certified` or `enabled`.
+The locked production host, local IPC handshake, Provider and Driver ledgers, fail-closed model route, extension-integrity checks, and keyless protocol tests establish the current canonical channel foundation. Recorded live-platform tests belong to the isolated legacy adapters and do not promote corresponding OpenClaw sidecar channels to `certified` or `enabled`. Sidecar certification still requires dedicated accounts, current credentials, and live-smoke evidence recorded against the sidecar itself.

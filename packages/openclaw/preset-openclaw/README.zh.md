@@ -66,7 +66,7 @@ Profile 始终按以下顺序挂载完整 communication seam：
 
 同一个始终挂载的通信组包含按包过滤的 invariant registry，以及 Service Definition、Agent 和 Provider 的 invariant companion。因此，启用后的部署会校验恢复的 Channel 来源信息和每个 seam 角色拥有的运行时关系。
 
-Channel Protocol 始终提供 Service Definition，Agent Bridge 始终注册自身 network-inert Driver。OpenClaw Gateway 保持 mounted，其经过校验的 `enabled` setting 默认为 false，因此不执行 artifact check、socket binding、process launch 或 Provider registration。旧进程内 Telegram 与 Feishu package 不在 active profile 中，external extension selection 默认为空。OpenClaw 仍是 platform credential 的唯一 owner；本 profile 不读取或复制这些凭证。绝不能让 legacy adapter 与 OpenClaw 通信平面连接同一 platform account。
+Channel Protocol 始终提供 Service Definition，Agent Bridge 始终注册自身 network-inert Driver。OpenClaw Gateway 保持 mounted，其经过校验的 `enabled` setting 默认为 false，因此不执行 artifact check、socket binding、process launch 或 Provider registration。External extension selection 默认为空。为保留 test1 已验证能力，profile 还提供显式 opt-in 的进程内 Telegram、Discord 与飞书兼容面；它使用独立的 `ctx.legacyChannels`，不会注册到 canonical `ctx.channels`。OpenClaw 拥有 canonical path 的凭证；legacy adapter 只在显式启用时解析自己的 credential reference。绝不能让两个平面连接同一个 platform account。
 
 Provider 配置、artifact check、admission default 与 runtime limitation 见 [channel-openclaw README](../channel-openclaw/README.md)。受检支持 catalog 采用保守语义：存在于 OpenClaw catalog 不表示渠道 installable、certified 或 enabled。[ADR-0008](../../../docs/adr/0008-openclaw-channel-plane.md)拥有架构与替换条件。
 
@@ -101,9 +101,22 @@ pnpm exec tsx tools/openclaw-channel-migration.ts --input /absolute/path/to/old-
 
 检入的 deployment path 组成 installer-managed profile base，并在 ClawDSH Settings 中保持只读。Runtime 组装完成后，从 Settings 页面启用 OpenClaw Gateway；Host 会在持久化修改前完成 deployment preflight。Preflight 失败会让 setting 与 revision 保持不变。启用后，已准入 owner direct message 使用 `clawdsh`；每个 non-owner 或 group conversation 使用 `clawdsh-messaging-safe`。
 
+### Legacy adapter 兼容入口
+
+该入口仅用于过渡和回归验证。必须同时打开总开关，并为每个需要的渠道分别打开它的开关；例如只启动 Telegram：
+
+```bash
+export CLAWDSH_LEGACY_CHANNELS_ENABLED=1
+export CLAWDSH_LEGACY_TELEGRAM_ENABLED=1
+# Supply TELEGRAM_BOT_TOKEN through a Harness credential source or the launch environment.
+pnpm dsh --profile clawdsh
+```
+
+Discord 与飞书对应使用 `CLAWDSH_LEGACY_DISCORD_ENABLED=1` 和 `CLAWDSH_LEGACY_FEISHU_ENABLED=1`。启用任何 legacy adapter 前，必须在 ClawDSH Settings 中保持 OpenClaw Gateway 关闭，并且绝不能在两个平面复用同一个 platform account。存在 legacy 总 opt-in 时，Gateway 启动与 Settings preflight 会在产生副作用前拒绝 canonical enablement。Legacy 实测证据不等于 OpenClaw sidecar certification。
+
 ## Clean-install 默认值
 
-Memory、Skills Hub 与 Activity 保持启用。Activity 是必需能力，并且只记录限制隐私的产品语义；它的失败不能阻断业务能力。Ark Embeddings 只在 embedding call 需要时解析固定 `ARK_API_KEY` credential reference。Automation 与 OpenClaw Gateway 保持关闭。Disabled capability 可以缺少 credential；enabled capability 缺少所需配置时在最早 validation point 失败。
+Memory、Skills Hub 与 Activity 保持启用。Activity 是必需能力，并且只记录限制隐私的产品语义；它的失败不能阻断业务能力。Ark Embeddings 只在 embedding call 需要时解析固定 `ARK_API_KEY` credential reference。Automation、OpenClaw Gateway、legacy compatibility group 与每个 legacy adapter 均保持关闭。Disabled capability 可以缺少 credential；enabled capability 缺少所需配置时在最早 validation point 失败。
 
 Optional business plugin 保持 mounted，并暴露自身 Config schema。经过校验的 `enabled` setting 控制 runtime effect，ClawDSH Settings 则显示 desired/runtime revision、restart requirement、field ownership 与不含 secret 的 credential state。Reset 只移除 user layer，并恢复 profile base 加 schema default。
 
@@ -127,4 +140,4 @@ Launcher 没有 installation-owned ClawDSH preset root，因此两个 preset 都
 
 ## 验证边界
 
-锁定 production host、local IPC handshake、Provider 与 Driver ledger、fail-closed model route、extension-integrity check 与 keyless protocol test 建立当前 channel foundation。真实 Telegram、Feishu 或其他平台认证仍需专用账号、当前凭证与已记录 live-smoke evidence。在这些证据存在前，profile 保持每个 channel 关闭，support catalog 不把任何渠道提升为 `certified` 或 `enabled`。
+锁定 production host、local IPC handshake、Provider 与 Driver ledger、fail-closed model route、extension-integrity check 与 keyless protocol test 建立当前 canonical channel foundation。已记录的真实平台实测属于隔离的 legacy adapter，不会把 OpenClaw sidecar 中的对应渠道提升为 `certified` 或 `enabled`。Sidecar 认证仍需专用账号、当前凭证与针对它本身记录的 live-smoke evidence。

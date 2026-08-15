@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/specs/product-chain.md
-product-chain.md: 65d1a5844711763fc0076d8aebe0edbe11a60512
-product-chain.zh.md: 9da0b91c4b5d0dfd27fb492580d3eee3ed167bd5
+product-chain.md: b8a6b564df39c2690766e04ef6e8726c79048561
+product-chain.zh.md: 4afa1adbcea36e6105ac4eed938dc9583ddd40f8

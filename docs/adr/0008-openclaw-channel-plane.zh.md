@@ -6,6 +6,7 @@
 - **日期**：2026-08-15
 - **取代**：ADR-0002
 - **依赖**：ADR-0001
+- **相关决策**：ADR-0010（Harness contract-first 复用）；ADR-0011（仅 legacy 路径的图片与地址行为）
 
 ## 上下文
 
@@ -57,16 +58,16 @@ Ready 要求已认证 handshake 与持久 route 恢复全部完成。临时 tran
 
 ### 4. 在替换门禁通过前保留旧适配器
 
-`channel-core`、`channel-telegram` 与 `channel-feishu` 仍是进程内 legacy compatibility adapter。它们早期的软件包与契约测试仍有实现历史价值，但不能认证当前部署。只有 sidecar 装配完成、所需无密钥 snapshot 路径存在，并且生产 lock 上等价的 Telegram 与 Feishu live smoke 通过后，才能删除它们。本 ADR 取代 ADR-0002 成为当前架构，但不会在该门禁前抹除 legacy 代码及其 Agent Notes。
+`channel-core`、`channel-telegram`、`channel-discord` 与 `channel-feishu` 仍是进程内 legacy compatibility adapter。它们只在默认关闭的 compatibility group 中注册独立的 `ctx.legacyChannels` Service；存在 legacy opt-in 时，canonical Gateway 启动与 Settings preflight 会在产生副作用前失败。它们早期的软件包、无密钥与带凭证测试仍有实现历史价值，但不能认证当前 sidecar 部署。只有 sidecar 装配完成、所需无密钥 snapshot 路径存在，并且仍用于迁移的每个平台都在 production lock 上通过等价 live smoke 后，才能删除它们。ADR-0011 只治理这条保留 legacy 路径的图片导入与地址连续性，ADR-0010 则治理其 Harness contract 复用。本 ADR 取代 ADR-0002 成为当前架构，但不会在该门禁前抹除 legacy 代码及其 Agent Notes。
 
 ## 已知缺口
 
-- **Gateway bridge 与部署**：V1 Service Definition、持久 Agent driver、lock 校验、POSIX 认证 IPC provider 和协议支持已实现。生产 profile 会始终挂载这些组件及按包过滤的 invariant registry，同时保持 Gateway setting 关闭，并且不启用任何 Channel。Canary 没有锁定的构建产物。
+- **Gateway bridge 与部署**：V1 Service Definition、持久 Agent driver、lock 校验、POSIX 认证 IPC provider 和协议支持已实现。生产 profile 包含带 package-filtered invariant registry 的 canonical 组合，同时保持 Gateway setting 关闭；另一个默认关闭的 compatibility group 只拥有 `ctx.legacyChannels`，两条路径默认都不启动 transport。Canary 没有锁定的构建产物。
 - **Windows 端点授权**：POSIX 使用私有 `0700` 父目录和 `0600` Unix socket。Windows named-pipe ACL 强制缺少所需 native seam，因此 provider 在 Windows 上 fail closed。
 - **附件**：入站暂存图片在进入 dsh attachment store 前校验路径、符号链接、大小、media type 与 SHA-256。音频、视频和通用文件缺少持久的非图片 attachment seam。出站媒体缺少 dsh staging writer，并明确失败。
 - **Plugin Session event**：当前安全路径使用已知 `user/message` source 与持久 sidecar ledger。持久化已声明的 `channel/*` event 会使 resume fail closed，因为 downstream code 不能把它们标记为 ignorable；这些 event name 在上游 append seam 出现前保持禁用。
 - **装配证据**：自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，并在 Linux x64 上贯穿锁定 Gateway、stable bridge 与 DSH Agent。测试有意终止于最终平台投递之前，因为锁定 host 没有可关联的公共 hook。
-- **真实认证**：本次变更没有运行带凭证的 Telegram 或 Feishu 流量。旧适配器和 sidecar 渠道都不得标记为 certified 或 enabled。
+- **真实认证**：本次变更没有运行新的、带凭证的 Telegram、飞书或 Discord sidecar 流量。历史上带凭证的 legacy Telegram 与飞书流量，以及 Discord 无密钥证据，都不能认证本次发布、锁定 host 或 `ctx.channels`；不能根据这些证据把 legacy adapter 或 sidecar Channel 标记为 certified 或 enabled。
 
 ## 影响
 

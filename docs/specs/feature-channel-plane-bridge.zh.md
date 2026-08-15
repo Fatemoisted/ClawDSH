@@ -5,6 +5,8 @@
 - **状态**：基础已实现；装配与认证未完成（2026-08-15）
 - **决策**：[ADR-0008](../adr/0008-openclaw-channel-plane.md)
 - **同步规范**：[openclaw-channel-sync](../standards/openclaw-channel-sync.md)
+- **Harness 复用**：[ADR-0010](../adr/0010-harness-contract-first.md)
+- **仅 legacy 行为**：[ADR-0011](../adr/0011-deferred-channel-images-and-address-continuity.md)
 - **软件包**：`@clawdsh/dsh-channel`、`@clawdsh/dsh-channel-agent`、`@clawdsh/dsh-channel-openclaw`
 
 ## 目标
@@ -21,7 +23,7 @@
 - 允许 OpenClaw sidecar 选择独立模型或绕过 ClawDSH fallback。
 - 把目录存在、包可安装、包测试或历史 live smoke 当作发布认证。
 - 在精确生产组合完成认证前默认启用任何渠道。
-- 在 ADR-0008 的替换条件通过前删除 `channel-core`、`channel-telegram` 或 `channel-feishu`。
+- 在 ADR-0008 的替换条件通过前删除 `channel-core`、`channel-telegram`、`channel-discord` 或 `channel-feishu`。
 
 ## 运行时装配
 
@@ -39,6 +41,8 @@ platform
 ```
 
 `@clawdsh/dsh-channel` 是 Service Definition；它只接受一个 Provider 和一个 Driver，不含任何平台分支。`@clawdsh/dsh-channel-openclaw` 拥有通信侧 Provider、精确 host 身份、私有 IPC、健康与投递账本。`@clawdsh/dsh-channel-agent` 拥有 Agent 侧 Driver、确定性会话绑定、路由 generation、崩溃隔离、模型执行与路由限定的 `message` 工具。
+
+该 canonical 组合只拥有 `ctx.channels`，在完成认证前保持 Gateway setting 关闭。保留的进程内 adapter 只在另一个默认关闭的 compatibility group 中注册 `ctx.legacyChannels`。存在 legacy opt-in 时，canonical Gateway 启动与 Settings preflight 会在产生副作用前拒绝配置，避免同一平台账号同时被两条路径消费。ADR-0010 治理 Harness Agent、Session、attachment、credential、timer 与 Cordis contract 的复用；ADR-0011 只适用于 legacy 图片导入和地址连续性，不能提供 sidecar 证据。
 
 ## V1 协议
 
@@ -76,7 +80,7 @@ handshake 必须匹配配置的 Gateway instance、启动 nonce、production 或
 
 协议和路由限定的模型工具建模发送、编辑、删除、回应、投票、输入状态、目录 self/peer/group/member 查询和目标解析。handshake 与渠道实现都会缩窄可用集合；锁定 bridge 当前只宣传 send 与 poll，不支持的操作明确失败。
 
-入站图片只有在相对路径仍位于配置的 canonical staging root 内、每级路径都不是符号链接、声明与观察大小符合配置的字节上限、media type 已启用且 SHA-256 匹配后才导入。稳定版 AgentHarness V1 不暴露可信的物化入站媒体事实，因此 production bridge 当前会在进入该 importer 前拒绝全部入站媒体。音频、视频与通用文件在 dsh 拥有持久非图片 attachment service 前会被拒绝。出站媒体在 dsh-to-Gateway staging writer 和消费已认证字节的 adapter path 存在前会被拒绝。
+入站图片只有在相对路径仍位于配置的 canonical staging root 内、每级路径都不是符号链接、声明与观察大小符合配置的字节上限、media type 已启用且 SHA-256 匹配后才导入。稳定版 AgentHarness V1 不暴露可信的物化入站媒体事实，因此 production bridge 当前会在进入该 importer 前拒绝全部入站媒体。音频、视频与通用文件在 dsh 拥有持久非图片 attachment service 前会被拒绝。出站媒体在 dsh-to-Gateway staging writer 和消费已认证字节的 adapter path 存在前会被拒绝。ADR-0011 的 deferred import 与地址连续性规则只描述 `ctx.legacyChannels`，不会放宽这些 canonical 媒体门禁。
 
 ## Host track 与目录
 
@@ -88,7 +92,7 @@ Canary 锁定 source commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`；其 31 
 
 唯一有效的推进是 `cataloged → installable → certified → enabled`，定义见 ADR-0008。批准目录建立 catalog 来源；校验稳定 artifact 且通过兼容 host 装配后可建立 installability。External 包还要求许可证、平台条款和安全审查全部通过。认证还要求精确发布装配、安全检查、投递行为、无密钥装配 transcript，以及需要凭证的平台 live smoke。启用还要求交付 profile 的明确选择。
 
-当前实现证据只建立 `cataloged`。交付 profile 始终挂载 sidecar 组合及其 invariant companion，同时保持 Gateway setting 关闭；它不启动 legacy adapter，另行保留的 legacy 包也不构成 sidecar 证据。自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，贯穿锁定 Gateway、stable bridge 与 DSH Agent，并在 Linux x64 CI 中运行；经评审的 Darwin arm64 assembly 也已在本地通过。当前没有运行带凭证的 Telegram 或 Feishu transport smoke。最终投递、聚合账号健康、stable 入站媒体、Windows ACL 与 external 治理门禁仍未完成。在 downstream-event seam 不可用期间，resume coverage 还必须证明只持久化已知 Session event name。
+当前实现证据只建立 `cataloged`。交付 profile 包含 canonical sidecar 组合及其 invariant companion，同时保持 Gateway setting 关闭；另一个 legacy compatibility group 也默认关闭，因此两条路径默认都不启动 transport。自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，贯穿锁定 Gateway、stable bridge 与 DSH Agent，并在 Linux x64 CI 中运行；经评审的 Darwin arm64 assembly 也已在本地通过。当前没有运行新的、带凭证的 Telegram、飞书或 Discord sidecar transport smoke。历史上带凭证的 legacy Telegram 与飞书流量，以及 Discord 无密钥覆盖，只能证明它们实际经过的精确 `ctx.legacyChannels` 路径；不能认证锁定 host、`ctx.channels` 或 sidecar 投递。最终投递、聚合账号健康、stable 入站媒体、Windows ACL 与 external 治理门禁仍未完成。在 downstream-event seam 不可用期间，resume coverage 还必须证明只持久化已知 Session event name。
 
 ## 替换门禁
 
@@ -97,5 +101,5 @@ Canary 锁定 source commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`；其 31 
 1. 锁定可复现的 managed host 与 bridge artifact，交付 profile 装配 Service Definition、Provider 与 Driver，且无 OpenClaw 模型 fallback。
 2. 契约、完整性、认证、幂等、reset/close、action、delivery、crash recovery、attachment、persistence 与 resume 测试通过，且不使用 downstream `channel/*` Session event。
 3. 无密钥的 Gateway-to-Agent 装配 snapshot 或等价自有 snapshot harness 在 CI 中运行。
-4. Telegram 与 Feishu 完成新的带凭证入站、Agent、出站、重复投递和失败路径 smoke。
+4. 仍用于 legacy 迁移的每个平台完成新的带凭证入站、Agent、出站、重复投递与失败路径 smoke；其中包括 Telegram 与飞书，活跃 legacy Discord deployment 还包括 Discord。
 5. 文档标出已认证组合，profile 只明确启用这些组合。

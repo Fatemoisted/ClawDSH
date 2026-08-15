@@ -6,6 +6,12 @@
     "declarationMap": false,
     "incremental": false,
     "noEmit": true,
+    // This lane runs after the root build and verifies the public Loader API;
+    // do not collapse referenced vendor projects into one strict TS program.
+    "paths": {
+      "@deepseek-ai/cordis-plugin-include": ["../../../../vendor/include/lib/types/index.d.ts"],
+      "@deepseek-ai/cordis-plugin-loader": ["../../../../vendor/loader/lib/types/index.d.ts"]
+    },
     "sourceMap": false
   },
   "include": [

@@ -2,24 +2,11 @@
      ClawDSH 项目规范（本仓库自有段落，置于上游内容之前）
      rebase 上游冲突时：取上游版本，再把本段重新置顶
      ══════════════════════════════════════════════════════════════ -->
-# ClawDSH — OpenClaw 的个人助手能力，跑在 dsh 的 Cordis 底盘上
+# ClawDSH 规则
 
-**项目目的**：用 DeepSeek Harness 的插件架构（Cordis：everything is a plugin）重建 OpenClaw 的个人助手功能集，让每个社区功能以独立插件存在，摆脱 OpenClaw 因架构无接缝而无法维护的困境。实施方案见 [docs/specs/roadmap.md](docs/specs/roadmap.md)。
+**边界**：上游原文件只读，品牌页首、profile patch 及显式批准的 fork integration 修复除外。自有范围是 `packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal,cookbook,upstream-proposal}/`、`docs/subsystems/clawdsh*`、`tools/` 与 `.github/workflows/clawdsh-*`。
 
-**上游纪律（最高优先级）**：
-- 本仓库跟踪上游 `deepseek-ai/deepseek-harness`（远程 `upstream`）。上游 `vendor/`、`packages/*`（`openclaw/` 除外）、`apps/`、`website/` 及其 `docs/` 中的上游文件一律只读。
-- 上游文件仅允许两类改动：① 置顶本品牌段（README/CLAUDE/AGENTS）；② 通过 profile/bundle/patch 覆盖配置。
-- 缺接缝（seam）时：先写 ADR → 向上游提 PR → 本地用 profile patch 过渡。见 [docs/standards/upstream-sync.md](docs/standards/upstream-sync.md)。
-
-**自有代码只允许出现在**：`packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal,upstream-proposal}/`、`tools/`、`.github/workflows/clawdsh-*`。
-
-**上下文纪律**：聚焦上面自有面；上游代码只读、不必重读——dsh 架构已浓缩进 [docs/specs/context-map.md](docs/specs/context-map.md)（一次读完 Cordis/seam/profile/session-log，含 54 个 seam 的权威目录与「读什么/跳什么」策略）。仅实现新 seam 时才读对应上游 Service Definition。
-
-**新增插件流程**：复制 `packages/openclaw/_template/` → 写 `docs/specs/feature-*.md` → 更新 `docs/matrix/parity.md` → 接入 workspace/tsconfig → 过契约测试。规范见 [docs/standards/plugin-contract.md](docs/standards/plugin-contract.md) 与 [docs/standards/pr-policy.md](docs/standards/pr-policy.md)。
-
-**当前阶段**：阶段 4（用户生态）。阶段 0–3 已收尾（PR #1–#8 合入 clawdsh）。
-
-**文档索引**：决策 `docs/adr/` · 规格 `docs/specs/` · 对齐矩阵 `docs/matrix/parity.md` · 规范 `docs/standards/` · 开发日志 `docs/journal/`
+**开发**：先读 [Harness 复用地图](docs/matrix/harness-reuse.md) 和 [上下文地图](docs/specs/context-map.md)。缺 seam 按 [同步规范](docs/standards/upstream-sync.md)处理；新插件遵循 [插件规范](docs/standards/plugin-contract.md)。
 
 ---
 

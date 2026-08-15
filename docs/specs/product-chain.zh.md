@@ -17,7 +17,7 @@
 |---|---|---|---|
 | ClawDSH 本地 GUI | `preset-openclaw`、`activity` | 公开 dsh Web 组装、Session history、可选 Activity service | ✅ 产品壳、可写 Settings 与语义 Activity |
 | 当前渠道平面 | `channel`、`channel-agent`、`channel-openclaw` | 自有 `ctx.channels` V1 | ✅ 基础；⚠️ 没有 certified 或 enabled 渠道 |
-| 旧渠道路径 | `channel-core`、`channel-telegram`、`channel-feishu` | `ctx.legacyChannels` | ✅ 保留 compatibility；⚠️ 没有当前认证 |
+| 旧渠道路径 | `channel-core`、`channel-telegram`、`channel-discord`、`channel-feishu` | `ctx.legacyChannels` | ✅ 保留且默认关闭的 compatibility；⚠️ 没有当前认证 |
 | Persona | `soul` | `ctx.systemPrompt` | ✅ 已实现 |
 | Memory | `memory`、`embeddings`、`embeddings-ark` | filesystem、tools、system prompt、自有 embeddings seam | ✅ 已实现 |
 | Skills | `skills-hub` | `ctx.skills` | ✅ 已实现 |
@@ -29,7 +29,7 @@
 
 ### 当前产品增量
 
-nested build 在 `tools/link-clawdsh.sh` 安装 `clawdsh` profile 与 preset 前产出 `@clawdsh/dsh-product-runtime` 及其 browser asset。`pnpm dsh --profile clawdsh` 在 Loader 结算后只打印 `/clawdsh/` 产品 URL；`/` 保留原生 dsh Web client，新 Session 默认使用 `ClawDSH 模式`。OpenClaw Gateway 与 Automation 保持关闭，因此 clean home 无需 platform credential 或 OpenClaw artifact 即可启动。
+nested build 在 `tools/link-clawdsh.sh` 安装 `clawdsh` profile 与 preset 前产出 `@clawdsh/dsh-product-runtime` 及其 browser asset。`pnpm dsh --profile clawdsh` 在 Loader 结算后只打印 `/clawdsh/` 产品 URL；`/` 保留原生 dsh Web client，新 Session 默认使用 `ClawDSH 模式`。Clean-install 基线关闭 Automation、canonical sidecar、legacy compatibility group 及每个 legacy adapter，因此 clean home 无需其凭证或 OpenClaw artifact 即可启动。
 
 ### 产品链
 
@@ -85,16 +85,17 @@ Inbound image 被限制在 canonical staging root，校验 symlink、size、medi
 | Windows IPC authorization | unsupported 且 fail-closed，直到存在 named-pipe ACL enforcement |
 | Plugin Session event | 禁用 `channel/*` 名称，因为 downstream append 不能将其标记为 ignorable |
 | Keyless assembled transcript | 缺失，因为 upstream snapshot lane 不发现自有 package |
-| Telegram / Feishu live traffic | 没有当前认证证据；sidecar 与 legacy path 都未 enabled |
+| Telegram / Feishu / Discord live traffic | 没有当前 sidecar 认证证据；两个 channel group 都不默认启用 |
 
 ## 旧渠道路径
 
-`channel-core` 在 `ctx.legacyChannels` 下注册进程内 text adapter；Telegram 使用 grammY polling，Feishu 使用 Lark long connection。Identity prefix、mention handling 与 acknowledgement reaction 属于该 legacy path。
+`channel-core` 在 `ctx.legacyChannels` 下注册进程内 adapter；Telegram 使用 grammY polling，Discord 使用 discord.js Gateway/REST，飞书使用 Lark long connection。Identity prefix、mention handling、ack、旧图片 handling 与 provider 地址连续性属于该路径。
 
-- ✅ Package 为替换验证保留，其历史 test 描述原有 behavior。
-- ⚠️ 该约定没有精确 OpenClaw host identity、durable route/idempotency/delivery ledger、media path 或 native action negotiation。
-- ⚠️ 历史 transport work 不满足当前发布认证要求。Telegram 与 Feishu 至多是 installable。
-- ⏳ 只有 sidecar 装配完成、自有 keyless snapshot 存在且新 Telegram 与 Feishu certification 通过后，才能一起删除三个包。Agent Note 只能随该删除一同归档。
+- ✅ `clawdsh-legacy-channel-plane` group 与每个 provider entry 有独立 opt-in。存在 legacy opt-in 时，Gateway 启动与 Settings preflight 会拒绝 canonical enablement，避免同一 profile 对同一账号双登录。
+- ✅ 飞书文本（2026-08-14）与 Telegram 文本/caption 加 recovery/tool 路径（2026-08-15）有历史带凭证证据。Discord 只有无密钥 behavior 与 lifecycle 覆盖。
+- ⚠️ 后续 Telegram 图片/轮换/迁移与后续飞书凭据引用/热切换修订只有无密钥覆盖。Discord 没有带凭证真实服务器 E2E。
+- ⚠️ Legacy path 没有精确 OpenClaw host identity 或持久 ingress/idempotency/delivery ledger，其证据不能认证 sidecar。
+- ⏳ 只有 sidecar 装配完成、自有 keyless snapshot 存在，且新认证覆盖仍用于迁移的每个平台后，才能一起删除四个包。Agent Note 只能随该删除一同归档。
 
 ## Persona、Memory、Skills 与 Automation
 
@@ -110,7 +111,7 @@ Inbound image 被限制在 canonical staging root，校验 symlink、size、medi
 
 ## Profile composition
 
-`preset-openclaw` 是 `clawdsh` Agent preset、example soul 与 profile 的内部源码。Profile 组合 dsh base 与 Web bundle，再挂载 Memory、Embeddings、Skills、opt-in Automation，以及默认关闭的 `channel → channel-agent → channel-openclaw` group。物理 directory name 不会成为用户可见 id。
+`preset-openclaw` 是 `clawdsh` Agent preset、example soul 与 profile 的内部源码。Profile 组合 dsh base 与 Web bundle，再挂载 Memory、Embeddings、Skills、opt-in Automation、默认关闭的 `channel → channel-agent → channel-openclaw` canonical group，以及优先级更低且默认关闭的 legacy compatibility group。物理 directory name 不会成为用户可见 id。
 
 - ✅ 新 Web Session 默认使用 `clawdsh`，显示为 `ClawDSH 模式`。
 - ✅ Owner channel turn 使用 `clawdsh`；每个 non-owner 或 group turn 经 OpenClaw admission 后使用 `clawdsh-messaging-safe`。
@@ -149,7 +150,7 @@ Inbound image 被限制在 canonical staging root，校验 symlink、size、medi
 1. 增加自有 keyless Gateway-to-Agent snapshot lane，并完成精确逐渠道 assembly evidence。
 2. 在 named-pipe ACL enforcement 提供等价 authorization 前保持 Windows fail-closed。
 3. 在启用对应 media path 前增加 durable non-image attachment 与 outbound staging。
-4. 启用任何路径前运行新的 Telegram 与 Feishu certification。
+4. 启用任何路径前运行新的 sidecar Telegram 与飞书 certification；迁移仍在使用的 legacy Discord deployment 前也要认证 Discord。
 5. 持久化 namespaced `channel/*` Session event 前获得 ignorable append mechanism。
 6. 只有每项替换条件通过后才能删除 legacy adapter 并归档其 Note。
 7. 选择并另行授权 bootstrap archive 与版本，再通过交互式 2FA 创建全部 13 个 package object；本仓库不执行该 bootstrap。

@@ -16,16 +16,22 @@ describe('OpenClaw channel migration inventory', () => {
     const secret = 'must-not-appear-in-report'
     await writeFile(profile, [
       "name: '@clawdsh/dsh-channel-feishu'",
+      "name: '@clawdsh/dsh-channel-discord'",
       `FEISHU_APP_SECRET=${secret}`,
       'TELEGRAM_BOT_TOKEN=another-secret',
+      'DISCORD_BOT_TOKEN=discord-secret',
     ].join('\n'))
     const report = await inspectLegacyChannelConfiguration([profile], {
       FEISHU_APP_ID: secret,
       UNRELATED_SECRET: secret,
     })
     const serialized = JSON.stringify(report)
-    expect(report.legacyAdaptersDetected).toEqual(['feishu'])
-    expect(report.inputs[0]?.environmentNames).toEqual(['FEISHU_APP_SECRET', 'TELEGRAM_BOT_TOKEN'])
+    expect(report.legacyAdaptersDetected).toEqual(['discord', 'feishu'])
+    expect(report.inputs[0]?.environmentNames).toEqual([
+      'DISCORD_BOT_TOKEN',
+      'FEISHU_APP_SECRET',
+      'TELEGRAM_BOT_TOKEN',
+    ])
     expect(report.processEnvironmentNames).toEqual(['FEISHU_APP_ID'])
     expect(report.copiedSecrets).toBe(false)
     expect(serialized).not.toContain(secret)

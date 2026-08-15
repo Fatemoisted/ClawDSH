@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { FileSystem, FsTarget } from '@deepseek-ai/dsh-fs'
 import { CallId } from '@deepseek-ai/dsh-llm'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -27,7 +28,7 @@ import type { EmbeddingVector } from '@clawdsh/dsh-embeddings'
 import * as Memory from '@clawdsh/dsh-memory'
 import { MEMORY_RECALL_SECTION, RECALL_TEXT } from '@clawdsh/dsh-memory'
 import { chunkMarkdown } from '../src/chunk.ts'
-import { readLineSlice } from '../src/memory-files.ts'
+import { readLineSlice, resolveMemoryTarget } from '../src/memory-files.ts'
 import { MemoryIndex } from '../src/search.ts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -115,7 +116,7 @@ function installActivity(write: (input: PromptActivityInput) => Promise<unknown>
 function emitRequestHeader(scope: object, sessionId: string, system: string, seq: number): void {
   const session = { id: sessionId }
   const event = { type: 'request/header', seq, data: { header: { system }, reason: 'initial' } }
-  const emit = ctx.emit as unknown as (
+  const emit = ctx.emit.bind(ctx) as unknown as (
     target: object,
     name: 'session/event',
     subject: typeof session,
@@ -269,6 +270,19 @@ describe('readLineSlice', () => {
     expect(readLineSlice('a\nb\nc\nd', 2, 2)).toEqual({ text: 'b\nc', startLine: 2, endLine: 3 })
     expect(readLineSlice('a\nb', 3, 2)).toEqual({ text: '', startLine: 3, endLine: 2 })
     expect(readLineSlice('a\nb', 2, 5)).toEqual({ text: 'b', startLine: 2, endLine: 2 })
+  })
+
+  it('rejects a whitelisted path when the filesystem seam resolves it outside the root', async () => {
+    const root = { displayPath: '/memory-root' } as FsTarget
+    const outside = { displayPath: '/outside/MEMORY.md' } as FsTarget
+    const contains = vi.fn(() => false)
+    const fs = {
+      resolve: vi.fn(async () => outside),
+      contains,
+    } as unknown as FileSystem
+
+    await expect(resolveMemoryTarget(fs, root, 'MEMORY.md')).resolves.toBeUndefined()
+    expect(contains).toHaveBeenCalledWith(root, outside)
   })
 })
 

@@ -45,19 +45,22 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     env:
-      CLAWDSH_RELEASE_DIRECTORY: ${{ runner.temp }}/clawdsh-release
-      CLAWDSH_BUNDLE_DIRECTORY: ${{ runner.temp }}/clawdsh-stage/bundle
       CLAWDSH_REGISTRY_URL: http://127.0.0.1:4873/
     steps:
-      - uses: actions/checkout@v6
+      - name: Configure temporary release directories
+        run: |
+          echo "CLAWDSH_RELEASE_DIRECTORY=$RUNNER_TEMP/clawdsh-release" >> "$GITHUB_ENV"
+          echo "CLAWDSH_BUNDLE_DIRECTORY=$RUNNER_TEMP/clawdsh-stage/bundle" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 11.7.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24.19.0
           cache: pnpm
@@ -88,6 +91,20 @@ jobs:
           pnpm --dir packages/openclaw/preset-openclaw/product-shell install --frozen-lockfile
           pnpm --dir packages/openclaw/preset-openclaw/product-shell run typecheck
           pnpm --dir packages/openclaw/preset-openclaw/product-shell run build
+
+      - name: ClawDSH communication-plane gates
+        run: |
+          npm ci --ignore-scripts --prefix packages/openclaw/channel-openclaw/runtime
+          pnpm exec vitest run packages/openclaw/channel/tests packages/openclaw/channel-agent/tests packages/openclaw/channel-openclaw/tests packages/openclaw/preset-clawdsh-messaging-safe/tests
+          pnpm exec vitest run packages/openclaw/channel-core/tests packages/openclaw/channel-telegram/tests packages/openclaw/channel-discord/tests packages/openclaw/channel-feishu/tests
+          node --test packages/openclaw/channel-openclaw/bridge/test/*.test.mjs
+          node packages/openclaw/channel-openclaw/bridge/verify.mjs
+          pnpm exec vitest run --config tools/openclaw-channel-host/vitest.config.ts
+          pnpm exec tsc -p tools/openclaw-channel-host/tsconfig.json --noEmit
+          pnpm exec tsx tools/openclaw-channel-host/verify.ts --check --host-root packages/openclaw/channel-openclaw/runtime/node_modules/openclaw
+          pnpm exec tsx tools/openclaw-channel-host/generate-parity.ts --check
+          pnpm exec vitest run --config tools/openclaw-channel-migration.vitest.config.ts
+          pnpm run verify-translation-pairing
 
       - name: Verify release tools and the nested CLI without registry resolution
         run: |
@@ -158,7 +175,7 @@ jobs:
           CLAWDSH_SMOKE_ATTESTATION: ${{ runner.temp }}/clawdsh-release/smoke-attestation.json
         run: node packages/openclaw/preset-openclaw/distribution/release-tools/release-readiness.mjs
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: clawdsh-public-npm-candidate
           path: ${{ runner.temp }}/clawdsh-release
@@ -174,17 +191,17 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: clawdsh-public-npm-candidate
           path: ${{ runner.temp }}/clawdsh-release

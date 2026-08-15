@@ -40,7 +40,9 @@
   "peerDependencies": {
     "@clawdsh/dsh-channel": "workspace:0.1.0-rc.1",
     "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/dsh-launch-environment": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",
     "@deepseek-ai/dsh-storage-domain": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^"
@@ -53,7 +55,9 @@
   "devDependencies": {
     "@clawdsh/dsh-channel": "workspace:0.1.0-rc.1",
     "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/dsh-launch-environment": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",
     "@deepseek-ai/dsh-storage-domain": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",

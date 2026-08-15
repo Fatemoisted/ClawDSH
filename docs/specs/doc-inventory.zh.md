@@ -4,7 +4,7 @@
 
 - **状态**：阶段 4 产品化；产品壳、Settings、Activity 与公共发行准备已经实现
 - **用途**：识别仓库中哪些位置是上游只读、ClawDSH 自有或有 ADR 支撑的窄增量
-- **权威**：root `AGENTS.md`、ADR-0001、ADR-0004、ADR-0006、[GUI ADR-0007](../adr/0007-clawdsh-local-gui-product.md)、[渠道 ADR-0008](../adr/0008-openclaw-channel-plane.md)与[公共发行 ADR-0009](../adr/0009-public-npm-distribution.md)
+- **权威**：root `AGENTS.md`、ADR-0001、ADR-0004、ADR-0006、[GUI ADR-0007](../adr/0007-clawdsh-local-gui-product.md)、[渠道 ADR-0008](../adr/0008-openclaw-channel-plane.md)、[公共发行 ADR-0009](../adr/0009-public-npm-distribution.md)与 [Harness 复用 ADR-0010](../adr/0010-harness-contract-first.md)
 
 ## 1. 上游只读位置
 
@@ -34,12 +34,14 @@
 
 | 位置 | 当前内容 |
 |---|---|
-| `packages/openclaw/` | 功能包、当前渠道 seam、保留的旧渠道包、受限 preset、产品组装、嵌套非 workspace GUI/runtime 与 distribution build，以及包模板 |
-| `docs/adr/` | ClawDSH 决策；ADR-0007 拥有 GUI 产品形态，ADR-0008 取代 ADR-0002 成为渠道架构，ADR-0009 拥有公共发行 |
+| `packages/openclaw/` | 功能包、当前渠道 seam、保留的旧渠道包、受限 preset、产品组装、嵌套非 workspace GUI/runtime 与公共发行 build，以及包模板 |
+| `docs/adr/` | ClawDSH 决策；ADR-0007 拥有 GUI 产品形态，ADR-0008 拥有渠道平面并在该边界取代 ADR-0002，ADR-0009 拥有公共发行，ADR-0010 拥有 Harness-first 复用，ADR-0011 只适用于 legacy |
 | `docs/specs/` | roadmap、context map、inventory、product chain、GUI spec、当前 feature spec 与旧渠道 reference |
-| `docs/matrix/parity.md` | 产品与渠道支持投影；精确渠道 artifact 仍在机器 catalog |
+| `docs/matrix/` | 产品/渠道状态与 ClawDSH-to-Harness 复用视图；精确渠道 artifact 仍在机器 catalog |
+| `docs/subsystems/clawdsh*` | ClawDSH 自有 `ctx.channels`、`ctx.legacyChannels`、`ctx.embeddings` 与 channel event 的生成式 Cordis 投影；周围 subsystem tree 仍由上游拥有 |
 | `docs/standards/` | naming、plugin、PR、dsh upstream sync 与 OpenClaw channel sync 规则 |
 | `docs/journal/` | 带日期的开发历史，不是当前状态权威 |
+| `docs/cookbook/telegram-e2e*` | 窄 legacy Telegram 带凭证测试流程；不是 sidecar 认证，也不取得周围 upstream cookbook tree 的所有权 |
 | `docs/upstream-proposal/` | dsh Session-event 与 OpenClaw AgentHarness proposal；不表示存在 upstream PR |
 | `tools/openclaw-channel-host/` | production 与 canary host lock、channel catalog、schema、verifier 与 test |
 | 其他 `tools/` 条目 | ClawDSH installer、migration、verification 与 e2e driver |
@@ -101,13 +103,14 @@ Bundle 与 CLI 是已准备但未发布的候选版本。13 个 package name 均
 | Promotion、certification 与 rollback | `openclaw-channel-sync` standard |
 | 用户可见支持状态 | parity matrix |
 | Runtime protocol 与 ledger | `channel`、`channel-agent` 与 `channel-openclaw` |
-| Legacy adapter behavior | ADR-0002、`feature-channel-core`、legacy package 与其 active Agent Note |
+| Legacy adapter behavior | ADR-0002、ADR-0011、`feature-channel-core`、`feature-channel-discord`、legacy package、Telegram cookbook 与 active Agent Note |
 
 OpenClaw source archive 与 npm tarball 是外部输入，不是仓库自有 source tree。不要把完整 host 复制到 `packages/openclaw/`。Production bridge 可以分发许可证允许的最小 derived code 与 notice；lock verifier 仍是外部 host 权威。
 
 ## 7. 过渡状态
 
-- `channel-core`、`channel-telegram` 与 `channel-feishu` 自有但 legacy。它们保留到 ADR-0008 替换条件通过；不得提前归档其 Agent Note。
+- `channel-core`、`channel-telegram`、`channel-discord` 与 `channel-feishu` 自有但 legacy。它们默认关闭并保留到 ADR-0008 替换条件通过；不得提前归档其 Agent Note。
+- 历史飞书/Telegram 带凭证结果与 Discord 无密钥结果只属于 `ctx.legacyChannels`，都不能认证锁定的 sidecar。
 - `channel-wechat` 是历史排除记录，其可用性说明已被 production external WeChat catalog 取代。它不是 runtime package 或当前状态权威。
 - Production sidecar 未 certified 或 enabled。文档不得把 catalog 或 package evidence 转换为 live support claim。
 - Canary 有批准的 source archive，但没有锁定 built artifact，只作为 audit input。

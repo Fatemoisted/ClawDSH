@@ -35,7 +35,7 @@ The first public candidate version is `0.1.0-rc.1`, designated for publication t
 12. `@clawdsh/dsh-bundle`
 13. `@clawdsh/cli`
 
-The legacy `channel-core`, `channel-feishu`, and `channel-telegram` packages remain private and are excluded. Source manifests use `workspace:0.1.0-rc.1` for dependencies within the release set; packed manifests must contain the exact `0.1.0-rc.1` version and no `workspace:`, `file:`, symlink, private-registry URL, or undeclared asset. The CLI depends exactly on `@deepseek-ai/dsh@0.1.0-rc.6`; compatibility failure blocks the candidate rather than replacing that version with `latest` or a range.
+The legacy `channel-core`, `channel-discord`, `channel-feishu`, and `channel-telegram` packages remain private and are excluded. Source manifests use `workspace:0.1.0-rc.1` for dependencies within the release set; packed manifests must contain the exact `0.1.0-rc.1` version and no `workspace:`, `file:`, symlink, private-registry URL, or undeclared asset. The CLI depends exactly on `@deepseek-ai/dsh@0.1.0-rc.6`; compatibility failure blocks the candidate rather than replacing that version with `latest` or a range.
 
 ### 2. Make the bundle the immutable product layer
 

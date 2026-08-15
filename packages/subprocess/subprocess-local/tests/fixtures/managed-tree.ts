@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process'
-import { writeFile } from 'node:fs/promises'
+// This fixture is launched directly by Node before the workspace is built, so
+// use the package's public source export instead of its generated `lib` entry.
+import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write/src/index.ts'
 
 const [statePath] = process.argv.slice(2)
 if (statePath === undefined) throw new Error('usage: managed-tree.ts <state-path>')
@@ -12,5 +14,5 @@ const descendant = spawn(process.execPath, [
 ], { stdio: 'ignore' })
 if (descendant.pid === undefined) throw new Error('managed descendant did not publish a pid')
 
-await writeFile(statePath, JSON.stringify({ root: process.pid, descendant: descendant.pid }))
+await writeFileAtomic(statePath, JSON.stringify({ root: process.pid, descendant: descendant.pid }), { mode: 0o600 })
 setInterval(() => {}, 60_000)

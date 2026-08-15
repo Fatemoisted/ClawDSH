@@ -617,13 +617,7 @@ export class ClawdshSettingsControl {
         ? { op: 'set', path: operation.path, value: operation.value }
         : { op: 'unset', path: operation.path })
       await settings.mutate(settingsNamespace(request.namespace), operations, request.expectedRevision)
-      const descriptor = this.namespaceDescriptor(request.namespace)
-      if (descriptor === undefined) return settingsRejected(request.namespace)
-      const value: ClawdshSettingsNamespaceResponse = {
-        version: CLAWDSH_PROTOCOL_VERSION,
-        namespace: descriptor,
-      }
-      return { ok: true, value: jsonBoundary(value, parseClawdshSettingsNamespaceResponse) }
+      return this.namespaceResponse(request.namespace)
     } catch (error) {
       if (isSettingsConflict(error)) return settingsConflict(request.namespace, error)
       return settingsRejected(request.namespace)
@@ -652,13 +646,7 @@ export class ClawdshSettingsControl {
       const desired = resolveResetCandidate(current)
       await this.validateGatewayDesired(request.namespace, desired)
       await settings.replace(settingsNamespace(request.namespace), {}, request.expectedRevision)
-      const descriptor = this.namespaceDescriptor(request.namespace)
-      if (descriptor === undefined) return settingsRejected(request.namespace)
-      const value: ClawdshSettingsNamespaceResponse = {
-        version: CLAWDSH_PROTOCOL_VERSION,
-        namespace: descriptor,
-      }
-      return { ok: true, value: jsonBoundary(value, parseClawdshSettingsNamespaceResponse) }
+      return this.namespaceResponse(request.namespace)
     } catch (error) {
       if (isSettingsConflict(error)) return settingsConflict(request.namespace, error)
       return settingsRejected(request.namespace)
@@ -674,6 +662,16 @@ export class ClawdshSettingsControl {
       throw new Error('OpenClaw managed runtime is unavailable')
     }
     await control.validateDesired(value)
+  }
+
+  private namespaceResponse(namespace: string): SettingsControlResult {
+    const descriptor = this.namespaceDescriptor(namespace)
+    if (descriptor === undefined) return settingsRejected(namespace)
+    const value: ClawdshSettingsNamespaceResponse = {
+      version: CLAWDSH_PROTOCOL_VERSION,
+      namespace: descriptor,
+    }
+    return { ok: true, value: jsonBoundary(value, parseClawdshSettingsNamespaceResponse) }
   }
 
   private async credentialDescriptor(id: string): Promise<ClawdshCredentialDescriptor | undefined> {
@@ -696,6 +694,16 @@ export class ClawdshSettingsControl {
       })
       return response.credential
     })
+  }
+
+  private async credentialResponse(id: string): Promise<SettingsControlResult> {
+    const descriptor = await this.credentialDescriptor(id)
+    if (descriptor === undefined) return credentialRejected(id)
+    const value: ClawdshCredentialResponse = {
+      version: CLAWDSH_PROTOCOL_VERSION,
+      credential: descriptor,
+    }
+    return { ok: true, value: jsonBoundary(value, parseClawdshCredentialResponse) }
   }
 
   private async describeCredentials(payload: unknown): Promise<SettingsControlResult> {
@@ -731,13 +739,7 @@ export class ClawdshSettingsControl {
     if (manifest === undefined || credentials === undefined) return credentialRejected(request.id)
     try {
       await credentials.set(credentialRef(manifest.ref), request.value)
-      const descriptor = await this.credentialDescriptor(request.id)
-      if (descriptor === undefined) return credentialRejected(request.id)
-      const value: ClawdshCredentialResponse = {
-        version: CLAWDSH_PROTOCOL_VERSION,
-        credential: descriptor,
-      }
-      return { ok: true, value: jsonBoundary(value, parseClawdshCredentialResponse) }
+      return await this.credentialResponse(request.id)
     } catch {
       return credentialRejected(request.id)
     }
@@ -755,13 +757,7 @@ export class ClawdshSettingsControl {
     if (manifest === undefined || credentials === undefined) return credentialRejected(request.id)
     try {
       await credentials.unset(credentialRef(manifest.ref))
-      const descriptor = await this.credentialDescriptor(request.id)
-      if (descriptor === undefined) return credentialRejected(request.id)
-      const value: ClawdshCredentialResponse = {
-        version: CLAWDSH_PROTOCOL_VERSION,
-        credential: descriptor,
-      }
-      return { ok: true, value: jsonBoundary(value, parseClawdshCredentialResponse) }
+      return await this.credentialResponse(request.id)
     } catch {
       return credentialRejected(request.id)
     }

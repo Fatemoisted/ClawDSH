@@ -14,6 +14,9 @@ permissions:
 jobs:
   policy:
     name: Issue policy
+    # The trusted policy checks out canonical issue/project configuration and
+    # is intentionally disabled in mirrors that do not own that project.
+    if: ${{ github.repository == 'deepseek-ai/deepseek-harness' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out trusted policy

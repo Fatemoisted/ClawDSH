@@ -10,14 +10,14 @@ The parity matrix's soul row carried "channel presentation (IDENTITY, Deferred)"
 
 ## Decision
 
-**Identity presentation lives in channel-core** (`src/presentation.ts` pure functions + `ChannelRegistry` Config), ported verbatim from OpenClaw v2026.1.15 (`src/agents/identity.ts` + `src/auto-reply/reply/mentions.ts`):
+**Identity presentation lives in legacy channel-core** (`src/presentation.ts` pure functions + `LegacyChannelRegistry` Config), ported verbatim from OpenClaw v2026.1.15 (`src/agents/identity.ts` + `src/auto-reply/reply/mentions.ts`):
 
 - `resolveAckReaction`: `ackReaction` → `identity.emoji` → `👀`;
 - `resolveResponsePrefix`: `'auto'` (default) renders `[name]`, empty without a name; literals pass through;
 - `resolveMessagePrefix`: `[name]` or empty;
 - `deriveMentionPatterns`: `\b@?<name parts joined by \s+>\b` case-insensitive + the raw emoji as a literal pattern, with OpenClaw's `→\b` normalization; `stripMentions` removes matches.
 
-Wiring: `ChannelRegistry` gains `static Config` (`identity` / `responsePrefix` / `ackReaction`); `driveTurn` prefixes the extracted reply and fires a fire-and-forget ack before the turn; `ChannelMessage.messageId` + `ChannelCapabilities.react` + optional `ChannelAdapter.react(message, emoji)` carry the ack to adapters. Telegram implements `react` via grammY's `setMessageReaction` and captures `message_id` inbound; Feishu captures `message_id` but declares `react: false` (its `im.message.reaction.create` node-sdk surface is unverified in this workspace — Known Limitation naming the REST path). The `clawdsh` preset's channel-core row carries `responsePrefix: auto` + `ackReaction: '👀'` with a commented identity example. `agent.cordis.yml` is untouched: identity presentation is not prompt content.
+Wiring: `LegacyChannelRegistry` carries Config (`identity` / `responsePrefix` / `ackReaction`); `driveTurn` prefixes the extracted reply and fires a fire-and-forget ack before the turn; `ChannelMessage.messageId` + `ChannelCapabilities.react` + optional `ChannelAdapter.react(message, emoji)` carry the ack to adapters. Telegram implements `react` via grammY's `setMessageReaction` and captures `message_id` inbound; Feishu captures `message_id` and uses the official SDK's `im.messageReaction.create`. The default-disabled legacy profile row carries `responsePrefix: auto` + `ackReaction: '👀'`. `agent.cordis.yml` is untouched: identity presentation is not prompt content. The later [ack-reaction scope note](2026-08-14-ack-reaction-scope.md) owns group-mention gating and its current adapter consumers.
 
 ## Alternatives considered
 
@@ -25,13 +25,14 @@ Wiring: `ChannelRegistry` gains `static Config` (`identity` / `responsePrefix` /
 
 **Adapter-local presentation (each adapter prefixes its own sends).** Rejected: duplicates the prefix logic per channel and bypasses the seam's single render point (`driveTurn`), where reply extraction already lives.
 
-**Full `ackReactionScope` port (group-mentions gating).** Deferred: needs group-chat mention detection that batch 1 does not have; the always-on ack is the documented interim.
+**Full `ackReactionScope` port (group-mentions gating).** Deferred in this increment because it needed group-chat mention detection; the later [ack-reaction scope decision](2026-08-14-ack-reaction-scope.md) delivers it.
 
 **A new identity service seam.** Rejected: a pure-function module over a Config surface covers the whole feature; a `ctx.identity` service would carry no capability beyond it.
 
 ## Consequences
 
 - The matrix soul row's `(IDENTITY, Deferred)` is removed; `feature-soul.md`'s mapping line points at this note;
-- `deriveMentionPatterns` ships without an in-request consumer (future owner: ack scope gating and adapter mention detection) — flagged in the PR description per the current-owner rule;
-- Adapter capability `react` is part of the `ChannelAdapter` contract; a new adapter must declare it (feishu's `false` is the template);
-- The `clawdsh` preset carries an identity presentation block; deployments override name/emoji without touching the prompt.
+- `deriveMentionPatterns` is consumed by adapter mention detection under the later ack-scope decision;
+- Adapter capability `react` is part of the `ChannelAdapter` contract; a new adapter must declare it, and Telegram and Feishu currently implement it;
+- The default-disabled legacy group carries identity presentation; deployments override name/emoji without touching the prompt;
+- This policy belongs only to legacy `ctx.legacyChannels`; the [test1 rebuild note](../architecture/2026-08-15-test1-channel-plane-rebuild.md) owns its isolation from canonical `ctx.channels`.

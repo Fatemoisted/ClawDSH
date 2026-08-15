@@ -12,7 +12,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import chokidar from 'chokidar'
-import { relative } from 'node:path'
+import { relative, sep } from 'node:path'
 import { isMemoryPath } from './memory-files.ts'
 
 /** Default milliseconds a changed memory file must stay stable before it is observed. */
@@ -67,7 +67,9 @@ export async function installMemoryWatch(
   }
   watcher.on('error', warn('watcher failed'))
   const onEvent = (path: string): void => {
-    const rel = relative(rootPath, path)
+    // Filesystem inputs use the host separator; memory protocol paths always
+    // use `/` so the same invalidation key is produced on Windows and POSIX.
+    const rel = relative(rootPath, path).split(sep).join('/')
     // Only whitelisted memory files invalidate; `add` events for a not-yet-
     // indexed path reach `invalidateFile` as a no-op, so one filter serves all.
     if (!isMemoryPath(rel)) return
@@ -78,7 +80,7 @@ export async function installMemoryWatch(
   watcher.on('unlink', onEvent)
   // Chokidar always resolves `ready` after the initial scan, including for a
   // missing root (it watches the nearest existing ancestor), so this cannot hang.
-  await new Promise<void>((resolve) => { watcher.once('ready', () => resolve()) })
+  await new Promise<void>((resolve) => { watcher.once('ready', () => { resolve() }) })
   return () => {
     try {
       void watcher.close().catch(warn('failed to close watcher'))

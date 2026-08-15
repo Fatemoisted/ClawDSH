@@ -1,10 +1,57 @@
 # ClawDSH
 
-> **OpenClaw 的个人助手功能集，重建于 DeepSeek Harness (dsh) 的 Cordis 插件底盘之上。**
->
-> 项目目的与实施方案：[docs/specs/roadmap.md](docs/specs/roadmap.md) · 架构决策：[docs/adr/](docs/adr/) · 功能对齐矩阵：[docs/matrix/parity.md](docs/matrix/parity.md)
->
-> 本仓库跟踪上游 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（git 远程 `upstream`），上游代码只读；自有代码仅位于 `packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal}/`、`tools/`、`.github/workflows/clawdsh-*`。
+English | [中文](README.zh.md)
+
+> **OpenClaw's personal-assistant capabilities, rebuilt as composable plugins on the DeepSeek Harness (`dsh`) Cordis foundation.**
+
+ClawDSH keeps the Harness runtime intact and adds a separately owned plugin layer. Product code lives in [`packages/openclaw/`](packages/openclaw/README.md), assembly lives in [`packages/openclaw/preset-openclaw/`](packages/openclaw/preset-openclaw/README.md), and project decisions live under `docs/{adr,specs,matrix,standards,journal}/`. Upstream-owned source remains read-only.
+
+## Quick start from a source checkout
+
+Use Node.js 22.19 or later within the 22.x line, or Node.js 24 or later. The repository pins pnpm 11.7.0.
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run build
+pnpm --dir packages/openclaw/preset-openclaw/product-shell install --frozen-lockfile
+pnpm --dir packages/openclaw/preset-openclaw/product-shell run build
+tools/link-clawdsh.sh
+pnpm dsh --profile clawdsh
+```
+
+The profile serves the ClawDSH product shell at `/clawdsh/` and keeps stock dsh Web at `/` as Harness Advanced; both share one Host, Session store, and Connection transport. New Sessions use the `clawdsh` preset displayed as `ClawDSH 模式`. Use the same `DSH_HOME` for the link script and `dsh`. Memory and Skills are available; Automation, the canonical OpenClaw communication sidecar, and the retained legacy-channel group are disabled in a clean installation. A model credential is needed only when a conversation makes a model request.
+
+```bash
+pnpm dsh --profile clawdsh --dump-config
+pnpm run test:openclaw
+```
+
+`--dump-config` proves only that composition resolves. Platform permissions, credentials, and network delivery require a scoped end-to-end check.
+
+## Channel status: sidecar is canonical, disabled, and uncertified
+
+[ADR-0008](docs/adr/0008-openclaw-channel-plane.md) makes a locked OpenClaw Gateway sidecar the communication-plane owner. The production catalog records 27 transports (**24+3**), but catalog presence is not runtime support: every sidecar Channel remains `cataloged`, default-disabled, and neither `certified` nor `enabled`. Follow the [channel sync standard](docs/standards/openclaw-channel-sync.md) for assembly and certification.
+
+The in-process Telegram, Discord, and Feishu adapters remain only in a separate default-disabled `clawdsh-legacy-channel-plane` compatibility group. If legacy opt-in is present, Gateway startup and Settings preflight reject enabling the canonical sidecar. The two paths must never use the same platform account.
+
+Historical credentialed evidence is deliberately scoped to that legacy path: Feishu text completed a real round trip on 2026-08-14, and Telegram completed real Bot API/client direct and group text/caption, Harness `web_search`, restart/recovery, offline catch-up, Unicode splitting, and same-chat FIFO checks on 2026-08-15. Discord has keyless coverage but no real-server E2E. These results do not certify the sidecar. See the [Telegram legacy E2E cookbook](docs/cookbook/telegram-e2e.md) and [evidence journal](docs/journal/2026-08-15.md).
+
+## Harness contracts first
+
+Ordinary ClawDSH development starts from Harness contracts and existing components, not a fresh traversal of implementation source:
+
+| Need | Authoritative entry |
+|---|---|
+| Runtime composition, turn flow, Sessions, and extension points | [Harness architecture](docs/architecture.md) |
+| Complete package inventory and dependency graph | [Harness module entry](docs/matrix/harness-reuse.md#harness-module-entry) |
+| Services, events, and public types | [Subsystem reference](docs/subsystems/README.md) |
+| Capability, event, tool, configuration, and lifecycle graphs | [Documentation graph index](docs/graph-atlas.md) |
+| How each ClawDSH package reuses Harness | [Harness reuse map](docs/matrix/harness-reuse.md) |
+
+Consume documented `ctx.*` services, events, and public types; do not import or copy a concrete Harness provider. Read owning source when diagnosing an internal bug, security/concurrency/performance behavior, an undocumented contract, a missing seam, or an upstream breaking change. The binding rule is in the [plugin contract](docs/standards/plugin-contract.md), with rationale in [ADR-0010](docs/adr/0010-harness-contract-first.md).
+
+Project references: [roadmap](docs/specs/roadmap.md) · [status matrix](docs/matrix/parity.md) · [architecture decisions](docs/adr/) · [development standards](docs/standards/)
 
 ---
 

@@ -307,7 +307,8 @@ function recordPromptContribution(ctx: Context, sessionId: string, seq: number, 
 }
 
 function resolveConfig(config: Config): ResolvedConfig {
-  if (config.root === undefined || config.root.length === 0) {
+  const root: unknown = Reflect.get(config, 'root')
+  if (typeof root !== 'string' || root.length === 0) {
     throw new TypeError('memory: config root is required (the memory file directory)')
   }
   const chunkSizeChars = config.chunkSizeChars ?? DEFAULT_CHUNK_SIZE_CHARS
@@ -353,7 +354,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   const flush = resolveFlushConfig(config.flush)
   return {
     enabled: config.enabled ?? true,
-    root: config.root,
+    root,
     chunkSizeChars,
     chunkOverlapChars,
     maxResults,

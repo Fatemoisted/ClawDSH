@@ -5,6 +5,8 @@ English | [中文](feature-channel-plane-bridge.zh.md)
 - **Status**: foundation implemented; assembly and certification incomplete (2026-08-15)
 - **Decision**: [ADR-0008](../adr/0008-openclaw-channel-plane.md)
 - **Sync owner**: [openclaw-channel-sync](../standards/openclaw-channel-sync.md)
+- **Harness reuse**: [ADR-0010](../adr/0010-harness-contract-first.md)
+- **Legacy-only behavior**: [ADR-0011](../adr/0011-deferred-channel-images-and-address-continuity.md)
 - **Packages**: `@clawdsh/dsh-channel`, `@clawdsh/dsh-channel-agent`, `@clawdsh/dsh-channel-openclaw`
 
 ## Goals
@@ -21,7 +23,7 @@ English | [中文](feature-channel-plane-bridge.zh.md)
 - Allowing the OpenClaw sidecar to choose an independent model or fall back around ClawDSH.
 - Treating catalog presence, package installation, package tests, or a historical live smoke as release certification.
 - Enabling any channel by default before its exact production composition is certified.
-- Removing `channel-core`, `channel-telegram`, or `channel-feishu` before the replacement conditions in ADR-0008 pass.
+- Removing `channel-core`, `channel-telegram`, `channel-discord`, or `channel-feishu` before the replacement conditions in ADR-0008 pass.
 
 ## Runtime composition
 
@@ -39,6 +41,8 @@ platform
 ```
 
 `@clawdsh/dsh-channel` is the Service Definition. It admits one Provider and one Driver and contains no platform branches. `@clawdsh/dsh-channel-openclaw` owns the communication-side Provider, exact host identity, private IPC, health, and delivery ledger. `@clawdsh/dsh-channel-agent` owns the Agent-side Driver, deterministic session binding, route generations, crash quarantine, model execution, and the route-scoped `message` tool.
+
+This canonical composition owns only `ctx.channels` and remains disabled at the Gateway setting until certified. The retained in-process adapters register only `ctx.legacyChannels` in a separately default-disabled compatibility group. Legacy opt-in makes canonical Gateway startup and Settings preflight reject the configuration before side effects, so the same platform account cannot be consumed through both paths. ADR-0010 governs reuse of Harness Agent, Session, attachment, credential, timer, and Cordis contracts; ADR-0011 applies only to legacy image import and address continuity and cannot supply sidecar evidence.
 
 ## V1 protocol
 
@@ -76,7 +80,7 @@ The declared `channel/turn-admitted` and `channel/delivery` names are not append
 
 The protocol and route-scoped model tool model send, edit, delete, react, poll, typing, directory self/peer/group/member queries, and target resolution. Both the handshake and the channel implementation narrow the available set; the locked bridge currently advertises only send and poll, and unsupported operations fail explicitly.
 
-Inbound images are imported only after their relative path remains inside the configured canonical staging root, no path component is a symbolic link, declared and observed sizes match a configured byte cap, the media type is enabled, and SHA-256 matches. Stable AgentHarness V1 does not expose trustworthy materialized inbound-media facts, so the production bridge currently rejects all inbound media before this importer. Audio, video, and generic files are rejected until dsh owns a durable non-image attachment service. Outbound media is rejected until a dsh-to-Gateway staging writer and an adapter path that consumes authenticated bytes exist.
+Inbound images are imported only after their relative path remains inside the configured canonical staging root, no path component is a symbolic link, declared and observed sizes match a configured byte cap, the media type is enabled, and SHA-256 matches. Stable AgentHarness V1 does not expose trustworthy materialized inbound-media facts, so the production bridge currently rejects all inbound media before this importer. Audio, video, and generic files are rejected until dsh owns a durable non-image attachment service. Outbound media is rejected until a dsh-to-Gateway staging writer and an adapter path that consumes authenticated bytes exist. ADR-0011's deferred import and address-continuity rules describe only `ctx.legacyChannels`; they do not relax these canonical media gates.
 
 ## Host tracks and catalog
 
@@ -88,7 +92,7 @@ Canary is locked to source commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`; it
 
 The only valid progression is `cataloged → installable → certified → enabled`, with the definitions in ADR-0008. The approved catalogs establish catalog provenance; verified stable artifacts can establish installability when their compatible host assembly passes. External packages additionally require approved license, platform-terms, and security reviews. Certification additionally requires the exact release composition, security checks, delivery behavior, a keyless assembled transcript, and platform live smoke where credentials are required. Enabled additionally requires an explicit shipped profile choice.
 
-Current implementation evidence establishes only `cataloged`. The shipped profile always mounts the sidecar composition and its invariant companions while the Gateway setting remains disabled; it starts no legacy adapter, and the separately retained legacy packages are not sidecar evidence. An owned keyless smoke validates safe Telegram and Feishu configuration against the real stable schema, traverses the locked Gateway, stable bridge, and DSH Agent, and runs in Linux x64 CI; the reviewed Darwin arm64 assembly has also passed it locally. No credentialed Telegram or Feishu transport smoke has run. The final-delivery, aggregate-account-health, stable inbound-media, Windows ACL, and external-governance gates remain open. Resume coverage must also prove that only known Session event names are persisted while the downstream-event seam remains unavailable.
+Current implementation evidence establishes only `cataloged`. The shipped profile contains the canonical sidecar composition and its invariant companions while the Gateway setting remains disabled; a separate legacy compatibility group is also default-disabled, so neither path starts a transport by default. An owned keyless smoke validates safe Telegram and Feishu configuration against the real stable schema, traverses the locked Gateway, stable bridge, and DSH Agent, and runs in Linux x64 CI; the reviewed Darwin arm64 assembly has also passed it locally. No fresh credentialed Telegram, Feishu, or Discord sidecar transport smoke has run. Historical credentialed legacy Telegram and Feishu traffic and keyless Discord coverage prove only the exact `ctx.legacyChannels` path they exercised; they do not certify the locked host, `ctx.channels`, or sidecar delivery. The final-delivery, aggregate-account-health, stable inbound-media, Windows ACL, and external-governance gates remain open. Resume coverage must also prove that only known Session event names are persisted while the downstream-event seam remains unavailable.
 
 ## Replacement gate
 
@@ -97,5 +101,5 @@ The legacy adapters can be deleted only after all of the following are true for 
 1. A reproducible managed host and bridge artifact are locked and the shipped profile assembles the Service Definition, Provider, and Driver without an OpenClaw model fallback.
 2. Contract, integrity, authentication, idempotency, reset/close, action, delivery, crash-recovery, attachment, persistence, and resume tests pass without downstream `channel/*` Session events.
 3. A keyless assembled Gateway-to-Agent snapshot or equivalent owned snapshot harness runs in CI.
-4. Telegram and Feishu complete fresh credentialed inbound, Agent, outbound, duplicate-delivery, and failure-path smoke tests.
+4. Every platform still used for legacy migration completes fresh credentialed inbound, Agent, outbound, duplicate-delivery, and failure-path smoke tests; this includes Telegram and Feishu, plus Discord for an active legacy Discord deployment.
 5. Documentation marks the certified combinations and the profile deliberately enables only those combinations.

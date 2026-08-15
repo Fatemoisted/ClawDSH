@@ -14,7 +14,7 @@ The experiment intentionally used a minimal text-only adapter. It answered the f
 
 ## Historical decision
 
-`@clawdsh/dsh-channel-core` registered multiple in-process `ChannelAdapter` implementations. An adapter emitted `channel/inbound` and implemented text `send`; the core kept an in-memory per-thread Session map, serialized turns, drove `ctx.agents`, flushed `ctx.sessions`, extracted the assistant reply, sent it, and emitted `channel/outbound`. `channel-telegram` and `channel-feishu` implemented that contract with their platform SDKs.
+`@clawdsh/dsh-channel-core` registered multiple in-process `ChannelAdapter` implementations. An adapter emitted `channel/inbound` and implemented text `send`; the core kept an in-memory per-thread Session map, serialized turns, drove `ctx.agents`, flushed `ctx.sessions`, extracted the assistant reply, sent it, and emitted `channel/outbound`. `channel-telegram`, `channel-feishu`, and the later `channel-discord` compatibility adapter implemented that contract with their platform SDKs.
 
 The seam required model-visible channel text to enter the Session log and kept platform credentials in adapter configuration. Attachments, reply references, rich text, interactive cards, durable route bindings, crash recovery, delivery receipts, and native action capability negotiation were outside its contract.
 
@@ -22,14 +22,14 @@ The seam required model-visible channel text to enter the Session log and kept p
 
 ADR-0008 replaces this architecture with a locked OpenClaw Gateway sidecar and a provider-neutral V1 `ctx.channels` Service Definition. OpenClaw owns the communication plane; `@clawdsh/dsh-channel-openclaw` is the authenticated Provider and `@clawdsh/dsh-channel-agent` is the durable Agent-plane Driver. The legacy registry remains under `ctx.legacyChannels`; a deployment must never connect both paths to the same platform account.
 
-`channel-core`, `channel-telegram`, and `channel-feishu` remain legacy compatibility packages until ADR-0008's replacement conditions pass. Their package tests and historical transport work show only what that older path did. Neither adapter is `certified` or `enabled` without current credentialed evidence.
+`channel-core`, `channel-telegram`, `channel-discord`, and `channel-feishu` remain legacy compatibility packages until ADR-0008's replacement conditions pass. Their package tests and historical transport work show only what that older path did. None of the adapters is `certified` or `enabled` without current credentialed evidence.
 
 ## Consequences
 
 - This ADR remains the historical record for the Phase 2 adapter experiment; it is not current implementation guidance.
 - New channel work targets the Gateway sidecar, bridge protocol, and locked catalogs in ADR-0008 rather than adding another native adapter.
 - The legacy identity-presentation and acknowledgement-reaction Agent Notes remain valid only for the legacy path until that code is deleted; they do not define sidecar behavior.
-- Removing the legacy packages requires an assembled production sidecar, an owned keyless snapshot path, and fresh Telegram and Feishu live certification.
+- Removing the legacy packages requires an assembled production sidecar, an owned keyless snapshot path, and fresh certification for every platform still used for migration, including Telegram, Feishu, and Discord where applicable.
 
 ## Alternatives considered
 

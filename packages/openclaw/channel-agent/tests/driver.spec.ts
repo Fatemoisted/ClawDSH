@@ -623,6 +623,26 @@ describe('channel Agent turn execution', () => {
     expect(await pending).toMatchObject({ status: 'cancelled' })
   })
 
+  it('normalizes a non-Error active-cancellation failure after persisting the request', async () => {
+    const app = await harness(['hang'])
+    const inbound = turn({ idempotencyKey: 'string-cancel', turnId: 'string-cancel', runId: 'string-cancel', messageId: 'string-cancel' })
+    const pending = app.ctx.channels.runTurn(inbound, execution())
+    await vi.waitFor(() => { expect(app.adapter.requests).toHaveLength(1) })
+    const agent = app.ctx.agents.get(sessionIdFor(inbound.route))
+    if (agent === undefined) throw new Error('expected an active Agent')
+    const originalCancel = agent.cancel.bind(agent)
+    vi.spyOn(agent, 'cancel').mockImplementation((reason) => {
+      originalCancel(reason)
+      const failure: unknown = 'string cancel dispatch failed'
+      throw failure
+    })
+
+    await expect(app.ctx.channels.cancel(channelTurnCancelV1Schema.parse({
+      protocolVersion: 1, turnId: inbound.turnId, runId: inbound.runId, reason: 'user',
+    }))).rejects.toThrow(/string cancel dispatch failed/)
+    expect(await pending).toMatchObject({ status: 'cancelled' })
+  })
+
   it('does not rewrite a terminal result when cancellation races its durable commit', async () => {
     const app = await harness([textResponse('already complete')])
     const inbound = turn({ idempotencyKey: 'late-cancel', turnId: 'late-cancel', runId: 'late-cancel', messageId: 'late-cancel' })

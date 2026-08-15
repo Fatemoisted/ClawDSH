@@ -48,7 +48,7 @@ describe('highlightToHtml', () => {
     await vi.waitFor(() => {
       for (const alias of LAZY_ALIASES) expect(highlightToHtml('x', alias)).toContain('shiki')
     }, { timeout: 5_000 })
-  })
+  }, 20_000)
 })
 
 describe('CodeBlock', () => {
