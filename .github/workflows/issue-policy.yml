@@ -14,6 +14,10 @@ permissions:
 jobs:
   policy:
     name: Issue policy
+    # The trusted policy below intentionally checks out the canonical default
+    # branch and reads its issue/project configuration. It is not portable to
+    # forks without a separately provisioned policy project.
+    if: ${{ github.repository == 'deepseek-harness/deepseek-harness' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out trusted policy

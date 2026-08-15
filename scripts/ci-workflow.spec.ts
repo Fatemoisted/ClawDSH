@@ -7,6 +7,42 @@ const root = resolve(import.meta.dirname, '..')
 const runnerPrivatePnpmDestination = '${{ runner.temp }}/setup-pnpm'
 
 describe('CI workflow', () => {
+  it('keeps the Wine Host build aligned with the OpenClaw aggregate', () => {
+    const script = readFileSync(resolve(root, 'scripts/wine-windows-gates.sh'), 'utf8')
+
+    expect(script).toContain(
+      '"$tsc_js" -b tsconfig.host.json packages/openclaw/tsconfig.json --pretty false',
+    )
+  })
+
+  it('does not run canonical issue automation in forks', () => {
+    const lifecycle = loadWorkflow('.github/workflows/issue-lifecycle.yml')
+    const policy = loadWorkflow('.github/workflows/issue-policy.yml')
+    if (!isRecord(lifecycle.jobs) || !isRecord(lifecycle.jobs.lifecycle)
+      || !isRecord(policy.jobs) || !isRecord(policy.jobs.policy)) {
+      throw new TypeError('Issue workflows must define lifecycle and policy jobs')
+    }
+
+    expect(lifecycle.jobs.lifecycle.if).toContain(
+      "github.repository == 'deepseek-harness/deepseek-harness'",
+    )
+    expect(policy.jobs.policy.if).toContain(
+      "github.repository == 'deepseek-harness/deepseek-harness'",
+    )
+  })
+
+  it('requires explicit real-API E2E opt-in outside the canonical repository', () => {
+    const workflow = loadWorkflow('.github/workflows/e2e.yml')
+    if (!isRecord(workflow.jobs) || !isRecord(workflow.jobs.e2e)) {
+      throw new TypeError('E2E workflow must define the e2e job')
+    }
+
+    expect(workflow.jobs.e2e.if).toContain(
+      "github.repository == 'deepseek-harness/deepseek-harness'",
+    )
+    expect(workflow.jobs.e2e.if).toContain("vars.DSH_REAL_API_E2E_ENABLED == 'true'")
+  })
+
   it('isolates every pnpm action setup destination per runner', () => {
     const workflow: unknown = yaml.load(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'))
     if (!isRecord(workflow) || !isRecord(workflow.jobs)) throw new TypeError('CI workflow must define jobs')
@@ -383,8 +419,9 @@ describe('Issue lifecycle workflow', () => {
     expect(lifecyclePullRequest.types).not.toContain('ready_for_review')
     expect(lifecyclePullRequest.types).toContain('review_requested')
     expect(lifecycleReview.types).toEqual(['submitted'])
-    expect(lifecycleJob.if).toBe(
-      "${{ github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested') }}",
+    expect(lifecycleJob.if).toContain("github.event_name != 'pull_request_review'")
+    expect(lifecycleJob.if).toContain(
+      "github.event.action == 'submitted' && github.event.review.state == 'changes_requested'",
     )
     expect(policyPullRequest.types).toContain('ready_for_review')
   })
