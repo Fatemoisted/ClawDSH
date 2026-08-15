@@ -193,16 +193,17 @@ function parseResponse(payload: unknown): EmbeddingVector {
   if (typeof payload !== 'object' || payload === null || !('data' in payload)) {
     throw new Error('@clawdsh/dsh-embeddings-ark: malformed embedding response (no data field)')
   }
-  const data = (payload as { data: unknown }).data
+  const data = payload.data
   if (typeof data !== 'object' || data === null || !('embedding' in data)
-    || !Array.isArray((data as { embedding: unknown }).embedding)) {
+    || !Array.isArray(data.embedding)) {
     throw new Error('@clawdsh/dsh-embeddings-ark: malformed embedding response (no data.embedding vector)')
   }
-  const embedding = (data as { embedding: unknown[] }).embedding
-  if (embedding.length === 0 || !embedding.every(value => typeof value === 'number' && Number.isFinite(value))) {
+  const embedding = data.embedding
+  if (embedding.length === 0
+    || !embedding.every((value): value is number => typeof value === 'number' && Number.isFinite(value))) {
     throw new Error('@clawdsh/dsh-embeddings-ark: invalid embedding vector (empty or non-finite entries)')
   }
-  return embedding as number[]
+  return embedding
 }
 
 export default ArkEmbeddings

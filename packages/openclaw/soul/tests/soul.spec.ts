@@ -9,6 +9,17 @@ import { describe, expect, it } from 'vitest'
 import * as Soul from '@clawdsh/dsh-soul'
 import { PERSONA_SECTION, SOUL_PRECEDENCE_NOTE, SOUL_SECTION } from '@clawdsh/dsh-soul'
 
+// Oxlint's test program does not resolve the overloaded node:fs helpers reliably.
+const createTempDirectory = mkdtempSync as unknown as (prefix: string) => string
+const removeDirectory = rmSync as unknown as (
+  path: string,
+  options: { recursive: true; force: true },
+) => void
+const writeTextFile = writeFileSync as unknown as (path: string, data: string, encoding: 'utf8') => void
+const joinPath = join
+const systemTempDirectory = tmpdir
+const toFileUrl = pathToFileURL
+
 async function harness(deploymentPersona: string): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt, { persona: deploymentPersona })
@@ -92,10 +103,10 @@ describe('the soul row', () => {
   })
 
   it('loads the soul text from a source file, which wins over inline text', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'clawdsh-soul-'))
+    const dir = createTempDirectory(joinPath(systemTempDirectory(), 'clawdsh-soul-'))
     try {
-      const path = join(dir, 'soul.md')
-      writeFileSync(path, 'I am the file soul.', 'utf8')
+      const path = joinPath(dir, 'soul.md')
+      writeTextFile(path, 'I am the file soul.', 'utf8')
 
       const ctx = await harness('')
       const key: ScopeKey = { agent: 'a1' }
@@ -103,26 +114,26 @@ describe('the soul row', () => {
 
       expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBe(withNote('I am the file soul.'))
     } finally {
-      rmSync(dir, { recursive: true, force: true })
+      removeDirectory(dir, { recursive: true, force: true })
     }
   })
 
   it('resolves a relative source against the mount tree baseUrl', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'clawdsh-soul-'))
+    const dir = createTempDirectory(joinPath(systemTempDirectory(), 'clawdsh-soul-'))
     try {
-      writeFileSync(join(dir, 'assistant.md'), 'Preset soul text.', 'utf8')
+      writeTextFile(joinPath(dir, 'assistant.md'), 'Preset soul text.', 'utf8')
 
       const ctx = await harness('')
       const key: ScopeKey = { agent: 'a1' }
       // baseUrl is a constructor-owned property: define it on an extended child
       // (the proxy set trap rejects plain assignment under a running fiber).
-      const scope = createScope(ctx, key).ctx.extend({ baseUrl: pathToFileURL(join(dir, '')).href + '/' })
+      const scope = createScope(ctx, key).ctx.extend({ baseUrl: `${toFileUrl(joinPath(dir, '')).href}/` })
       // precedenceNote: false isolates resolution semantics from the note prefix.
       await scope.plugin(Soul, { source: './assistant.md', precedenceNote: false })
 
       expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBe('Preset soul text.')
     } finally {
-      rmSync(dir, { recursive: true, force: true })
+      removeDirectory(dir, { recursive: true, force: true })
     }
   })
 
@@ -153,7 +164,9 @@ describe('the soul row', () => {
       .rejects.toThrow(/non-empty/)
     // A direct apply with no text at all takes the `?? ''` fallback and rejects
     // before any precedence-note prepend can run.
-    expect(() => Soul.apply(createScope(ctx, key).ctx, {}))
+    expect(() => {
+      Soul.apply(createScope(ctx, key).ctx, {})
+    })
       .toThrow(/non-empty/)
   })
 
@@ -165,7 +178,9 @@ describe('the soul row', () => {
     // guard remains as defense for direct apply() calls.
     await expect(createScope(ctx, key).ctx.plugin(Soul, { text: 'x', mode: 'overwrite' as 'append' }))
       .rejects.toThrow(/\$\.mode expected/)
-    expect(() => Soul.apply(createScope(ctx, key).ctx, { text: 'x', mode: 'overwrite' as 'append' }))
+    expect(() => {
+      Soul.apply(createScope(ctx, key).ctx, { text: 'x', mode: 'overwrite' as 'append' })
+    })
       .toThrow(/unknown mode/)
   })
 

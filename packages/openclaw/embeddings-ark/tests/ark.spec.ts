@@ -38,6 +38,26 @@ function okFetch(body: string): ReturnType<typeof vi.fn> {
   return vi.fn(async () => new Response(body, { status: 200 }))
 }
 
+/** Parse a fetch request body while keeping JSON.parse's `any` out of the tests. */
+function requestBody(init: RequestInit): unknown {
+  if (typeof init.body !== 'string') throw new Error('fetch request body was not a string')
+  const body: unknown = JSON.parse(init.body)
+  return body
+}
+
+/** Read the single text item from an Ark multimodal request. */
+function requestText(init: RequestInit): string {
+  const body = requestBody(init)
+  if (typeof body !== 'object' || body === null || !('input' in body) || !Array.isArray(body.input)) {
+    throw new Error('fetch request body had no input array')
+  }
+  const first: unknown = body.input[0]
+  if (typeof first !== 'object' || first === null || !('text' in first) || typeof first.text !== 'string') {
+    throw new Error('fetch request body had no text input')
+  }
+  return first.text
+}
+
 /** The init of the first fetch call, or a hard failure when fetch never ran. */
 function firstFetchInit(fetchMock: ReturnType<typeof vi.fn>): RequestInit {
   const first = fetchMock.mock.calls[0]
@@ -55,7 +75,7 @@ afterEach(() => {
 describe('ark embeddings provider', () => {
   it('sends one text-only request per text and parses vectors in order', async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const text = (JSON.parse(init.body as string).input as { text: string }[])[0]!.text
+      const text = requestText(init)
       return new Response(responseBody(text === '天很蓝' ? [0.1, 0.2] : [0.3, 0.4]), { status: 200 })
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -67,9 +87,9 @@ describe('ark embeddings provider', () => {
     const first = fetchMock.mock.calls[0]
     if (first === undefined) throw new Error('fetch was never called')
     const [url, init] = first
-    expect(String(url)).toBe('https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal')
-    expect((init as RequestInit).headers).toMatchObject({ Authorization: 'Bearer test-key' })
-    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+    expect(url).toBe('https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal')
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer test-key' })
+    expect(requestBody(init)).toEqual({
       model: 'doubao-embedding-vision-251215',
       input: [{ type: 'text', text: '天很蓝' }],
     })
@@ -152,7 +172,9 @@ describe('ark embeddings provider', () => {
     const ctx = new Context()
     await ctx.plugin(ArkEmbeddings, { apiKey: 'test-key', maxConcurrentTexts: 4 })
     const embedding = ctx.embeddings.embed(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(4)
+    })
     expect(peak).toBe(4)
     openGate()
     const vectors = await embedding
@@ -163,7 +185,7 @@ describe('ark embeddings provider', () => {
 
   it('returns vectors in input order even when requests resolve out of order', async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const text = (JSON.parse(init.body as string).input as { text: string }[])[0]!.text
+      const text = requestText(init)
       const index = Number(text)
       // The first request is the slowest; completion order is the reverse of input order.
       await new Promise(resolve => setTimeout(resolve, (10 - index) * 2))
@@ -179,7 +201,7 @@ describe('ark embeddings provider', () => {
 
   it('rejects the whole batch when one request fails', async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const text = (JSON.parse(init.body as string).input as { text: string }[])[0]!.text
+      const text = requestText(init)
       if (text === 'bad') return new Response('boom', { status: 500 })
       return new Response(responseBody([0.1]), { status: 200 })
     })
@@ -205,7 +227,9 @@ describe('ark embeddings provider', () => {
     const ctx = new Context()
     await ctx.plugin(ArkEmbeddings, { apiKey: 'test-key', maxConcurrentTexts: 1 })
     const embedding = ctx.embeddings.embed(['a', 'b', 'c'])
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
     expect(peak).toBe(1)
     openGate()
     await embedding

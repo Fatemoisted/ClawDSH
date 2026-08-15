@@ -27,13 +27,14 @@ async function writeSkill(root: string, name: string, description: string, body 
 async function setup(workspace: string, config: SkillsHub.Config = {}): Promise<{ ctx: Context; fiber: { dispose: () => Promise<void> } }> {
   const ctx = new Context()
   await ctx.plugin(SkillRegistry)
-  const fiber = await ctx.plugin(SkillsHub, { managedDir: join(workspace, 'no-clawdbot'), ...config })
+  const fiber = await ctx.plugin(SkillsHub, Object.assign({ managedDir: join(workspace, 'no-clawdbot') }, config))
   return { ctx, fiber }
 }
 
 /** A provider over the same roots as `setup`, for candidate-level fields the registry summaries strip. */
 function hubProvider(workspace: string, logger: Context['logger'], config: SkillsHub.Config = {}): SkillsHub.ClawHubProvider {
-  return new SkillsHub.ClawHubProvider(SkillsHub.resolveConfig({ managedDir: join(workspace, 'no-clawdbot'), ...config }), logger)
+  const fixtureConfig = Object.assign({ managedDir: join(workspace, 'no-clawdbot') }, config)
+  return new SkillsHub.ClawHubProvider(SkillsHub.resolveConfig(fixtureConfig), logger)
 }
 
 describe('skills-hub provider', () => {

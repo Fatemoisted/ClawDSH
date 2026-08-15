@@ -362,7 +362,7 @@ describe('memory_append', () => {
     const stored = await ctx.fs.readText(await ctx.fs.resolve(join(dir, 'memory', '2026-08-14.md')))
     const storedNotes = stored.trimEnd().split('\n')
     expect(storedNotes).toHaveLength(notes.length)
-    expect(storedNotes.toSorted()).toEqual(notes.toSorted())
+    expect(storedNotes.slice().sort()).toEqual(notes.slice().sort())
   })
 
   it('makes appended content immediately available to semantic recall', async () => {

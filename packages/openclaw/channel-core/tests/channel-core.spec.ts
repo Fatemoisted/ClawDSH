@@ -17,7 +17,25 @@ import ChannelRegistry, { deriveChannelSessionId, registerChannelAdapter } from 
 import type { ChannelAdapter, ChannelMessage, Config } from '@clawdsh/dsh-channel-core'
 import { MockAdapter, textResponse } from './mock-adapter.ts'
 
-async function harness(adapter: MockAdapter, config: Config = {}): Promise<Context> {
+interface AgentPresetsStub {
+  defaultId: string
+  resolve: (id?: string) => Promise<{ id: string }>
+  mount: (_agentCtx: Context, id?: string) => Promise<{ id: string }>
+}
+
+function agentPresetsStub(): AgentPresetsStub {
+  return {
+    defaultId: 'openclaw',
+    resolve: (id?: string) => Promise.resolve({ id: id ?? 'openclaw' }),
+    mount: (_agentCtx: Context, id?: string) => Promise.resolve({ id: id ?? 'openclaw' }),
+  }
+}
+
+async function harness(
+  adapter: MockAdapter,
+  config: Config = {},
+  agentPresets: AgentPresetsStub = agentPresetsStub(),
+): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(Timer)
   await ctx.plugin(LlmRuntime)
@@ -27,11 +45,7 @@ async function harness(adapter: MockAdapter, config: Config = {}): Promise<Conte
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(AgentDefaultModelConfig, { provider: 'mock', model: 'mock' })
-  ctx.provide('agentPresets', {
-    defaultId: 'openclaw',
-    resolve: (id?: string) => Promise.resolve({ id: id ?? 'openclaw' }),
-    mount: (_agentCtx: Context, id?: string) => Promise.resolve({ id: id ?? 'openclaw' }),
-  } as never)
+  ctx.provide('agentPresets', agentPresets as never)
   ctx.provide('sessionPersistence', {
     list: () => Promise.resolve([]),
   } as never)
@@ -358,11 +372,7 @@ describe('the channel-core seam', () => {
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(AgentLoop, { agents: [] })
     await ctx.plugin(AgentDefaultModelConfig, { provider: 'mock', model: 'mock' })
-    ctx.provide('agentPresets', {
-      defaultId: 'openclaw',
-      resolve: (id?: string) => Promise.resolve({ id: id ?? 'openclaw' }),
-      mount: (_agentCtx: Context, id?: string) => Promise.resolve({ id: id ?? 'openclaw' }),
-    } as never)
+    ctx.provide('agentPresets', agentPresetsStub() as never)
     ctx.provide('sessionPersistence', { list: () => Promise.resolve([]) } as never)
     ctx.llm.registerAdapter(['mock'], new MockAdapter([textResponse('hello there')]))
     await ctx.plugin(ChannelRegistry, { identity: { name: 'Clawd' } })
@@ -653,8 +663,9 @@ describe('the channel-core seam', () => {
   })
 
   it('records and mounts the configured agent preset before publishing the channel agent', async () => {
-    const ctx = await harness(new MockAdapter([textResponse('ok')]), { agentPreset: 'openclaw' })
-    const mount = vi.spyOn(ctx.agentPresets, 'mount')
+    const agentPresets = agentPresetsStub()
+    const mount = vi.spyOn(agentPresets, 'mount')
+    const ctx = await harness(new MockAdapter([textResponse('ok')]), { agentPreset: 'openclaw' }, agentPresets)
     ctx.channels.registerAdapter(fakeAdapter([]))
     const outbound = nextOutbound(ctx)
 

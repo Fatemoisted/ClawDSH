@@ -90,7 +90,8 @@ export function apply(ctx: Context, config: Config): void {
   if (scopeOf(ctx) === undefined) {
     throw new Error('soul: mounts only inside an agent scope (an unscoped mount would publish a process-global soul)')
   }
-  const mode = config.mode ?? 'append'
+  const configuredMode: unknown = config.mode
+  const mode = configuredMode ?? 'append'
   if (mode !== 'replace' && mode !== 'append') {
     throw new Error(`soul: unknown mode ${JSON.stringify(mode)}; expected "replace" or "append"`)
   }

@@ -65,6 +65,9 @@ function resolveDomain(domain: FeishuDomain | undefined): Lark.Domain {
  * durable routing additionally separates `threadId`; merging here could move
  * two topics into the last message's session. The SDK still owns stale-event
  * rejection, TTL de-duplication, and the in-flight processing lock.
+ *
+ * @param config - validated app identity and Open Platform region.
+ * @returns the configured official high-level Lark channel.
  */
 export function buildLarkChannel(config: Config): Lark.LarkChannel {
   return Lark.createLarkChannel({
@@ -288,6 +291,7 @@ async function react(channel: Lark.LarkChannel, message: ChannelMessage, emoji: 
  * Build the Feishu adapter from validated config.
  * @param config - validated app identity and region.
  * @param deps - optional high-level SDK channel for tests.
+ * @returns the adapter to register with `ctx.channels`.
  */
 export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAdapter {
   const channel = deps.channel ?? buildLarkChannel(config)

@@ -42,6 +42,10 @@ interface AppendResult {
  * Join caller content to a memory file without ever rewriting prior bytes.
  * A missing boundary newline is supplied on each side so independent notes do
  * not run together and every successful append leaves a line-terminated file.
+ *
+ * @param existing - complete current file text.
+ * @param content - non-empty caller text to append.
+ * @returns line-terminated text containing the original bytes followed by the new content.
  */
 export function appendMemoryText(existing: string, content: string): string {
   if (content.length === 0) throw new TypeError('memory_append: content must be a non-empty string')

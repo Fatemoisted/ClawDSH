@@ -217,8 +217,9 @@ describe('memory flush turn', () => {
     expect(compactionSeq).toBeDefined()
     // The flush decision precedes the compaction: the flush turn's `turn/start`
     // opens before the compaction that runs in the same turn's pre-step.
-    const flushTurnStart = agent.session.events.findLast(event =>
-      event.type === 'turn/start' && event.seq < (flushSeq ?? 0))?.seq
+    const flushTurnStart = agent.session.events
+      .filter(event => event.type === 'turn/start' && event.seq < (flushSeq ?? 0))
+      .at(-1)?.seq
     expect(flushTurnStart).toBeDefined()
     expect((flushTurnStart ?? 0) < (compactionSeq ?? 0)).toBe(true)
     await h.dispose()

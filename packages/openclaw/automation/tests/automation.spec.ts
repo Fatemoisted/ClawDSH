@@ -21,6 +21,15 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import * as Automation from '../src/index.ts'
 
+// Oxlint's test program does not resolve the overloaded node:fs helpers reliably.
+const createTempDirectory = mkdtemp as unknown as (prefix: string) => Promise<string>
+const removeDirectory = rm as unknown as (
+  path: string,
+  options: { recursive: true; force: true },
+) => Promise<void>
+const joinPath = join
+const systemTempDirectory = tmpdir
+
 /** Minimal scripted adapter: each model call consumes the next entry. */
 class ScriptedAdapter extends LlmAdapter {
   requests: GenerateOptions[] = []
@@ -78,7 +87,7 @@ async function harness(adapter: ScriptedAdapter, persistenceRoot?: string): Prom
 }
 
 async function tempDir(name: string): Promise<string> {
-  return await mkdtemp(join(tmpdir(), `dsh-${name}-`))
+  return await createTempDirectory(joinPath(systemTempDirectory(), `dsh-${name}-`))
 }
 
 /** Drain microtask chains and fire due zero-delay timers until quiescence. */
@@ -100,7 +109,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await Promise.allSettled(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
-  await Promise.allSettled(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
+  await Promise.allSettled(tempDirs.splice(0).map(dir => removeDirectory(dir, { recursive: true, force: true })))
   vi.useRealTimers()
 })
 
@@ -222,7 +231,9 @@ describe('automation row', () => {
     await first.plugin(Automation, {
       rules: [{ id: 'daily', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
-    await vi.waitFor(() => expect(runRecords(first, 'daily')).toEqual(['started', 'ok']), { timeout: 5_000 })
+    await vi.waitFor(() => {
+      expect(runRecords(first, 'daily')).toEqual(['started', 'ok'])
+    }, { timeout: 5_000 })
 
     await first.fiber.dispose()
     contexts.splice(contexts.indexOf(first), 1)
@@ -233,7 +244,9 @@ describe('automation row', () => {
       rules: [{ id: 'daily', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
     // The remounted rule fires once more (anchor reset), and the resumed session carries run one's records.
-    await vi.waitFor(() => expect(runRecords(second, 'daily')).toEqual(['started', 'ok', 'started', 'ok']), { timeout: 5_000 })
+    await vi.waitFor(() => {
+      expect(runRecords(second, 'daily')).toEqual(['started', 'ok', 'started', 'ok'])
+    }, { timeout: 5_000 })
     const agent = agentFor(second, 'daily')
     const turnCount = agent?.session.events.filter(event =>
       event.type === 'user/message' && event.data.source.kind === 'plugin').length
@@ -249,7 +262,9 @@ describe('automation row', () => {
     contexts.push(first)
     const rules: Automation.Config['rules'] = [{ id: 'once', schedule: { kind: 'at', at: '2026-08-05T08:00:00.000Z' }, message: 'run once' }]
     await first.plugin(Automation, { rules })
-    await vi.waitFor(() => expect(runRecords(first, 'once')).toEqual(['started', 'ok']), { timeout: 5_000 })
+    await vi.waitFor(() => {
+      expect(runRecords(first, 'once')).toEqual(['started', 'ok'])
+    }, { timeout: 5_000 })
 
     await first.fiber.dispose()
     contexts.splice(contexts.indexOf(first), 1)
