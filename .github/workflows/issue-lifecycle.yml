@@ -36,7 +36,16 @@ concurrency:
 jobs:
   lifecycle:
     name: Issue lifecycle
-    if: ${{ github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested') }}
+    # The project App credential is unavailable to fork and Dependabot pull
+    # request events. Issues are always base-repository events, while PR and
+    # review events must be both trusted and actionable before minting a token.
+    if: >-
+      ${{ github.repository == 'deepseek-ai/deepseek-harness'
+          && (github.event_name == 'issues'
+              || (!github.event.pull_request.head.repo.fork
+                  && github.event.pull_request.user.login != 'dependabot[bot]'
+                  && (github.event_name != 'pull_request_review'
+                      || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested')))) }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out trusted policy

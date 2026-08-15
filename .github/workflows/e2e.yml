@@ -6,16 +6,18 @@ name: E2E (real DeepSeek API)
 # https://api.deepseek.com (DEEPSEEK_BASE_URL is pinned to it explicitly so a
 # stray repo-root .env can't redirect the run).
 #
-# pull_request IS a trigger, but GitHub withholds repo secrets from BOTH forked
-# PRs and Dependabot PRs (the latter are same-repo, fork==false, but still
-# keyless). The job-level `if:` below skips the whole job for those untrusted
-# PRs. The Dependabot test keys on the PR AUTHOR (pull_request.user.login), not
-# github.actor (the run trigger) — a maintainer reopening a Dependabot PR would
-# make github.actor human while the PR is still keyless. When the job runs, the
-# secret is expected, so the preflight hard-fails if it's missing (a missing
-# secret would otherwise make the self-skipping suite report a false green). A
-# job skipped by a job-level `if:` reports as a SUCCESSFUL check, so this
-# workflow is safe to use as a required status check if desired.
+# pull_request IS a trigger, but this external-API credential belongs only to
+# the canonical upstream automation repository. Downstream forks therefore skip
+# the whole job at its boundary instead of running a self-skipping suite and
+# presenting that as tested. In upstream, GitHub also withholds repo secrets
+# from BOTH forked PRs and Dependabot PRs (the latter are same-repo,
+# fork==false, but still keyless). The Dependabot test keys on the PR AUTHOR
+# (pull_request.user.login), not github.actor (the run trigger) — a maintainer
+# reopening a Dependabot PR would make github.actor human while the PR is still
+# keyless. When the job runs in upstream, the secret is expected, so the
+# preflight hard-fails if it's missing (a missing secret would otherwise make
+# the self-skipping suite report a false green). GitHub records the job-level
+# conditional outcome as skipped; no test command executes in that case.
 #
 # SECURITY — NEVER change this trigger to `pull_request_target`. `pull_request`
 # checks out and runs the PR's HEAD code WITHOUT secrets for forks, which is what
@@ -55,11 +57,14 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     name: e2e
-    # Run on every trusted event. Skip untrusted PRs (forks + Dependabot) where
-    # the secret is withheld — they would otherwise hard-fail the preflight.
+    # This credential and paid external-API signal are upstream-owned. Skip the
+    # complete job in downstream repositories, and also skip upstream PRs where
+    # GitHub withholds the secret (forks + Dependabot). Every other upstream
+    # event remains strict: a missing secret hard-fails the preflight below.
     if: >-
-      github.event_name != 'pull_request'
-      || !(github.event.pull_request.head.repo.fork || github.event.pull_request.user.login == 'dependabot[bot]')
+      github.repository == 'deepseek-ai/deepseek-harness'
+      && (github.event_name != 'pull_request'
+      || !(github.event.pull_request.head.repo.fork || github.event.pull_request.user.login == 'dependabot[bot]'))
     # Bounded file parallelism (DSH_E2E_MAX_WORKERS), 120s/test, retry 2. 45m
     # still bounds retry storms against a slow API while the happy path fans out.
     timeout-minutes: 45

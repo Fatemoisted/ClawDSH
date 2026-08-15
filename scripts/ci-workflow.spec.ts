@@ -235,6 +235,37 @@ describe('E2B e2e workflow', () => {
   })
 })
 
+describe('DeepSeek real-API e2e workflow', () => {
+  it('skips downstream repositories while keeping trusted upstream runs strict', () => {
+    const workflow = loadWorkflow('.github/workflows/e2e.yml')
+    const e2e = workflowJob(workflow, 'e2e')
+    if (!Array.isArray(e2e.steps)) {
+      throw new TypeError('DeepSeek real-API e2e workflow must define job steps')
+    }
+
+    expect(e2e.if).toBe(
+      "github.repository == 'deepseek-ai/deepseek-harness' && (github.event_name != 'pull_request' || !(github.event.pull_request.head.repo.fork || github.event.pull_request.user.login == 'dependabot[bot]'))",
+    )
+
+    const steps = e2e.steps.filter(isRecord)
+    const preflight = steps.find(step => step.name === 'Preflight (require DEEPSEEK_API_KEY)')
+    const tests = steps.find(step => step.name === 'E2E tests (real DeepSeek API)')
+
+    expect(preflight).toMatchObject({
+      env: { DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}' },
+    })
+    expect(preflight?.run).toContain('Configure the repo secret DEEPSEEK_API_KEY_EXTERNAL.')
+    expect(preflight?.run).toContain('exit 1')
+    expect(tests).toMatchObject({
+      env: {
+        DEEPSEEK_API_KEY: '${{ secrets.DEEPSEEK_API_KEY_EXTERNAL }}',
+        DEEPSEEK_BASE_URL: 'https://api.deepseek.com',
+      },
+      run: 'pnpm run test:e2e',
+    })
+  })
+})
+
 describe('Python release workflows', () => {
   it('keeps complete wheel validation separate from protected public publication', () => {
     const workflow = loadWorkflow('.github/workflows/python-release.yml')
@@ -372,6 +403,20 @@ describe('Python release workflows', () => {
 })
 
 describe('Issue lifecycle workflow', () => {
+  it('keeps policy on trusted upstream code and lifecycle away from keyless pull requests', () => {
+    const lifecycle = loadWorkflow('.github/workflows/issue-lifecycle.yml')
+    const lifecycleJob = workflowJob(lifecycle, 'lifecycle')
+    const policy = loadWorkflow('.github/workflows/issue-policy.yml')
+    const policyJob = workflowJob(policy, 'policy')
+    const owningRepository = "github.repository == 'deepseek-ai/deepseek-harness'"
+    const lifecycleCondition = String(lifecycleJob.if).replace(/\s+/g, ' ')
+
+    expect(policyJob.if).toBe(`\${{ ${owningRepository} }}`)
+    expect(lifecycleCondition).toBe(
+      `\${{ ${owningRepository} && (github.event_name == 'issues' || (!github.event.pull_request.head.repo.fork && github.event.pull_request.user.login != 'dependabot[bot]' && (github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested')))) }}`,
+    )
+  })
+
   it('uses explicit review handoff events without rerunning when a draft becomes ready', () => {
     const lifecycle = loadWorkflow('.github/workflows/issue-lifecycle.yml')
     const lifecyclePullRequest = workflowEvent(lifecycle, 'pull_request')
@@ -383,8 +428,8 @@ describe('Issue lifecycle workflow', () => {
     expect(lifecyclePullRequest.types).not.toContain('ready_for_review')
     expect(lifecyclePullRequest.types).toContain('review_requested')
     expect(lifecycleReview.types).toEqual(['submitted'])
-    expect(lifecycleJob.if).toBe(
-      "${{ github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested') }}",
+    expect(String(lifecycleJob.if).replace(/\s+/g, ' ')).toContain(
+      "github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested')",
     )
     expect(policyPullRequest.types).toContain('ready_for_review')
   })

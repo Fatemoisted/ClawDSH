@@ -1,5 +1,8 @@
 /** Release family discovery, publish order, tag naming, and the bump judgements. */
 
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { releaseFamily, type ReleaseMember } from './families.ts'
 import { compareVersions, nextVendorVersion, reachesPayload } from './bump.ts'
@@ -16,6 +19,31 @@ function member(directory: string, name: string, manifest: Record<string, unknow
 }
 
 describe('release families', () => {
+  it('keeps the independent ClawDSH subtree out of dsh discovery without hiding other invalid packages', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-release-family-'))
+    const writeManifest = (directory: string, name: string): void => {
+      mkdirSync(join(root, directory), { recursive: true })
+      writeFileSync(join(root, directory, 'package.json'), `${JSON.stringify({ name, version: '0.0.1' })}\n`)
+    }
+
+    try {
+      writeManifest('apps/cli', '@deepseek-ai/dsh')
+      writeManifest('packages/core/session', '@deepseek-ai/dsh-session')
+      writeManifest('packages/openclaw/activity', '@clawdsh/dsh-activity')
+
+      expect(releaseFamily('dsh').members(root).map(entry => entry.name)).toEqual([
+        '@deepseek-ai/dsh',
+        '@deepseek-ai/dsh-session',
+      ])
+
+      writeManifest('packages/other/accidental-clawdsh', '@clawdsh/accidental')
+      expect(() => releaseFamily('dsh').members(root))
+        .toThrow('packages/other/accidental-clawdsh/package.json must name an @deepseek-ai package')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('names one tag for the whole dsh family and one per vendored package', () => {
     const dsh = releaseFamily('dsh')
     const vendor = releaseFamily('vendor')
