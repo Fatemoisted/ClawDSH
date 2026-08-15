@@ -44,6 +44,18 @@ test('requires exact objects and canonical staged media hashes', () => {
   )
 })
 
+test('rejects NUL text and route/principal trust inconsistencies', () => {
+  assert.throws(() => validateTurnEnvelope({ ...fixture.turn, text: 'before\0after' }), /must not contain NUL/)
+  assert.throws(() => validateTurnEnvelope({
+    ...fixture.turn,
+    route: { ...fixture.turn.route, kind: 'group' },
+  }), /group routes require group-allowlisted trust/)
+  assert.throws(() => validateTurnEnvelope({
+    ...fixture.turn,
+    sender: { ...fixture.turn.sender, trust: 'group-allowlisted' },
+  }), /direct routes forbid group-allowlisted trust/)
+})
+
 test('requires positive directory limits and ordered non-empty resolve inputs', () => {
   assert.throws(() => validateAction({ ...fixture.directoryAction, limit: 0 }), /greater than or equal to 1/)
   const { query: _query, limit: _limit, source: _source, ...base } = fixture.directoryAction

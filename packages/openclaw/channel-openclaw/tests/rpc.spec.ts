@@ -116,8 +116,69 @@ describe('bidirectional JSON-RPC peer', () => {
     const disconnected = new Error('link lost')
     connection.disconnect(disconnected)
     await expect(first).rejects.toBe(disconnected)
-    rpc.close()
+    await rpc.close()
+    connection.receive({ jsonrpc: '1.0', id: 'ignored-after-close', result: null })
+    expect(connection.close).not.toHaveBeenCalled()
     await expect(rpc.request('after', {})).rejects.toThrow(/disconnected/)
+  })
+
+  it('close aborts and drains admitted inbound handlers', async () => {
+    const connection = new FakeConnection()
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    let signal: AbortSignal | undefined
+    let writes = 0
+    const rpc = new JsonRpcPeer(connection as unknown as NdjsonConnection, {
+      slow: async (_params, currentSignal) => {
+        signal = currentSignal
+        entered.resolve(undefined)
+        await release.promise
+        writes += 1
+      },
+    }, 1, 1_000)
+    connection.receive({ jsonrpc: '2.0', id: 1, method: 'slow', params: {} })
+    await entered.promise
+
+    let closed = false
+    const closing = rpc.close().then(() => { closed = true })
+    await flush()
+    expect(signal?.aborted).toBe(true)
+    expect(closed).toBe(false)
+    release.resolve(undefined)
+    await closing
+    await expect(rpc.close()).resolves.toBeUndefined()
+    expect(writes).toBe(1)
+    await flush()
+    expect(writes).toBe(1)
+  })
+
+  it('transport detach preserves admitted work and later close upgrades it to aborting shutdown', async () => {
+    const connection = new FakeConnection()
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    let signal: AbortSignal | undefined
+    const rpc = new JsonRpcPeer(connection as unknown as NdjsonConnection, {
+      slow: async (_params, currentSignal) => {
+        signal = currentSignal
+        entered.resolve(undefined)
+        await release.promise
+      },
+    }, 1, 1_000)
+    connection.receive({ jsonrpc: '2.0', id: 1, method: 'slow', params: {} })
+    await entered.promise
+
+    connection.disconnect(new Error('transient link loss'))
+    await flush()
+    expect(signal?.aborted).toBe(false)
+    let detached = false
+    const drain = rpc.detach().then(() => { detached = true })
+    await flush()
+    expect(detached).toBe(false)
+
+    const shutdown = rpc.close(new Error('Provider shutdown'))
+    expect(signal?.aborted).toBe(true)
+    release.resolve(undefined)
+    await Promise.all([drain, shutdown])
   })
 
   it('does not send if the signal aborts while its listener is being installed', async () => {
@@ -133,10 +194,28 @@ describe('bidirectional JSON-RPC peer', () => {
     expect(connection.sent).toEqual([])
   })
 
-  it('rejects a request whose frame cannot be sent, including non-Error failures', async () => {
+  it('ignores a late transport rejection after the local request wait is aborted', async () => {
     const connection = new FakeConnection()
-    connection.sendError = 'write rejected'
-    await expect(peer(connection).request('method', {})).rejects.toEqual(new Error('write rejected'))
+    const write = Promise.withResolvers<undefined>()
+    connection.sendGate = write.promise
+    const controller = new AbortController()
+    const waiting = peer(connection).request('channel.action', {}, controller.signal)
+
+    controller.abort(new Error('stop waiting'))
+    await expect(waiting).rejects.toThrow('stop waiting')
+    write.reject(new Error('late write rejection'))
+    await flush()
+  })
+
+  it('rejects a request whose frame cannot be sent, preserving Error and normalizing non-Error failures', async () => {
+    const errorConnection = new FakeConnection()
+    const failure = new Error('socket closed')
+    errorConnection.sendError = failure
+    await expect(peer(errorConnection).request('method', {})).rejects.toBe(failure)
+
+    const stringConnection = new FakeConnection()
+    stringConnection.sendError = 'write rejected'
+    await expect(peer(stringConnection).request('method', {})).rejects.toEqual(new Error('write rejected'))
   })
 
   it('sends notifications only while connected', async () => {
@@ -144,7 +223,7 @@ describe('bidirectional JSON-RPC peer', () => {
     const rpc = peer(connection)
     await rpc.notify('turn.progress', { sequence: 0 })
     expect(connection.sent).toContainEqual({ jsonrpc: '2.0', method: 'turn.progress', params: { sequence: 0 } })
-    rpc.close()
+    await rpc.close()
     await expect(rpc.notify('turn.progress', {})).resolves.toBeUndefined()
   })
 
@@ -182,7 +261,7 @@ describe('bidirectional JSON-RPC peer', () => {
       },
     })
     expect(JSON.stringify(connection.sent)).not.toMatch(/Users\/operator|sk-secret/)
-    rpc.close()
+    await rpc.close()
   })
 
   it('reports unknown methods and bad params, closing for invalid notifications', async () => {

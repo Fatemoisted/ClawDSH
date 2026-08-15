@@ -3,7 +3,7 @@ import { runAgentHarnessBeforeMessageWriteHook } from 'openclaw/plugin-sdk/agent
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry'
 import { withSessionTranscriptWriteLock } from 'openclaw/plugin-sdk/session-transcript-runtime'
 import {
-  createOpenClawBridge,
+  createProcessSharedOpenClawBridge,
   createSyntheticProvider,
   resolveBridgeConfig,
 } from '../shared/openclaw-runtime.js'
@@ -18,7 +18,7 @@ const plugin = definePluginEntry({
       runAgentHarnessBeforeMessageWriteHook,
       withSessionTranscriptWriteLock,
     })
-    const bridge = createOpenClawBridge(api, {
+    const bridge = createProcessSharedOpenClawBridge(api, {
       generation: 'v2',
       config: resolveBridgeConfig(api.pluginConfig),
       transcript,

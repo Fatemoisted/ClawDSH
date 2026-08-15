@@ -56,7 +56,7 @@ describe('channel protocol valid payloads', () => {
     expect(channelTurnEnvelopeV1Schema.parse(RAW_TURN)).toEqual(RAW_TURN)
     expect(channelTurnEnvelopeV1Schema.parse({
       ...RAW_TURN,
-      route: { ...RAW_ROUTE, thread: undefined },
+      route: { ...RAW_ROUTE, thread: undefined, kind: 'direct' },
       sender: { senderId: 'sender-1', trust: 'admitted' },
       wasMentioned: undefined,
       replyTo: undefined,
@@ -260,6 +260,34 @@ describe('channel protocol rejection', () => {
       },
     ]
     for (const value of cases) expect(channelBridgeHandshakeV1Schema.safeParse(value).success).toBe(false)
+  })
+
+  it('rejects NUL in opaque identities and presentation strings', () => {
+    expect(channelTurnEnvelopeV1Schema.safeParse({
+      ...RAW_TURN,
+      sender: { ...RAW_TURN.sender, senderId: 'sender\0hidden' },
+    }).success).toBe(false)
+    expect(channelTurnEnvelopeV1Schema.safeParse({
+      ...RAW_TURN,
+      sender: { ...RAW_TURN.sender, displayName: 'Alice\0hidden' },
+    }).success).toBe(false)
+    expect(channelTurnEnvelopeV1Schema.safeParse({ ...RAW_TURN, text: 'hello\0hidden' }).success).toBe(false)
+  })
+
+  it('rejects route and principal trust inconsistencies', () => {
+    expect(channelTurnEnvelopeV1Schema.safeParse({
+      ...RAW_TURN,
+      sender: { ...RAW_TURN.sender, trust: 'owner' },
+    }).success).toBe(false)
+    expect(channelTurnEnvelopeV1Schema.safeParse({
+      ...RAW_TURN,
+      route: { ...RAW_TURN.route, kind: 'direct' },
+    }).success).toBe(false)
+    expect(channelTurnEnvelopeV1Schema.safeParse({
+      ...RAW_TURN,
+      route: { ...RAW_TURN.route, kind: 'direct' },
+      sender: { ...RAW_TURN.sender, trust: 'admitted' },
+    }).success).toBe(true)
   })
 
   it('rejects unsafe staging paths and path-bearing display names', () => {

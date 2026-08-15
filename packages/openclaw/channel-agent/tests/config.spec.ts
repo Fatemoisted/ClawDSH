@@ -124,4 +124,29 @@ describe('channel-agent managed configuration', () => {
     expect(ctx.channels.registerDriver).not.toHaveBeenCalled()
     create.mockRestore()
   })
+
+  it('reports every installer-managed field changed by one Settings snapshot', async () => {
+    const base = config()
+    const snapshot = config({ ownerPreset: 'unmanaged-owner', safePreset: 'unmanaged-safe' })
+    const register = vi.fn((_namespace: unknown, _schema: unknown, options: {
+      validate(candidate: ChannelAgentConfig): void
+    }) => {
+      options.validate(snapshot)
+      return { get: () => snapshot }
+    })
+    const create = vi.spyOn(ChannelAgentDriver, 'create')
+    const ctx = {
+      get: vi.fn(() => ({ register })),
+      channels: { registerDriver: vi.fn() },
+      effect: vi.fn(),
+    }
+
+    await expect(apply(ctx as never, base)).rejects.toThrow(
+      /ownerPreset, safePreset are installer-managed/,
+    )
+
+    expect(create).not.toHaveBeenCalled()
+    expect(ctx.channels.registerDriver).not.toHaveBeenCalled()
+    create.mockRestore()
+  })
 })

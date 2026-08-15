@@ -6,6 +6,7 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ChannelMessageSource } from './events.ts'
 
 const PACKAGE_NAME = '@clawdsh/dsh-channel-agent'
+const TRUST_CLASSES = new Set(['owner', 'paired', 'allowlisted', 'admitted', 'group-allowlisted'])
 
 /** Cordis companion plugin name. */
 export const name = 'channel-agent-invariant'
@@ -55,6 +56,9 @@ function applyEvent(trace: ChannelTrace, event: SessionEvent, fail: InvariantFai
   const source = event.data.source
   if (!Number.isSafeInteger(source.generation) || source.generation < 0) {
     fail(`turn ${source.turnId} carries an invalid route generation`)
+  }
+  if (!TRUST_CLASSES.has(source.trust)) {
+    fail(`turn ${source.turnId} carries an unknown admission class`)
   }
   if (source.isGroup !== (source.trust === 'group-allowlisted')) {
     fail(`turn ${source.turnId} carries an admission class inconsistent with its conversation kind`)

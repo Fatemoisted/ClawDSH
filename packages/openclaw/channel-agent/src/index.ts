@@ -1164,11 +1164,8 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** Expose only package-owned diagnostics; arbitrary dependency failures may contain credentials or local paths. */
-function publicTurnFailureMessage(error: unknown): string {
-  if (error instanceof Error && error.message.startsWith('channel-agent: ')) {
-    return error.message.replace(/[\r\n]+/g, ' ').slice(0, 500)
-  }
+/** Replace every caught execution failure before it enters durable or model-visible state. */
+function publicTurnFailureMessage(_error: unknown): string {
   return PUBLIC_DEPENDENCY_FAILURE_MESSAGE
 }
 

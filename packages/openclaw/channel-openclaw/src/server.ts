@@ -79,6 +79,7 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
   private server: Server | undefined
   private connection: NdjsonConnection | undefined
   private peer: JsonRpcPeer | undefined
+  private readonly peerDrains = new Map<JsonRpcPeer, Promise<void>>()
   private handshake: ChannelBridgeHandshakeV1 | undefined
   private lifecycle: ChannelHealthV1['status'] = 'starting'
   private diagnostic: string | undefined
@@ -186,9 +187,14 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
     const peer = this.peer
     if (peer !== undefined && this.handshake !== undefined) {
       try {
-        return channelHealthV1Schema.parse(await peer.request('health.get', {}, signal))
-      } catch (error) {
-        return this.localHealth('degraded', errorMessage(error))
+        const health = channelHealthV1Schema.parse(await peer.request('health.get', {}, signal))
+        if (health.status === 'ready' && !this.shutdownStarted) {
+          this.lifecycle = 'ready'
+          this.diagnostic = undefined
+        }
+        return health
+      } catch (_healthProbeFailed) {
+        return this.localHealth('degraded', 'Gateway health probe failed.')
       }
     }
     return this.localHealth(this.lifecycle, this.diagnostic)
@@ -199,8 +205,9 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
    * @param notification - Validated presentation-only turn progress.
    */
   notifyProgress(notification: ChannelTurnNotificationV1): void {
-    if (this.handshake?.capabilities.notifications.includes(notification.kind) !== true) return
-    void this.peer?.notify('turn.progress', notification as unknown as JsonObject).catch(() => {})
+    const peer = this.peer
+    const handshake = this.handshake
+    if (peer !== undefined && handshake !== undefined) this.notifyProgressOn(peer, handshake, notification)
   }
 
   /** Stop accepting new peers while retaining the active bridge for Gateway cleanup. */
@@ -228,8 +235,21 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
 
   private async disposeOwned(): Promise<void> {
     this.beginShutdown()
-    if (this.connection !== undefined) this.connection.close()
     const failures: Error[] = []
+    const connection = this.connection
+    const peer = this.peer
+    this.connection = undefined
+    this.peer = undefined
+    const shutdownCause = new Error('channel-openclaw: Provider is shutting down')
+    const ownedPeerDrain = peer === undefined ? undefined : this.trackPeerShutdown(peer, shutdownCause)
+    for (const detachedPeer of this.peerDrains.keys()) void this.trackPeerShutdown(detachedPeer, shutdownCause)
+    connection?.close()
+    try {
+      await ownedPeerDrain
+      await this.drainPeers()
+    } catch (error) {
+      failures.push(errorMessageError(error))
+    }
     try {
       await this.serverClose
     } catch (error) {
@@ -249,6 +269,33 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
     const firstFailure = failures[0]
     if (firstFailure !== undefined && failures.length === 1) throw firstFailure
     if (failures.length > 1) throw new AggregateError(failures, 'channel-openclaw: Provider cleanup was incomplete')
+  }
+
+  /** Track a detached peer while its admitted handlers settle naturally. */
+  private trackPeerDetach(peer: JsonRpcPeer, cause?: Error): Promise<void> {
+    return this.trackPeer(peer, peer.detach(cause))
+  }
+
+  /** Upgrade an active or detached peer to aborting Provider shutdown. */
+  private trackPeerShutdown(peer: JsonRpcPeer, cause?: Error): Promise<void> {
+    return this.trackPeer(peer, peer.close(cause))
+  }
+
+  /** Retain one peer until its stable drain completes. */
+  private trackPeer(peer: JsonRpcPeer, drain: Promise<void>): Promise<void> {
+    this.peerDrains.set(peer, drain)
+    void drain.then(
+      () => { if (this.peerDrains.get(peer) === drain) this.peerDrains.delete(peer) },
+      () => { if (this.peerDrains.get(peer) === drain) this.peerDrains.delete(peer) },
+    )
+    return drain
+  }
+
+  /** Await every peer drain admitted before or during shutdown. */
+  private async drainPeers(): Promise<void> {
+    while (this.peerDrains.size > 0) {
+      await Promise.all([...this.peerDrains.values()])
+    }
   }
 
   private async listen(): Promise<void> {
@@ -281,10 +328,18 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
     connection.onClose((error) => {
       clearTimeout(timer)
       if (this.connection === connection) {
+        const peer = this.peer
         this.connection = undefined
         this.peer = undefined
+        if (peer !== undefined) {
+          void this.trackPeerDetach(peer, error)
+        }
         this.lifecycle = this.shutdownStarted ? 'stopping' : 'degraded'
-        this.diagnostic = error === undefined ? 'Gateway bridge disconnected.' : error.message
+        this.diagnostic = error?.message === 'channel-openclaw: bridge authentication failed'
+          ? error.message
+          : error === undefined
+            ? 'Gateway bridge disconnected.'
+            : 'Gateway bridge disconnected unexpectedly.'
       }
     })
     connection.onValue((frame) => {
@@ -293,14 +348,20 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
         authenticated = true
         clearTimeout(timer)
         this.handshake = handshake
-        this.lifecycle = 'ready'
+        this.lifecycle = 'starting'
         this.diagnostic = undefined
+        const peerHolder: { current?: JsonRpcPeer } = {}
         const peer = new JsonRpcPeer(
           connection,
-          this.handlers(),
+          this.handlers(handshake, (notification) => {
+            const admittedPeer = peerHolder.current
+            /* v8 ignore next -- JsonRpcPeer defers handlers to a microtask after its constructor returns and the peer is assigned. */
+            if (admittedPeer !== undefined) this.notifyProgressOn(admittedPeer, handshake, notification)
+          }),
           this.config.maxInFlight,
           this.config.requestTimeoutMs,
         )
+        peerHolder.current = peer
         this.peer = peer
         void connection.send({ kind: 'handshake-ack', protocolVersion: 1 }).catch((error: unknown) => {
           connection.close(errorMessageError(error))
@@ -332,15 +393,17 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
     return handshake
   }
 
-  private handlers(): Readonly<Record<string, RpcHandler>> {
+  private handlers(
+    handshake: ChannelBridgeHandshakeV1,
+    notifyProgress: (notification: ChannelTurnNotificationV1) => void,
+  ): Readonly<Record<string, RpcHandler>> {
     return {
-      'turn.run': async (params) => {
+      'turn.run': async (params, signal) => {
         const turn = channelTurnEnvelopeV1Schema.parse(params)
         this.assertGateway(turn.route.gatewayInstanceId)
-        const controller = new AbortController()
         return await this.ctx.channels.runTurn(turn, {
-          signal: controller.signal,
-          notify: (notification) => { this.notifyProgress(notification) },
+          signal,
+          notify: notifyProgress,
         })
       },
       'turn.cancel': async (params) => {
@@ -361,7 +424,7 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
       'health.get': () => this.localHealth(this.lifecycle, this.diagnostic),
       'delivery.report': async (params) => {
         const report = channelDeliveryReportV1Schema.parse(params)
-        if (this.handshake?.capabilities.extensions.includes('delivery.report') !== true) {
+        if (!handshake.capabilities.extensions.includes('delivery.report')) {
           throw new Error('channel-openclaw: delivery.report was not negotiated')
         }
         await this.persistReceipt(report.receipt)
@@ -369,6 +432,16 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
         return {}
       },
     }
+  }
+
+  /** Send progress only to the peer that admitted the corresponding turn. */
+  private notifyProgressOn(
+    peer: JsonRpcPeer,
+    handshake: ChannelBridgeHandshakeV1,
+    notification: ChannelTurnNotificationV1,
+  ): void {
+    if (!handshake.capabilities.notifications.includes(notification.kind)) return
+    void peer.notify('turn.progress', notification as unknown as JsonObject).catch(() => {})
   }
 
   private async persistReceipt(receipt: ChannelDeliveryReceiptV1): Promise<void> {
@@ -493,11 +566,6 @@ function deliveryAdvances(previous: ChannelDeliveryReceiptV1, next: ChannelDeliv
     if (next.status === 'retrying' && next.attempt <= previous.attempt) return false
   }
   return true
-}
-
-/** Sanitize one thrown value for health output. */
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 /** Ensure a callback receives an Error. */

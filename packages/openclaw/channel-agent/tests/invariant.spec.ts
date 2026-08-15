@@ -64,6 +64,17 @@ describe('channel message invariants', () => {
       .toThrow(/admission class inconsistent/)
   })
 
+  it('rejects unknown admission classes in live and restored Sessions', async () => {
+    const live = await setup()
+    expect(() => { append(live.sessions.create(), source({ trust: 'administrator' })) })
+      .toThrow(/unknown admission class/)
+    await live.fiber.dispose()
+
+    await expect(setup((ctx) => {
+      append(ctx.sessions.create(), source({ trust: 'administrator' }))
+    })).rejects.toThrow(/unknown admission class/)
+  })
+
   it('rejects every route identity field changing inside one Session', async () => {
     const changes: Record<string, unknown>[] = [
       { gatewayInstanceId: 'gateway-2' },

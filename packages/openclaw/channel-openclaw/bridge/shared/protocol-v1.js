@@ -293,6 +293,13 @@ export function validateTurnEnvelope(value) {
   }
   validateRoute(object.route, `${path}.route`)
   validatePrincipal(object.sender, `${path}.sender`)
+  const isGroup = object.route.kind === 'group'
+  const hasGroupTrust = object.sender.trust === 'group-allowlisted'
+  if (isGroup !== hasGroupTrust) {
+    fail(`${path}.sender.trust`, isGroup
+      ? 'group routes require group-allowlisted trust'
+      : 'direct routes forbid group-allowlisted trust')
+  }
   optional(object, 'wasMentioned', booleanValue, path)
   optional(object, 'replyTo', validateMessageReference, path)
   plainString(object.text, `${path}.text`)
