@@ -28,7 +28,7 @@ When implementing a plugin, remove that package from the exclude list and wire i
 
 | Package | Positioning | OpenClaw counterpart | dsh seam | Status |
 |---|---|---|---|---|
-| `preset-openclaw/` | openclaw profile + bundles + patches | overall assembly | profile/patch mechanism | **implemented** (phase 2 ✅) |
+| `preset-openclaw/` | internal source for the `clawdsh` profile, `clawdsh` preset, and `ClawDSH 模式` display identity | overall assembly | profile/patch mechanism | **implemented baseline** (phase 4) |
 | `channel-core/` | channel gateway seam | channel gateway Gateway | **new** `ctx.channels` (ADR-0002) | **implemented** (phase 2 ✅) |
 | `channel-telegram/` | Telegram channel | channel adapter | `ctx.channels` | **implemented** (phase 2 ✅, e2e pending credentials) |
 | `channel-feishu/` | Feishu channel (**initiator first priority**) | OpenClaw `extensions/feishu` (since v2026.2.12) | `ctx.channels` | **implemented** (phase 2 ✅, real e2e passed) |
@@ -39,5 +39,7 @@ When implementing a plugin, remove that package from the exclude list and wire i
 | `embeddings-ark/` | Volcano Ark text-embedding provider | openai-remote branch slot | `ctx.embeddings` | **implemented** (phase 2 gap-fill ✅, real e2e via tools/ark-e2e.ts) |
 | `skills-hub/` | ClawHub-compatible skill loading | Skills/ClawHub | `ctx.skills` | **implemented** (phase 3 ✅) |
 | `automation/` | scheduled tasks / automation | Cron/Automation | `ctx.agents` + `ctx.sessions` | **implemented** (phase 3 ✅, disabled opt-in) |
+
+The clean-install `clawdsh` profile keeps Feishu, Telegram, and Automation disabled so the Web Host starts without their credentials. These defaults temporarily use Loader `disabled` rows; the capability Settings increment replaces them with business-level `enabled` fields.
 
 The channel list is not limited to Telegram: WhatsApp, Email, Web Chat, and others are added one by one following the same template (one package per channel, mutually non-blocking).

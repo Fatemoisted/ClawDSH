@@ -15,6 +15,8 @@ English | [中文](README.zh.md)
 
 **Spec**: docs/specs/feature-automation.md · **Status**: implemented (Phase 3 ✅)
 
+The clean-install `clawdsh` profile keeps this Loader row disabled, so no rule starts without explicit opt-in. This package does not yet expose a business-level `enabled` field; the capability Settings increment keeps it mounted and adds that validated switch.
+
 ## Usage
 
 ```yaml
@@ -72,7 +74,7 @@ Append-only: the framed message lands mid-log like any turn input; no system-pro
 ## Known Limitations and Deferred Work
 
 - **No channel delivery**: OpenClaw's `deliver` (post the reply to a channel) is not ported; replies stay in the rule's session log;
-- **No main-session summary**: OpenClaw's `main` target (`System:` lines injected into the main session) is not ported — the openclaw profile has no main-session wiring yet;
+- **No main-session summary**: OpenClaw's `main` target (`System:` lines injected into the main session) is not ported — the `clawdsh` profile has no main-session wiring yet;
 - **No automatic retries**: failures record an `error` run and the next occurrence proceeds (OpenClaw-isomorphic);
 - **No runtime-editable rules**: rules are config-declared; OpenClaw's job store + `cron.add/remove/…` tools and CLI are deferred until a consumer needs runtime edits;
 - **`at` once-guard needs the session artifact**: if the persisted session log is deleted, a past one-shot re-fires once (at-least-once semantics);

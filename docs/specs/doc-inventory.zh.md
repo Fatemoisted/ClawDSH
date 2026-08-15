@@ -42,14 +42,14 @@
 
 | 位置 | 内容 |
 |---|---|
-| `packages/openclaw/` | 唯一可重写的代码域——`preset-openclaw/`、`channel-core/`、`channel-telegram/`、`channel-feishu/`、`channel-wechat/`（决策记录）、`soul/`、`memory/`、`embeddings/`、`embeddings-ark/`、`skills-hub/`、`automation/`、`_template/` |
+| `packages/openclaw/` | 唯一可重写的代码域——`preset-openclaw/` 是 `clawdsh` profile 与 preset 的内部源码；其余条目为 `channel-core/`、`channel-telegram/`、`channel-feishu/`、`channel-wechat/`（决策记录）、`soul/`、`memory/`、`embeddings/`、`embeddings-ark/`、`skills-hub/`、`automation/`、`_template/` |
 | `docs/adr/` | 0001–0005（项目基石、渠道 seam、embedding seam、npm 发布、clawd 联邦） |
 | `docs/specs/` | `roadmap.md` + `feature-soul` / `feature-channel-core` / `feature-memory` / `feature-skills-hub` / `feature-automation` |
 | `docs/matrix/parity.md` | feature 对齐的单一事实源 |
 | `docs/standards/` | `naming`、`plugin-contract`、`pr-policy`、`upstream-sync` |
 | `docs/journal/2026-08-14.md` | 详尽开发日志 |
 | `docs/upstream-proposal/ctx-channels.md` | 向上游提交的 `ctx.channels` seam 提案 |
-| `tools/` | `ark-e2e.ts`、`link-openclaw.sh`、`sync-upstream.sh` |
+| `tools/` | `ark-e2e.ts`、`link-clawdsh.sh`、`sync-upstream.sh`；安装脚本检测到旧 `openclaw` 资产时只警告并保留 |
 | `.github/workflows/clawdsh-publish.yml`、`clawdsh-smoke.yml` | ClawDSH CI |
 
 ## (c) 嵌入上游文件的 ClawDSH 内容

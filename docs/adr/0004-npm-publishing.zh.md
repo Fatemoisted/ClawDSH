@@ -8,7 +8,7 @@
 
 ## Context
 
-`packages/openclaw/` 下的 ClawDSH 自有包是重建的可复用面：`@clawdsh/dsh-*` 插件（`channel-*`、`memory`、`embeddings`、`embeddings-ark`、`skills-hub`、`automation`、`soul`）组装成 `preset-openclaw` profile。此前它们一律 `private: true`，只能靠 symlink 过渡（`tools/link-openclaw.sh`）接入运行时，因为上游发布机制（`scripts/release/*`）只认 `@deepseek-ai/*` 序列。发起人拍板把它们发布到**私有 registry**——具体 URL 与凭证在发布时提供——使 `dsh plugin --profile openclaw add @clawdsh/dsh-memory` 成为用户安装路径，symlink 退为开发便利。
+`packages/openclaw/` 下的 ClawDSH 自有包是重建的可复用面：`@clawdsh/dsh-*` 插件（`channel-*`、`memory`、`embeddings`、`embeddings-ark`、`skills-hub`、`automation`、`soul`）由内部 `preset-openclaw` 源组装成 `clawdsh` profile 与 preset。由于上游发布机制（`scripts/release/*`）只认 `@deepseek-ai/*` 序列，开发路径通过 `tools/link-clawdsh.sh` 把它们接入运行时。本决策把这些包发布到**私有 registry**——具体 URL 与凭证在发布时提供——使 `dsh plugin --profile clawdsh add @clawdsh/dsh-memory` 成为声明式路径，symlink 退为开发便利。
 
 `scripts/check-workspace-constraints.ts` 目前对这批包报错：它把每个 `packages/<group>/<pkg>` 目录都当作上游「release member」（要求 `@deepseek-ai` 仓库 URL 且 `private: false`），并要求 `packages/openclaw/` 下每个目录都有 `package.json`（而 `_template`、`channel-wechat`、`preset-openclaw` 刻意没有）。本 ADR 记录发布决策、manifest/registry 形态，以及它所需的唯一上游文件豁免。
 
@@ -18,12 +18,13 @@
 2. **独立发布路径，上游发布脚本不改。** `scripts/release/families.ts` 与 `@deepseek-ai/*` 序列不动；发布走 `pnpm -r --filter './packages/openclaw/*' publish`，拓扑序（`embeddings` Service Definition 先于 `embeddings-ark`/`memory`；`channel-core` 先于渠道适配器）。版本基线 = `0.1.0`（与当前 manifest 一致）。
 3. **唯一上游文件直改（豁免）。** `scripts/check-workspace-constraints.ts` 增 `clawdshRepositoryUrl` 常量、仿 `publicLandlockPackages` 先例的 `@clawdsh/` 分支（不得设 `private`、`publishConfig.access` 必须 `"public"`、仓库 URL + directory 必须匹配私有 origin）、以及 `clawdshNonPackageDirs` 集合（`_template`、`channel-wechat`、`preset-openclaw`），层级形状检查在 `packages/openclaw/` 下跳过它们。改动纯增量，便于 rebase 重放。
 4. **修订 ADR-0001 §4。** constraints 脚本并入构建编排豁免清单（「新增包的注册点」），规则相同：仅增量改、rebase 重放、上游内部不变。
-5. **symlink 仅保留开发路径。** `tools/link-openclaw.sh` 补缺失的 `soul` symlink（既有 bug，与发布无关）；脚本仍是发布前过渡，registry 安装路径（`dsh plugin --profile openclaw add @clawdsh/dsh-<pkg>`）写入 `preset-openclaw/README` 作为用户路径。
+5. **symlink 仅保留开发路径。** `tools/link-clawdsh.sh` 安装 `clawdsh` profile 与 preset，并链接本地包；registry 安装路径为 `dsh plugin --profile clawdsh add @clawdsh/dsh-<pkg>`。脚本检测到旧 `openclaw` profile 与 preset 目录时只警告并保留，不创建兼容别名。
 6. **发布工作流。** `.github/workflows/clawdsh-publish.yml` 为 `workflow_dispatch`（inputs `registry` 与 `dry-run`），checkout → install → build → typecheck → 经 `NPM_CONFIG_REGISTRY` + `NPM_TOKEN` 发布——本仓库自有的最小骨架，与上游发布工作流隔离。
 
 ## Consequences
 
-- ✅ `@clawdsh/*` 包可从私有 registry 安装；symlink 过渡与上游发布机制都不动。
+- ✅ `@clawdsh/*` 包可从私有 registry 安装；开发 symlink 路径与上游发布机制相互独立。
+- ⚠️ 开发脚本不提供托管安装状态或完整性修复。公共发行 CLI 负责 manifest 与 `clawdsh doctor`，而不是把该过渡脚本扩展成产品安装器。
 - ⚠️ registry URL/凭证放在仓库之外，每次发布必须提供；dry-run 模式用于不落盘地校验 tarball。
 - ⚠️ 一个上游脚本现在带有 ClawDSH 分支；每次上游同步须重放该 diff（增量形态保证可干净重放），与 tsconfig 注册点同规则。
 - ⚠️ 发布是独立于 `@deepseek-ai/*` 序列的路径；两个族系的版本提升互不相关（ClawDSH 保持 `0.1.0`，直到自有序列另行决定）。

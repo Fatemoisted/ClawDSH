@@ -48,7 +48,7 @@ English | [中文](parity.zh.md)
 | Approval / security policy | `src/security/` (from 1.15) | `ctx.approval` / guard | Reuse (config) | — | directly usable |
 | Federation node (clawd) | absent in early baseline | `ctx.subagents` (transport) | Plugin | `clawd-federation` | ADR-0005 (evaluation-only), implementation deferred |
 | Smart home (casa) | absent in baseline | none | new plugin domain | to be named | Deferred |
-| Local browser conversation | `ui/` (+ `apps/`) | `dsh-web-app` + agent preset | Reuse (profile/preset) | `preset-openclaw` + `dsh-web-app` | **implemented baseline** (Phase 4) |
+| Local browser conversation | `ui/` (+ `apps/`) | `dsh-web-app` + `clawdsh` preset (`ClawDSH 模式`) | Reuse (profile/preset) | internal `preset-openclaw` source + `dsh-web-app` | **implemented baseline** (Phase 4; Feishu/Telegram/Automation disabled on clean install) |
 | ClawDSH product shell, Settings, and semantic Activity | — (ClawDSH-native) | Public dsh Web assembly + Settings/Credentials/Session history; no Client Slot | Product assembly | `preset-openclaw` | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) accepted; implementation pending |
 
 ## Domestic platforms (principle: only implement what OpenClaw upstream has)

@@ -48,7 +48,7 @@
 | 审批 / 安全策略 | `src/security/`（1.15 起） | `ctx.approval` / guard | 复用（配置） | — | 直接可用 |
 | 联邦节点（clawd） | 基线早期无 | `ctx.subagents`（transport） | 插件 | `clawd-federation` | ADR-0005（仅评估），实现暂缓 |
 | 智能家居（casa） | 基线无 | 无 | 新插件域 | 待命名 | 暂缓 |
-| 本地浏览器对话 | `ui/`（+ `apps/`） | `dsh-web-app` + agent preset | 复用（profile/preset） | `preset-openclaw` + `dsh-web-app` | **implemented 基线**（阶段 4） |
+| 本地浏览器对话 | `ui/`（+ `apps/`） | `dsh-web-app` + `clawdsh` preset（`ClawDSH 模式`） | 复用（profile/preset） | 内部 `preset-openclaw` 源 + `dsh-web-app` | **implemented 基线**（阶段 4；干净安装关闭飞书/Telegram/Automation） |
 | ClawDSH 产品壳、Settings 与语义 Activity | —（ClawDSH 原生） | 公开 dsh Web 组装 + Settings/Credentials/Session history；无 Client Slot | 产品组装 | `preset-openclaw` | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 已接受；实现待完成 |
 
 ## 国内平台（原则：OpenClaw 上游有的才实现）

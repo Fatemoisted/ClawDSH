@@ -8,9 +8,11 @@ English | [中文](feature-gui-web.zh.md)
 
 ## Current baseline
 
-`pnpm dsh --profile openclaw` currently composes the stock `dsh-web-app` bundle with an OpenClaw agent preset. The browser starts at `http://127.0.0.1:3080`, new Sessions default to the "OpenClaw 形态" preset, and a GUI conversation receives Soul, Memory, Skills, and the standard agent tools. This baseline is implemented and remains supported until the identity and product-shell migrations replace its user-facing names and entry point.
+`pnpm dsh --profile clawdsh` composes the stock `dsh-web-app` bundle with the `clawdsh` agent preset. The browser starts at `http://127.0.0.1:3080`, new Sessions default to the preset displayed as `ClawDSH 模式`, and a GUI conversation receives Soul, Memory, Skills, and the standard agent tools. Feishu, Telegram, and Automation are disabled in a clean installation, so the Web Host starts without their credentials.
 
 The baseline intentionally contains no ClawDSH-owned browser code. Its Settings and Trajectory therefore expose the Harness information model rather than the complete ClawDSH product model.
+
+The development installer is `tools/link-clawdsh.sh`. It warns about legacy `openclaw` profile and preset directories without deleting, moving, or aliasing them. Product-grade install state, the managed manifest, and `clawdsh doctor` belong to the public-distribution CLI.
 
 ## Goals
 
@@ -32,7 +34,7 @@ The shell does not create a second agent runtime. ClawDSH and Harness Advanced s
 - `http://127.0.0.1:<port>/clawdsh/` is the default ClawDSH product entry point.
 - `/` remains the unmodified dsh Web application and is linked as “Harness Advanced.”
 - `dsh --profile web` starts a pure Harness process without the ClawDSH Host capability set.
-- The ClawDSH profile eventually uses the id `clawdsh`, and new Sessions default to the `clawdsh` agent preset shown as `ClawDSH 模式`.
+- The ClawDSH profile uses the id `clawdsh`, and new Sessions default to the `clawdsh` agent preset shown as `ClawDSH 模式`.
 - Selecting another agent preset inside a running ClawDSH profile changes only the Session's Agent composition. It does not unmount process-wide ClawDSH plugins and is not presented as a switch to pure Harness.
 
 ## Navigation
@@ -61,9 +63,13 @@ The Settings view treats each ClawDSH feature as a product capability with a sta
 
 Configuration fields are described by each capability's server-owned Config schema. User settings override the profile base, reset removes the user layer, and revision-checked writes prevent an old browser state from overwriting newer values. The view distinguishes desired and runtime revisions and reports when a restart is required.
 
+Before the Settings control plane ships, Feishu, Telegram, and Automation use Loader `disabled` rows to establish the clean-install defaults above. The Settings control-plane increment keeps their business plugins mounted and moves runtime control to validated `enabled` fields; the product UI does not expose arbitrary Loader mutation.
+
 Secret values remain in the dsh credentials provider. The browser may learn whether an allowed credential reference is configured, but the Host never returns the value. A secret exists in the browser only in a write-only input draft and its outgoing `credentials.set` request, is cleared when that request settles, and is not retained in Settings state or persisted to logs, Session files, or Activity records. Disabled optional capabilities may have missing credentials; enabling a capability validates its required references at the earliest resolvable point.
 
 Channel Core remains a required internal capability, and implementation dependencies such as Embeddings are shown under their owning product capability instead of as unrelated top-level switches. The Advanced view retains a read-only Loader inventory; the product UI does not expose unrestricted plugin mutation.
+
+The managed `clawdsh` preset temporarily lives in dsh's user preset root. ClawDSH Settings does not offer deletion, but the unmodified Harness preset manager continues to classify it as user-owned and can delete it. The public-distribution `clawdsh doctor` validates and repairs that managed asset; the product shell does not claim that the upstream user-preset operation is unavailable.
 
 ## ClawDSH Activity
 

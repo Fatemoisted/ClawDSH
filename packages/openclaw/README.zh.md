@@ -28,7 +28,7 @@
 
 | 包 | 定位 | OpenClaw 对应 | dsh 接缝 | 状态 |
 |---|---|---|---|---|
-| `preset-openclaw/` | openclaw profile + bundles + patches | 整体组装 | profile/patch 机制 | **implemented**（阶段 2 ✅） |
+| `preset-openclaw/` | `clawdsh` profile、`clawdsh` preset 与 `ClawDSH 模式` 展示身份的内部源码 | 整体组装 | profile/patch 机制 | **implemented baseline**（阶段 4） |
 | `channel-core/` | 渠道网关 seam | 渠道网关 Gateway | **新增** `ctx.channels`（ADR-0002） | **implemented**（阶段 2 ✅） |
 | `channel-telegram/` | Telegram 渠道 | 渠道适配器 | `ctx.channels` | **implemented**（阶段 2 ✅，e2e 待凭证） |
 | `channel-feishu/` | 飞书渠道（**发起人第一优先**） | OpenClaw `extensions/feishu`（v2026.2.12 起） | `ctx.channels` | **implemented**（阶段 2 ✅，真实 e2e 已过） |
@@ -39,5 +39,7 @@
 | `embeddings-ark/` | 火山方舟 Ark 文本嵌入 provider | openai-remote 分支位 | `ctx.embeddings` | **implemented**（阶段 2 补漏 ✅，真实 e2e 见 tools/ark-e2e.ts） |
 | `skills-hub/` | ClawHub 兼容技能加载 | Skills/ClawHub | `ctx.skills` | **implemented**（阶段 3 ✅） |
 | `automation/` | 定时任务 / 自动化 | Cron/Automation | `ctx.agents` + `ctx.sessions` | **implemented**（阶段 3 ✅，disabled 起步） |
+
+干净安装的 `clawdsh` profile 默认关闭飞书、Telegram 与 Automation，使 Web Host 无需这些功能的凭据即可启动。这些默认值暂时使用 Loader `disabled` 配置项；能力 Settings 增量会将其替换为业务级 `enabled` 字段。
 
 渠道列表不止 Telegram：WhatsApp、Email、Web Chat 等按同一模板逐个新增（每个渠道一个包，互不阻塞）。

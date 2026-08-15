@@ -17,7 +17,7 @@ The parity matrix's soul row carried "channel presentation (IDENTITY, Deferred)"
 - `resolveMessagePrefix`: `[name]` or empty;
 - `deriveMentionPatterns`: `\b@?<name parts joined by \s+>\b` case-insensitive + the raw emoji as a literal pattern, with OpenClaw's `→\b` normalization; `stripMentions` removes matches.
 
-Wiring: `ChannelRegistry` gains `static Config` (`identity` / `responsePrefix` / `ackReaction`); `driveTurn` prefixes the extracted reply and fires a fire-and-forget ack before the turn; `ChannelMessage.messageId` + `ChannelCapabilities.react` + optional `ChannelAdapter.react(message, emoji)` carry the ack to adapters. Telegram implements `react` via grammY's `setMessageReaction` and captures `message_id` inbound; Feishu captures `message_id` but declares `react: false` (its `im.message.reaction.create` node-sdk surface is unverified in this workspace — Known Limitation naming the REST path). The openclaw preset's channel-core row carries `responsePrefix: auto` + `ackReaction: '👀'` with a commented identity example. `agent.cordis.yml` is untouched: identity presentation is not prompt content.
+Wiring: `ChannelRegistry` gains `static Config` (`identity` / `responsePrefix` / `ackReaction`); `driveTurn` prefixes the extracted reply and fires a fire-and-forget ack before the turn; `ChannelMessage.messageId` + `ChannelCapabilities.react` + optional `ChannelAdapter.react(message, emoji)` carry the ack to adapters. Telegram implements `react` via grammY's `setMessageReaction` and captures `message_id` inbound; Feishu captures `message_id` but declares `react: false` (its `im.message.reaction.create` node-sdk surface is unverified in this workspace — Known Limitation naming the REST path). The `clawdsh` preset's channel-core row carries `responsePrefix: auto` + `ackReaction: '👀'` with a commented identity example. `agent.cordis.yml` is untouched: identity presentation is not prompt content.
 
 ## Alternatives considered
 
@@ -34,4 +34,4 @@ Wiring: `ChannelRegistry` gains `static Config` (`identity` / `responsePrefix` /
 - The matrix soul row's `(IDENTITY, Deferred)` is removed; `feature-soul.md`'s mapping line points at this note;
 - `deriveMentionPatterns` ships without an in-request consumer (future owner: ack scope gating and adapter mention detection) — flagged in the PR description per the current-owner rule;
 - Adapter capability `react` is part of the `ChannelAdapter` contract; a new adapter must declare it (feishu's `false` is the template);
-- The openclaw preset gains an identity presentation block; deployments override name/emoji without touching the prompt.
+- The `clawdsh` preset carries an identity presentation block; deployments override name/emoji without touching the prompt.

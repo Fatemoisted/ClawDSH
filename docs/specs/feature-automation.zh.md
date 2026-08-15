@@ -14,9 +14,11 @@
 - OpenClaw 同构的运行语义：at-least-once（回合前先落 `started` 记录）、in-flight 去重、无自动重试、错过即跳过；
 - 会话日志即 run log：`automation/run` 记录环绕每个已记录回合，无独立产物。
 
+干净安装的 `clawdsh` profile 默认禁用 Automation Loader 配置项，因此没有显式 opt-in 就不会启动定时工作。这是组装层过渡，并非该包 Config 中的 `enabled` 字段。能力 Settings 增量会保持插件挂载，并引入 ClawDSH Settings 使用的业务级开关。
+
 ## 非目标
 
-- 无渠道投递（`deliver`）与主会话摘要（`System:` 行）——openclaw profile 尚无主会话接线；
+- 无渠道投递（`deliver`）与主会话摘要（`System:` 行）——`clawdsh` profile 尚无主会话接线；
 - 无运行时编辑规则（job store + `cron.add/remove/…` 工具与 CLI）——Config 声明规则不需要存储 seam；
 - 无事件触发规则（文件变更 watcher 等）；
 - 不复用 `ctx.schedule`：其 300 秒 `every` 下限、session-local 交付、live-root-only 挂载、工具面创建 API 无法表达本功能类别（证据见决策记录）。

@@ -31,7 +31,7 @@ dsh 侧映射：
 | prompt 帧 `[cron:<jobId> <name>] <message>` | `[automation:<id> <name>] <message>` 经 `agent.followup`，`source: {kind:'plugin', plugin:'automation'}` |
 | Run log `cron/runs/<jobId>.jsonl` | 会话日志本身：回合前后 append `automation/run` 事件（`started`/`ok`/`error` + `scheduledAt`）——无独立产物 |
 | In-flight 去重 / 无重试 / 无追赶 | 同：每规则 WeakMap 去重、失败记日志并 re-arm、错过 tick 跳过 |
-| `main` 会话 `System:` 注入 | 本批次不移植——openclaw profile 尚无主会话概念接线（Known Limitation） |
+| `main` 会话 `System:` 注入 | 本批次不移植——`clawdsh` profile 无主会话概念接线（Known Limitation） |
 | 渠道 `deliver` | 本批次不移植（Known Limitation） |
 
 为何不用 dsh 接缝：
@@ -50,6 +50,6 @@ dsh 侧映射：
 ## 影响
 
 - 矩阵行接缝格修正为：`own unref'd croner timer + agent.followup/whenIdle/sessions.flush turn bridge（ctx.schedule rejected: session-local + 300s floor + tools-only API）`。
-- preset 以 disabled 挂载 automation（opt-in；配置错误的规则挂载时响亮失败并指名规则）。
+- `clawdsh` preset 以 disabled 挂载 automation（opt-in；配置错误的规则挂载时响亮失败并指名规则）。
 - `automation/run` 是 declaration merging 进 `SessionEventMap` 的会话事件；回合本身是普通已记录回合，「model-visible means logged」无需新机制即成立。
 - 渠道投递、主会话摘要、重试回到本 Note 重新论证，而非默认补结构。

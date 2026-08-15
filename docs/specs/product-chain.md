@@ -23,7 +23,7 @@ English | [中文](product-chain.zh.md)
 | memory (+embeddings +embeddings-ark) | `memory/`, `embeddings/`, `embeddings-ark/` | `ctx.fs` + `ctx.tools` + `ctx.get('embeddings')` (ADR-0003) | ✅ (one ⚠️) |
 | skills-hub | `skills-hub/` | `ctx.skills` | ✅ (roster ❌) |
 | automation | `automation/` | `ctx.agents` + `ctx.sessions` | ✅ (roster ❌ ×2) |
-| preset-openclaw wiring | `preset-openclaw/` | profile/patch + agent preset | ✅ |
+| ClawDSH assembly wiring | `preset-openclaw/` | `clawdsh` profile/patch + `clawdsh` agent preset | ✅ |
 
 ## channel-core
 
@@ -131,15 +131,17 @@ English | [中文](product-chain.zh.md)
 
 | Link | Content |
 |---|---|
-| 形态 | three deliverables: agent preset (`preset.yml` "OpenClaw 形态" order 3 + `agent.cordis.yml`), example soul (`souls/assistant.md`), profile template (`profile/cordis.patch.yml`) |
-| 层叠 | `profile/package.json` `bundles: ['@deepseek-ai/dsh-base']`; soul mounts via agent preset (not profile) |
-| profile patch | `system-prompt` persona → `channel-core` (identity/`responsePrefix: auto`/`ackReaction: '👀'`/`ackReactionScope: group-mentions`/`requireMention: true`) → `channel-telegram` (`disabled: true`) → `channel-feishu` (env credentials) → `memory` (`root: dshHomePath('memory')`) → `embeddings-ark` → `skills-hub` → `automation` (`disabled: true`) |
-| 凭证 | Feishu via env vars, ARK via `ARK_API_KEY` env — nothing on disk |
+| 形态 | `clawdsh` agent preset (`preset.yml` display name `ClawDSH 模式` + `agent.cordis.yml`), example soul (`souls/assistant.md`), and `clawdsh` profile template (`profile/cordis.patch.yml`) |
+| 层叠 | `profile/package.json` composes `@deepseek-ai/dsh-base` then `@deepseek-ai/dsh-web-app`; soul mounts through the agent preset rather than the profile |
+| profile patch | `system-prompt` persona → `channel-core` → `channel-telegram` (`disabled: true`) → `channel-feishu` (`disabled: true`, env credential references) → `memory` → `embeddings-ark` → `skills-hub` → `automation` (`disabled: true`) → `agent-presets.default: clawdsh` |
+| 凭证 | Disabled channels may omit credentials; Feishu uses env references when enabled, and Ark resolves `ARK_API_KEY` on demand — no value is committed to the profile |
 
 - ✅ wiring complete: all six runtime features are covered by the profile patch, and soul by the agent preset.
 - ✅ layer separation correct: soul is an agent-preset concern, channels/memory/skills/automation are profile-patch concerns.
-- ✅ `automation` ships `disabled: true` (opt-in), consistent with its "disabled 起步" contract.
-- ✅ credential handling: Feishu via env vars, ARK via `ARK_API_KEY` env — nothing on disk.
+- ✅ Feishu, Telegram, and Automation ship `disabled: true`, so the clean-install Web Host starts without their credentials.
+- ✅ these optional features temporarily use Loader `disabled`; the capability Settings increment keeps their business plugins mounted and moves control to validated `enabled` settings.
+- ✅ `tools/link-clawdsh.sh` installs only the `clawdsh` ids and preserves legacy `openclaw` assets after warning; it creates no compatibility alias.
+- ✅ the managed manifest, integrity repair, and `clawdsh doctor` belong to the public-distribution CLI rather than this profile source.
 
 ## Doc–code inconsistency ledger
 

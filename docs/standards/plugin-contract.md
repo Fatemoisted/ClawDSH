@@ -40,7 +40,7 @@ Adding a `ctx.*` service is the highest-cost change, and the process is mandator
 Every package must provide:
 
 - **Contract tests**: exercise the minimal behavior surface of the seam interface it implements (mount → behavior → teardown rollback);
-- **profile smoke test**: `pnpm dsh --profile openclaw --dump-config` resolves the package's mount line;
+- **profile smoke test**: after `tools/link-clawdsh.sh`, `pnpm dsh --profile clawdsh --dump-config` resolves the package's mount line; the clean-install check must leave Feishu, Telegram, and Automation disabled;
 - Channel-type plugins: one end-to-end session test of one inbound → one outbound (the channel API may be mocked).
 
 ## 7. Public-surface changes

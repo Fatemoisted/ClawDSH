@@ -31,7 +31,7 @@ The dsh mapping:
 | Prompt framing `[cron:<jobId> <name>] <message>` | `[automation:<id> <name>] <message>` via `agent.followup` with `source: {kind:'plugin', plugin:'automation'}` |
 | Run log `cron/runs/<jobId>.jsonl` | The session log itself: `automation/run` events (`started`/`ok`/`error` + `scheduledAt`) around the logged turn — no separate artifact |
 | In-flight dedup / no retries / no catch-up | Same: per-rule WeakMap dedup, failures logged and re-armed, missed ticks skipped |
-| `main` session `System:` injection | Not ported in this batch — no main-session concept is wired in the openclaw profile yet (Known Limitation) |
+| `main` session `System:` injection | Not ported in this batch — no main-session concept is wired in the `clawdsh` profile (Known Limitation) |
 | Channel `deliver` | Not ported in this batch (Known Limitation) |
 
 Why not the dsh seams:
@@ -50,6 +50,6 @@ Why not the dsh seams:
 ## Consequences
 
 - The matrix row's seam cell is corrected to `own unref'd croner timer + agent.followup/whenIdle/sessions.flush turn bridge（ctx.schedule rejected: session-local + 300s floor + tools-only API）`.
-- The preset mounts `automation` disabled (opt-in; a misconfigured rule fails mount loudly naming the rule).
+- The `clawdsh` preset mounts `automation` disabled (opt-in; a misconfigured rule fails mount loudly naming the rule).
 - `automation/run` is a session event declaration-merged into `SessionEventMap`; the turn itself is a normal logged turn, so "model-visible means logged" holds without a new mechanism.
 - Channel delivery, main-session summaries, and retries revisit this note rather than assuming structure.

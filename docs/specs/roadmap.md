@@ -25,7 +25,7 @@ dsh's Cordis architecture (everything is a plugin: plugins declare dependencies 
 ### Phase 0 · Feasibility Spike ✅ (completed 2026-08-14)
 
 - Output: feature alignment matrix v1; the `@clawdsh/dsh-soul` plugin (replace/append dual mode + soul-file loading).
-- Exit criteria **all met**: soul can replace/overlay the agent system prompt (contract tests 10/10), hot-plug (unload rolls back), no upstream source line changed (build-registration exemption only, see ADR-0001 decision 4); full typecheck green; `--profile openclaw --dump-config` smoke passed.
+- Exit criteria **all met**: soul can replace/overlay the agent system prompt (contract tests 10/10), hot-plug (unload rolls back), no upstream source line changed (build-registration exemption only, see ADR-0001 decision 4); full typecheck green; `--profile clawdsh --dump-config` covers the current profile identity.
 - **Conclusion: the seam hypothesis holds, the project continues.** Verification details in docs/specs/feature-soul.md's acceptance-criteria section.
 
 ### Phase 1 · Baseline selection + matrix finalization ✅ (completed 2026-08-14)
@@ -36,7 +36,7 @@ dsh's Cordis architecture (everything is a plugin: plugins declare dependencies 
 ### Phase 2 · Core skeleton (vertical slice) ✅ (completed 2026-08-14)
 
 - `channel-core` (new seam, per ADR-0002) + `channel-telegram` (first channel) + **`channel-feishu` (initiator's first priority, ADR-0002 seam-verification alternate channel)** + `soul` + `memory` + `preset-openclaw`.
-- Exit criteria: `pnpm dsh --profile openclaw` starts, Telegram message in → personalized agent runs → reply out; the `ctx.channels` contract passes verification through both the Telegram and Feishu adapters (Feishu source: OpenClaw `extensions/feishu`, v2026.2.12).
+- Exit criteria: `pnpm dsh --profile clawdsh` starts, Telegram message in → personalized agent runs → reply out; the `ctx.channels` contract passes verification through both the Telegram and Feishu adapters (Feishu source: OpenClaw `extensions/feishu`, v2026.2.12).
 - **Status (2026-08-14)**: core deliverables shipped and closed out — channel seam + two adapters (Feishu real e2e verified end-to-end; Telegram blocked on credentials), soul deep-read finalized (replace/append is the final form, preset-relative `source` via `ctx.baseUrl`), memory three packages with the `ctx.embeddings` seam (ADR-0003) and a real ARK e2e (tools/ark-e2e.ts), preset daemon-ized with `embeddings-ark` enabled, 26 bilingual doc pairs completed. See docs/journal/2026-08-14.md.
 
 ### Phase 3 · Channel rollout + automation ✅ (completed 2026-08-14)
@@ -44,13 +44,13 @@ dsh's Cordis architecture (everything is a plugin: plugins declare dependencies 
 - One package per channel (WhatsApp/Email/Web Chat…), none blocking each other; `automation` (schedule bridging), `skills-hub` (ClawHub provider).
 - **Channel-scope principle**: only build channels that have a source in OpenClaw upstream (see docs/matrix/parity.md "Domestic platforms" section) — WeChat-family/DingTalk/QQ have no upstream counterpart, not implemented.
 - Federation node (clawd) goes over `ctx.subagents` transport, evaluated as an independent milestone.
-- **Status (2026-08-14)**: `skills-hub` and `automation` shipped (automation disabled opt-in, croner over `ctx.agents`/`ctx.sessions`); ack-reaction channel identity presentation, memory host watcher, npm publishing (ADR-0004), and clawd federation (ADR-0005, evaluation-only) closed out. Further channels and federation implementation remain deferred. See docs/journal/2026-08-14.md.
+- **Status (2026-08-14)**: `skills-hub` and `automation` shipped (automation disabled opt-in, croner over `ctx.agents`/`ctx.sessions`); ack-reaction channel identity presentation, memory host watcher, npm publishing (ADR-0004), and clawd federation (ADR-0005, evaluation-only) closed out. The current clean-install profile also keeps Feishu and Telegram disabled, so all three optional external behaviors start without credentials. Further channels and federation implementation remain deferred. See docs/journal/2026-08-14.md.
 
 ### Phase 4 · User ecosystem (in progress)
 
 - Plugin development template + contract docs published; joins dsh's `dsh-plugin` discovery mechanism.
-- The preset-only dsh Web GUI baseline is available. [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) defines the pending ClawDSH product shell, capability Settings, semantic Activity, and Harness Advanced entry point without modifying the upstream GUI.
-- Installable distribution and the migration guide for old OpenClaw users (Session/Skill import) remain Phase 4 deliverables.
+- The preset-only dsh Web GUI baseline uses the `clawdsh` profile and `clawdsh` preset, displayed as `ClawDSH 模式`. [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) defines the pending ClawDSH product shell, capability Settings, semantic Activity, and Harness Advanced entry point without modifying the upstream GUI.
+- `tools/link-clawdsh.sh` is the development installer. It warns about legacy `openclaw` assets and preserves them; the managed install manifest, `clawdsh doctor`, public distribution, and migration guide remain Phase 4 distribution deliverables.
 
 ### Throughout
 
