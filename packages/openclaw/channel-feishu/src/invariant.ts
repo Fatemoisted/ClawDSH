@@ -16,8 +16,8 @@ export const inject = ['invariants']
 
 /**
  * No runtime invariant: the adapter owns no authoritative event stream or mutable runtime data — it
- * emits `channel/inbound`, and routing plus reply logging are the channel-core registry's and
- * `dsh-agent`'s invariants. Its only mutable state is the per-thread reply-target map and the
+ * emits `channel/inbound`, and routing plus reply logging are the legacy channel-core registry's
+ * and `dsh-agent`'s invariants. Its only mutable state is the per-thread reply-target map and the
  * de-duplication set, which are protocol bookkeeping verified by unit tests rather than runtime
  * invariants; the tenant token is owned by the Lark SDK's `tokenManager`.
  */

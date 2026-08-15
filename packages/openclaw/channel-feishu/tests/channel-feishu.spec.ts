@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { ChannelMessage } from '@clawdsh/dsh-channel-core'
 import type { AdapterDeps } from '@clawdsh/dsh-channel-feishu'
-import { createAdapter, createAdapterState, extractText, handleReceiveEvent, toInbound } from '@clawdsh/dsh-channel-feishu'
+import { createAdapter, createAdapterState, extractText, handleReceiveEvent, inject, toInbound } from '@clawdsh/dsh-channel-feishu'
 
 const CONFIG = { appId: 'app', appSecret: 'secret' }
 
@@ -34,6 +34,10 @@ const GROUP_EVENT = {
 }
 
 describe('the feishu channel adapter', () => {
+  it('depends only on the legacy channel registry', () => {
+    expect(inject).toEqual(['legacyChannels'])
+  })
+
   it('extracts text from the content JSON envelope, falling back to raw content', () => {
     expect(extractText('{"text":"hi"}')).toBe('hi')
     expect(extractText('plain')).toBe('plain')

@@ -2,13 +2,13 @@
 
 English | [中文](README.zh.md)
 
-**Purpose**: Telegram channel adapter — implements `ChannelAdapter`, wrapped with grammY: `Bot` long-polling inbound (`message:text`) + `bot.api.sendMessage` outbound; the first channel plugin, doubling as the spike carrier for the `ctx.channels` seam.
+**Purpose**: legacy Telegram adapter over `ctx.legacyChannels`, using grammY `Bot` long-polling inbound (`message:text`) and `bot.api.sendMessage` outbound. It remains only until credentialed OpenClaw sidecar live cutover.
 
 **OpenClaw correspondence**: the Telegram channel (one of the earliest-stable channels in OpenClaw's support matrix). Upstream `extensions/telegram` likewise wraps `grammy` + `@grammyjs/runner` + `@grammyjs/transformer-throttler`; this adapter starts with the minimal surface (grammY `Bot` long polling), leaving runner/throttler to be introduced on demand in stage 3.
 
-**Seam**: `ctx.channels` (@clawdsh/dsh-channel-core).
+**Seam**: legacy-only `ctx.legacyChannels` (@clawdsh/dsh-channel-core). It has no compatibility alias to the production `ctx.channels` service.
 
-**Specification**: stage 2 deliverable · **Status**: implemented
+**Specification**: historical stage 2 deliverable · **Status**: legacy, disabled by default, pending decommission; sidecar live cutover is not yet claimed
 
 ## Design notes
 
@@ -35,6 +35,8 @@ Only the relayed message text reaches the model, through channel-core's session 
 Append-only through channel-core's user-message write.
 
 ## Known Limitations and Deferred Work
+
+- **decommission gate**: remove this adapter only after a credentialed Telegram account passes the OpenClaw sidecar live-cutover matrix; unit and contract tests do not satisfy that gate.
 
 - **real e2e**: a real `botToken` + key is needed to run the real closed loop; currently covered by contract tests (protocol mapping + `send` payload + start/stop polling).
 - **quoted replies / attachments**: `reply_parameters` quoting, images/rich text all deferred (stage 3 channel extensions).

@@ -1,98 +1,128 @@
-# 上下文地图 — 该构建什么、该跳过什么
+# 上下文地图——构建什么，跳过什么
 
 [English](context-map.md) | 中文
 
-- **状态**：阶段 4 上下文纪律（2026-08-14）
-- **目的**：单一入口，告诉 agent 哪里是 ClawDSH 自有代码（深读、可自由改）、哪里是上游 dsh（此处一次读完即可，之后跳过）。读这一页，就替代重读上游源码树。
-- **配套**：[doc-inventory.md](doc-inventory.md)（按文件的归属）· [roadmap.md](roadmap.md)（ClawDSH 为何存在）
+- **状态**：阶段 4 产品化与渠道平面集成
+- **用途**：ClawDSH 所有权、包角色与实现所需上游材料的入口
+- **配套文档**：[文档清单](doc-inventory.md) · [路线图](roadmap.md) · [GUI 规格](feature-gui-web.md) · [渠道 bridge 规格](feature-channel-plane-bridge.md)
 
-## 1. 构建面 — 深读、自由改
+## 1. 自有构建范围
 
-| 位置 | 是什么 |
+| 位置 | 所有权 |
 |---|---|
-| `packages/openclaw/` | 唯一可重写的代码域——下面 12 个包 |
-| `docs/adr/`、`docs/specs/`、`docs/matrix/`、`docs/standards/`、`docs/journal/`、`docs/upstream-proposal/` | ClawDSH 的决策、规格、矩阵、规范、日志、上游提案 |
-| `tools/` | ClawDSH 脚本 + e2e 驱动（`ark-e2e.ts`、`link-clawdsh.sh`、`sync-upstream.sh`） |
-| `.github/workflows/clawdsh-*` | ClawDSH CI（`clawdsh-publish.yml`、`clawdsh-smoke.yml`） |
+| `packages/openclaw/` | ClawDSH 包、产品组装、嵌套 GUI/runtime 源码与包模板 |
+| `docs/{adr,specs,matrix,standards,journal,upstream-proposal}/` | ClawDSH 决策、当前要求、状态、运维与历史 |
+| `tools/` | ClawDSH 安装、校验、迁移、e2e driver 与 OpenClaw host lock |
+| `.github/workflows/clawdsh-*` | ClawDSH 专用 CI 与发布 workflow |
+| `.agents/notes/` 下新的日期文件 | ClawDSH 决策；archived note 保持冻结 |
 
-### 12 个包
+### 自有包与组装目录
 
-| 包 | 类型 | 消费 | 提供 / 做什么 |
+| 目录 | 角色 | 消费 | 提供或执行 |
 |---|---|---|---|
-| `channel-core/` | Service 类 | `agents`、`sessions`、`agentDefaultModel` | **提供 `ctx.channels`**（ADR-0002）——注册表 + 路由 + 呈现 |
-| `channel-telegram/` | 适配器 | `ctx.channels` | Telegram 渠道适配器（grammY polling） |
-| `channel-feishu/` | 适配器 | `ctx.channels` | 飞书渠道适配器（Lark 长连接） |
-| `channel-wechat/` | 决策记录 | — | 微信系排除（上游无对应物） |
-| `soul/` | 函数插件 | `systemPrompt` | 经 system-prompt section 提供人格（replace/append） |
-| `memory/` | 函数插件 | `tools`、`systemPrompt`、`fs` | `memory_search`/`memory_get` + 召回 section + flush |
-| `embeddings/` | Service 类 | — | **提供 `ctx.embeddings`**（ADR-0003）——抽象 `Embeddings` |
-| `embeddings-ark/` | provider | `ctx.embeddings` | 火山方舟 provider（`doubao-embedding-vision`） |
-| `skills-hub/` | provider | `skills` | ClawHub 兼容技能目录 |
-| `automation/` | 函数插件 | `agents`、`sessions`、`agentDefaultModel` | croner 定时 agent 回合（`automation/run`） |
-| `preset-openclaw/` | preset/profile | — | `clawdsh` profile 与显示为 `ClawDSH 模式` 的 `clawdsh` agent preset 内部源码 |
-| `_template/` | 骨架 | — | 复制即用的新插件模板 |
+| `channel/` | Service Definition | Cordis lifecycle | 当前 `ctx.channels` V1 协议；一个 Provider 与一个 Driver |
+| `channel-agent/` | Consumer / Driver | channels、Agents、Sessions、presets、attachments、storage、tools | 持久 route binding、幂等、Agent turn、logging、media import、route-scoped `message` tool |
+| `channel-openclaw/` | Service Provider | channels、subprocess、storage | 锁定 OpenClaw supervision、认证 IPC、health、actions、delivery ledger |
+| `channel-core/` | legacy Service | Agents、Sessions、default model | `ctx.legacyChannels` 下已取代的进程内 registry；为替换验证保留 |
+| `channel-telegram/` | legacy adapter | legacy channel service | Telegram polling adapter；没有当前认证 |
+| `channel-feishu/` | legacy adapter | legacy channel service | Feishu long-connection adapter；没有当前认证 |
+| `channel-wechat/` | 历史决策记录 | — | 不可执行记录；可用性说明已被锁定 catalog 取代 |
+| `soul/` | function plugin | system prompt | replace 或 append persona section |
+| `memory/` | function plugin | tools、system prompt、filesystem、optional embeddings | memory tools、recall section、indexing、flush |
+| `embeddings/` | Service Definition | Cordis lifecycle | 自有 `ctx.embeddings` seam |
+| `embeddings-ark/` | Service Provider | embeddings | Volcano Ark embeddings |
+| `skills-hub/` | Service Provider | skills | ClawHub-compatible skill directory |
+| `automation/` | function plugin | Agents、Sessions、default model | opt-in scheduled Agent turns |
+| `preset-openclaw/` | 产品组装 | 公开 dsh Web 与 Host API | `clawdsh` profile、`clawdsh` preset、产品壳、Settings 与 Activity 的内部源码 |
+| `preset-clawdsh-messaging-safe/` | preset carrier | soul | 以 `clawdsh-messaging-safe` 安装的受限渠道 preset |
+| `_template/` | skeleton | — | 新自有 plugin 的起点 |
 
-## 2. 上游面 — 只读，已在 §3 浓缩
+物理目录名 `preset-openclaw/` 仅因既有仓库检查对该路径提供窄例外而保留。安装 id 与产品文案使用 `clawdsh`。旧渠道服务与当前服务可以作为包共存，但部署不得让两条路径连接同一平台账号。
+
+## 2. 上游只读范围
 
 | 位置 | 规则 |
 |---|---|
-| `vendor/` | vendored Cordis；同步走 `vendor/README.md` |
-| `packages/*`（除 `packages/openclaw/`） | 全部 `@deepseek-ai/dsh-*`——不改、也不重读 |
-| `apps/`、`website/`、`native/`、`python/`、`examples/`、`assets/`、`patches/`、`scripts/` | 上游应用/运行时/SDK/示例/脚本 |
-| `docs/` 上游页 | `architecture.md`、`development.md`、`glossary.md`、`cordis-primer.md`、…（dsh 视角） |
-| 根配置 | `package.json`、`tsconfig*.json`、`tsdown.config.ts`、`vitest*.ts`、…（少数带 `@clawdsh/*` 新增条目，ADR-0001） |
+| `vendor/` | 只通过其 manifest procedure 同步 |
+| `packages/*`（`packages/openclaw/` 除外） | 仅在 seam 相关时读取 Service Definition；不在其中实现 ClawDSH behavior |
+| `apps/`、`website/`、`native/`、`python/`、`examples/`、`assets/`、`patches/`、`scripts/` | 上游 application、runtime、example、asset 与检查；不进行 ClawDSH feature 编辑 |
+| `docs/` 下上游页面 | architecture 与 generated catalog；只作参考，不作为 ClawDSH rewrite surface |
+| Root configuration | 上游拥有；只允许有 ADR 支撑的品牌或 additive workspace registration |
 
-只允许两类改动，绝无第三类：① 置顶品牌段（README/AGENTS）；② ADR 背书的新增式编辑（`@clawdsh/*` 注册点）。其余一律只读；rebase 冲突时取上游版本，再重放品牌段与注册条目。
+OpenClaw 是渠道平面的独立外部上游，不是可写子树。已批准 artifact 与 catalog 记录在 `tools/openclaw-channel-host/`；不要把 checkout vendor 到 `packages/openclaw/`。
 
-## 3. dsh 一次读完 — 你需要的架构
+## 3. 一次读懂架构
 
-### Cordis：一切皆插件
+### Cordis lifecycle
 
-运行中的 `dsh` 是一棵插件树。每个插件向共享 context 贡献服务、类型化事件、可逆 effect；每次注册都经 `ctx.effect()` / `ctx.on()` 并返回 disposer。没有特权内核——模型适配器、工具注册表、session 日志、agent 循环都是插件，都能从配置替换。
+dsh runtime 是 plugin tree。Service、event 与 registration 都是随 plugin 回卷的 scoped effect。跨包工作使用 typed Service Definition 与 declared injection，不导入另一 package 的 implementation。
 
-### 能力 seam = Service Definition / Provider / Consumer
+### ClawDSH 产品壳
 
-一种能力是一个 **seam**，含三个角色：Service Definition（接口）、一个或多个 Provider（实现）、Consumer（依赖方）。声明式依赖写在 `inject`；可选服务用 `ctx.get(name)`。新增 seam 是大事——ClawDSH 只准入过两个（`ctx.channels`、`ctx.embeddings`），各配一个 ADR。
+本地 GUI 是公开 dsh Web runtime 之上的 ClawDSH 产品，不是另一个 dsh agent preset。`/clawdsh/` 拥有产品导航——对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级——而 `/` 保留原生 dsh Web GUI。对话页复用公开 client module graph、loading state 与 `buildRenderApp()`；ClawDSH 拥有外层 shell、Settings、Activity、Control Runtime 与 `/clawdsh` RPC channel。
 
-### 组装：profile / patch / bundle
+该组装不注册新的 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、上游 generated file 或上游 GUI source。`dsh --profile web` 保持纯 Harness 入口。
 
-`dsh --profile <name>` 按序堆叠各层：profile 的 bundles → profile 的 `cordis.patch.yml` → home 级 patch → `--patch` 覆盖。patch 按 id 定位一行并整体替换其 config，或插入新行。`tools/link-clawdsh.sh` 将内部的 `preset-openclaw/profile/cordis.patch.yml` 源安装为 `clawdsh` profile，并把其中的 `clawdsh` preset 安装到 dsh 用户根目录。
+### Profile layering 与 identity
 
-干净安装的 profile 默认关闭飞书、Telegram 与 Automation，因此 Web Host 无需这些功能的凭据即可启动。这些默认值只在 Settings 控制面增量将可选行为迁移到已挂载插件的 `enabled` 设置前使用 Loader `disabled` 配置项。旧 `openclaw` profile 与 preset 目录仅触发警告并保持原状；托管 manifest 与 `clawdsh doctor` 修复流程由公共发行 CLI 负责。
+`dsh --profile <name>` 依次叠加 profile bundles、其 `cordis.patch.yml`、home-level patch 与后续 `--patch` overlay。`tools/link-clawdsh.sh` 把内部 profile source 安装为 `clawdsh`，把 `clawdsh` 与 `clawdsh-messaging-safe` preset 安装到 dsh user preset root，并为开发链接自有 package。
 
-### 不变量：模型可见 ⟺ 已记录
+Clean-install profile 保持完整的 `channel → channel-agent → channel-openclaw` group 与 Automation 关闭，因此 Web Host 无平台凭证也能启动。旧 `openclaw` profile 与 preset directory 只是 warning-only input，保持不变；不会安装 compatibility alias。公共 CLI 拥有 managed manifest、integrity repair 与 `clawdsh doctor` flow。
 
-任何进入模型请求的内容都必须能从 session 日志重建。新增模型可见输入就要新增 session 事件。每个 ClawDSH feature 都据此校验（见 [product-chain.md](product-chain.md) 的逐 feature 台账）。
+### 完整能力 seam
 
-### seams
+能力 seam 包含 Service Definition、Service Provider 与 Consumer。ClawDSH 拥有 `ctx.embeddings` 与当前 `ctx.channels`。渠道方面，`channel` 是 definition，`channel-openclaw` 是 communication Provider，`channel-agent` 是 Agent Consumer/Driver。
 
-| Seam | 归属 | 使用者 | 一句话契约 |
+### 模型可见即有日志
+
+任何进入模型请求的内容都必须能从 Session log 重建。Channel Agent input 使用已知 `user/message` event，并携带完整且净化后的 `source.kind = 'channel'` 来源；admission、idempotency 与 delivery 权威留在持久 channel ledger。已声明的 `channel/*` Session event 保持禁用，因为下游代码不能将其标记为 ignorable，persistence resume 会拒绝其未知名称。仅通信侧 health 与 transport bookkeeping 不进入 model context。
+
+### 相关 seam
+
+| Seam | Owner | ClawDSH consumer | 此处用途 |
 |---|---|---|---|
-| `ctx.systemPrompt` | 上游（`core`） | soul、memory | 有序 prompt section；一个 `complete` section 成为整份 prompt |
-| `ctx.tools` | 上游（`core`） | memory | 工具注册表；`memory_search`/`memory_get` |
-| `ctx.fs` | 上游（`fs`） | memory | 文件系统能力 + 策略 |
-| `ctx.sessions` | 上游（`core`） | channel-core、automation | 内存 session 存储；flush、回合事件 |
-| `ctx.agents` | 上游（`core`） | channel-core、automation | agent 注册表；恢复或新建回合 |
-| `ctx.skills` | 上游（`skill`） | skills-hub | 技能 provider 注册表 |
-| `ctx.llm` | 上游（`llm`） | （暂无） | LLM 能力（Service Definition + DeepSeek provider） |
-| `ctx.subagents` | 上游（`subagent`） | （未来联邦） | subagent 委派（ADR-0005 transport） |
-| `ctx.get(name)` | Cordis | memory（`embeddings`） | 通用可选服务访问器 |
-| `ctx.channels` | **ClawDSH**（ADR-0002） | channel-*、channel-core | 渠道注册表 + 路由 |
-| `ctx.embeddings` | **ClawDSH**（ADR-0003） | memory、embeddings-ark | 文本 embedding seam（抽象 `Embeddings`） |
-| `ctx.schedule` | 无（无 Service seam） | — | 上游有 `dsh-schedule`（提醒*插件*）和 `ctx.jobs` seam；automation 两者都不用——直接 croner + `ctx.agents`/`ctx.sessions` |
+| `ctx.systemPrompt` | dsh | soul、memory | 有序 prompt section |
+| `ctx.tools` | dsh | memory、channel-agent | tool registry 与 route-scoped `message` tool |
+| `ctx.fs` | dsh | memory | policy-controlled filesystem access |
+| `ctx.sessions` | dsh | channel-agent、legacy channel-core、automation、Activity | append-only event、projection 与 durable flush |
+| `ctx.agents` | dsh | channel-agent、legacy channel-core、automation | 创建、恢复并驱动 Agent Session |
+| `ctx.attachments` | dsh | channel-agent | durable image；尚无 general-file seam |
+| `ctx.storageDomain` | dsh | channel-agent、channel-openclaw | durable route、execution 与 delivery ledger |
+| `ctx.subprocess` | dsh | channel-openclaw | supervised Gateway lifecycle |
+| Settings 与 Credentials | dsh | ClawDSH Control Runtime | schema-backed user layer 与 credential reference |
+| Connection RPC | dsh | ClawDSH Control Runtime 与产品壳 | loopback-only `/clawdsh` control channel |
+| `ctx.skills` | dsh | skills-hub | skill Provider registry |
+| `ctx.subagents` | dsh | future federation | delegation transport |
+| `ctx.channels` | ClawDSH，ADR-0008 | channel-openclaw、channel-agent | bidirectional channel V1 dispatch |
+| `ctx.embeddings` | ClawDSH，ADR-0003 | memory、embeddings-ark | text embeddings |
 
-**完整 seam 清单**：上游暴露 54 个服务，生成进 `packages/extensions/tool-cordis/src/api-catalog.ts`（`SERVICE_API`），人读摘要见 `docs/capability-seams.md`。查那个，别重读 `packages/*/src`——上表只列 ClawDSH 实际碰到的。
+上游 service catalog 仍是完整 dsh seam 列表的权威。读取 package implementation 前，先查阅 `docs/capability-seams.md` 或 generated API catalog。
 
-## 4. 阅读策略 — 开什么、跳什么
+## 4. 权威引用
 
-| 场景 | 打开 | 跳过 |
+| 需求 | 阅读 |
+|---|---|
+| GUI 形态、route 与禁止的上游变更 | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) |
+| GUI 页面与验收行为 | [本地 GUI 规格](feature-gui-web.md) |
+| 渠道架构与所有权 | [ADR-0008](../adr/0008-openclaw-channel-plane.md) |
+| 当前渠道协议与缺口 | [渠道 bridge 规格](feature-channel-plane-bridge.md) |
+| 精确 host 与 channel identity | `tools/openclaw-channel-host/*.json` |
+| 渠道更新与认证流程 | [OpenClaw 渠道同步规范](../standards/openclaw-channel-sync.md) |
+| 当前产品与支持投影 | [parity matrix](../matrix/parity.md) |
+| 所需 OpenClaw AgentHarness host semantics | [OpenClaw proposal](../upstream-proposal/openclaw-agent-harness-channel-seams.md) |
+| 所需 downstream Session-event support | [dsh proposal](../upstream-proposal/session-plugin-events.md) |
+
+ADR-0002、`feature-channel-core` 与 `channel-wechat` 解释 legacy path；它们不是当前 channel availability guidance。
+
+## 5. 阅读策略
+
+| 任务 | 阅读 | 跳过 |
 |---|---|---|
-| 每次会话 | 本页 + `AGENTS.md` 品牌段 | — |
-| 构建 ClawDSH feature | `packages/openclaw/<pkg>/src/`、`docs/adr/`、`docs/specs/feature-*.md`、`docs/matrix/parity.md` | 上游 `packages/*` 源码 |
-| 新增 seam | 对应上游 Service Definition + 一个 ADR | 该上游包其余部分 |
-| 查 seam 契约 | `docs/capability-seams.md` 或 `packages/extensions/tool-cordis/src/api-catalog.ts` | `packages/*/src` |
-| rebase/同步 | `docs/standards/upstream-sync.md`、`vendor/README.md` | — |
-| 排查上游行为 | `docs/architecture.md`、具体包的 README | 无关上游包 |
-| 永不 | — | 从头重读 `vendor/` 或 `packages/*` |
-
-**经验法则**：上游是平台，不是要读的代码库。你需要的是 seam 契约，不是实现。扩展时才读该 seam 的 Service Definition；否则信 §3。
+| 任何 ClawDSH 变更 | 本页、owning feature spec 与 parity row | 广泛重读上游源码 |
+| Product-shell 变更 | ADR-0007、GUI spec 与公开 dsh Web entry API | Client Catalog、generated GUI file 与未批准 Slot |
+| Settings 或 Activity 变更 | GUI spec、owning Config schema、Settings/Credentials/Session API | 任意 Loader control 与上游 SessionEventMap 修改 |
+| Channel protocol 变更 | channel package source、ADR-0008、bridge spec、sync standard | 除非 locked-host compatibility 改变，否则跳过 platform SDK implementation |
+| OpenClaw release 更新 | machine lock/catalog、release artifact、精确 compatibility input | 解析批准 commit 后的 floating `main` |
+| 新 dsh seam | 对应 upstream Service Definition 与 complete-seam rule | 无关 package |
+| dsh rebase | `docs/standards/upstream-sync.md` | ad hoc 编辑 upstream package |
+| Legacy channel 删除 | ADR-0008 替换条件与 legacy Agent Note | 在代码删除前归档 note |

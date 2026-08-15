@@ -1,0 +1,87 @@
+{
+  "handshake": {
+    "protocolVersion": 1,
+    "gatewayInstanceId": "gateway-fixture",
+    "openclaw": {
+      "tag": "v2026.7.1-2",
+      "commitSha": "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c",
+      "artifactSha512": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "nodeEngine": ">=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0"
+    },
+    "agentHarness": "v1",
+    "capabilities": {
+      "actions": ["send", "poll"],
+      "notifications": ["text.delta", "reasoning.delta", "tool", "status"],
+      "extensions": []
+    },
+    "startupNonce": "fixture-nonce"
+  },
+  "turn": {
+    "protocolVersion": 1,
+    "idempotencyKey": "inbound-fixture",
+    "turnId": "turn-fixture",
+    "runId": "run-fixture",
+    "route": {
+      "gatewayInstanceId": "gateway-fixture",
+      "openclawSessionKey": "agent:main:telegram:dm:42",
+      "generation": 0,
+      "channel": "telegram",
+      "account": "default",
+      "conversation": "42",
+      "kind": "direct"
+    },
+    "sender": {
+      "senderId": "42",
+      "displayName": "Fixture User",
+      "trust": "owner"
+    },
+    "messageId": "message-fixture",
+    "text": "hello",
+    "media": []
+  },
+  "sendAction": {
+    "protocolVersion": 1,
+    "actionId": "action-fixture",
+    "target": {
+      "gatewayInstanceId": "gateway-fixture",
+      "channel": "telegram",
+      "account": "default",
+      "conversation": "42"
+    },
+    "kind": "send",
+    "text": "hello",
+    "media": []
+  },
+  "directoryAction": {
+    "protocolVersion": 1,
+    "actionId": "directory-fixture",
+    "target": {
+      "gatewayInstanceId": "gateway-fixture",
+      "channel": "telegram",
+      "account": "default",
+      "conversation": "42"
+    },
+    "kind": "directory.list-peers",
+    "query": "fixture",
+    "limit": 10,
+    "source": "cached"
+  },
+  "resolveResult": {
+    "protocolVersion": 1,
+    "actionId": "resolve-fixture",
+    "kind": "resolve",
+    "results": [
+      {
+        "input": "@fixture",
+        "resolved": true,
+        "id": "42",
+        "name": "Fixture User"
+      },
+      {
+        "input": "missing",
+        "resolved": false,
+        "note": "not found"
+      }
+    ]
+  }
+}

@@ -1,79 +1,110 @@
-# Documentation inventory — dsh vs ClawDSH
+# Documentation and ownership inventory — dsh vs ClawDSH
 
 English | [中文](doc-inventory.zh.md)
 
-- **Status**: Phase 4 entry deliverable (2026-08-14)
-- **Purpose**: classify every file in the repo by ownership so the publish plan (ADR-0006) can state exactly which upstream dispositions need an ADR exemption and which files are already free to rewrite.
-- **Method**: three disposition categories — (a) upstream read-only (split into brand-editable vs fully untouchable), (b) ClawDSH-owned, (c) ClawDSH content embedded in an upstream file under an ADR exemption. Authority for (c) is ADR-0001 decision 4 and ADR-0004.
+- **Status**: Phase 4 productization and channel-plane integration
+- **Purpose**: identify repository locations that are upstream read-only, ClawDSH-owned, or narrow ADR-backed additions
+- **Authority**: root `AGENTS.md`, ADR-0001, ADR-0004, ADR-0006, [GUI ADR-0007](../adr/0007-clawdsh-local-gui-product.md), and [channel ADR-0008](../adr/0008-openclaw-channel-plane.md)
 
-## (a) Upstream read-only
+## 1. Upstream read-only locations
 
-Upstream means `deepseek-ai/deepseek-harness` (git remote `upstream`). Read-only, with two narrow change kinds: brand-section pinning and ADR-backed additive metadata/build edits.
+Upstream means `deepseek-ai/deepseek-harness` through the `upstream` remote. Direct edits are prohibited by default. Branded sections and additive build metadata are the listed exceptions, not permission to rewrite the surrounding file.
 
-### (a1) Brand-editable (only a pinned brand section)
+### Brand-editable files
 
-| File | Brand section | Allowed edit |
-|---|---|---|
-| `README.md` | lines 1–9, delimited by `<!-- ⬇ 以下为上游 README 原文 -->` | replace the brand section only |
-| `README.zh.md` | lines 1–9, same delimiter | replace the brand section only |
-| `AGENTS.md` (= `CLAUDE.md` symlink) | lines 1–22, delimited by `<!-- ⬇ 以下为上游原文 -->` | replace the brand section only |
-
-Only these three are brand-editable. `packages/AGENTS.md` and `examples/AGENTS.md` (both `CLAUDE.md` symlinks) are **not** branded — they remain upstream-original (see a2).
-
-### (a2) Fully untouchable (no brand section, no direct edit)
-
-| Location | Note |
+| File | Allowed ClawDSH edit |
 |---|---|
-| `vendor/` | vendored Cordis source; manifest + sync in `vendor/README.md` |
-| `packages/*` except `packages/openclaw/` | all `@deepseek-ai/dsh-*` packages |
-| `apps/`, `website/` (+ its `docs/`) | upstream applications and site |
-| `native/`, `python/`, `examples/`, `assets/`, `patches/` | upstream runtime, SDK, demos, assets, patch dir |
-| `docs/` upstream pages | `architecture`, `development`, `glossary`, `capability-seams`, `cordis-primer`, `cordis-tutorial`, `cordis-api`, `config-catalog`, `testing`, `defensive-patterns`, `event-producer-consumer`, `persistence-catalog`, `tool-catalog`, `tool-execution-pipeline`, `agent-lifecycle`, `api-gateway`, `rescope`, `module-graph`, `graph-atlas`, `web-styling`, `postmortem/`, `subsystems/`, `user/`, `cookbook/`, `i18n/`, `AGENTS.md` |
-| `CONTRIBUTING.md`, `CONTRIBUTING.zh.md` | upstream contribution stance (see ADR-0006) |
-| `LICENSE` | upstream MIT, `Copyright (c) 2026 DeepSeek` (see ADR-0006) |
-| `THIRD_PARTY_NOTICES.md`, `BENCHMARK.md` | upstream notices/benchmark |
-| `packages/AGENTS.md`, `examples/AGENTS.md` | upstream package/example rules (unbranded `CLAUDE.md` symlinks) |
-| `scripts/` | upstream gates/generators (one additive branch, see c) |
+| `README.md`, `README.zh.md` | pinned ClawDSH brand section above retained upstream text |
+| `AGENTS.md` (`CLAUDE.md` symlink) | pinned ClawDSH repository rules above retained upstream rules |
+| `CONTRIBUTING.md`, `CONTRIBUTING.zh.md` | ClawDSH contribution section under ADR-0006 while retaining upstream attribution |
+
+### Fully upstream-owned trees
+
+| Location | Treatment |
+|---|---|
+| `vendor/` | sync through the vendoring procedure only |
+| `packages/*` except `packages/openclaw/` | do not modify for ClawDSH behavior |
+| `apps/`, `website/`, `native/`, `python/`, `examples/`, `assets/`, `patches/` | upstream application, runtime, SDK, example, and asset sources |
+| upstream documentation and generated catalogs | reference or regenerate only through the owning upstream workflow |
+| `scripts/` | upstream checks and generators; no ClawDSH feature implementation |
 | `.github/workflows/*` except `clawdsh-*` | upstream CI |
-| `.agents/skills/`, `.agents/notes/` | upstream skills + notes (ClawDSH appends its own notes, see c) |
-| root config files | `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `tsconfig*.json`, `tsdown.config.ts`, `vitest*.ts`, `knip.json`, `lefthook.yml`, `.editorconfig`, `.gitattributes`, `.gitignore`, `.gitlab-ci.yml`, `.jscpd.json`, `.oxlintrc*.json`, `.rgignore`, `pytest.ini` — each carries a narrow additive edit listed in (c) where applicable |
+| `.agents/skills/` and pre-existing `.agents/notes/` | upstream operational knowledge; archived notes are frozen |
 
-## (b) ClawDSH-owned files
+## 2. ClawDSH-owned locations
 
-| Location | Content |
+| Location | Current content |
 |---|---|
-| `packages/openclaw/` | the only rewriteable code domain — `preset-openclaw/` is the internal source of the `clawdsh` profile and preset; the remaining entries are `channel-core/`, `channel-telegram/`, `channel-feishu/`, `channel-wechat/` (decision record), `soul/`, `memory/`, `embeddings/`, `embeddings-ark/`, `skills-hub/`, `automation/`, `_template/` |
-| `docs/adr/` | 0001–0005 (project foundation, channel seam, embeddings seam, npm publishing, clawd federation) |
-| `docs/specs/` | `roadmap.md` + `feature-soul` / `feature-channel-core` / `feature-memory` / `feature-skills-hub` / `feature-automation` |
-| `docs/matrix/parity.md` | single source of truth for feature alignment |
-| `docs/standards/` | `naming`, `plugin-contract`, `pr-policy`, `upstream-sync` |
-| `docs/journal/2026-08-14.md` | exhaustive development log |
-| `docs/upstream-proposal/ctx-channels.md` | the `ctx.channels` seam proposal to upstream |
-| `tools/` | `ark-e2e.ts`, `link-clawdsh.sh`, `sync-upstream.sh`; the installer warns about legacy `openclaw` assets and preserves them |
-| `.github/workflows/clawdsh-publish.yml`, `clawdsh-smoke.yml` | ClawDSH CI |
+| `packages/openclaw/` | feature packages, the current channel seam, retained legacy channel packages, restricted preset, product assembly, and package template |
+| `docs/adr/` | ClawDSH decisions; ADR-0007 owns the GUI product posture and ADR-0008 supersedes ADR-0002 for channel architecture |
+| `docs/specs/` | roadmap, context map, inventory, product chain, GUI spec, current feature specs, and legacy channel reference |
+| `docs/matrix/parity.md` | product and channel support projection; exact channel artifacts remain in machine catalogs |
+| `docs/standards/` | naming, plugin, PR, dsh upstream sync, and OpenClaw channel sync rules |
+| `docs/journal/` | dated development history, not current-state authority |
+| `docs/upstream-proposal/` | dsh Session-event and OpenClaw AgentHarness proposals; no upstream PR is implied |
+| `tools/openclaw-channel-host/` | production and canary host locks, channel catalogs, schemas, verifier, and tests |
+| other `tools/` entries | ClawDSH installer, migration, verification, and e2e drivers |
+| `.github/workflows/clawdsh-*` | ClawDSH-specific CI and release workflows |
+| new date-stamped files under `.agents/notes/` | ClawDSH Agent Notes; implemented notes track shipped facts and archived notes remain frozen |
 
-## (c) ClawDSH content embedded in an upstream file
+`channel-openclaw` also owns `LICENSE.openclaw` and `THIRD_PARTY_NOTICES.md` beside its bridge distribution. They preserve OpenClaw attribution and change with the locked artifact or copied bridge code.
 
-| File | Embedded content | ADR backing |
+## 3. Narrow ClawDSH additions in upstream-owned files
+
+| File | Additive content | Backing |
 |---|---|---|
-| `README.md`, `README.zh.md` | brand section (lines 1–9) | ADR-0001 decision 4 |
-| `AGENTS.md` | brand section (lines 1–22) | ADR-0001 decision 4 |
-| `package.json` | `"name": "clawdsh"` | ADR-0001 decision 4 |
-| `tsdown.config.ts` | workspace `exclude` list adds `packages/openclaw/**` | ADR-0001 decision 4 |
-| `tsconfig.base.json` | 9 `@clawdsh/dsh-*` `paths` entries (append-only) | ADR-0001 decision 4 |
-| `tsconfig.host.json` | 9 `@clawdsh/dsh-*` `references` entries (append-only) | ADR-0001 decision 4 |
-| `scripts/check-workspace-constraints.ts` | `@clawdsh/` publish-shape branch + non-package-dir skip | ADR-0004 |
-| `.agents/notes/` | 11 ClawDSH notes (33 files), dated 2026-08-14, append-only | note mechanism (no ADR — see nuance) |
+| `README*`, `AGENTS.md`, `CONTRIBUTING*` | delimited ClawDSH brand or contribution sections | ADR-0001 / ADR-0006 |
+| `LICENSE` | retained upstream notice plus ClawDSH contributor notice | ADR-0006 |
+| root `package.json` | project identity and repository metadata | ADR-0001 / ADR-0006 |
+| `pnpm-lock.yaml` | generated dependency graph for owned workspace packages | package implementation; regenerate, never hand-edit |
+| `tsconfig.base.json` | exact `@clawdsh/*` source aliases needed by owned packages | ADR-0001 additive registration |
+| `tsconfig.host.json` | matching owned package project references | ADR-0001 additive registration |
+| `tsdown.config.ts` | owned-package build exclusion or registration required by the workspace layout | ADR-0001 additive registration |
+| `scripts/check-workspace-constraints.ts` | narrow `@clawdsh/` package rule where still required | ADR-0004 |
 
-## Boundary nuances
+During a rebase, take the upstream version first and replay only these exact additions. The exception does not transfer ownership of the rest of the file.
 
-- `.agents/notes/` is the one place ClawDSH writes its own content into an upstream tree **without** an ADR. It is append-only (date-stamped filenames, upstream never adds `2026-08-14-*`), so it is rebase-clean, but the CLAUDE.md "own code only in …" list does not enumerate it. Decide whether to add it to the list or record a one-line ADR note.
-- `docs/upstream-proposal/` is ClawDSH-owned and listed in the CLAUDE.md brand section, but ADR-0001 decision 3 (physical-isolation list) omits it because the directory postdates that decision. Reconcile the two lists.
-- `docs/postmortem/` is upstream, but the same append mechanism as notes applies; ClawDSH may add its own postmortems there later.
-- `tools/` is own-code (not docs), but it is the designated home for ClawDSH scripts and e2e drivers.
+## 4. Local GUI ownership
 
-## Publish-facing gaps (handed to ADR-0006)
+| Subject | Owner |
+|---|---|
+| Product posture, routes, and prohibited upstream modifications | ADR-0007 |
+| User-visible pages and acceptance behavior | `feature-gui-web` |
+| `/clawdsh/` shell, Settings, Activity, Control Runtime, and nested build | `preset-openclaw` |
+| Native dsh Web GUI at `/` and raw Trajectory | upstream dsh, consumed without source changes |
+| Profile and preset identity | `clawdsh`; the physical `preset-openclaw` source directory is the only retained legacy path name |
+| Managed installation, integrity repair, and `clawdsh doctor` | future public-distribution CLI |
 
-- `CONTRIBUTING.md` / `CONTRIBUTING.zh.md` still carry upstream's "we cannot accept external pull requests" stance — contradicts a publishable open-source project. Not in the brand-editable list, so needs an ADR exemption (extend brand-pinning to CONTRIBUTING, or carry ClawDSH contribution guidance in the README brand section).
-- `LICENSE` is upstream MIT (`Copyright (c) 2026 DeepSeek`); a derivative fork must retain the upstream notice and may add a ClawDSH copyright line.
-- `package.json` has no `homepage`/`bugs`/`repository` pointing at `Fatemoisted/ClawDSH`; a publishable package needs those fields. This is a (c)-style edit requiring an ADR note.
+The ClawDSH GUI may use public dsh Web, Settings, Credentials, Session, loader-observation, and Connection RPC APIs. It does not register a Client Slot or modify `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source.
+
+## 5. Channel-plane ownership
+
+| Subject | Owner |
+|---|---|
+| OpenClaw production and canary artifact identities and public channel roster | `tools/openclaw-channel-host/*.json` |
+| Channel architecture and role allocation | ADR-0008 |
+| Current V1 behavior, assembly, and gaps | `feature-channel-plane-bridge` |
+| OpenClaw host gaps and proposed public semantics | `openclaw-agent-harness-channel-seams` |
+| Promotion, certification, and rollback | `openclaw-channel-sync` standard |
+| User-visible support state | parity matrix |
+| Runtime protocol and ledgers | `channel`, `channel-agent`, and `channel-openclaw` |
+| Legacy adapter behavior | ADR-0002, `feature-channel-core`, legacy packages, and their active Agent Notes |
+
+OpenClaw source archives and npm tarballs are external inputs, not repository-owned source trees. Do not copy the full host under `packages/openclaw/`. The production bridge may distribute the minimum derived code and notices its license permits; the lock verifier remains authoritative for the external host.
+
+## 6. Transitional state
+
+- `channel-core`, `channel-telegram`, and `channel-feishu` are owned but legacy. They remain until the ADR-0008 replacement conditions pass; do not archive their Agent Notes earlier.
+- `channel-wechat` is a historical exclusion record whose availability statement is superseded by the production external WeChat catalog. It is not a runtime package or current status authority.
+- The production sidecar is not certified or enabled. Documentation must not convert catalog or package evidence into a live support claim.
+- Canary has an approved source archive but no locked built artifact and remains audit input only.
+- The upstream snapshot runner does not discover owned channel packages, and the upstream `examples/` tree remains read-only.
+- Downstream `channel/*` Session events are disabled in the runnable path until an ignorable append mechanism exists; durable channel ledgers and the known `user/message` source are current authority.
+- The `clawdsh` and `clawdsh-messaging-safe` presets remain managed user presets until the public installer owns their manifest and repair flow.
+
+## 7. Rebase checklist
+
+1. Take upstream versions of upstream-owned files.
+2. Replay only the delimited brand sections and exact additive registrations listed above.
+3. Preserve every owned directory and active ClawDSH Agent Note; never edit archived notes to resolve a current change.
+4. Verify OpenClaw host locks independently from the dsh upstream baseline.
+5. Run bilingual pairing and the relevant package, build, browser, snapshot, and documentation checks before calling this inventory current.

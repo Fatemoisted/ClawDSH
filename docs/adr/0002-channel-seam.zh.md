@@ -1,68 +1,38 @@
-# ADR-0002：渠道网关 seam（`ctx.channels`）——ClawDSH 唯一新增接缝
+# ADR-0002：旧进程内渠道适配器 seam
 
 [English](0002-channel-seam.md) | 中文
 
-- **状态**：Accepted（阶段 2 双渠道验证通过，2026-08-14）
+- **状态**：已被 [ADR-0008](0008-openclaw-channel-plane.md) 取代（2026-08-15）
 - **日期**：2026-08-14
 - **依赖**：ADR-0001
 
 ## 上下文
 
-OpenClaw 的核心价值是"个人助手活在消息渠道里"（WhatsApp/Telegram/Email/Web Chat…），而 dsh 是编码代理形态：有 `ctx.sessions`（append-only log）、`ctx.tools`、`ctx.llm` 等接缝，但**没有消息渠道概念**。要把 OpenClaw 搬上 dsh，渠道接入是唯一必须新增的 seam——其余功能域都能挂到既有接缝上（见 `docs/matrix/parity.md`）。
+ClawDSH 最初需要证明：消息输入可以选择 dsh Session、进入 append-only log、驱动 Agent 回合并回投回复，且不修改上游 `agent-loop`。DeepSeek Harness 没有消息渠道 Service Definition，因此阶段 2 spike 引入自有 `ctx.channels` 服务，并用 Telegram 和 Feishu 包进行测试。
 
-新增 seam 是最高成本的变更。项目早期纪律原拟 upstream-first（先向上游提 PR、本地 patch 过渡），但发起人 2026-08-14 决定**跳过上游 PR、快速推进**——`ctx.channels` 作为 ClawDSH 自有 seam 直接落地（决策见下）。上游 `packages/`/`vendor/` 等文件仍保持只读，本 seam 只落在 `packages/openclaw/`。
+该实验有意使用最小纯文本 adapter。它回答了可行性问题，但没有保留 OpenClaw 当前通信平面：每新增一个渠道，ClawDSH 仍需复制平台认证、传输生命周期、身份与准入规则、附件、原生动作和投递行为。
 
-## 决策
+## 历史决定
 
-1. **新增 `ctx.channels` 服务**，职责：
-   - 渠道适配器注册表：每个渠道插件注册一个 `ChannelAdapter`；
-   - 入站路由：渠道消息 → 定位/创建 agent 会话 → 写入 session log → 驱动 agent loop；
-   - 出站投递：agent 回复 → 对应渠道推送（含消息分组/引用等渠道特性映射）。
-2. **渠道插件只实现适配器**：`receive`（入站事件）与 `send`（出站投递）两个能力面，路由、会话绑定、重试策略全部归 `channel-core`。
-3. **契约继承 dsh 不变式**：一切入站消息与出站回复必须写进 session log（"model-visible means logged"），否则不得触达模型。
-4. **长期自有 seam**：`ctx.channels` 作为 ClawDSH 自有 seam 长期保留，**不向上游提 PR**（发起人 2026-08-14 决定——快速开发优先，上游无暇回应）。`channel-core` 即该 seam 的实现，不视为临时 patch；未来若上游自建等价能力再评估去留，差异记录回本 ADR。
+`@clawdsh/dsh-channel-core` 注册多个进程内 `ChannelAdapter` 实现。Adapter 发出 `channel/inbound` 并实现文本 `send`；core 保存内存中的 per-thread Session map，串行化回合，驱动 `ctx.agents`，flush `ctx.sessions`，提取 assistant reply，发送并发出 `channel/outbound`。`channel-telegram` 与 `channel-feishu` 用各自平台 SDK 实现该契约。
 
-## 契约（阶段 2 定稿）
+该 seam 要求模型可见渠道文本进入 Session log，并把平台凭证留在 adapter config。附件、回复引用、富文本、交互卡、持久路由绑定、crash recovery、delivery receipt 与原生动作 capability negotiation 都不在契约内。
 
-```ts
-// channel-core/src/types.ts（仅类型，无运行时代码）
-import type { Context } from '@deepseek-ai/cordis'
+## 取代决定
 
-export interface ChannelCapabilities { receive: boolean; send: boolean }
+ADR-0008 用锁定的 OpenClaw Gateway sidecar 与 provider-neutral V1 `ctx.channels` Service Definition 取代该架构。OpenClaw 拥有通信平面；`@clawdsh/dsh-channel-openclaw` 是已认证 Provider，`@clawdsh/dsh-channel-agent` 是持久 Agent 平面 Driver。旧 registry 保留在 `ctx.legacyChannels` 下；部署绝不能让两条路径连接同一平台账号。
 
-export interface ChannelMessage {
-  channel: string                    // 适配器 id，如 'telegram' | 'feishu'
-  direction: 'in' | 'out'
-  threadId?: string                  // 渠道侧会话线索（群 chat_id / p2p open_chat_id / TG chat.id）
-  sender?: string                    // 发送者身份（open_id / from.id）
-  text: string
-}
+`channel-core`、`channel-telegram` 与 `channel-feishu` 作为 legacy compatibility package 保留到 ADR-0008 替换条件通过。它们的软件包测试与历史传输工作只表明旧路径曾有何行为。没有当前带凭证证据时，两个 adapter 都不是 `certified` 或 `enabled`。
 
-export interface ChannelAdapter {
-  id: string
-  capabilities: ChannelCapabilities
-  start(ctx: Context): () => void           // 订阅平台事件，emit 'channel/inbound'；返回 disposer
-  send(msg: ChannelMessage): Promise<void>  // 出站投递
-}
-```
+## 影响
 
-**事件名定稿**：`channel/inbound`（入站，adapter → core）、`channel/outbound`（出站，core 投递回复后）。
+- 本 ADR 保留为阶段 2 adapter 实验的历史记录，不是当前实现指南。
+- 新渠道工作面向 ADR-0008 的 Gateway sidecar、bridge protocol 与锁定 catalog，不再增加原生 adapter。
+- 旧 identity-presentation 与 acknowledgement-reaction Agent Note 只在该代码删除前对 legacy path 有效；它们不定义 sidecar 行为。
+- 删除 legacy package 要求装配好的 production sidecar、自有无密钥 snapshot path，以及新的 Telegram 与 Feishu live certification。
 
-**入站链路**：adapter `start()` 收到平台消息 → `ctx.emit('channel/inbound', msg)` → `channel-core` 监听 → 路由到 per-thread agent 会话（`ctx.agents.create` + `followup` + `whenIdle` + `sessions.flush`）→ 扫 `assistant/message` 读回复 → `adapter.send(outMsg)` + `emit('channel/outbound', outMsg)`。per-thread 会话按 `${channel}\0${threadId ?? ''}` 键复用，入站 turn 以 per-thread tail-chain 串行化，避免并发交错。
+## 曾考虑的替代方案
 
-**最小面**：附件/引用/富文本/交互卡片一律推迟（阶段 3 渠道扩展）。
-
-## 后果
-
-- ✅ 所有渠道共享同一路由/会话/日志语义，新增渠道成本 = 一个适配器包；
-- ⚠️ 若上游不接受此 seam，本地分叉面 +1，需要持续跟踪上游会话/渠道相关演进以避免撞车；
-- ⚠️ 渠道特性差异（如 Telegram 的回复引用、飞书的交互卡片）可能侵蚀统一契约，Spike 必须用 2 个差异较大的渠道验证。**备选渠道已定为飞书（Lark）**（2026-08-14）：发起人第一优先 + OpenClaw 上游有出处（`extensions/feishu`，v2026.2.12 起），与 Telegram 在身份模型/事件推送/富文本上差异足够大。
-
-## 备选方案
-
-- **每个渠道各自直连 `ctx.sessions`（被否决）**：路由/绑定逻辑会在每个渠道重复，重蹈 OpenClaw 覆辙。
-- **外部网关进程（sidecar）对接 dsh API（暂缓）**：更解耦但引入跨进程状态与部署复杂度，作为阶段 3 之后的联邦/多机形态再评估。
-
-## 结论（阶段 2 验证，2026-08-14）
-
-`ctx.channels` 契约已同时通过 **Telegram（grammY `Bot` 长轮询）** 与 **飞书（`@larksuiteoapi/node-sdk` 长连接 + `im.message.create`）** 两个形态差异足够大的适配器验证：两者都只实现 `ChannelAdapter` 契约（各自用官方 SDK 封装协议，见 §8 移植原则），路由/会话绑定/回复回投由 `channel-core` 统一承担，核心无渠道特判。契约测试（MockAdapter 验证「入站 → 真 agent turn → 回复出」闭环）+ 全量 typecheck + `--dump-config` 冒烟全绿。真实 e2e（真 key + 真 bot）留待凭证到位后的收尾项。seam 契约与装配语义的内部设计记录见 `docs/upstream-proposal/ctx-channels.md`（不再作为待提交 PR）。
+- **继续扩展文本 adapter**：已被取代，因为它会长成第二套不完整 OpenClaw 渠道子系统。
+- **让每个平台直连 dsh Session**：拒绝，因为每个 adapter 都会复制 route 与 lifecycle logic。
+- **使用外部 Gateway sidecar**：最初暂缓；当前生态覆盖使整体复用成为更低风险设计后，由 ADR-0008 接受。

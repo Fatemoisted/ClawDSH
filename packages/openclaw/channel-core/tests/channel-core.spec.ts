@@ -8,7 +8,7 @@ import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import ChannelRegistry, { registerChannelAdapter } from '@clawdsh/dsh-channel-core'
+import LegacyChannelRegistry, { registerLegacyChannelAdapter } from '@clawdsh/dsh-channel-core'
 import type { ChannelAdapter, ChannelMessage, Config } from '@clawdsh/dsh-channel-core'
 import { MockAdapter, textResponse } from './mock-adapter.ts'
 
@@ -22,7 +22,7 @@ async function harness(adapter: MockAdapter, config: Config = {}): Promise<Conte
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(AgentDefaultModelConfig, { provider: 'mock', model: 'mock' })
   ctx.llm.registerAdapter(['mock'], adapter)
-  await ctx.plugin(ChannelRegistry, config)
+  await ctx.plugin(LegacyChannelRegistry, config)
   return ctx
 }
 
@@ -55,45 +55,50 @@ function nextOutbound(ctx: Context): Promise<ChannelMessage> {
   })
 }
 
-describe('the channel-core seam', () => {
+describe('the legacy channel-core seam', () => {
+  it('registers under the legacy service name', async () => {
+    const ctx = await harness(new MockAdapter([]))
+    expect(ctx.legacyChannels.name).toBe('legacyChannels')
+  })
+
   it('registers an adapter and removes it on dispose', async () => {
     const ctx = await harness(new MockAdapter([]))
-    const dispose = ctx.channels.registerAdapter(fakeAdapter([]))
-    expect(ctx.channels.listAdapters()).toHaveLength(1)
-    expect(ctx.channels.getAdapter('fake')?.id).toBe('fake')
+    const dispose = ctx.legacyChannels.registerAdapter(fakeAdapter([]))
+    expect(ctx.legacyChannels.listAdapters()).toHaveLength(1)
+    expect(ctx.legacyChannels.getAdapter('fake')?.id).toBe('fake')
 
     dispose()
 
-    expect(ctx.channels.listAdapters()).toHaveLength(0)
-    expect(ctx.channels.getAdapter('fake')).toBeUndefined()
+    expect(ctx.legacyChannels.listAdapters()).toHaveLength(0)
+    expect(ctx.legacyChannels.getAdapter('fake')).toBeUndefined()
   })
 
   it('derives mention patterns from the identity and registers the adapter', async () => {
     const ctx = await harness(new MockAdapter([]), { identity: { name: 'Clawd', emoji: '🐚' } })
     const captured: RegExp[][] = []
-    const dispose = registerChannelAdapter(ctx, (patterns) => {
+    const dispose = registerLegacyChannelAdapter(ctx, (patterns) => {
       captured.push([...patterns])
       return fakeAdapter([])
     })
 
     expect(captured).toHaveLength(1)
     expect(captured[0]).toHaveLength(2)
-    expect(ctx.channels.listAdapters()).toHaveLength(1)
+    expect(ctx.legacyChannels.listAdapters()).toHaveLength(1)
 
     dispose()
-    expect(ctx.channels.listAdapters()).toHaveLength(0)
+    expect(ctx.legacyChannels.listAdapters()).toHaveLength(0)
   })
 
   it('rejects a duplicate adapter id', async () => {
     const ctx = await harness(new MockAdapter([]))
-    ctx.channels.registerAdapter(fakeAdapter([]))
-    expect(() => ctx.channels.registerAdapter(fakeAdapter([]))).toThrow(/already registered/)
+    ctx.legacyChannels.registerAdapter(fakeAdapter([]))
+    expect(() => ctx.legacyChannels.registerAdapter(fakeAdapter([]))).toThrow(/already registered/)
   })
 
   it('routes an inbound message to an agent turn and delivers the reply', async () => {
     const ctx = await harness(new MockAdapter([textResponse('hello there')]))
     const sent: ChannelMessage[] = []
-    ctx.channels.registerAdapter(fakeAdapter(sent))
+    ctx.legacyChannels.registerAdapter(fakeAdapter(sent))
     const outbound = nextOutbound(ctx)
 
     ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', sender: 'u1', text: 'hi' })
@@ -107,7 +112,7 @@ describe('the channel-core seam', () => {
 
   it('reuses one session per thread and creates a new one per distinct thread', async () => {
     const ctx = await harness(new MockAdapter([textResponse('a'), textResponse('b'), textResponse('c')]))
-    ctx.channels.registerAdapter(fakeAdapter([]))
+    ctx.legacyChannels.registerAdapter(fakeAdapter([]))
 
     const first = nextOutbound(ctx)
     ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', text: 'one' })
@@ -127,7 +132,7 @@ describe('the channel-core seam', () => {
   it('delivers the channel reply, not the output of a plugin-sourced turn queued between turns', async () => {
     const ctx = await harness(new MockAdapter([textResponse('channel reply'), textResponse('flush output')]))
     const sent: ChannelMessage[] = []
-    ctx.channels.registerAdapter(fakeAdapter(sent))
+    ctx.legacyChannels.registerAdapter(fakeAdapter(sent))
     // Simulate the memory flush: a plugin-sourced followup queued at the
     // previous turn's stop boundary runs before the driver's reply extraction.
     const dispose = ctx.on('agent/turn-stopping', ({ agent }) => {
@@ -157,9 +162,9 @@ describe('the channel-core seam', () => {
     await ctx.plugin(AgentLoop, { agents: [] })
     await ctx.plugin(AgentDefaultModelConfig, { provider: 'mock', model: 'mock' })
     ctx.llm.registerAdapter(['mock'], new MockAdapter([textResponse('hello there')]))
-    await ctx.plugin(ChannelRegistry, { identity: { name: 'Clawd' } })
+    await ctx.plugin(LegacyChannelRegistry, { identity: { name: 'Clawd' } })
     const sent: ChannelMessage[] = []
-    ctx.channels.registerAdapter(fakeAdapter(sent))
+    ctx.legacyChannels.registerAdapter(fakeAdapter(sent))
     const outbound = nextOutbound(ctx)
 
     ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', sender: 'u1', text: 'hi' })
@@ -171,7 +176,7 @@ describe('the channel-core seam', () => {
   it('attaches an ack reaction to the inbound message when the adapter can react', async () => {
     const ctx = await harness(new MockAdapter([textResponse('hello there')]), { ackReactionScope: 'all' })
     const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
-    ctx.channels.registerAdapter({
+    ctx.legacyChannels.registerAdapter({
       id: 'fake',
       capabilities: { receive: true, send: true, react: true },
       start: () => () => {},
@@ -189,7 +194,7 @@ describe('the channel-core seam', () => {
   it('skips the ack when the inbound message has no platform id', async () => {
     const ctx = await harness(new MockAdapter([textResponse('hello there')]))
     let reacted = 0
-    ctx.channels.registerAdapter({
+    ctx.legacyChannels.registerAdapter({
       id: 'fake',
       capabilities: { receive: true, send: true, react: true },
       start: () => () => {},
@@ -207,7 +212,7 @@ describe('the channel-core seam', () => {
   it('acks a mentioned group message under the default group-mentions scope', async () => {
     const ctx = await harness(new MockAdapter([textResponse('ok')]))
     const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
-    ctx.channels.registerAdapter(reactAdapter(reactions))
+    ctx.legacyChannels.registerAdapter(reactAdapter(reactions))
     const outbound = nextOutbound(ctx)
 
     ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', messageId: 'm-1', isGroup: true, wasMentioned: true, text: 'hi' })
@@ -219,7 +224,7 @@ describe('the channel-core seam', () => {
   it('does not ack an unmentioned group message under group-mentions', async () => {
     const ctx = await harness(new MockAdapter([textResponse('ok')]))
     const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
-    ctx.channels.registerAdapter(reactAdapter(reactions))
+    ctx.legacyChannels.registerAdapter(reactAdapter(reactions))
     const outbound = nextOutbound(ctx)
 
     ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', messageId: 'm-1', isGroup: true, wasMentioned: false, text: 'hi' })
@@ -231,7 +236,7 @@ describe('the channel-core seam', () => {
   it('fails open (no ack) when the adapter could not evaluate mentions', async () => {
     const ctx = await harness(new MockAdapter([textResponse('ok')]))
     const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
-    ctx.channels.registerAdapter(reactAdapter(reactions))
+    ctx.legacyChannels.registerAdapter(reactAdapter(reactions))
     const outbound = nextOutbound(ctx)
 
     // `wasMentioned` absent = detection impossible → no ack, never a blocked message.
@@ -244,7 +249,7 @@ describe('the channel-core seam', () => {
   it('acks a direct message under the direct scope', async () => {
     const ctx = await harness(new MockAdapter([textResponse('ok')]), { ackReactionScope: 'direct' })
     const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
-    ctx.channels.registerAdapter(reactAdapter(reactions))
+    ctx.legacyChannels.registerAdapter(reactAdapter(reactions))
     const outbound = nextOutbound(ctx)
 
     ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', messageId: 'm-1', isGroup: false, text: 'hi' })
@@ -256,7 +261,7 @@ describe('the channel-core seam', () => {
   it('acks a group message unconditionally under group-all', async () => {
     const ctx = await harness(new MockAdapter([textResponse('ok')]), { ackReactionScope: 'group-all' })
     const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
-    ctx.channels.registerAdapter(reactAdapter(reactions))
+    ctx.legacyChannels.registerAdapter(reactAdapter(reactions))
     const outbound = nextOutbound(ctx)
 
     ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', messageId: 'm-1', isGroup: true, wasMentioned: false, text: 'hi' })
@@ -268,7 +273,7 @@ describe('the channel-core seam', () => {
   it('disables acks entirely when ackReaction is an explicit empty string', async () => {
     const ctx = await harness(new MockAdapter([textResponse('ok')]), { ackReaction: '', ackReactionScope: 'all' })
     const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
-    ctx.channels.registerAdapter(reactAdapter(reactions))
+    ctx.legacyChannels.registerAdapter(reactAdapter(reactions))
     const outbound = nextOutbound(ctx)
 
     ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', messageId: 'm-1', text: 'hi' })
@@ -280,7 +285,7 @@ describe('the channel-core seam', () => {
   it('does not broaden group-mentions when requireMention is false', async () => {
     const ctx = await harness(new MockAdapter([textResponse('ok')]), { requireMention: false })
     const reactions: Array<{ messageId: string | undefined; emoji: string }> = []
-    ctx.channels.registerAdapter(reactAdapter(reactions))
+    ctx.legacyChannels.registerAdapter(reactAdapter(reactions))
     const outbound = nextOutbound(ctx)
 
     ctx.emit('channel/inbound', { channel: 'fake', direction: 'in', threadId: 't1', messageId: 'm-1', isGroup: true, wasMentioned: false, text: 'hi' })

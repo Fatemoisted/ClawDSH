@@ -1,0 +1,19 @@
+{
+  "name": "@clawdsh/openclaw-bridge-canary-v2",
+  "version": "2026.8.1",
+  "private": true,
+  "type": "module",
+  "peerDependencies": {
+    "openclaw": "2026.8.1"
+  },
+  "openclaw": {
+    "extensions": ["./index.ts"],
+    "compat": {
+      "pluginApi": ">=2026.8.1"
+    },
+    "build": {
+      "openclawVersion": "2026.8.1",
+      "bundledDist": false
+    }
+  }
+}

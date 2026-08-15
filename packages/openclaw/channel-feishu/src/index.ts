@@ -1,6 +1,7 @@
 /**
- * A Feishu (Lark) channel adapter over the `ctx.channels` seam, backed by the
- * official `@larksuiteoapi/node-sdk`.
+ * A Feishu (Lark) channel adapter over the legacy `ctx.legacyChannels` seam,
+ * backed by the official `@larksuiteoapi/node-sdk` and retained only until
+ * credentialed sidecar cutover.
  *
  * Inbound messages arrive through the SDK's WebSocket long-connection: the
  * adapter registers an `im.message.receive_v1` handler on a `Lark.EventDispatcher`,
@@ -19,7 +20,7 @@
 import * as Lark from '@larksuiteoapi/node-sdk'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { registerChannelAdapter, stripZeroWidth } from '@clawdsh/dsh-channel-core'
+import { registerLegacyChannelAdapter, stripZeroWidth } from '@clawdsh/dsh-channel-core'
 import type { ChannelAdapter, ChannelMessage } from '@clawdsh/dsh-channel-core'
 
 /** Cap on retained de-duplication message ids before the oldest is evicted. */
@@ -28,8 +29,8 @@ const SEEN_CAP = 10000
 /** Cordis plugin name. */
 export const name = 'channel-feishu'
 
-/** The channel registry this adapter contributes to. */
-export const inject = ['channels']
+/** The legacy channel registry this adapter contributes to. */
+export const inject = ['legacyChannels']
 
 /** Feishu API domain: mainland Feishu or international Lark. */
 export type FeishuDomain = 'feishu' | 'lark'
@@ -270,7 +271,7 @@ async function react(client: Lark.Client, message: ChannelMessage, emoji: string
  * Build the Feishu adapter from validated config.
  * @param config - validated plugin config carrying app identity and region.
  * @param deps - optional dependency injection (test-only API client).
- * @returns the adapter to register with `ctx.channels`.
+ * @returns the adapter to register with `ctx.legacyChannels`.
  */
 export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAdapter {
   const client = deps.client ?? buildClient(config)
@@ -287,9 +288,9 @@ export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAd
 
 /**
  * Mount the Feishu adapter into the channel registry.
- * @param ctx - Cordis context carrying the `channels` service.
+ * @param ctx - Cordis context carrying the `legacyChannels` service.
  * @param config - validated plugin config.
  */
 export function apply(ctx: Context, config: Config): void {
-  registerChannelAdapter(ctx, mentionPatterns => createAdapter(config, { mentionPatterns }))
+  registerLegacyChannelAdapter(ctx, mentionPatterns => createAdapter(config, { mentionPatterns }))
 }

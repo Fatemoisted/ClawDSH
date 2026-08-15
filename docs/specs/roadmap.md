@@ -2,71 +2,114 @@
 
 English | [中文](roadmap.zh.md)
 
-> This document is ClawDSH's charter: it answers "why build it, what to build, how to build it". Decision details are in `docs/adr/`, feature alignment in `docs/matrix/parity.md`, standards in `docs/standards/`.
+> This charter states why ClawDSH exists and how work is sequenced. Decisions live in `docs/adr/`, exact status in `docs/matrix/parity.md`, and operational rules in `docs/standards/`.
 
-## 1. Project purpose
+## 1. Purpose
 
-**ClawDSH = OpenClaw's personal-assistant feature set, rebuilt on DeepSeek Harness (dsh)'s Cordis plugin foundation.**
+**ClawDSH rebuilds OpenClaw's personal-assistant form on DeepSeek Harness's Cordis plugin foundation.** dsh owns Agent execution, Sessions, tools, and composable capability seams; ClawDSH contributes persona, memory, skills, automation, product presentation, and communication-plane integration as isolated packages.
 
-The essence of OpenClaw's predicament is not "too many community PRs" but an **architecture without seams**: no community feature can land as a plugin, so they keep piling into the core, driving coupling out of control, making the code unmaintainable, and finally collapsing.
+The project keeps community features out of a monolithic core. A feature belongs in one complete capability seam or on an existing seam, declares dependencies, mounts reversibly, logs every model-visible input, and carries its specification and verification evidence with the implementation.
 
-dsh's Cordis architecture (everything is a plugin: plugins declare dependencies via `inject`, collaborate through typed events, and mount/unmount reversibly) fixes this at the architectural level: **each community feature is an independent plugin, and adding a capability no longer touches the core**. Users freely compose the personal Agent they want through the profile/patch mechanism.
+## 2. Principles
 
-## 2. Core principles (non-negotiable)
+1. **dsh upstream stays read-only.** Owned code is confined to `packages/openclaw/`, designated docs, tools, and ClawDSH workflows; root build registrations are narrow ADR-backed additions.
+2. **Complete seams only.** A new capability includes a Service Definition, Service Provider, and Consumer. A missing dsh seam requires an ADR and an owned implementation or explicit proposal.
+3. **Reuse whole subsystems at the right boundary.** Non-channel features use the early OpenClaw reference where sufficient. Communication follows separately approved current OpenClaw locks because platform reach and security behavior live there.
+4. **Immutable inputs and explicit support.** A floating ref is never a deploy dependency. Channel support advances only through `cataloged → installable → certified → enabled`.
+5. **Vertical evidence.** Package tests prove local behavior, assembled snapshots prove user-visible composition, and credentialed smoke proves one external transport. None substitutes for another.
+6. **ClawDSH is the product.** The local GUI presents ClawDSH by default and keeps the native Harness as an advanced entry point. Switching an Agent preset does not uninstall Host capabilities.
+7. **No upstream GUI patch.** The product shell consumes public dsh Web and Host APIs and does not add a Client Slot or modify `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source.
+8. **No premature legacy deletion.** A replacement removes an older path only after equivalent assembly, snapshots, live behavior, and failure handling pass.
 
-1. **Upstream read-only**: dsh upstream code (`vendor/`, `packages/*` (except openclaw/), `apps/`, `website/`) remains untouched; all customization lands in ClawDSH-owned plugins or application assemblies, profiles, and patches.
-2. **Upstream-first**: when a dsh seam is missing, first raise a PR upstream, bridge locally with a patch, and delete the patch after upstream merges. The ClawDSH GUI consumes existing public dsh APIs and is an application assembly rather than a missing seam; if its implementation would require an upstream change, this GUI work stops and is redesigned within its approved local-only boundary instead of opening an upstream PR ([ADR-0007](../adr/0007-clawdsh-local-gui-product.md)).
-3. **Port the feature category, not the PR**: of OpenClaw's tens of thousands of PRs, most are bugfix/refactor/duplicate features; we want 20~40 feature domains.
-4. **Vertical slice first**: each phase must have "something runnable", no big-and-complete fantasy.
-5. **Anti-OpenClaw-disease**: any PR must link a spec + update the matrix + pass contract tests before merging (see `docs/standards/pr-policy.md`).
+## 3. Completed foundations
 
-## 3. Implementation phases
+### Phase 0 · Feasibility spike
 
-### Phase 0 · Feasibility Spike ✅ (completed 2026-08-14)
+The `soul` plugin proves that an owned package can contribute or replace system-prompt sections, unwind through Cordis lifecycle, and compose through a profile without changing upstream Agent code.
 
-- Output: feature alignment matrix v1; the `@clawdsh/dsh-soul` plugin (replace/append dual mode + soul-file loading).
-- Exit criteria **all met**: soul can replace/overlay the agent system prompt (contract tests 10/10), hot-plug (unload rolls back), no upstream source line changed (build-registration exemption only, see ADR-0001 decision 4); full typecheck green; `--profile clawdsh --dump-config` covers the current profile identity.
-- **Conclusion: the seam hypothesis holds, the project continues.** Verification details in docs/specs/feature-soul.md's acceptance-criteria section.
+### Phase 1 · Feature-domain mapping
 
-### Phase 1 · Baseline selection + matrix finalization ✅ (completed 2026-08-14)
+The project selected OpenClaw `v2026.1.5` as the compact non-channel reference and classified Sessions, tools, persona, memory, skills, automation, channels, federation, and clients by reuse, plugin, new seam, product assembly, or deferral. Later source references remain allowed where the early tag lacks a selected domain.
 
-- **Baseline finalized: `v2026.1.5` (`197b8f7c3b`)** — the first release tag, complete gateway + 5 channels + cron + sessions core experience, the thinnest codebase of all tags (1537 files/1.6MB), no bloat signs; from v2026.1.15 file count doubles and extensions/plugins/deploy matrix appear. Feature-completion reference: whatsapp/memory/channels → v2026.1.15 (`9c4c9c5edd`).
-- The four-way classification for OpenClaw-derived feature domains was finalized, see `docs/matrix/parity.md` (matrix v2, with each ported domain's baseline-source path). ClawDSH-native product surfaces use a separate Product assembly classification.
+### Phase 2 · Personal-assistant vertical slice
 
-### Phase 2 · Core skeleton (vertical slice) ✅ (completed 2026-08-14)
+`soul`, Memory and Embeddings packages, the internal `preset-openclaw` assembly, and the legacy `channel-core` / Telegram / Feishu path established the first runnable personal-assistant composition. The legacy adapter path demonstrates Session routing but does not establish current channel certification.
 
-- `channel-core` (new seam, per ADR-0002) + `channel-telegram` (first channel) + **`channel-feishu` (initiator's first priority, ADR-0002 seam-verification alternate channel)** + `soul` + `memory` + `preset-openclaw`.
-- Exit criteria: `pnpm dsh --profile clawdsh` starts, Telegram message in → personalized agent runs → reply out; the `ctx.channels` contract passes verification through both the Telegram and Feishu adapters (Feishu source: OpenClaw `extensions/feishu`, v2026.2.12).
-- **Status (2026-08-14)**: core deliverables shipped and closed out — channel seam + two adapters (Feishu real e2e verified end-to-end; Telegram blocked on credentials), soul deep-read finalized (replace/append is the final form, preset-relative `source` via `ctx.baseUrl`), memory three packages with the `ctx.embeddings` seam (ADR-0003) and a real ARK e2e (tools/ark-e2e.ts), preset daemon-ized with `embeddings-ark` enabled, 26 bilingual doc pairs completed. See docs/journal/2026-08-14.md.
+### Phase 3 · Local ecosystem plugins
 
-### Phase 3 · Channel rollout + automation ✅ (completed 2026-08-14)
+`skills-hub` and opt-in `automation` use existing dsh seams. Channel identity presentation and acknowledgement behavior remain available through the legacy path. Federation remains evaluation-only under ADR-0005.
 
-- One package per channel (WhatsApp/Email/Web Chat…), none blocking each other; `automation` (schedule bridging), `skills-hub` (ClawHub provider).
-- **Channel-scope principle**: only build channels that have a source in OpenClaw upstream (see docs/matrix/parity.md "Domestic platforms" section) — WeChat-family/DingTalk/QQ have no upstream counterpart, not implemented.
-- Federation node (clawd) goes over `ctx.subagents` transport, evaluated as an independent milestone.
-- **Status (2026-08-14)**: `skills-hub` and `automation` shipped (automation disabled opt-in, croner over `ctx.agents`/`ctx.sessions`); ack-reaction channel identity presentation, memory host watcher, npm publishing (ADR-0004), and clawd federation (ADR-0005, evaluation-only) closed out. The current clean-install profile also keeps Feishu and Telegram disabled, so all three optional external behaviors start without credentials. Further channels and federation implementation remain deferred. See docs/journal/2026-08-14.md.
+## 4. Current Phase 4 · Product GUI, channel plane, and distribution
 
-### Phase 4 · User ecosystem (in progress)
+Phase 4 has three parallel workstreams. They share the `clawdsh` product identity and clean-install requirement but have separate evidence.
 
-- Plugin development template + contract docs published; joins dsh's `dsh-plugin` discovery mechanism.
-- The preset-only dsh Web GUI baseline uses the `clawdsh` profile and `clawdsh` preset, displayed as `ClawDSH 模式`. [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) defines the pending ClawDSH product shell, capability Settings, semantic Activity, and Harness Advanced entry point without modifying the upstream GUI.
-- `tools/link-clawdsh.sh` is the development installer. It warns about legacy `openclaw` assets and preserves them; the managed install manifest, `clawdsh doctor`, public distribution, and migration guide remain Phase 4 distribution deliverables.
+### 4.1 ClawDSH local GUI
 
-### Throughout
+The preset-only dsh Web baseline uses the `clawdsh` profile and `clawdsh` preset, displayed as `ClawDSH 模式`. [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) defines the accepted product shell:
 
-- Upstream sync CI (weekly rebase + smoke); milestone feature freeze (bug fixes only, no new features).
+- `/clawdsh/` is the default product route; `/` remains native dsh Web and is labeled Harness Advanced.
+- Navigation is Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced.
+- Conversation reuses the public dsh client plugin graph and renderer; ClawDSH owns the shell, Settings, Activity, and Control Runtime.
+- Settings project allowlisted ClawDSH capability schemas, credential presence, revisions, and restart requirements without exposing arbitrary Loader mutation.
+- Activity gives a semantic view of Prompt, Memory, Channels, Skills, and Automation while raw Trajectory remains available in Harness Advanced.
+- `dsh --profile web` remains a pure Harness entry point.
 
-## 4. Success criteria
+### 4.2 Current channel plane
 
-1. One community feature = one plugin package, merging touches no core — OpenClaw's death mode is architecturally impossible;
-2. Users can freely compose channels/persona/memory/automation from a single config and get their own personal Agent;
-3. Net divergence from dsh upstream trends to zero (everything upstreamable is upstreamed);
-4. Local users can configure, understand, and inspect ClawDSH without editing raw Cordis entries, while the pure dsh Web profile and raw Harness diagnostics remain available.
+[ADR-0008](../adr/0008-openclaw-channel-plane.md) locks the production OpenClaw Gateway to `v2026.7.1-2` / commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`, records a source-only canary, and establishes a production catalog of **24 core/bundled/repository-official + 3 external** public chat transports.
 
-## 5. Open items
+The foundation comprises `@clawdsh/dsh-channel`, `@clawdsh/dsh-channel-agent`, `@clawdsh/dsh-channel-openclaw`, and `tools/openclaw-channel-host`. The profile assembles the three runtime packages in a default-disabled group. No channel is certified or enabled; per-channel assembly, owned keyless snapshot evidence, current live smoke, Windows endpoint authorization, and remaining media support are incomplete.
 
-- [ ] OpenClaw baseline commit (Phase 1 first task)
-- [x] Soul Spike conclusion (✅ feasible, continue)
-- [ ] Whether the `ctx.channels` seam is accepted by dsh upstream (affects patch-layer thickness)
-- [ ] ClawDSH local GUI product shell ([ADR-0007](../adr/0007-clawdsh-local-gui-product.md))
-- [x] Private remote repo creation (Fatemoisted/ClawDSH, completed 2026-08-14)
+The legacy channel packages remain separately available under `ctx.legacyChannels` for replacement verification. They must not connect to the same platform accounts as the OpenClaw communication plane and are removed only after the replacement conditions pass.
+
+### 4.3 Public distribution
+
+`tools/link-clawdsh.sh` is the development installer. It installs only `clawdsh` identities, warns about legacy `openclaw` profile and preset assets, and leaves them untouched. The public distribution work owns an idempotent CLI, exact dsh and ClawDSH bundle versions, a managed manifest, `clawdsh doctor`, preset backup and repair, clean-home smoke, and public npm provenance.
+
+## 5. Work sequence
+
+### Product GUI sequence
+
+1. Build the nested ClawDSH Web entry, Control Runtime, `/clawdsh/` routes, product navigation, and read-only capability overview.
+2. Add schema-driven Settings, credential references, optimistic revision checks, desired/runtime revision display, restart requirements, and the dedicated Automation editor.
+3. Add current-Session Activity with bounded, permission-restricted sidecar JSONL plus fallback projection from standard Session history.
+4. Preserve the native GUI, raw Trajectory, and `dsh --profile web` throughout browser and real-profile regression tests.
+
+### Channel sequence
+
+1. Maintain the reproducible production host and bridge assembly, including sole-AgentHarness routing and exact runtime inspection.
+2. Add the owned keyless Gateway-to-Agent snapshot lane and close protocol, recovery, delivery, action, and attachment evidence gaps.
+3. Run per-channel certification, starting with Telegram and Feishu, and record exact host, channel, OS, and live-traffic evidence.
+4. Enable only certified combinations, then remove legacy packages and archive their Agent Notes in the same change.
+5. Promote further production catalog entries in cohorts based on ecosystem value, credential availability, platform risk, and external-package review.
+
+### Distribution sequence
+
+1. Package the profile, presets, Control Runtime, GUI assets, and exact feature dependencies in the ClawDSH bundle.
+2. Publish the CLI and owned packages as `0.1.0-rc.1` to the public npm `next` tag only after scope ownership, public-source provenance, and exact dsh compatibility pass.
+3. Prove clean installation, second-run idempotency, user-change preservation, tarball integrity, and absence of private registry, workspace, file, or symlink references.
+
+## 6. Success criteria
+
+1. A clean dsh home starts `/clawdsh/` without channel credentials and defaults new Sessions to `ClawDSH 模式`.
+2. Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced are reachable while pure `dsh --profile web` behavior remains unchanged.
+3. ClawDSH capability settings are schema-driven, conflict-safe, credential-redacted, and honest about restart requirements and runtime state.
+4. Activity explains ClawDSH Prompt, Memory, Channels, Skills, and Automation behavior without claiming to reconstruct the final flattened prompt or replacing raw Trajectory.
+5. One approved OpenClaw production host exposes the stable 27-entry catalog without copying platform SDK integrations into ClawDSH.
+6. No OpenClaw model fallback can answer a channel turn, and repeated input or ambiguous delivery cannot silently duplicate Agent or delivery side effects.
+7. Support labels correspond to evidence, and a shipped profile activates only certified host-and-channel combinations.
+8. Public installation is exact, idempotent, recoverable, and preserves user settings, credentials, memory, skills, and custom patches.
+
+## 7. Open conditions
+
+- [ ] Implement the ClawDSH product shell and read-only capability overview.
+- [ ] Implement the Settings control plane and credential-safe mutation flow.
+- [ ] Implement semantic Activity and sidecar degradation behavior.
+- [ ] Add owned real-profile browser and keyless snapshots for the product shell.
+- [ ] Add per-channel configuration, capability probes, and keyless contract evidence before promoting any production entry to installable.
+- [ ] Complete fresh Telegram and Feishu certification; neither is certified or enabled.
+- [ ] Add Windows named-pipe ACL enforcement before Windows channel support advances.
+- [ ] Add durable non-image attachments and outbound staging before advertising those media paths.
+- [ ] Add an ignorable Session append mechanism before persisting redundant `channel/*` events.
+- [ ] Remove legacy channel packages only after all replacement conditions pass.
+- [ ] Complete public npm ownership, provenance, exact-version compatibility, and clean-install smoke before publishing.

@@ -1,0 +1,8 @@
+# Restricted non-owner/group preset. channel-agent masks every inherited tool before mounting this
+# composition and registers the capability-checked message tool in the resulting agent scope.
+
+- id: soul
+  name: '@clawdsh/dsh-soul'
+  config:
+    source: ./souls/assistant.md
+    mode: append

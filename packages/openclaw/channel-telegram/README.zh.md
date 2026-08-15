@@ -2,13 +2,13 @@
 
 [English](README.md) | 中文
 
-**定位**：Telegram 渠道适配器——实现 `ChannelAdapter`，用 grammY 封装：`Bot` 长轮询入站（`message:text`）+ `bot.api.sendMessage` 出站，是第一个渠道插件，兼作 `ctx.channels` seam 的 spike 载体。
+**定位**：基于 `ctx.legacyChannels` 的旧版 Telegram 适配器，以 grammY `Bot` 长轮询接收入站文本（`message:text`），并通过 `bot.api.sendMessage` 发送回复。它只保留到带凭证的 OpenClaw sidecar live-cutover 完成。
 
 **OpenClaw 对应**：Telegram 渠道（OpenClaw 支持矩阵中最早稳定的一批渠道之一）。上游 `extensions/telegram` 同样用 `grammy` + `@grammyjs/runner` + `@grammyjs/transformer-throttler` 封装；本适配器先取最小面（grammY `Bot` 长轮询），runner/throttler 留待阶段 3 按需引入。
 
-**接缝**：`ctx.channels`（@clawdsh/dsh-channel-core）。
+**接缝**：仅供旧版使用的 `ctx.legacyChannels`（@clawdsh/dsh-channel-core），不为生产 `ctx.channels` 服务提供兼容 alias。
 
-**规格**：阶段 2 交付物 · **状态**：implemented
+**规格**：历史阶段 2 交付物 · **状态**：legacy，默认禁用，等待退役；本文不声称 sidecar 已完成 live cutover
 
 ## 设计要点
 
@@ -35,6 +35,8 @@ Only the relayed message text reaches the model, through channel-core's session 
 Append-only through channel-core's user-message write.
 
 ## Known Limitations and Deferred Work
+
+- **退役门禁**：只有使用真实凭证的 Telegram 账号通过 OpenClaw sidecar live-cutover 矩阵后才能删除该适配器；单元测试和契约测试不能替代该门禁。
 
 - **真实 e2e**：需真 `botToken` + key 才能跑通真实闭环，当前以契约测试（协议映射 + `send` 载荷 + 启动/停轮询）覆盖。
 - **引用回复/附件**：`reply_parameters` 引用、图片/富文本一律推迟（阶段 3 渠道扩展）。

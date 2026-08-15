@@ -2,15 +2,17 @@
 
 English | [中文](README.zh.md)
 
-**Purpose**: the channel gateway seam — ClawDSH's **only newly added seam**. Provides the `ctx.channels` service: registers channel adapters (inbound message → agent session, outbound reply → channel push), and is responsible for session-channel binding/routing.
+**Purpose**: the legacy experimental channel seam. It provides `ctx.legacyChannels` for the pre-sidecar Telegram and Feishu adapters while they await credentialed live-cutover verification.
 
-**OpenClaw correspondence**: the message-ingestion layer of the Gateway (the shared skeleton for all channels — WhatsApp/Telegram/Email/Web Chat and so on).
+**OpenClaw correspondence**: an early local approximation of Gateway message ingestion. It does not implement or certify the current OpenClaw communication plane.
 
-**Seam**: **new** `ctx.channels` (design in docs/adr/0002-channel-seam.md). Upstream dsh has no message-channel concept; this is the project's core increment. The contract design must be upstream-first (propose a PR upstream first, bridge locally with a patch).
+**Seam**: legacy-only `ctx.legacyChannels` (historical design: docs/adr/0002-channel-seam.md). The production Service Definition owns `ctx.channels`; this package deliberately exports no alias to that name.
 
-**Specification**: docs/adr/0002-channel-seam.md · **Status**: implemented
+**Specification**: docs/adr/0002-channel-seam.md · **Status**: legacy, disabled by the default profile, pending decommission after credentialed Telegram and Feishu sidecar cutover
 
 ## Usage
+
+This configuration is retained only for explicit legacy deployments. It is not sidecar cutover evidence.
 
 ```yaml
 - id: channel-core
@@ -49,6 +51,8 @@ Inbound text contributes prompt tokens to the per-thread session and stays in th
 Append-only; each inbound turn appends a user message to the reusable request prefix and does not invalidate prior cache entries.
 
 ## Known Limitations and Deferred Work
+
+- **decommission gate**: remove this package only after credentialed Telegram and Feishu traffic has completed the OpenClaw sidecar live-cutover checks; that gate has not been claimed here.
 
 - **real e2e**: the assembly test running a real agent turn inside the Loader needs a real key; currently covered by MockAdapter contract tests + `--dump-config` smoke.
 - **concurrency**: per-thread tail-chain serialization as the fallback; cross-message interleaving and multi-sender merging deferred to stage 3.

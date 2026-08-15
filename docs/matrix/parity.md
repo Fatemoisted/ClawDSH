@@ -2,76 +2,85 @@
 
 English | [中文](parity.zh.md)
 
-> This matrix is ClawDSH's **single source of truth**: each OpenClaw-derived or ClawDSH-native product domain gets its sole classification and status here. Any PR touching a feature change must update this file in sync (see `docs/standards/pr-policy.md`).
->
-> Reuse, Plugin, New seam, and Deferred remain the four-way classification for OpenClaw-derived domains. Product assembly is a separate classification only for ClawDSH-native product surfaces.
->
-> Classification meanings:
-> - **Reuse**: native dsh capability, used directly, no code written;
-> - **Plugin**: incremental package mounted on an existing dsh seam (`packages/openclaw/*`);
-> - **New seam**: dsh has no corresponding seam, must add (requires ADR + upstream-first);
-> - **Product assembly**: ClawDSH-owned application/profile composition over public dsh APIs, with no upstream source modification;
-> - **Deferred**: not this round, reason recorded.
+> This matrix is ClawDSH's status authority. Each OpenClaw-derived domain or ClawDSH-native product domain has one classification and current status here. Exact OpenClaw channel artifacts and roster metadata remain in `tools/openclaw-channel-host/*.json`; this page projects their approved meaning.
 
-## Baseline (finalized Phase 1, 2026-08-14)
+## Classification
 
-**OpenClaw baseline = tag `v2026.1.5` (commit `197b8f7c3b`)**, selection rationale (full analysis in docs/journal/2026-08-14.md Phase 1 section):
+| Classification | Meaning |
+|---|---|
+| Reuse | Use an existing dsh capability directly |
+| Plugin | Add a ClawDSH package on an existing seam |
+| New seam | Add a complete Service Definition, Service Provider, and Consumer set with an ADR |
+| Product assembly | Build a ClawDSH application or profile from public dsh APIs without modifying upstream source |
+| Deferred | Keep work outside the current implementation and name its unblock condition |
 
-| Metric | 2025-12-31 | **v2026.1.5 ✅** | v2026.1.15 | v2026.1.20 | v2026.1.30 |
+Channel support uses only the monotonic states `cataloged → installable → certified → enabled`: cataloged records approved provenance; installable proves exact compatible assembly; certified adds current protocol, security, delivery, snapshot, and required live-transport evidence; enabled adds an explicit active shipped-profile choice. No earlier state implies a later one.
+
+<!-- BEGIN GENERATED openclaw-channel-support (generate-parity.ts) — do not edit between markers -->
+| Locked track | `cataloged` | `installable` | `certified` | `enabled` |
+|---|---:|---:|---:|---:|
+| production | 27 | 0 | 0 | 0 |
+| canary | 31 | 0 | 0 | 0 |
+<!-- END GENERATED openclaw-channel-support -->
+
+## Baselines
+
+Non-channel feature selection retains the Phase 1 reference, OpenClaw `v2026.1.5` at `197b8f7c3b`, with `v2026.1.15` used where memory or later feature completion required it. That early snapshot is not the channel compatibility baseline.
+
+The production channel plane is locked to OpenClaw `v2026.7.1-2`, commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`, and npm package `openclaw@2026.7.1-2`, with checked archive and extracted-tree identities. The isolated canary audit lock is source commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`; it has no locked built host and is not a managed deployment candidate. [ADR-0008](../adr/0008-openclaw-channel-plane.md) and the [OpenClaw channel sync standard](../standards/openclaw-channel-sync.md) own this split.
+
+## Feature domains
+
+| Product or OpenClaw domain | Reference | dsh seam | Classification | Landing package | Current status |
 |---|---|---|---|---|---|
-| File count | 1197 | **1537** | 3367 (doubled) | 4041 | 4543 |
-| Channels | discord/telegram | **+imessage/signal/slack** | +whatsapp | — | — |
-| channels abstraction | ✗ | ✗ | ✓ | ✓ | ✓ |
-| memory directory | ✗ | ✗ | ✓ | ✓ | ✓ |
-| Bloat signs (extensions/plugins/docker deploy matrix) | ✗ | **✗** | appears | worsens | worsens |
+| Sessions / message history | early baseline sessions | `ctx.sessions` | Reuse | — | directly usable |
+| Session tracing / replay / forking | dsh-native | Session projection and raw Trajectory | Reuse | — | directly usable |
+| Tool execution | early baseline Agent tools | `ctx.tools`, `ctx.shell`, `ctx.fs`, `ctx.web` | Reuse | — | directly usable |
+| Skills | OpenClaw skills / ClawHub conventions | `ctx.skills` | Plugin | `skills-hub` | implemented |
+| Scheduling / automation | early baseline cron | `ctx.agents`, `ctx.sessions` | Plugin | `automation` | implemented; disabled by default |
+| Persona | early baseline prompt/workspace identity | `ctx.systemPrompt` | Plugin | `soul` | implemented |
+| Memory | v2026.1.15 memory | `ctx.fs`, `ctx.tools`, `ctx.embeddings` | Plugin + owned embeddings seam | `memory`, `embeddings`, `embeddings-ark` | implemented |
+| Channel Service Definition | current Gateway integration | owned `ctx.channels` | New seam | `channel` | V1 implemented |
+| Channel Agent Driver | dsh Session and Agent lifecycle | `ctx.channels`, Agents, Sessions, attachments | Plugin | `channel-agent` | foundation implemented; certification incomplete |
+| OpenClaw communication Provider | locked Gateway and plugins | `ctx.channels`, subprocess, storage | Plugin | `channel-openclaw` | foundation implemented; disabled by default |
+| Legacy in-process channel path | ADR-0002 experiment | `ctx.legacyChannels` | Deferred removal | `channel-core`, `channel-telegram`, `channel-feishu` | retained until the ADR-0008 replacement conditions pass |
+| Approval / security policy | later OpenClaw security reference | approvals and guards | Reuse/config | — | directly usable |
+| Federation node | outside early baseline | `ctx.subagents` transport | Plugin | `clawd-federation` | ADR-0005 evaluation only; implementation deferred |
+| Smart home | outside selected scope | no accepted seam | Deferred | — | requires a reviewed source and capability design |
+| Local browser conversation | dsh Web client | `dsh-web-app` + `clawdsh` preset | Reuse/config | internal `preset-openclaw` source | preset-only baseline implemented |
+| ClawDSH product shell, Settings, and Activity | ClawDSH-native | public dsh Web assembly, Settings, Credentials, and Session history | Product assembly | internal `preset-openclaw` source | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) accepted; implementation pending |
 
-- **Why v2026.1.5**: first release tag (1.5-1/2/3 minor versions only fix bugs), the "gateway + 5 channels + cron + sessions + tui/wizard" personal-assistant core experience complete and stable; thinnest codebase of all tags (1537 files / 1.6MB); no bloat signs; timing = the project's peak-virality period.
-- **Feature-completion reference**: whatsapp / memory / channels abstraction do not yet appear in the baseline → consult `v2026.1.15` (`9c4c9c5edd`) when porting; earlier gateway prototype reference `2025-12-31` (`f03605d8ae`).
-- Reference repo local cache: `/tmp/openclaw-ref` (partial clone, blob:none; re-pull after machine restart, command in journal).
+The channel Agent path stores complete sanitized model provenance on the known `user/message.source.kind = 'channel'` field and keeps admission, idempotency, and delivery authority in durable channel ledgers. It does not persist declared `channel/*` Session events because downstream code cannot mark them ignorable and the static known-event reader would make resume fail closed.
 
-## Matrix v2 (baseline finalized)
+## Production channel catalog
 
-| OpenClaw or ClawDSH product domain | Baseline source (v2026.1.5) | dsh seam | Classification | Landing package | Status |
-|---|---|---|---|---|---|
-| Sessions / message history | `src/sessions/` | `ctx.sessions` (append-only log) | Reuse | — | directly usable |
-| Session tracing / replay / forking | — (dsh-native) | Trajectory view / replay | Reuse | — | directly usable |
-| Tool execution (bash/file/browser…) | `src/agents/*-tools.ts` | `ctx.tools` / `ctx.shell` / `ctx.fs` / `ctx.web` | Reuse | — | directly usable |
-| Skills (Skill) | top-level `skills/` | `ctx.skills` (provider merge) | Plugin | `skills-hub` | **implemented** (Phase 3 ✅) |
-| Scheduling / automation | `src/cron/` | own unref'd croner timer + `agent.followup`/`whenIdle`/`sessions.flush` turn bridge (`ctx.schedule` rejected: session-local + 300s floor + tools-only API) | Plugin | `automation` | **implemented** (Phase 3 ✅) |
-| Persona (Soul) | `src/agents/system-prompt.ts` first line + workspace six files (AGENTS/SOUL/TOOLS/IDENTITY/USER/BOOTSTRAP.md) | system-prompt assembly (persona first line / soul append / complete section / tool guidance band) + channel presentation (IDENTITY ✅) | Plugin | `soul` | **implemented** (Phase 0 ✅ + Phase 2 deep-read finalization ✅) |
-| Memory | baseline absent → reference v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`, `memory-tool.ts` | `ctx.fs` file source-of-fact + `ctx.tools` + system-prompt section + `ctx.get('embeddings')` (new seam, ADR-0003) | Plugin | `memory` + `embeddings` + `embeddings-ark` | **implemented** (Phase 2 gap-fill ✅) |
-| **Channel gateway (Gateway)** | `src/gateway/` | **none** | **new seam** | `channel-core` | **implemented** (Phase 2 ✅) |
-| Channel: Telegram | `src/telegram/` | `ctx.channels` | Plugin | `channel-telegram` | **implemented** (Phase 2 ✅) |
-| Channel: Discord | `src/discord/` | `ctx.channels` | Plugin | `channel-discord` (to be built) | planning |
-| Channel: iMessage / Signal / Slack | `src/imessage/` etc. | `ctx.channels` | Plugin | per-package later | Deferred (Phase 3) |
-| Channel: WhatsApp | reference v2026.1.15 `src/whatsapp/` | `ctx.channels` | Plugin | per-package later | Deferred (Phase 3) |
-| Approval / security policy | `src/security/` (from 1.15) | `ctx.approval` / guard | Reuse (config) | — | directly usable |
-| Federation node (clawd) | absent in early baseline | `ctx.subagents` (transport) | Plugin | `clawd-federation` | ADR-0005 (evaluation-only), implementation deferred |
-| Smart home (casa) | absent in baseline | none | new plugin domain | to be named | Deferred |
-| Local browser conversation | `ui/` (+ `apps/`) | `dsh-web-app` + `clawdsh` preset (`ClawDSH 模式`) | Reuse (profile/preset) | internal `preset-openclaw` source + `dsh-web-app` | **implemented baseline** (Phase 4; Feishu/Telegram/Automation disabled on clean install) |
-| ClawDSH product shell, Settings, and semantic Activity | — (ClawDSH-native) | Public dsh Web assembly + Settings/Credentials/Session history; no Client Slot | Product assembly | `preset-openclaw` | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) accepted; implementation pending |
+The stable public chat catalog contains 27 entries: **1 core + 2 bundled + 21 repository-official + 3 external = 24+3**. Exact names, package versions, integrities, source paths, and observation times live in `tools/openclaw-channel-host/channels.production.json`.
 
-## Domestic platforms (principle: only implement what OpenClaw upstream has)
+| Catalog group | Entries | Current support state | Evidence and limit |
+|---|---:|---|---|
+| Core + bundled + repository-official | 24 | **cataloged** | Exact stable host source and per-entry provenance are locked; per-channel assembly and certification are incomplete |
+| External | 3 | **cataloged** | WeChat, Yuanbao, and Zalo ClawBot have exact package identities; external review and the same assembly and certification requirements still apply |
+| Legacy Telegram adapter | 1 | **installable** | Local package exists; no current credentialed live smoke establishes certification or enablement |
+| Legacy Feishu adapter | 1 | **installable** | Local package exists; historical smoke does not establish certification or enablement for the current release |
 
-> **Project principle (established by the initiator 2026-08-14)**: only implement features that have a source in OpenClaw upstream, feeling for stones while crossing the river; do not invent feature domains upstream lacks. Domestic platforms verified one by one under this principle:
+Catalog provenance is not a runtime support claim. A verified npm integrity does not make a channel installable until its compatible locked host and bridge composition assemble. The canary catalog contains 31 entries but remains cataloged audit input only.
 
-| Platform | OpenClaw upstream status | Verdict |
-|---|---|---|
-| **Feishu (Lark)** | ✅ official `extensions/feishu` (introduced 2026-02-03: `2483f26c23`→`0223416c61`; released since v2026.2.12) | **do it, and initiator's first priority** (see matrix row below) |
-| WeCom / WeChat / Official Account / personal WeChat | ❌ upstream (latest main) has no WeChat-family channel (the `tencent` extension is a Tencent Cloud LLM provider, not a channel) | **no core package** — principled exclusion; follow up when upstream adds wecom |
-| DingTalk / QQ | ❌ upstream absent | no — principled exclusion, same as above |
+## China-focused platform projection
 
-### Feishu channel (matrix row)
+| Platform | Approved OpenClaw provenance | Current support state | Limit |
+|---|---|---|---|
+| Feishu / Lark | production repository-official extension | **cataloged** through sidecar; legacy package **installable** | neither path is certified or enabled |
+| QQ Bot | production repository-official extension | **cataloged** | not one of the three production external plugins |
+| WeChat | production external `@tencent-weixin/openclaw-weixin@2.4.6` | **cataloged** | external review and certification remain incomplete |
+| Yuanbao | production external `openclaw-plugin-yuanbao@2.15.0` | **cataloged** | external review and certification remain incomplete |
+| WeCom | canary external `@wecom/wecom-openclaw-plugin@2026.5.7` | **cataloged** in canary only | absent from the production lock |
+| DingTalk | absent from both approved catalogs | — | no support claim |
 
-| Feature domain | Source | dsh seam | Classification | Landing package | Status |
-|---|---|---|---|---|---|
-| Channel: Feishu (Lark) | OpenClaw `extensions/feishu` (since v2026.2.12; introducing commit `0223416c61`) | `ctx.channels` | Plugin | `channel-feishu` | **implemented** (Phase 2 ✅) |
-
-WeChat family not in the matrix (not implemented), decision record in `packages/openclaw/channel-wechat/README.md`.
+The old `channel-wechat` exclusion record is not current availability authority. ClawDSH does not plan a native WeChat adapter; reuse goes through the locked OpenClaw communication plane.
 
 ## Maintenance rules
 
-1. Add/remove/reclassify any feature domain = edit this table + note in commit message;
-2. "Deferred" entries must write the reason and unblocking condition;
-3. Re-review this table after each dsh upstream sync (the OpenClaw baseline is a feature-list snapshot, no longer changing; to deep-read a feature, look up `/tmp/openclaw-ref` by the "baseline source" column);
-4. OpenClaw feature domains with no upstream source do not enter the matrix (principled exclusion), with the decision recorded in the corresponding package README or journal; ClawDSH-native product surfaces are explicit exceptions and use the Product assembly classification.
+1. A feature-domain addition, removal, or reclassification updates this matrix and its owning spec.
+2. A channel roster, artifact, or support-state change follows the OpenClaw channel sync standard and updates the machine catalogs first.
+3. A deferred item names its unblock condition; historical completion language never substitutes for current evidence.
+4. Re-review non-channel compatibility after each dsh upstream sync and channel compatibility after each separately approved OpenClaw lock change.

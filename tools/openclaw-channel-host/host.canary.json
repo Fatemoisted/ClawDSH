@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "track": "canary",
+  "source": {
+    "repository": "https://github.com/openclaw/openclaw.git",
+    "ref": "main",
+    "tagObject": null,
+    "commit": "f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0",
+    "manifestVersion": "2026.8.1",
+    "observedAt": "2026-08-15T08:18:37Z",
+    "archive": {
+      "url": "https://github.com/openclaw/openclaw/archive/f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0.tar.gz",
+      "byteLength": 100754581,
+      "integrity": "sha512-PEjiTam3vygesQ22Pr0DF51CEqF6d9eCaxhzHxgyOkwKAIWJgoJO1ooskLPMakolKmP6J797QkG5aIyM4B/hRQ=="
+    }
+  },
+  "npm": {
+    "status": "cataloged",
+    "name": "openclaw",
+    "version": null,
+    "integrity": null
+  },
+  "tree": null,
+  "channelCatalog": "channels.canary.json"
+}

@@ -1,47 +1,37 @@
-# 功能规格：渠道网关 seam（channel-core）
+# 功能规格：旧 channel-core 适配器路径
 
 [English](feature-channel-core.md) | 中文
 
-- **状态**：implemented（阶段 2 ✅，2026-08-14）
+- **状态**：已实现 legacy compatibility path；新开发已被取代
 - **实现包**：`packages/openclaw/channel-core`（`@clawdsh/dsh-channel-core`）
-- **OpenClaw 对应**：渠道网关（`src/gateway/`，基线 v2026.1.5）。OpenClaw 的每个渠道直接长进网关与 agent 逻辑，是"架构无接缝"的典型病灶；本规格把网关拆成「薄装配层 + 渠道适配器」两层。
+- **决策历史**：[ADR-0002](../adr/0002-channel-seam.md)
+- **当前替代**：[OpenClaw 渠道平面 bridge](feature-channel-plane-bridge.md) / [ADR-0008](../adr/0008-openclaw-channel-plane.md)
 
-## 目标
+## 用途
 
-- 提供 `ctx.channels` 服务——本项目**唯一新增 seam**（设计见 docs/adr/0002-channel-seam.md）：
-  - **适配器注册表**：渠道插件注册一个 `ChannelAdapter`，按 id 唯一，注销即回卷（HMR 安全）；
-  - **入站路由**：`channel/inbound` 消息 → 定位/创建 per-thread agent 会话 → 写入 session log → 驱动 agent turn；
-  - **出站投递**：agent 回复 → `channel/outbound` + 对应 `adapter.send`。
-- 渠道插件只实现 `receive`（入站事件）与 `send`（出站投递）两个能力面；路由、会话绑定、turn 串行化、重试策略全部归 `channel-core`。
-- 契约继承 dsh 不变式：一切入站消息与出站回复必须写进 session log（"model-visible means logged"）。
+`channel-core` 是阶段 2 对进程内 `ctx.channels` registry 的可行性实现。它证明 Telegram 与 Feishu adapter 可共享 Session 路由与 Agent 回合逻辑，而不修改上游 dsh。它被暂时保留，避免 sidecar 替代方案获得等价证据前删除既有本地配置。
 
-## 非目标
+该包不再拥有当前渠道架构。新 consumer 使用 `@clawdsh/dsh-channel`；新平台接入属于锁定的 OpenClaw Gateway，而不是新的 ClawDSH adapter package。
 
-- 附件 / 引用回复 / 富文本 / 交互卡片——阶段 3 渠道扩展（ADR「最小面」）；
-- 跨消息交错、多 sender 归并、消息分组——阶段 3；本阶段以 per-thread tail-chain 串行化兜底；
-- 渠道特性（引用、卡片模型）的统一抽象——不预设，等第二个渠道特征沉淀后再提炼。
+## 旧契约
 
-## 接缝（阶段 2 已确认）
+- `registerAdapter(adapter)` 注册唯一进程内 `ChannelAdapter`，并随贡献它的 Cordis effect dispose。
+- Adapter 发出 `channel/inbound`，携带 channel、可选 thread 与 sender 及 text；core 选择或创建内存中的 per-thread Agent Session。
+- 同一 thread 的回合被串行化，经 `ctx.agents` 驱动、经 `ctx.sessions` flush，随后通过 `adapter.send` 与 `channel/outbound` 回投文本。
+- 身份呈现、mention stripping、response prefix 与 acknowledgement reaction 在旧 adapter path 内解析。
+- 契约没有持久 route binding、host identity、idempotency ledger、delivery receipt、capability negotiation、rich action 或 attachment 语义。
 
-`ctx.channels`（`ChannelRegistry extends Service`，`super(ctx, 'channels')`）：
+## 兼容规则
 
-- `static inject = ['agents', 'sessions', 'agentDefaultModel']`；
-- `registerAdapter(adapter)`：id 唯一校验 → `ctx.effect` 内 `adapter.start(ctx)` + 存 map，返回 disposer；
-- `getAdapter(id)` / `listAdapters()`；
-- 私有 `route(message)`：per-thread 会话 map（key = `${channel}\0${threadId ?? ''}`）→ `ctx.agents.create`（首条）或复用（后续）→ `followup(createUserMessage(...))` → `whenIdle()` → `sessions.flush()` → 扫 `assistant/message` 文本块取回复 → `adapter.send(outMsg)` + `ctx.emit('channel/outbound', outMsg)`；
-- 事件（declaration merging）：`channel/inbound`、`channel/outbound`。
+- 旧 service 注册为 `ctx.legacyChannels`。不要让它和当前 `ctx.channels` 路径连接同一平台账号。
+- 不要再加 adapter，也不要扩宽 `ChannelMessage`。所需渠道覆盖属于 sidecar catalog 与 V1 bridge。
+- Legacy path 仍安装期间，credential 留在环境变量支持的 adapter config 中。
+- Legacy identity-presentation 与 acknowledgement-reaction Agent Note 随代码保留到删除时；不要把其行为投射到 sidecar。
 
-**结论：接缝假设成立**——渠道接入 = 一个 `ChannelAdapter` 实现，不改上游一行源码、不动 `agent-loop`。
+## 验证状态
 
-## 配置面
+软件包与 adapter contract test 保留为历史实现证据。早期 Telegram 与 Feishu 开发表明最小契约能 mount；它没有建立当前发布认证。没有当前带凭证证据时，按 ADR-0008 状态模型，两个旧 adapter 至多是 `installable`，不是 `certified` 或 `enabled`。
 
-无 `Config`（service 包，非函数插件）。适配器插件通过 `ctx.channels.registerAdapter(adapter)` 注册；部署级凭证在各自适配器插件的 `Config` 中，经 profile/patch 覆盖。
+## 删除门禁
 
-## 验收标准（阶段 2 结论）
-
-1. ✅ **注册/注销（HMR 回卷）**：`registerAdapter` 后 `listAdapters` 含之、dispose 后移除（测试覆盖）；
-2. ✅ **重复 id fail-loud**：注册同名适配器抛错（测试覆盖）；
-3. ✅ **入站 → 出站回投闭环**：MockAdapter + 七件套 harness 验证「入站 → 真 agent turn → 回复出」+ `channel/outbound` 收到 + 回复文本非空（测试覆盖，无 key）；
-4. ✅ **per-thread 会话复用**：同 thread 复用同一 session、异 thread 各自新建（测试以 `ctx.agents.list().length` 断言）；
-5. ✅ **双渠道验证**：Telegram（轮询）+ 飞书（webhook）两适配器挂同一契约，核心无渠道特判（`channel-telegram`/`channel-feishu` 契约测试覆盖）；
-6. ✅ **全量 typecheck 绿**：构建链三处注册（tsconfig.base paths、tsconfig.host references、tsdown exclude 移出）。
+只有 production OpenClaw sidecar 可复现装配、自有无密钥 Gateway-to-Agent snapshot 正在运行，且新的 Telegram 与 Feishu 认证覆盖入站准入、Agent 执行、出站投递、重复消息、重连与失败路径后，才能同时删除 `channel-core`、`channel-telegram` 与 `channel-feishu`。只在该删除变更中归档旧 Agent Notes。

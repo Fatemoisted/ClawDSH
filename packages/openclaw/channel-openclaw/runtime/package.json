@@ -1,0 +1,9 @@
+{
+  "name": "clawdsh-openclaw-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "dependencies": {
+    "openclaw": "2026.7.1-2"
+  }
+}

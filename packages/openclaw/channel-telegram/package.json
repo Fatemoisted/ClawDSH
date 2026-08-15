@@ -1,11 +1,9 @@
 {
   "name": "@clawdsh/dsh-channel-telegram",
-  "description": "ClawDSH Telegram channel adapter: getUpdates long-polling inbound and sendMessage outbound over the ctx.channels seam",
+  "description": "Legacy ClawDSH Telegram adapter over ctx.legacyChannels, pending credentialed OpenClaw sidecar cutover",
   "version": "0.1.0",
+  "private": true,
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Fatemoisted/ClawDSH.git",

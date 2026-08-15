@@ -1,5 +1,5 @@
 /**
- * Channel adapter contract types for the `ctx.channels` seam.
+ * Channel adapter contract types for the legacy `ctx.legacyChannels` seam.
  * @module @clawdsh/dsh-channel-core/types
  */
 
@@ -42,7 +42,7 @@ export interface ChannelMessage {
   text: string
 }
 
-/** A channel adapter a provider plugin registers with the `ctx.channels` seam. */
+/** A channel adapter a provider plugin registers with the legacy `ctx.legacyChannels` seam. */
 export interface ChannelAdapter {
   /** Unique id, matching the `channel` field of its messages. */
   id: string

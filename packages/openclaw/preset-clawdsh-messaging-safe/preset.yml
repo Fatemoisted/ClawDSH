@@ -1,0 +1,3 @@
+name: ClawDSH Messaging Safe
+description: Restricted channel preset with no inherited tools; the channel runtime adds only its capability-checked message tool.
+order: 4

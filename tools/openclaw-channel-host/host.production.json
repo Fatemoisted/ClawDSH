@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "track": "production",
+  "source": {
+    "repository": "https://github.com/openclaw/openclaw.git",
+    "ref": "v2026.7.1-2",
+    "tagObject": "be8b8a9e8838f832e4fa47cde8bea0a33aec71ba",
+    "commit": "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c",
+    "manifestVersion": "2026.7.1",
+    "observedAt": "2026-08-15T09:08:04Z",
+    "archive": null
+  },
+  "npm": {
+    "status": "verified",
+    "name": "openclaw",
+    "version": "2026.7.1-2",
+    "integrity": "sha512-ycF3yPcbjN6bUPeaUx6Mh6vze1hQWoD3CT/wWcmD7a8xaHHHRUaAlaq+lFxMHf1ssEgODVAwjlzYqp2twkYZ7g=="
+  },
+  "tree": {
+    "algorithm": "sha512-path-size-content-v1",
+    "fileCount": 8550,
+    "integrity": "sha512-t7hGQR0QkaIGfP6WS5OV1EOq4KZK6dcHB7nu0B7E6UlxS4UdtuFT6f+E2akFVAii6xjHndlEANWSk9OaZI4Niw=="
+  },
+  "channelCatalog": "channels.production.json"
+}

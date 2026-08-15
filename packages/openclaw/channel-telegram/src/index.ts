@@ -1,5 +1,6 @@
 /**
- * A Telegram channel adapter over the `ctx.channels` seam, backed by grammY.
+ * A Telegram channel adapter over the legacy `ctx.legacyChannels` seam,
+ * backed by grammY and retained only until credentialed sidecar cutover.
  *
  * Inbound messages arrive through grammY's long polling: the adapter runs a
  * `Bot` with a `message:text` handler that maps each text message onto
@@ -17,14 +18,14 @@ import { Bot } from 'grammy'
 import type { ReactionTypeEmoji } from 'grammy/types'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { registerChannelAdapter, stripZeroWidth } from '@clawdsh/dsh-channel-core'
+import { registerLegacyChannelAdapter, stripZeroWidth } from '@clawdsh/dsh-channel-core'
 import type { ChannelAdapter, ChannelMessage } from '@clawdsh/dsh-channel-core'
 
 /** Cordis plugin name. */
 export const name = 'channel-telegram'
 
-/** The channel registry this adapter contributes to. */
-export const inject = ['channels']
+/** The legacy channel registry this adapter contributes to. */
+export const inject = ['legacyChannels']
 
 /** Plugin config: the bot token plus long-polling tuning. */
 export interface Config {
@@ -126,11 +127,11 @@ export function toInbound(ctx: TelegramTextContext, botUsername?: string, mentio
 /** Start grammY long polling and return its disposer. */
 function startPolling(ctx: Context, bot: Bot, timeout: number, mentionPatterns: readonly RegExp[]): () => void {
   bot.catch((error) => {
-    ctx.logger.warn(`channel-telegram: ${error.message ?? String(error)}`)
+    ctx.logger.warn(`channel-telegram: ${error.message}`)
   })
   bot.on('message:text', (message) => {
     // grammY populates botInfo from getMe during init(), before handlers fire.
-    ctx.emit('channel/inbound', toInbound(message, bot.botInfo?.username, mentionPatterns))
+    ctx.emit('channel/inbound', toInbound(message, bot.botInfo.username, mentionPatterns))
   })
   void bot.start({ allowed_updates: ['message'], timeout })
   return () => { void bot.stop() }
@@ -158,7 +159,7 @@ async function react(bot: Bot, message: ChannelMessage, emoji: string): Promise<
  * Build the Telegram adapter from validated config.
  * @param config - validated plugin config carrying the bot token and polling tuning.
  * @param deps - optional dependency injection (test-only bot).
- * @returns the adapter to register with `ctx.channels`.
+ * @returns the adapter to register with `ctx.legacyChannels`.
  */
 export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAdapter {
   const bot = deps.bot ?? new Bot(config.botToken)
@@ -176,9 +177,9 @@ export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAd
 
 /**
  * Mount the Telegram adapter into the channel registry.
- * @param ctx - Cordis context carrying the `channels` service.
+ * @param ctx - Cordis context carrying the `legacyChannels` service.
  * @param config - validated plugin config.
  */
 export function apply(ctx: Context, config: Config): void {
-  registerChannelAdapter(ctx, mentionPatterns => createAdapter(config, { mentionPatterns }))
+  registerLegacyChannelAdapter(ctx, mentionPatterns => createAdapter(config, { mentionPatterns }))
 }

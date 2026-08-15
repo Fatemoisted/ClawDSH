@@ -65,6 +65,32 @@ export interface EverySchedule {
 
 Source: [`packages/openclaw/automation/src/index.ts:89`](../packages/openclaw/automation/src/index.ts)
 
+<a id="clawdshdsh-channel-agent"></a>
+
+## `@clawdsh/dsh-channel-agent`
+
+Requires: `channels` · `agents` · `sessions` · `sessionPersistence` · `agentDefaultModel` · `agentPresets` · `attachments` · `storageDomain` · `tools`
+
+```ts config-catalog
+/** Deployment decisions for channel-created Agents and media intake. */
+export interface Config {
+  /** Preset used only for an OpenClaw-classified owner DM. */
+  ownerPreset: string
+  /** Restricted preset used for every other sender or group. */
+  safePreset: string
+  /** Absolute workspace assigned to channel-created Sessions. */
+  cwd: string
+  /** Absolute root shared only with the authenticated local bridge. */
+  stagingRoot: string
+  /** Per-staged-object byte cap, no larger than the attachment-store policy. */
+  maxMediaBytes: number
+  /** Maximum teardown wait for accepted work to reach quiescence. */
+  shutdownGraceMs: number
+}
+```
+
+Source: [`packages/openclaw/channel-agent/src/index.ts:74`](../packages/openclaw/channel-agent/src/index.ts)
+
 <a id="clawdshdsh-channel-core"></a>
 
 ## `@clawdsh/dsh-channel-core`
@@ -100,13 +126,13 @@ export interface IdentityConfig {
 export type AckReactionScope = 'all' | 'direct' | 'group-all' | 'group-mentions'
 ```
 
-Source: [`packages/openclaw/channel-core/src/index.ts:112`](../packages/openclaw/channel-core/src/index.ts)
+Source: [`packages/openclaw/channel-core/src/index.ts:113`](../packages/openclaw/channel-core/src/index.ts)
 
 <a id="clawdshdsh-channel-feishu"></a>
 
 ## `@clawdsh/dsh-channel-feishu`
 
-Requires: `channels`
+Requires: `legacyChannels`
 
 ```ts config-catalog
 /** Plugin config: app identity plus which Open Platform region to dial. */
@@ -123,13 +149,101 @@ export interface Config {
 export type FeishuDomain = 'feishu' | 'lark'
 ```
 
-Source: [`packages/openclaw/channel-feishu/src/index.ts:38`](../packages/openclaw/channel-feishu/src/index.ts)
+Source: [`packages/openclaw/channel-feishu/src/index.ts:39`](../packages/openclaw/channel-feishu/src/index.ts)
+
+<a id="clawdshdsh-channel-openclaw"></a>
+
+## `@clawdsh/dsh-channel-openclaw`
+
+Requires: `channels` · `storageDomain` · `subprocess`
+
+```ts config-catalog
+/** Fully explicit managed-Gateway configuration. */
+export interface Config extends Omit<OpenClawSupervisorConfig, 'extensions'> {
+  /** Mutable schema output consumed as immutable extension locks by the Supervisor. */
+  readonly extensions: OpenClawExtensionLock[]
+}
+
+/** Fully explicit deployment inputs for one supervised Gateway. */
+export interface OpenClawSupervisorConfig extends ChannelIpcConfig {
+  /** Exact downloaded host archive used to verify the extracted runtime. */
+  readonly artifactPath: string
+  /** Root of the extracted OpenClaw npm package. */
+  readonly hostRoot: string
+  /** Root containing the checked package lock and node_modules/openclaw installation. */
+  readonly runtimeRoot: string
+  /** Explicit exact locks for separately installed Channel plugins; empty disables all such plugins. */
+  readonly extensions: readonly OpenClawExtensionLock[]
+  /** Dedicated Node executable satisfying the locked host engine. */
+  readonly nodePath: string
+  /** Strict JSON OpenClaw configuration kept in the isolated state directory. */
+  readonly configPath: string
+  /** Private per-track OpenClaw state directory. */
+  readonly stateDir: string
+  /** Private shared root for authenticated inbound media staging. */
+  readonly stagingRoot: string
+  /** Maximum staged media bytes accepted by the supervised bridge. */
+  readonly maxMediaBytes: number
+  /** Loopback Gateway port selected by the operator. */
+  readonly gatewayPort: number
+  /** Bound for host preflight and the first authenticated bridge handshake. */
+  readonly startupTimeoutMs: number
+  /** Process-tree TERM-to-KILL and teardown wait bound. */
+  readonly shutdownGraceMs: number
+  /** Bounded bytes retained for each host diagnostic stream. */
+  readonly diagnosticBytes: number
+}
+
+/** Immutable identity of one opt-in OpenClaw Channel plugin installation. */
+export interface OpenClawExtensionLock {
+  /** OpenClaw plugin id used by plugins.allow and plugins.entries. */
+  readonly pluginId: string
+  /** Channel ids the plugin must register and no others. */
+  readonly channelIds: string[]
+  /** Exact npm package name recorded by OpenClaw's installer. */
+  readonly packageName: string
+  /** Exact npm version, never a range or dist-tag. */
+  readonly version: string
+  /** Exact sha512 SRI recorded by npm and OpenClaw. */
+  readonly integrity: string
+  /** Exact installed npm project, including the primary package and every transitive dependency. */
+  readonly projectTree: {
+    /** Number of ordinary files included in the complete project digest. */
+    readonly fileCount: number
+    /** Lowercase SHA-512 digest of project paths, file bytes, and verified link targets. */
+    readonly sha512: string
+  }
+}
+
+/** IPC limits and identity set by the supervising plugin. */
+export interface ChannelIpcConfig {
+  /** Immutable OpenClaw host track admitted by the handshake. */
+  readonly track: OpenClawTrack
+  /** Stable identity separating one managed Gateway's routes and storage. */
+  readonly gatewayInstanceId: string
+  /** Absolute Unix socket path inside the private state directory. */
+  readonly endpoint: string
+  /** Maximum UTF-8 bytes in one JSON object frame. */
+  readonly maxFrameBytes: number
+  /** Maximum concurrent requests in either direction. */
+  readonly maxInFlight: number
+  /** Deadline for each DSH-to-Gateway RPC wait; expiry does not cancel remote work. */
+  readonly requestTimeoutMs: number
+  /** Deadline for the first authenticated handshake on a new socket. */
+  readonly handshakeTimeoutMs: number
+}
+
+/** Production and isolated canary tracks. */
+export type OpenClawTrack = 'production' | 'canary'
+```
+
+Source: [`packages/openclaw/channel-openclaw/src/index.ts:28`](../packages/openclaw/channel-openclaw/src/index.ts)
 
 <a id="clawdshdsh-channel-telegram"></a>
 
 ## `@clawdsh/dsh-channel-telegram`
 
-Requires: `channels`
+Requires: `legacyChannels`
 
 ```ts config-catalog
 /** Plugin config: the bot token plus long-polling tuning. */
@@ -143,7 +257,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/openclaw/channel-telegram/src/index.ts:30`](../packages/openclaw/channel-telegram/src/index.ts)
+Source: [`packages/openclaw/channel-telegram/src/index.ts:31`](../packages/openclaw/channel-telegram/src/index.ts)
 
 <a id="clawdshdsh-embeddings-ark"></a>
 
@@ -3289,6 +3403,7 @@ Source: [`packages/workflow/workflow-worker-thread/src/index.ts:32`](../packages
 
 These load from a `cordis.yml` entry with no `config:` block; they declare no configuration API.
 
+- `@clawdsh/dsh-channel` ([`packages/openclaw/channel/src/index.ts`](../packages/openclaw/channel/src/index.ts))
 - `@deepseek-ai/dsh-agent` ([`packages/core/agent/src/index.ts`](../packages/core/agent/src/index.ts))
 - `@deepseek-ai/dsh-api-gateway` — requires `typert` ([`packages/api/gateway/src/index.ts`](../packages/api/gateway/src/index.ts))
 - `@deepseek-ai/dsh-api-remotes` ([`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts))
@@ -3380,6 +3495,7 @@ Abstract service classes — a deployment loads a concrete implementation packag
 
 Imported as libraries by other packages; a `cordis.yml` cannot load them.
 
+- `@clawdsh/dsh-preset-messaging-safe` ([`packages/openclaw/preset-clawdsh-messaging-safe/src/index.ts`](../packages/openclaw/preset-clawdsh-messaging-safe/src/index.ts))
 - `@deepseek-ai/dsh-acp-snapshot` ([`packages/test-support/acp-snapshot/src/index.ts`](../packages/test-support/acp-snapshot/src/index.ts))
 - `@deepseek-ai/dsh-agent-loop-testkit` ([`packages/test-support/agent-loop-testkit/src/index.ts`](../packages/test-support/agent-loop-testkit/src/index.ts))
 - `@deepseek-ai/dsh-anonymous-user-id` ([`packages/identity/anonymous-user-id/src/index.ts`](../packages/identity/anonymous-user-id/src/index.ts))

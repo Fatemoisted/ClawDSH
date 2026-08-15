@@ -1,11 +1,9 @@
 {
   "name": "@clawdsh/dsh-channel-core",
-  "description": "ClawDSH channel seam: adapter registry routing inbound messages to per-thread agent sessions and returning each reply",
+  "description": "Legacy ClawDSH channel seam retained temporarily for pre-sidecar Telegram and Feishu adapters",
   "version": "0.1.0",
+  "private": true,
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Fatemoisted/ClawDSH.git",
@@ -38,6 +36,9 @@
     "@deepseek-ai/dsh-llm": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",

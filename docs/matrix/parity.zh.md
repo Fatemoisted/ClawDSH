@@ -2,76 +2,85 @@
 
 [English](parity.md) | 中文
 
-> 本矩阵是 ClawDSH 的**单一事实源**：每个 OpenClaw 派生域或 ClawDSH 原生产品域都在这里得到唯一分类与状态。任何 PR 涉及功能变更必须同步更新本文件（见 `docs/standards/pr-policy.md`）。
->
-> 复用、插件、新 seam 与暂缓继续构成 OpenClaw 派生域的四分类。「产品组装」是只用于 ClawDSH 原生产品面的独立分类。
->
-> 分类含义：
-> - **复用**：dsh 原生能力，直接用，不写代码；
-> - **插件**：挂到 dsh 既有接缝上的增量包（`packages/openclaw/*`）；
-> - **新 seam**：dsh 没有对应接缝，需要新增（必须 ADR + upstream-first）；
-> - **产品组装**：基于 dsh 公开 API 的 ClawDSH 自有应用/profile 组合，不修改上游源码；
-> - **暂缓**：本轮不做，记录原因。
+> 本矩阵是 ClawDSH 的状态权威。每个 OpenClaw 派生领域或 ClawDSH 原生产品领域只在此拥有一项分类和当前状态。精确 OpenClaw 渠道产物与名录元数据仍由 `tools/openclaw-channel-host/*.json` 拥有；本页只投影其已批准含义。
 
-## 基线（阶段 1 定稿，2026-08-14）
+## 分类
 
-**OpenClaw 基线 = tag `v2026.1.5`（commit `197b8f7c3b`）**，选定依据（完整分析见 docs/journal/2026-08-14.md 阶段 1 节）：
+| 分类 | 含义 |
+|---|---|
+| Reuse | 直接使用既有 dsh 能力 |
+| Plugin | 在既有 seam 上增加 ClawDSH 包 |
+| New seam | 通过 ADR 增加完整的 Service Definition、Service Provider 与 Consumer |
+| Product assembly | 使用公开 dsh API 构建 ClawDSH 应用或 profile，不修改上游源码 |
+| Deferred | 将工作留在当前实现之外，并注明解除阻塞条件 |
 
-| 指标 | 2025-12-31 | **v2026.1.5 ✅** | v2026.1.15 | v2026.1.20 | v2026.1.30 |
+渠道支持只使用单调状态 `cataloged → installable → certified → enabled`：cataloged 记录已批准来源；installable 证明精确兼容装配；certified 增加当前协议、安全、投递、快照和所需真实传输证据；enabled 增加明确启用的交付 profile 选择。任何较早状态都不蕴含较晚状态。
+
+<!-- BEGIN GENERATED openclaw-channel-support (generate-parity.ts) — do not edit between markers -->
+| Locked track | `cataloged` | `installable` | `certified` | `enabled` |
+|---|---:|---:|---:|---:|
+| production | 27 | 0 | 0 | 0 |
+| canary | 31 | 0 | 0 | 0 |
+<!-- END GENERATED openclaw-channel-support -->
+
+## 基线
+
+非渠道功能选择保留阶段 1 参考 OpenClaw `v2026.1.5`、commit `197b8f7c3b`；memory 或后续功能需要补全时使用 `v2026.1.15`。该早期快照不是渠道兼容基线。
+
+Production 渠道平面锁定 OpenClaw `v2026.7.1-2`、commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c` 与 npm 包 `openclaw@2026.7.1-2`，并校验 archive 和解包文件树身份。隔离 canary 审计 lock 是 source commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`；它没有锁定 built host，不是 managed deployment candidate。[ADR-0008](../adr/0008-openclaw-channel-plane.md) 与 [OpenClaw 渠道同步规范](../standards/openclaw-channel-sync.md)拥有该拆分。
+
+## 功能领域
+
+| 产品或 OpenClaw 领域 | 参考 | dsh seam | 分类 | 落地包 | 当前状态 |
 |---|---|---|---|---|---|
-| 文件数 | 1197 | **1537** | 3367（翻倍） | 4041 | 4543 |
-| 渠道 | discord/telegram | **+imessage/signal/slack** | +whatsapp | — | — |
-| channels 抽象 | ✗ | ✗ | ✓ | ✓ | ✓ |
-| memory 目录 | ✗ | ✗ | ✓ | ✓ | ✓ |
-| bloat 迹象（extensions/plugins/docker 部署矩阵） | ✗ | **✗** | 出现 | 加剧 | 加剧 |
+| Session / 消息历史 | early baseline sessions | `ctx.sessions` | Reuse | — | 可直接使用 |
+| Session tracing / replay / forking | dsh-native | Session projection 与 raw Trajectory | Reuse | — | 可直接使用 |
+| 工具执行 | early baseline Agent tools | `ctx.tools`、`ctx.shell`、`ctx.fs`、`ctx.web` | Reuse | — | 可直接使用 |
+| Skills | OpenClaw skills / ClawHub conventions | `ctx.skills` | Plugin | `skills-hub` | 已实现 |
+| 调度 / automation | early baseline cron | `ctx.agents`、`ctx.sessions` | Plugin | `automation` | 已实现；默认关闭 |
+| Persona | early baseline prompt/workspace identity | `ctx.systemPrompt` | Plugin | `soul` | 已实现 |
+| Memory | v2026.1.15 memory | `ctx.fs`、`ctx.tools`、`ctx.embeddings` | Plugin + 自有 embeddings seam | `memory`、`embeddings`、`embeddings-ark` | 已实现 |
+| Channel Service Definition | current Gateway integration | 自有 `ctx.channels` | New seam | `channel` | V1 已实现 |
+| Channel Agent Driver | dsh Session 与 Agent lifecycle | `ctx.channels`、Agents、Sessions、attachments | Plugin | `channel-agent` | 基础已实现；认证未完成 |
+| OpenClaw 通信 Provider | 锁定 Gateway 与 plugins | `ctx.channels`、subprocess、storage | Plugin | `channel-openclaw` | 基础已实现；默认关闭 |
+| 旧进程内渠道路径 | ADR-0002 实验 | `ctx.legacyChannels` | Deferred removal | `channel-core`、`channel-telegram`、`channel-feishu` | 保留到 ADR-0008 替换条件通过 |
+| Approval / security policy | later OpenClaw security reference | approvals 与 guards | Reuse/config | — | 可直接使用 |
+| Federation node | outside early baseline | `ctx.subagents` transport | Plugin | `clawd-federation` | 仅 ADR-0005 评估；实现推迟 |
+| Smart home | outside selected scope | 无已接受 seam | Deferred | — | 需要经审查的来源与能力设计 |
+| 本地浏览器对话 | dsh Web client | `dsh-web-app` + `clawdsh` preset | Reuse/config | 内部 `preset-openclaw` source | 仅 preset 基线已实现 |
+| ClawDSH 产品壳、Settings 与 Activity | ClawDSH-native | 公开 dsh Web 组装、Settings、Credentials 与 Session history | Product assembly | 内部 `preset-openclaw` source | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 已接受；实现待完成 |
 
-- **为何 v2026.1.5**：首个发布 tag（1.5-1/2/3 小版本只修 bug），"网关 + 5 渠道 + cron + sessions + tui/wizard" 的个人助手核心体验完整且稳定；所有 tag 中代码量最瘦（1537 文件 / 1.6MB）；无 bloat 迹象；时间 = 项目爆红高峰期。
-- **功能补全参考**：whatsapp / memory / channels 抽象在基线中尚未出现 → 移植时查阅 `v2026.1.15`（`9c4c9c5edd`）；更早的 gateway 雏形参考 `2025-12-31`（`f03605d8ae`）。
-- 参考仓库本地缓存：`/tmp/openclaw-ref`（partial clone，blob:none；机器重启后需重拉，命令见 journal）。
+Channel Agent 路径把完整且净化后的模型可见来源存储在已知 `user/message.source.kind = 'channel'` 字段中，并把 admission、idempotency 与 delivery 权威留在持久 channel ledger。它不持久化已声明的 `channel/*` Session event，因为下游代码不能将其标记为 ignorable，静态 known-event reader 会使 resume fail closed。
 
-## 矩阵 v2（基线定稿）
+## Production 渠道目录
 
-| OpenClaw 或 ClawDSH 产品域 | 基线出处（v2026.1.5） | dsh 对应接缝 | 分类 | 落地包 | 状态 |
-|---|---|---|---|---|---|
-| 会话 / 消息历史 | `src/sessions/` | `ctx.sessions`（append-only log） | 复用 | — | 直接可用 |
-| 会话追溯 / 回放 / 分叉 | —（dsh 原生） | Trajectory 视图 / replay | 复用 | — | 直接可用 |
-| 工具执行（bash/文件/浏览器…） | `src/agents/*-tools.ts` | `ctx.tools` / `ctx.shell` / `ctx.fs` / `ctx.web` | 复用 | — | 直接可用 |
-| 技能（Skill） | 顶层 `skills/` | `ctx.skills`（provider 合并） | 插件 | `skills-hub` | **implemented**（阶段 3 ✅） |
-| 定时 / 自动化 | `src/cron/` | 自有 unref'd croner timer + `agent.followup`/`whenIdle`/`sessions.flush` 回合桥（`ctx.schedule` 否决：session-local + 300s 下限 + 仅工具面 API） | 插件 | `automation` | **implemented**（阶段 3 ✅） |
-| 人格（Soul） | `src/agents/system-prompt.ts` 首行 + workspace 六文件（AGENTS/SOUL/TOOLS/IDENTITY/USER/BOOTSTRAP.md） | system-prompt 装配（persona 首行 / soul append / complete 段 / 工具指引带）+ 渠道呈现（IDENTITY ✅） | 插件 | `soul` | **implemented**（阶段 0 ✅ + 阶段 2 深读定稿 ✅） |
-| 记忆（Memory） | 基线无 → 参考 v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`、`memory-tool.ts` | `ctx.fs` 文件事实源 + `ctx.tools` + system-prompt 段 + `ctx.get('embeddings')`（新 seam，ADR-0003） | 插件 | `memory` + `embeddings` + `embeddings-ark` | **implemented**（阶段 2 补漏 ✅） |
-| **渠道网关（Gateway）** | `src/gateway/` | **无** | **新 seam** | `channel-core` | **implemented**（阶段 2 ✅） |
-| 渠道：Telegram | `src/telegram/` | `ctx.channels` | 插件 | `channel-telegram` | **implemented**（阶段 2 ✅） |
-| 渠道：Discord | `src/discord/` | `ctx.channels` | 插件 | `channel-discord`（待建） | planning |
-| 渠道：iMessage / Signal / Slack | `src/imessage/` 等 | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
-| 渠道：WhatsApp | 参考 v2026.1.15 `src/whatsapp/` | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
-| 审批 / 安全策略 | `src/security/`（1.15 起） | `ctx.approval` / guard | 复用（配置） | — | 直接可用 |
-| 联邦节点（clawd） | 基线早期无 | `ctx.subagents`（transport） | 插件 | `clawd-federation` | ADR-0005（仅评估），实现暂缓 |
-| 智能家居（casa） | 基线无 | 无 | 新插件域 | 待命名 | 暂缓 |
-| 本地浏览器对话 | `ui/`（+ `apps/`） | `dsh-web-app` + `clawdsh` preset（`ClawDSH 模式`） | 复用（profile/preset） | 内部 `preset-openclaw` 源 + `dsh-web-app` | **implemented 基线**（阶段 4；干净安装关闭飞书/Telegram/Automation） |
-| ClawDSH 产品壳、Settings 与语义 Activity | —（ClawDSH 原生） | 公开 dsh Web 组装 + Settings/Credentials/Session history；无 Client Slot | 产品组装 | `preset-openclaw` | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 已接受；实现待完成 |
+Stable public chat catalog 含 27 个条目：**1 core + 2 bundled + 21 repository-official + 3 external = 24+3**。精确名称、包版本、integrity、source path 与 observation time 位于 `tools/openclaw-channel-host/channels.production.json`。
 
-## 国内平台（原则：OpenClaw 上游有的才实现）
+| 目录组 | 条目数 | 当前支持状态 | 证据与限制 |
+|---|---:|---|---|
+| Core + bundled + repository-official | 24 | **cataloged** | 精确 stable host source 与逐条目来源已锁定；逐渠道装配与认证未完成 |
+| External | 3 | **cataloged** | WeChat、Yuanbao 与 Zalo ClawBot 有精确包身份；仍需外部审查及相同的装配和认证要求 |
+| 旧 Telegram 适配器 | 1 | **installable** | 本地包存在；没有当前带凭证 live smoke 建立认证或启用状态 |
+| 旧 Feishu 适配器 | 1 | **installable** | 本地包存在；历史 smoke 不建立当前发布的认证或启用状态 |
 
-> **项目原则（发起人 2026-08-14 确立）**：只实现 OpenClaw 上游有出处的功能，摸着石头过河；不自行发明上游没有的功能域。国内平台按此原则逐一核实：
+Catalog 来源不是运行时支持声明。只有兼容的锁定 host 与 bridge composition 完成装配，已校验 npm integrity 才能使渠道达到 installable。Canary catalog 含 31 个条目，但仍只是 cataloged 审计输入。
 
-| 平台 | OpenClaw 上游现状 | 判定 |
-|---|---|---|
-| **飞书（Lark）** | ✅ 官方 `extensions/feishu`（2026-02-03 引入：`2483f26c23`→`0223416c61`；v2026.2.12 起发布） | **做，且为发起人第一优先**（详见下方矩阵行） |
-| 企业微信 / 微信 / 公众号 / 个人微信 | ❌ 上游（最新 main）无任何微信系渠道（`tencent` 扩展是腾讯云 LLM provider，非渠道） | **不做核心包**——原则性排除；上游将来新增 wecom 时再跟进 |
-| 钉钉 / QQ | ❌ 上游无 | 不做——原则性排除，同上 |
+## 中国平台投影
 
-### 飞书渠道（矩阵行）
+| 平台 | 已批准 OpenClaw 来源 | 当前支持状态 | 限制 |
+|---|---|---|---|
+| Feishu / Lark | production repository-official extension | sidecar **cataloged**；旧包 **installable** | 两条路径都未 certified 或 enabled |
+| QQ Bot | production repository-official extension | **cataloged** | 不属于三个 production external plugin |
+| WeChat | production external `@tencent-weixin/openclaw-weixin@2.4.6` | **cataloged** | 外部审查与认证未完成 |
+| Yuanbao | production external `openclaw-plugin-yuanbao@2.15.0` | **cataloged** | 外部审查与认证未完成 |
+| WeCom | canary external `@wecom/wecom-openclaw-plugin@2026.5.7` | 仅 canary **cataloged** | 不在 production lock 中 |
+| DingTalk | 两个已批准目录都不存在 | — | 无支持声明 |
 
-| 功能域 | 出处 | dsh 接缝 | 分类 | 落地包 | 状态 |
-|---|---|---|---|---|---|
-| 渠道：飞书（Lark） | OpenClaw `extensions/feishu`（v2026.2.12 起；引入提交 `0223416c61`） | `ctx.channels` | 插件 | `channel-feishu` | **implemented**（阶段 2 ✅） |
-
-微信系不落矩阵（不实现），决策记录见 `packages/openclaw/channel-wechat/README.md`。
+旧 `channel-wechat` 排除记录不是当前可用性权威。ClawDSH 不计划原生 WeChat 适配器；复用经锁定的 OpenClaw 通信平面。
 
 ## 维护规则
 
-1. 新增/删除/重新分类任何功能域 = 改本表 + 提交说明里注明；
-2. "暂缓"条目必须写原因与解除条件；
-3. 每次 dsh 上游同步后复查本表（OpenClaw 基线是功能清单快照，不再变动；若需深读某一功能，按"基线出处"列查 `/tmp/openclaw-ref`）；
-4. 没有上游出处的 OpenClaw 功能域不落矩阵（原则性排除），决策记录在对应包 README 或 journal；ClawDSH 原生产品面是显式例外，并使用「产品组装」分类。
+1. 功能领域的增加、删除或重分类要更新本矩阵和其 owning spec。
+2. 渠道名录、产物或支持状态变更遵循 OpenClaw 渠道同步规范，并先更新机器目录。
+3. Deferred 条目必须注明解除阻塞条件；历史完成描述绝不替代当前证据。
+4. 每次 dsh upstream sync 后重新审查非渠道兼容性，每次另行批准 OpenClaw lock 变更后重新审查渠道兼容性。

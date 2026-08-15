@@ -1,67 +1,44 @@
-# `ctx.channels` seam 设计记录（ClawDSH 自有，不再向上游提 PR）
+# `ctx.channels` Service Definition 记录
 
 [English](ctx-channels.md) | 中文
 
-> 本文是 `ctx.channels` 消息渠道 seam 的内部设计记录（属 `docs/upstream-proposal/`，目录名沿用，内容不再作为待提交 PR）。契约已在本地以 `channel-core` + 双渠道适配器验证（阶段 2，见 docs/adr/0002-channel-seam.md）。发起人 2026-08-14 决定跳过上游 PR、快速推进——本 seam 作为 ClawDSH 自有能力长期保留，本文仅记录契约与装配语义。
+> 本文是历史 `docs/upstream-proposal/` 位置中的内部 seam 记录。目前没有提议上游 pull request。ADR-0008 取代 ADR-0002 描述的 adapter registry；当前代码全部位于 `packages/openclaw/`。
 
 ## 动机
 
-dsh 是编码代理形态：有 `ctx.sessions`、`ctx.tools`、`ctx.llm`、`ctx.agents` 等接缝，但**没有「消息渠道」概念**。要把「个人助手活在消息渠道里」（WhatsApp/Telegram/Email/飞书…）这类形态落到 dsh 上，每个渠道接入者都面临同一套问题：
+DeepSeek Harness 拥有 Agent 执行与持久 Session，但没有 provider-neutral 消息传输 seam。ClawDSH 需要一个窄连接点，让外部通信平面提交已准入回合，也让 Agent 请求平台原生动作。平台 SDK、凭证、准入策略与投递不能泄漏进 Agent driver；Agent 与 Session 生命周期也不能移入传输 host。
 
-1. 渠道消息进来后，如何定位/创建一条 per-thread 的 agent 会话？
-2. 如何把消息写进 session log、驱动 agent turn、再取回复？
-3. 回复如何投递回渠道？
+## 当前 seam
 
-若无 seam，这套「路由 + 会话绑定 + turn 驱动 + 回投」逻辑会在每个渠道插件里复制一遍——正是 OpenClaw 因架构无接缝而无法维护的病灶。本提案新增唯一一个 seam：`ctx.channels`。
+`@clawdsh/dsh-channel` 提供带两个生命周期限定 slot 的 `ctx.channels`：
 
-## 提议的 seam
+- 一个由通信平面拥有的 `ChannelProviderV1`，实现 `action()` 与 `health()`；
+- 一个由 Agent 平面拥有的 `ChannelDriverV1`，实现 `runTurn()`、精确取消、reset、close 和可选 delivery-ledger reconciliation。
 
-```ts
-import type { Context } from '@deepseek-ai/cordis'
+Service 在两个角色之间 dispatch，并在所需角色缺失或重复时失败。它包含严格 provider-neutral V1 protocol type 与 validator，但没有 OpenClaw import、平台分支、credential、Session 创建逻辑、transport retry 或默认 provider。
 
-export interface ChannelCapabilities { receive: boolean; send: boolean }
+## 协议义务
 
-export interface ChannelMessage {
-  channel: string                    // 适配器 id，如 'telegram' | 'feishu'
-  direction: 'in' | 'out'
-  threadId?: string                  // 渠道侧会话线索（群 chat_id / p2p open_chat_id / TG chat.id）
-  sender?: string                    // 发送者身份（open_id / from.id）
-  text: string
-}
+已准入回合命名 Gateway lineage、OpenClaw session key、reset generation、channel、account、conversation、可选 thread、direct/group kind、sender admission class、platform message、idempotency key、turn/run id、text、排序的 staged media 与可选 trace。Terminal result 可 replay，并区分 completed、silent、cancelled 与 failed。
 
-export interface ChannelAdapter {
-  id: string
-  capabilities: ChannelCapabilities
-  start(ctx: Context): () => void           // 订阅平台事件，emit 'channel/inbound'；返回 disposer
-  send(msg: ChannelMessage): Promise<void>  // 出站投递
-}
-```
+`channel.action` 是 send、edit、delete、react、poll、typing、directory query 与 resolution 的闭合 union。Provider delivery receipt 区分 accepted、confirmed、retrying、ambiguous 与 dead-letter。可选 `delivery.report` extension 把最终回合投递与 Agent 侧持久 ledger 对账。Ambiguous receipt 绝不授权 Service 重跑回合或重发动作。
 
-- 事件：`channel/inbound`（入站，adapter → core）、`channel/outbound`（出站，core 投递回复后）。
-- 一个 `ChannelRegistry extends Service`（`ctx.channels`）持有适配器注册表（id 唯一，注销回卷）并提供路由。
+## 装配
 
-## 入站路由 / turn 驱动语义
+当前 Provider 是 `@clawdsh/dsh-channel-openclaw`，它认证并校验锁定的本地 OpenClaw Gateway。当前 Driver 是 `@clawdsh/dsh-channel-agent`，它拥有持久 route/session binding、幂等、Agent 执行、模型可见日志与 attachment import。当前行为与限制见 `docs/specs/feature-channel-plane-bridge.zh.md`。
 
-adapter `start()` 收到平台消息 → `ctx.emit('channel/inbound', msg)` → `channel-core` 监听 → 路由：
+`@clawdsh/dsh-channel-core` 在 `ctx.legacyChannels` 下实现已被取代的进程内 adapter 契约。部署不得让两条路径连接同一平台账号。Legacy package 只保留到 ADR-0008 替换条件通过。
 
-1. 按 `${channel}\0${threadId ?? ''}` 定位/创建 per-thread agent 会话（首条 `ctx.agents.create`，之后复用）；
-2. `followup(createUserMessage({ text }))` → `await agent.whenIdle()` → `await ctx.sessions.flush(session)`；
-3. 扫 `assistant/message` 文本块取回复 → `adapter.send(outMsg)` + `emit('channel/outbound', outMsg)`。
+## 所需上游 Session-event seam
 
-per-thread 入站 turn 以 tail-chain 串行化，避免并发交错。**一切入站消息与出站回复都经 session log**（"model-visible means logged"），由 `dsh-agent` 既有不变式覆盖。
+Channel provenance 经已知 `user/message.source.kind = 'channel'` 路径到达模型。Admission、idempotency 与 delivery 权威留在 channel ledger。当前实现不 append `channel/turn-admitted` 或 `channel/delivery`：dsh static known-event vocabulary 排除 downstream name，`Session.append()` 不能把 non-surface event 标为 `ignorable: true`，所以持久化会使 resume 拒绝该 log。
 
-## 与 `ctx.agents` / `ctx.sessions` 的关系
+`session-plugin-events.zh.md` 提议 ClawDSH 增加冗余 namespaced diagnostic 前需要的独立上游 seam。它不属于 `ctx.channels`，因为安全 event-envelope creation 属于 Session owner，并可服务任何 downstream plugin。
 
-- 复用 `ctx.agents.create` 创建会话（`agentOptions` 取自 `ctx.agentDefaultModel.currentSelection()`），不新增会话生命周期；
-- 复用 `ctx.sessions.flush` 落盘，不新增持久化语义；
-- 路由只是把「渠道线程 ↔ dsh 会话」的绑定关系保存在内存 map，属薄装配层，不改 `agent-loop`。
+## 上游边界
 
-## 为何是「薄装配层」
+如果 DeepSeek Harness 日后需要通用渠道能力，只有 provider-neutral Service Definition 是上游候选。OpenClaw Provider、channel catalog、host lock 与迁移策略仍由 ClawDSH 拥有。上游 proposal 需要独立 consumer 与 provider、ClawDSH 之外的稳定需求，以及常规 complete-seam 要求；本文不声称这些条件已经满足。
 
-本 seam 不引入任何渠道特性语义（附件/引用/富文本/卡片一律不在此层）：`ChannelMessage` 只带 `text`，其余渠道特性由适配器在 `send` 内自行映射。路由/会话/日志/回投是 dsh 既有能力的组合，`channel-core` 只做「装配 + 串行化」，因此对上游侵入面最小，新增一个渠道的成本 = 一个 `ChannelAdapter` 实现。
+## 当前验证限制
 
-## 本地验证状态（阶段 2）
-
-- `channel-core` + `channel-telegram`（grammY `Bot` 长轮询）+ `channel-feishu`（`@larksuiteoapi/node-sdk` 长连接 + `im.message.create`）已实现；
-- 契约测试（MockAdapter 验证「入站 → 真 agent turn → 回复出」闭环）+ 全量 typecheck + `--dump-config` 冒烟全绿；
-- 真实 e2e（真 key + 真 bot）留待凭证到位后收尾。
+软件包层 protocol 与 lifecycle 证据不能认证平台。Production sidecar 没有在交付 profile 中启用，缺少自有无密钥 assembled snapshot，缺少 Windows endpoint ACL enforcement，namespaced Session event 保持禁用，且本次变更没有当前 Telegram 或 Feishu live smoke。因此支持声明遵循 `cataloged → installable → certified → enabled`；本文没有任何渠道达到最后两个状态。

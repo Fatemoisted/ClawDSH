@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/standards/openclaw-channel-sync.md
+openclaw-channel-sync.md: 339778e6b3bf166af41caba80e758847930d1741
+openclaw-channel-sync.zh.md: 3ff4dfee30c419b8b74087d0d19101ef89951aeb

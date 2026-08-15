@@ -1,67 +1,44 @@
-# `ctx.channels` seam design record (ClawDSH's own, no upstream PR proposed)
+# `ctx.channels` Service Definition record
 
 English | [中文](ctx-channels.zh.md)
 
-> This document is the internal design record of the `ctx.channels` messaging-channel seam (lives under `docs/upstream-proposal/`, directory name retained, content no longer a pending PR). The contract has been validated locally with `channel-core` + dual-channel adapters (stage 2, see docs/adr/0002-channel-seam.md). The initiator decided on 2026-08-14 to skip the upstream PR and move fast — this seam is kept long-term as ClawDSH's own capability, and this document only records the contract and assembly semantics.
+> This is an internal seam record in the historical `docs/upstream-proposal/` location. No upstream pull request is currently proposed. ADR-0008 supersedes the adapter registry described by ADR-0002; the current code lives entirely under `packages/openclaw/`.
 
 ## Motivation
 
-dsh is a coding-agent form: it has `ctx.sessions`, `ctx.tools`, `ctx.llm`, `ctx.agents` and other seams, but **no "messaging channel" concept**. To land the form "a personal assistant living inside messaging channels" (WhatsApp/Telegram/Email/Feishu…) onto dsh, every channel integrator faces the same set of problems:
+DeepSeek Harness owns Agent execution and durable Sessions but has no provider-neutral messaging transport seam. ClawDSH needs one narrow junction where an external communication plane can submit admitted turns and where an Agent can request platform-native actions. Platform SDKs, credentials, admission policy, and delivery must not leak into the Agent driver, while Agent and Session lifecycle must not move into the transport host.
 
-1. After a channel message arrives, how to locate/create a per-thread agent session?
-2. How to write the message into the session log, drive an agent turn, then retrieve the reply?
-3. How to deliver the reply back to the channel?
+## Current seam
 
-Without a seam, this "routing + session binding + turn driving + reply delivery" logic would be duplicated in every channel plugin — precisely the malady that makes OpenClaw unmaintainable due to its architecture lacking seams. This proposal adds a single seam: `ctx.channels`.
+`@clawdsh/dsh-channel` provides `ctx.channels` with two lifecycle-scoped slots:
 
-## Proposed seam
+- one `ChannelProviderV1`, owned by the communication plane, implements `action()` and `health()`;
+- one `ChannelDriverV1`, owned by the Agent plane, implements `runTurn()`, exact cancellation, reset, close, and optional delivery-ledger reconciliation.
 
-```ts
-import type { Context } from '@deepseek-ai/cordis'
+The Service dispatches between those roles and fails when a required role is absent or duplicated. It contains strict provider-neutral V1 protocol types and validators, but no OpenClaw import, platform branch, credential, Session creation logic, transport retry, or default provider.
 
-export interface ChannelCapabilities { receive: boolean; send: boolean }
+## Protocol obligations
 
-export interface ChannelMessage {
-  channel: string                    // 适配器 id，如 'telegram' | 'feishu'
-  direction: 'in' | 'out'
-  threadId?: string                  // 渠道侧会话线索（群 chat_id / p2p open_chat_id / TG chat.id）
-  sender?: string                    // 发送者身份（open_id / from.id）
-  text: string
-}
+An admitted turn names the Gateway lineage, OpenClaw session key, reset generation, channel, account, conversation, optional thread, direct/group kind, sender admission class, platform message, idempotency key, turn/run ids, text, ordered staged media, and optional trace. Terminal results are replayable and distinguish completed, silent, cancelled, and failed outcomes.
 
-export interface ChannelAdapter {
-  id: string
-  capabilities: ChannelCapabilities
-  start(ctx: Context): () => void           // 订阅平台事件，emit 'channel/inbound'；返回 disposer
-  send(msg: ChannelMessage): Promise<void>  // 出站投递
-}
-```
+`channel.action` is a closed union for send, edit, delete, react, poll, typing, directory queries, and resolution. Provider delivery receipts distinguish accepted, confirmed, retrying, ambiguous, and dead-letter states. The optional `delivery.report` extension reconciles final-turn delivery with the Agent-side durable ledger. An ambiguous receipt never authorizes the Service to rerun a turn or resend an action.
 
-- Events: `channel/inbound` (inbound, adapter → core), `channel/outbound` (outbound, after core delivers the reply).
-- A `ChannelRegistry extends Service` (`ctx.channels`) holds the adapter registry (ids unique, unregistration rolls back) and provides routing.
+## Composition
 
-## Inbound routing / turn-driving semantics
+The current Provider is `@clawdsh/dsh-channel-openclaw`, which authenticates and verifies a locked local OpenClaw Gateway. The current Driver is `@clawdsh/dsh-channel-agent`, which owns durable route/session binding, idempotency, Agent execution, model-visible logging, and attachment import. Their current behavior and limitations are specified in `docs/specs/feature-channel-plane-bridge.md`.
 
-adapter `start()` receives a platform message → `ctx.emit('channel/inbound', msg)` → `channel-core` listens → routes:
+`@clawdsh/dsh-channel-core` implements the superseded in-process adapter contract under `ctx.legacyChannels`. A deployment must not connect both paths to the same platform account. The legacy package remains only until ADR-0008's replacement conditions pass.
 
-1. Locate/create the per-thread agent session by `${channel}\0${threadId ?? ''}` (`ctx.agents.create` for the first message, reused afterward);
-2. `followup(createUserMessage({ text }))` → `await agent.whenIdle()` → `await ctx.sessions.flush(session)`;
-3. Scan `assistant/message` text blocks to retrieve the reply → `adapter.send(outMsg)` + `emit('channel/outbound', outMsg)`.
+## Required upstream Session-event seam
 
-Per-thread inbound turns are serialized via a tail-chain to avoid concurrent interleaving. **Every inbound message and outbound reply goes through the session log** ("model-visible means logged"), covered by `dsh-agent`'s existing invariants.
+Channel provenance reaches the model through the known `user/message.source.kind = 'channel'` path. Admission, idempotency, and delivery authority remains in channel ledgers. The current implementation does not append `channel/turn-admitted` or `channel/delivery`: dsh's static known-event vocabulary excludes downstream names, and `Session.append()` cannot mark a non-surface event `ignorable: true`, so persistence would make resume refuse the log.
 
-## Relationship to `ctx.agents` / `ctx.sessions`
+`session-plugin-events.md` proposes the independent upstream seam needed before ClawDSH can add redundant namespaced diagnostics. It is not part of `ctx.channels`, because safe event-envelope creation belongs to the Session owner and can serve any downstream plugin.
 
-- Reuse `ctx.agents.create` to create the session (`agentOptions` taken from `ctx.agentDefaultModel.currentSelection()`), adding no new session lifecycle;
-- Reuse `ctx.sessions.flush` to persist, adding no new persistence semantics;
-- Routing only keeps the "channel thread ↔ dsh session" binding in an in-memory map, a thin assembly layer that does not change `agent-loop`.
+## Upstream boundary
 
-## Why it is a "thin assembly layer"
+If DeepSeek Harness later needs a general channel capability, only the provider-neutral Service Definition is a candidate for upstreaming. The OpenClaw Provider, channel catalogs, host locks, and migration policy remain ClawDSH-owned. An upstream proposal would need an independent consumer and provider, stable demand beyond ClawDSH, and the normal complete-seam requirement; this document does not claim those conditions are met.
 
-This seam introduces no channel-feature semantics (attachments/references/rich text/cards all stay out of this layer): `ChannelMessage` carries only `text`, and the remaining channel features are mapped by the adapter itself inside `send`. Routing/session/log/reply-delivery are compositions of dsh's existing capabilities, and `channel-core` only does "assembly + serialization", so the intrusion surface into upstream is minimal, and the cost of adding a channel = one `ChannelAdapter` implementation.
+## Current validation limits
 
-## Local validation status (stage 2)
-
-- `channel-core` + `channel-telegram` (grammY `Bot` long polling) + `channel-feishu` (`@larksuiteoapi/node-sdk` long connection + `im.message.create`) implemented;
-- Contract tests (MockAdapter validating the "inbound → real agent turn → reply out" closed loop) + full typecheck + `--dump-config` smoke are all green;
-- Real e2e (real key + real bot) left as a finishing item once credentials are in place.
+Package-level protocol and lifecycle evidence does not certify a platform. The production sidecar is not enabled in a shipped profile, the owned keyless assembled snapshot is missing, Windows endpoint ACL enforcement is missing, namespaced Session events remain disabled, and this change ran no current Telegram or Feishu live smoke. Support claims therefore follow `cataloged → installable → certified → enabled`; no channel reaches the final two states in this record.

@@ -2,97 +2,127 @@
 
 English | [中文](context-map.zh.md)
 
-- **Status**: Phase 4 context discipline (2026-08-14)
-- **Purpose**: the single entry point that tells an agent where ClawDSH's own code is (read deeply, change freely) and where upstream dsh is (summarized once here, then skip). One read of this doc replaces re-reading the upstream source tree.
-- **Companions**: [doc-inventory.md](doc-inventory.md) (ownership per file) · [roadmap.md](roadmap.md) (why ClawDSH exists)
+- **Status**: Phase 4 productization and channel-plane integration
+- **Purpose**: entry point for ClawDSH ownership, package roles, and the upstream material an implementation needs to read
+- **Companions**: [documentation inventory](doc-inventory.md) · [roadmap](roadmap.md) · [GUI spec](feature-gui-web.md) · [channel bridge spec](feature-channel-plane-bridge.md)
 
-## 1. Build surface — read deeply, change freely
+## 1. Owned build surface
 
-| Location | What it is |
+| Location | Ownership |
 |---|---|
-| `packages/openclaw/` | the only rewriteable code domain — 12 packages below |
-| `docs/adr/`, `docs/specs/`, `docs/matrix/`, `docs/standards/`, `docs/journal/`, `docs/upstream-proposal/` | ClawDSH decisions, specs, matrix, standards, journal, upstream proposals |
-| `tools/` | ClawDSH scripts + e2e drivers (`ark-e2e.ts`, `link-clawdsh.sh`, `sync-upstream.sh`) |
-| `.github/workflows/clawdsh-*` | ClawDSH CI (`clawdsh-publish.yml`, `clawdsh-smoke.yml`) |
+| `packages/openclaw/` | ClawDSH packages, product assembly, nested GUI/runtime source, and package templates |
+| `docs/{adr,specs,matrix,standards,journal,upstream-proposal}/` | ClawDSH decisions, current requirements, status, operations, and history |
+| `tools/` | ClawDSH installers, verification, migration, e2e drivers, and OpenClaw host locks |
+| `.github/workflows/clawdsh-*` | ClawDSH-specific CI and release workflows |
+| New date-stamped files under `.agents/notes/` | ClawDSH decisions; archived notes remain frozen |
 
-### The 12 packages
+### Owned packages and assembly directories
 
-| Package | Kind | Consumes | Provides / does |
+| Directory | Role | Consumes | Provides or does |
 |---|---|---|---|
-| `channel-core/` | Service class | `agents`, `sessions`, `agentDefaultModel` | **provides `ctx.channels`** (ADR-0002) — registry + routing + presentation |
-| `channel-telegram/` | adapter | `ctx.channels` | Telegram channel adapter (grammY polling) |
-| `channel-feishu/` | adapter | `ctx.channels` | Feishu channel adapter (Lark long-connection) |
-| `channel-wechat/` | decision record | — | WeChat-family exclusion (no upstream counterpart) |
-| `soul/` | function plugin | `systemPrompt` | persona via system-prompt section (replace/append) |
-| `memory/` | function plugin | `tools`, `systemPrompt`, `fs` | `memory_search`/`memory_get` + recall section + flush |
-| `embeddings/` | Service class | — | **provides `ctx.embeddings`** (ADR-0003) — abstract `Embeddings` |
-| `embeddings-ark/` | provider | `ctx.embeddings` | Volcano Ark provider (`doubao-embedding-vision`) |
-| `skills-hub/` | provider | `skills` | ClawHub-compatible skill directory |
-| `automation/` | function plugin | `agents`, `sessions`, `agentDefaultModel` | croner scheduled agent turns (`automation/run`) |
-| `preset-openclaw/` | preset/profile | — | internal source for the `clawdsh` profile and `clawdsh` agent preset (`ClawDSH 模式`) |
-| `_template/` | skeleton | — | copy-me template for a new plugin |
+| `channel/` | Service Definition | Cordis lifecycle | current `ctx.channels` V1 protocol; one Provider and one Driver |
+| `channel-agent/` | Consumer / Driver | channels, Agents, Sessions, presets, attachments, storage, tools | durable route binding, idempotency, Agent turns, logging, media import, route-scoped `message` tool |
+| `channel-openclaw/` | Service Provider | channels, subprocess, storage | locked OpenClaw supervision, authenticated IPC, health, actions, delivery ledger |
+| `channel-core/` | legacy Service | Agents, Sessions, default model | superseded in-process registry under `ctx.legacyChannels`; retained for replacement verification |
+| `channel-telegram/` | legacy adapter | legacy channel service | Telegram polling adapter; no current certification |
+| `channel-feishu/` | legacy adapter | legacy channel service | Feishu long-connection adapter; no current certification |
+| `channel-wechat/` | historical decision record | — | non-executable record superseded as availability guidance by the locked catalog |
+| `soul/` | function plugin | system prompt | replace or append persona sections |
+| `memory/` | function plugin | tools, system prompt, filesystem, optional embeddings | memory tools, recall section, indexing, flush |
+| `embeddings/` | Service Definition | Cordis lifecycle | owned `ctx.embeddings` seam |
+| `embeddings-ark/` | Service Provider | embeddings | Volcano Ark embeddings |
+| `skills-hub/` | Service Provider | skills | ClawHub-compatible skill directory |
+| `automation/` | function plugin | Agents, Sessions, default model | opt-in scheduled Agent turns |
+| `preset-openclaw/` | product assembly | public dsh Web and Host APIs | internal source for the `clawdsh` profile, `clawdsh` preset, product shell, Settings, and Activity |
+| `preset-clawdsh-messaging-safe/` | preset carrier | soul | restricted channel preset installed as `clawdsh-messaging-safe` |
+| `_template/` | skeleton | — | starting point for a new owned plugin |
 
-## 2. Upstream surface — read only, summarized in §3
+The physical `preset-openclaw/` name remains only because an existing repository check grants that path a narrow exception. Installed ids and product copy use `clawdsh`. The legacy and current channel services can coexist as packages, but a deployment must not connect both paths to the same platform account.
+
+## 2. Upstream read-only surface
 
 | Location | Rule |
 |---|---|
-| `vendor/` | vendored Cordis; sync via `vendor/README.md` |
-| `packages/*` except `packages/openclaw/` | all `@deepseek-ai/dsh-*` — do not edit, do not re-read |
-| `apps/`, `website/`, `native/`, `python/`, `examples/`, `assets/`, `patches/`, `scripts/` | upstream apps/runtime/SDK/demos/scripts |
-| `docs/` upstream pages | `architecture.md`, `development.md`, `glossary.md`, `cordis-primer.md`, … (dsh-centric) |
-| root config | `package.json`, `tsconfig*.json`, `tsdown.config.ts`, `vitest*.ts`, … (a few carry additive `@clawdsh/*` entries, ADR-0001) |
+| `vendor/` | sync only through its manifest procedure |
+| `packages/*` except `packages/openclaw/` | read a Service Definition only when its seam is relevant; do not implement ClawDSH behavior there |
+| `apps/`, `website/`, `native/`, `python/`, `examples/`, `assets/`, `patches/`, `scripts/` | upstream applications, runtimes, examples, assets, and checks; no ClawDSH feature edits |
+| Upstream pages under `docs/` | architecture and generated catalogs; use as reference, not as a ClawDSH rewrite surface |
+| Root configuration | upstream-owned with only ADR-backed branding or additive workspace registration |
 
-Two allowed change kinds, never a third: ① pin a brand section (README/AGENTS); ② an additive ADR-backed edit (the `@clawdsh/*` registration points). Everything else is read-only; on rebase conflict take upstream's version, then replay the brand section and registration entries.
+OpenClaw is a separate external upstream for the channel plane, not a writable subtree. Approved artifacts and catalogs are recorded under `tools/openclaw-channel-host/`; do not vendor a checkout into `packages/openclaw/`.
 
-## 3. dsh in one read — the architecture you need
+## 3. Architecture in one read
 
-### Cordis: everything is a plugin
+### Cordis lifecycle
 
-A running `dsh` is a tree of plugins. Each plugin contributes services, typed events, and reversible effects to a shared context; every registration goes through `ctx.effect()` / `ctx.on()` and returns a disposer. There is no privileged core — the model adapter, tool registry, session log, and agent loop are all plugins, all replaceable from config.
+A dsh runtime is a plugin tree. Services, events, and registrations are scoped effects that unwind with their plugin. Cross-package work uses typed Service Definitions and declared injection, not imports into another package's implementation.
 
-### Capability seam = Service Definition / Provider / Consumer
+### ClawDSH product shell
 
-A capability is a **seam** with three roles: a Service Definition (the interface), one or more Providers (implementations), and Consumers (dependents). Declared dependencies go in `inject`; optional services use `ctx.get(name)`. A new seam is a big deal — ClawDSH has admitted only two (`ctx.channels`, `ctx.embeddings`), each with an ADR.
+The local GUI is a ClawDSH product over the public dsh Web runtime, not another dsh agent preset. `/clawdsh/` owns the product navigation—Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced—while `/` retains the native dsh Web GUI. The Conversation page reuses the public client module graph, loading state, and `buildRenderApp()`; ClawDSH owns the outer shell, Settings, Activity, Control Runtime, and `/clawdsh` RPC channel.
 
-### Composition: profile / patch / bundle
+This assembly does not register a new Client Slot and does not modify `api-proxy`, Client Catalog, Agent Loop, upstream generated files, or upstream GUI source. `dsh --profile web` remains a pure Harness entry point.
 
-`dsh --profile <name>` stacks layers in order: the profile's bundles → the profile's `cordis.patch.yml` → the home-level patch → `--patch` overlays. A patch targets a row by id and replaces its whole config, or inserts a new row. `tools/link-clawdsh.sh` installs the internal `preset-openclaw/profile/cordis.patch.yml` source as the `clawdsh` profile and installs its `clawdsh` preset under the dsh user root.
+### Profile layering and identity
 
-The clean-install profile keeps Feishu, Telegram, and Automation disabled, so the Web Host can start without their credentials. Those defaults use Loader `disabled` rows only until the Settings control-plane increment moves optional behavior behind mounted plugins' `enabled` settings. Legacy `openclaw` profile and preset directories are warning-only inputs and remain untouched; the public-distribution CLI owns the managed manifest and `clawdsh doctor` repair flow.
+`dsh --profile <name>` stacks the profile bundles, its `cordis.patch.yml`, the home-level patch, and later `--patch` overlays. `tools/link-clawdsh.sh` installs the internal profile source as `clawdsh`, installs the `clawdsh` and `clawdsh-messaging-safe` presets under the dsh user preset root, and links owned packages for development.
 
-### The invariant: model-visible ⟺ logged
+The clean-install profile keeps the complete `channel → channel-agent → channel-openclaw` group and Automation disabled, so the Web Host starts without platform credentials. Legacy `openclaw` profile and preset directories are warning-only inputs and remain untouched; no compatibility alias is installed. The public CLI owns the managed manifest, integrity repair, and `clawdsh doctor` flow.
 
-Anything that reaches a model request must be reconstructable from the session log. A new model-visible input requires a session event. This is the one rule every ClawDSH feature is checked against (see the per-feature ledger in [product-chain.md](product-chain.md)).
+### Complete capability seams
 
-### The seams
+A capability seam contains a Service Definition, Service Provider, and Consumer. ClawDSH owns `ctx.embeddings` and the current `ctx.channels`. For channels, `channel` is the definition, `channel-openclaw` is the communication Provider, and `channel-agent` is the Agent Consumer/Driver.
 
-| Seam | Owner | Used by | One-line contract |
+### Model-visible means logged
+
+Anything reaching a model request must be reconstructable from the Session log. Channel Agent input uses the known `user/message` event with complete sanitized `source.kind = 'channel'` provenance; admission, idempotency, and delivery authority stays in durable channel ledgers. Declared `channel/*` Session events remain disabled because downstream code cannot mark them ignorable and persistence resume would reject their unknown names. Communication-only health and transport bookkeeping stay outside model context.
+
+### Relevant seams
+
+| Seam | Owner | ClawDSH consumers | Use here |
 |---|---|---|---|
-| `ctx.systemPrompt` | upstream (`core`) | soul, memory | ordered prompt sections; a `complete` section becomes the whole prompt |
-| `ctx.tools` | upstream (`core`) | memory | tool registry; `memory_search`/`memory_get` |
-| `ctx.fs` | upstream (`fs`) | memory | filesystem capability + policy |
-| `ctx.sessions` | upstream (`core`) | channel-core, automation | in-memory session store; flush, turn events |
-| `ctx.agents` | upstream (`core`) | channel-core, automation | agent registry; resume-or-create a turn |
-| `ctx.skills` | upstream (`skill`) | skills-hub | skill provider registry |
-| `ctx.llm` | upstream (`llm`) | (none yet) | LLM capability (Service Definition + DeepSeek providers) |
-| `ctx.subagents` | upstream (`subagent`) | (future federation) | subagent delegation (ADR-0005 transport) |
-| `ctx.get(name)` | Cordis | memory (`embeddings`) | generic optional-service accessor |
-| `ctx.channels` | **ClawDSH** (ADR-0002) | channel-*, channel-core | channel registry + routing |
-| `ctx.embeddings` | **ClawDSH** (ADR-0003) | memory, embeddings-ark | text-embedding seam (abstract `Embeddings`) |
-| `ctx.schedule` | absent (no Service seam) | — | upstream has `dsh-schedule` (a reminder *plugin*) and a `ctx.jobs` seam; automation uses neither — croner + `ctx.agents`/`ctx.sessions` directly |
+| `ctx.systemPrompt` | dsh | soul, memory | ordered prompt sections |
+| `ctx.tools` | dsh | memory, channel-agent | tool registry and route-scoped `message` tool |
+| `ctx.fs` | dsh | memory | policy-controlled filesystem access |
+| `ctx.sessions` | dsh | channel-agent, legacy channel-core, automation, Activity | append-only events, projection, and durable flush |
+| `ctx.agents` | dsh | channel-agent, legacy channel-core, automation | create, resume, and drive Agent Sessions |
+| `ctx.attachments` | dsh | channel-agent | durable images; no general-file seam yet |
+| `ctx.storageDomain` | dsh | channel-agent, channel-openclaw | durable route, execution, and delivery ledgers |
+| `ctx.subprocess` | dsh | channel-openclaw | supervised Gateway lifecycle |
+| Settings and Credentials | dsh | ClawDSH Control Runtime | schema-backed user layers and credential references |
+| Connection RPC | dsh | ClawDSH Control Runtime and product shell | loopback-only `/clawdsh` control channel |
+| `ctx.skills` | dsh | skills-hub | skill Provider registry |
+| `ctx.subagents` | dsh | future federation | delegation transport |
+| `ctx.channels` | ClawDSH, ADR-0008 | channel-openclaw, channel-agent | bidirectional channel V1 dispatch |
+| `ctx.embeddings` | ClawDSH, ADR-0003 | memory, embeddings-ark | text embeddings |
 
-**Full seam list**: upstream exposes 54 services, generated into `packages/extensions/tool-cordis/src/api-catalog.ts` (`SERVICE_API`), with `docs/capability-seams.md` as the human-facing summary. Consult those instead of re-reading `packages/*/src` — the table above lists only what ClawDSH actually touches.
+The upstream service catalog remains authoritative for the complete dsh seam list. Consult `docs/capability-seams.md` or the generated API catalog before reading package implementations.
 
-## 4. Reading strategy — what to open, what to skip
+## 4. Owning references
 
-| When | Open | Skip |
+| Need | Read |
+|---|---|
+| GUI posture, routes, and prohibited upstream changes | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) |
+| GUI pages and acceptance behavior | [local GUI spec](feature-gui-web.md) |
+| Channel architecture and ownership | [ADR-0008](../adr/0008-openclaw-channel-plane.md) |
+| Current channel protocol and gaps | [channel bridge spec](feature-channel-plane-bridge.md) |
+| Exact host and channel identities | `tools/openclaw-channel-host/*.json` |
+| Channel update and certification process | [OpenClaw channel sync standard](../standards/openclaw-channel-sync.md) |
+| Current product and support projection | [parity matrix](../matrix/parity.md) |
+| Required OpenClaw AgentHarness host semantics | [OpenClaw proposal](../upstream-proposal/openclaw-agent-harness-channel-seams.md) |
+| Required downstream Session-event support | [dsh proposal](../upstream-proposal/session-plugin-events.md) |
+
+ADR-0002, `feature-channel-core`, and `channel-wechat` explain the legacy path; they are not current channel-availability guidance.
+
+## 5. Reading strategy
+
+| Task | Read | Skip |
 |---|---|---|
-| Every session | this page + the `AGENTS.md` brand section | — |
-| Building a ClawDSH feature | `packages/openclaw/<pkg>/src/`, `docs/adr/`, `docs/specs/feature-*.md`, `docs/matrix/parity.md` | upstream `packages/*` source |
-| Adding a new seam | the corresponding upstream Service Definition + an ADR | the rest of that upstream package |
-| Looking up a seam contract | `docs/capability-seams.md` or `packages/extensions/tool-cordis/src/api-catalog.ts` | `packages/*/src` |
-| Rebase/sync | `docs/standards/upstream-sync.md`, `vendor/README.md` | — |
-| Debugging upstream behavior | `docs/architecture.md`, the specific package's README | unrelated upstream packages |
-| Never | — | re-reading `vendor/` or `packages/*` from scratch |
-
-**Rule of thumb**: upstream is a platform, not a codebase to read. You need the seam contract, not the implementation. Read the seam's Service Definition when you extend it; otherwise trust §3.
+| Any ClawDSH change | this page, the owning feature spec, and the parity row | broad upstream source rereads |
+| Product-shell change | ADR-0007, GUI spec, and public dsh Web entry APIs | Client Catalog, generated GUI files, and unapproved Slots |
+| Settings or Activity change | GUI spec, owning Config schemas, Settings/Credentials/Session APIs | arbitrary Loader controls and upstream SessionEventMap edits |
+| Channel protocol change | channel package sources, ADR-0008, bridge spec, sync standard | platform SDK implementations unless locked-host compatibility changed |
+| OpenClaw release update | machine locks/catalogs, release artifact, exact compatibility inputs | floating `main` after resolving the approved commit |
+| New dsh seam | the corresponding upstream Service Definition and complete-seam rules | unrelated packages |
+| dsh rebase | `docs/standards/upstream-sync.md` | ad hoc edits to upstream packages |
+| Legacy channel removal | ADR-0008 replacement conditions and legacy Agent Notes | archiving notes before code removal |

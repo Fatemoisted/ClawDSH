@@ -1,172 +1,142 @@
-# Product chain & correctness verification (Phase 0–3 shipped features)
+# Product chain and verification status
 
 English | [中文](product-chain.zh.md)
 
-- **Status**: Phase 4 entry deliverable (2026-08-14)
-- **Purpose**: one page that traces every shipped feature's wiring chain — OpenClaw source → dsh seam → landing package → trigger/presentation — and runs a three-way correctness check (parity matrix / code / contract test) that explicitly flags every doc–code inconsistency.
-- **Method**: each feature gets a wiring table plus a ✅/⚠️/❌ checklist. ❌ marks a doc that is wrong today and must be fixed before publish; ⚠️ marks a verification gap or an ambiguous claim that needs reconciling.
+- **Status**: current-state map for Phase 4
+- **Purpose**: trace each ClawDSH feature from input through its dsh seam to model-visible or user-visible output without converting implementation evidence into certification
 
 | Marker | Meaning |
 |---|---|
-| ✅ | verified against matrix + code (+ contract test where applicable) |
-| ⚠️ | verification gap or ambiguous claim — reconcile, but not a hard error |
-| ❌ | doc–code inconsistency — the cited doc is wrong today |
+| ✅ | current code or owned configuration supports the stated relationship |
+| ⚠️ | implementation or verification gap; the statement is intentionally limited |
+| ⏳ | accepted follow-up work, not current behavior |
 
-## Summary index
+## Summary
 
-| Feature | Landing package | dsh seam | Correctness |
+| Feature | Landing packages | Primary seam | Current result |
 |---|---|---|---|
-| channel-core | `channel-core/` | **new** `ctx.channels` (ADR-0002) | ✅ |
-| channel-telegram | `channel-telegram/` | `ctx.channels` | ✅ (e2e ⚠️ credentials) |
-| channel-feishu | `channel-feishu/` | `ctx.channels` | ✅ (real e2e passed) |
-| soul | `soul/` | `ctx.systemPrompt` | ✅ |
-| memory (+embeddings +embeddings-ark) | `memory/`, `embeddings/`, `embeddings-ark/` | `ctx.fs` + `ctx.tools` + `ctx.get('embeddings')` (ADR-0003) | ✅ (one ⚠️) |
-| skills-hub | `skills-hub/` | `ctx.skills` | ✅ (roster ❌) |
-| automation | `automation/` | `ctx.agents` + `ctx.sessions` | ✅ (roster ❌ ×2) |
-| ClawDSH assembly wiring | `preset-openclaw/` | `clawdsh` profile/patch + `clawdsh` agent preset | ✅ |
+| ClawDSH local GUI | `preset-openclaw` | public dsh Web assembly | ✅ preset-only baseline; ⏳ product shell, Settings, and Activity |
+| Current channel plane | `channel`, `channel-agent`, `channel-openclaw` | owned `ctx.channels` V1 | ✅ foundation; ⚠️ no certified or enabled channel |
+| Legacy channel path | `channel-core`, `channel-telegram`, `channel-feishu` | `ctx.legacyChannels` | ✅ retained compatibility; ⚠️ no current certification |
+| Persona | `soul` | `ctx.systemPrompt` | ✅ implemented |
+| Memory | `memory`, `embeddings`, `embeddings-ark` | filesystem, tools, system prompt, owned embeddings seam | ✅ implemented |
+| Skills | `skills-hub` | `ctx.skills` | ✅ implemented |
+| Automation | `automation` | Agents and Sessions | ✅ implemented; disabled by default |
+| Product identity | internal `preset-openclaw` source | `clawdsh` profile and presets | ✅ `ClawDSH 模式`; legacy `openclaw` assets are warning-only |
 
-## channel-core
+## ClawDSH local GUI
 
-| Link | Content |
+### Current baseline
+
+`tools/link-clawdsh.sh` installs the `clawdsh` profile and preset. `pnpm dsh --profile clawdsh` starts the native dsh Web client, and new Sessions default to `ClawDSH 模式`. Feishu, Telegram, and Automation are disabled in the clean-install baseline, so the Web Host does not require their credentials.
+
+### Accepted product chain
+
+| Link | Owner and behavior |
 |---|---|
-| OpenClaw 源 | channel gateway `Gateway` — message routing, thread management, adapter registry |
-| dsh seam | **new** `ctx.channels` (ADR-0002); `ChannelRegistry extends Service`, `static inject = ['agents','sessions','agentDefaultModel']` |
-| 落地包 | `packages/openclaw/channel-core/src/index.ts` |
-| 触发 | adapter emits `channel/inbound` → `route()` → `getOrCreateThread()` (`SessionId('channel-${randomUUID()}')`) → `driveTurn()` (followup → whenIdle → `sessions.flush` → `extractReply` → `adapter.send` → emit `channel/outbound`) |
-| 呈现 | `presentation.ts` pure resolvers: `resolveAckReaction` (default `👀`), `resolveResponsePrefix` (`auto` = `[name]`), `deriveMentionPatterns`, `stripMentions`, `stripZeroWidth` |
+| Entry | `/clawdsh/` is the ClawDSH product route; `/` remains native dsh Web |
+| Conversation | reuse the public dsh client module graph, loading state, and chat renderer |
+| Settings | ClawDSH Control Runtime projects allowlisted feature schemas, desired/runtime revisions, restart state, and credential presence |
+| Activity | current-Session semantic projection for Prompt, Memory, Channels, Skills, and Automation; raw Trajectory stays in Harness Advanced |
+| Harness Advanced | explicit route to the unmodified native dsh GUI and diagnostics |
+| Isolation | no new Client Slot and no changes to `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source |
 
-- ✅ matrix `parity.md`: "implemented".
-- ✅ code: `ChannelRegistry`, `registerAdapter`, `getPresentation`, `route`, `driveTurn`, `extractReply` all present; `extractReply` filters plugin-sourced turns.
-- ✅ contract test: `invariant.ts` ships an empty installer with a "No runtime invariant" reason — justified (the registry owns no assertion-able relationship beyond the adapter set it already exposes).
-- ✅ model-visible ⟺ logged: inbound → `user/message`, outbound → `assistant/message` (via `driveTurn` → `sessions.flush`); ack reaction is channel-side and correctly *not* model-visible.
+⏳ ADR-0007 accepts this product posture, but the product shell and control pages are not implemented by the preset-only baseline. `dsh --profile web` remains a pure Harness path.
 
-## channel-telegram
+## Current OpenClaw channel plane
 
-| Link | Content |
+### Wiring
+
+| Link | Owner and behavior |
 |---|---|
-| OpenClaw 源 | `extensions/telegram` (grammY-based) |
-| dsh seam | `ctx.channels` — implements `ChannelAdapter` |
-| 落地包 | `packages/openclaw/channel-telegram/src/index.ts` |
-| 触发 | grammY `Bot` polling → `toInbound` → `detectBotMention` → channel-core `route` |
-| 呈现 | `setMessageReaction`; capabilities `{receive: polling, send: true, react: true}` |
+| Platform transport | locked OpenClaw Gateway and channel plugins own credentials, ingress, admission, canonical ids, native actions, media staging, and delivery |
+| Host provenance | `tools/openclaw-channel-host` locks production `v2026.7.1-2` / `0790d9f...` and a source-only canary; production catalog is **24+3** |
+| Local Provider | `channel-openclaw` verifies host identity, authenticates private IPC, enforces handshake capabilities, reports health, forwards actions, and persists delivery receipts |
+| Service Definition | `channel` validates V1 payloads and dispatches between exactly one Provider and one Driver |
+| Agent Driver | `channel-agent` persists route generations, Session bindings, idempotency and recovery state, imports verified images, chooses a preset, drives an Agent, and exposes a route-scoped `message` tool |
+| Durable output | terminal Agent results and delivery receipts are reconciled without treating ambiguous delivery as permission to resend |
 
-- ✅ matrix: "implemented".
-- ✅ code complete.
-- ⚠️ transport e2e blocked on credentials (no Telegram bot token). This is a known, *documented* gap (`openclaw/README.md` "e2e pending credentials", journal "Telegram blocked on credentials") — consistent, not an inconsistency.
+The chain is platform → OpenClaw admission → authenticated `turn.run` → `ctx.channels` → durable Agent driver → dsh Session/Agent → terminal result → OpenClaw delivery. The bridge rejects a different host tag, commit, artifact digest, Node engine, Gateway lineage, startup nonce, AgentHarness generation, protocol version, or unnegotiated capability. OpenClaw must select `clawdsh/local` exclusively with no model fallback.
 
-## channel-feishu
+### Execution and replay
 
-| Link | Content |
+- ✅ One Gateway-scoped idempotency key maps to one envelope digest. Equal in-flight requests attach, terminal records replay, and conflicting content fails.
+- ✅ A crash-observed running turn becomes `needs-recovery` instead of rerunning tools with unknown side effects.
+- ✅ Route identity includes Gateway, OpenClaw Session key, generation, channel, account, conversation, optional thread, and direct/group kind; reset and close retire exact generations.
+- ✅ The Agent ledger commits admission before model execution, and the known `user/message` event carries complete sanitized channel provenance.
+- ✅ Delivery receipts are durable and monotonic; ambiguous delivery requires reconciliation and never permits blind resend.
+- ⚠️ The complete group is disabled by default, and no channel has the assembled and live evidence required for certification.
+
+### Actions and attachments
+
+The protocol covers send, edit, delete, react, poll, typing, directory queries, and target resolution. The connected Gateway advertises the allowed subset, and each platform can still reject an operation explicitly.
+
+Inbound images are confined to a canonical staging root, checked for symlinks, size, media type, and SHA-256, then stored through dsh attachments. Audio, video, and general files fail until dsh has durable non-image attachments. Outbound media fails until dsh owns a staging writer.
+
+### Verification state
+
+| Claim | Current state |
 |---|---|
-| OpenClaw 源 | `extensions/feishu` (since OpenClaw v2026.2.12) |
-| dsh seam | `ctx.channels` — implements `ChannelAdapter` |
-| 落地包 | `packages/openclaw/channel-feishu/src/index.ts` |
-| 触发 | `Lark.WSClient` long-connection → `im.message.receive_v1` → dedup by `message_id` (`SEEN_CAP = 10000`) → route → `im.message.create` outbound |
-| 呈现 | `im.messageReaction.create`; capabilities `{receive: true, send: true, react: true}`; config `{appId, appSecret, domain}` |
+| Production roster provenance | **cataloged**: 27 entries, 24 core/bundled/repository-official + 3 external |
+| Production sidecar channels | **cataloged** only; no exact per-channel assembly or certification |
+| Canary | **cataloged** audit input only; its source archive is not a runnable built artifact |
+| POSIX IPC authorization | private parent, socket mode, token, nonce, and exact handshake checks implemented |
+| Windows IPC authorization | unsupported and fail-closed until named-pipe ACL enforcement exists |
+| Plugin Session events | `channel/*` names disabled because downstream append cannot mark them ignorable |
+| Keyless assembled transcript | missing because the upstream snapshot lane does not discover owned packages |
+| Telegram / Feishu live traffic | no current certification evidence; neither sidecar nor legacy path is enabled |
 
-- ✅ matrix: "implemented".
-- ✅ code complete.
-- ✅ real e2e passed end-to-end (journal + `openclaw/README.md` "real e2e passed"). Credentials go through `FEISHU_APP_ID` / `FEISHU_APP_SECRET` env vars, not disk.
+## Legacy channel path
 
-## soul
+`channel-core` registers in-process text adapters under `ctx.legacyChannels`; Telegram uses grammY polling and Feishu uses the Lark long connection. Identity prefix, mention handling, and acknowledgement reactions belong to this legacy path.
 
-| Link | Content |
-|---|---|
-| OpenClaw 源 | Soul / identity system (`src/agents/` — persona, tone, behavioral guidelines) |
-| dsh seam | `ctx.systemPrompt` — `section({name, order, text, complete?})` |
-| 落地包 | `packages/openclaw/soul/src/index.ts`; `inject = ['systemPrompt']`, `SOUL_SECTION = 'clawdsh:soul'`, `SOUL_ORDER = 10` |
-| 触发 | mount at boot → contributes a system-prompt section |
-| 呈现 | `mode: replace` → `PERSONA_SECTION` with `complete: true` (soul becomes the whole prompt); `mode: append` → appended section; relative `source` resolves via `ctx.baseUrl` |
+- ✅ Packages remain available for replacement verification, and their historical tests describe their behavior.
+- ⚠️ The contract has no exact OpenClaw host identity, durable route/idempotency/delivery ledgers, media path, or native action negotiation.
+- ⚠️ Historical transport work does not satisfy the current release's certification requirements. Telegram and Feishu are at most installable.
+- ⏳ Delete the three packages together only after the sidecar assembles, an owned keyless snapshot exists, and fresh Telegram and Feishu certification passes. Archive their Agent Notes only with that removal.
 
-- ✅ matrix: "implemented".
-- ✅ code + 12 test cases (baseUrl-relative resolution, cwd fallback); replace/append is the finalized form.
-- ✅ preset wiring: `preset-openclaw/agent.cordis.yml` carries `source: ./souls/assistant.md`, `mode: append`.
-- ✅ model-visible ⟺ logged: the soul is a prompt section, so assembly enters `request/header` (upstream session mechanism guarantees "model-visible means logged").
+## Persona, Memory, Skills, and Automation
 
-## memory (+ embeddings + embeddings-ark)
+| Feature | Chain | Logged or user-visible result |
+|---|---|---|
+| Persona | preset → `soul` → ordered system-prompt section | prompt reaches the model through logged `request/header` |
+| Memory recall | Markdown facts → index → recall prompt section | recall reaches logged `request/header` |
+| Memory tools | `memory_search` / `memory_get` → tool result | result is a normal logged tool result; semantic search fails loud without a Provider |
+| Skills | ClawHub-compatible directories → `skills-hub` → `ctx.skills` | mounted skill instructions and tools use normal dsh logging |
+| Automation | cron/at/every rule → Agent Session → `automation/run` → plugin-sourced turn | event and turn remain reconstructable; feature is disabled by default |
 
-| Link | Content |
-|---|---|
-| OpenClaw 源 | Memory (v2026.1.15) — Markdown fact source + semantic recall |
-| dsh seam | `ctx.fs` + `ctx.tools` + system-prompt section + `ctx.get('embeddings')` (ADR-0003) |
-| 落地包 | `memory/` (`search.ts` `MemoryIndex`, `watch.ts` chokidar, `flush.ts`, `chunk.ts`, `memory-files.ts`) + `embeddings/` (abstract `Embeddings extends Service`) + `embeddings-ark/` (`ArkEmbeddings`, `doubao-embedding-vision-251215`) |
-| 触发 | `memory_search` / `memory_get` tools (search requires `ctx.embeddings`, fail-loud otherwise); `agent/turn-stopping` flush hook; host fs watcher (`invalidateFile`) |
-| 呈现 | `MEMORY_RECALL_SECTION = 'clawdsh:memory-recall'` (order 115); search hits as tool results |
+✅ These features reuse dsh lifecycle and logging. Automation composes `ctx.agents` and `ctx.sessions`; it does not claim a nonexistent scheduling service.
 
-- ✅ matrix: "implemented" (memory, embeddings, embeddings-ark).
-- ✅ code: incremental `(version, size)` sync, `cosineSimilarity`, one embed batch per search, watcher closes same-size-edit blind spot.
-- ✅ model-visible ⟺ logged: `memory_search` results are tool-result events; flush uses the `NO_REPLY` convention under the `memory-flush` source (logged, not model-visible); recall section is a prompt section.
-- ⚠️ `openclaw/README.md` line 39 says embeddings-ark "e2e pending credentials", while `roadmap.md` Phase 2 status says "a real ARK e2e (tools/ark-e2e.ts)". Reconcile which is authoritative.
+## Profile composition
 
-## skills-hub
+`preset-openclaw` is the internal source for the `clawdsh` Agent preset, example soul, and profile. The profile composes dsh base and Web bundles, then mounts Memory, Embeddings, Skills, opt-in Automation, and a default-disabled `channel → channel-agent → channel-openclaw` group. The physical directory name does not become a user-visible id.
 
-| Link | Content |
-|---|---|
-| OpenClaw 源 | Skills / ClawHub (compatible skill directory loading) |
-| dsh seam | `ctx.skills` |
-| 落地包 | `packages/openclaw/skills-hub/src/index.ts`; `ClawHubProvider` name `'clawhub'`, ranks `WORKSPACE=300 / EXTRA=350 / MANAGED=450`, `DEFAULT_MANAGED_DIR = ~/.clawdbot/skills`, `metadata.clawdbot.requires.{bins,anyBins,env}` gating |
-| 触发 | skills registry provider mount |
-| 呈现 | skill catalog → model-visible tools/instructions (logged via skill tool events) |
+- ✅ New Web Sessions default to `clawdsh`, displayed as `ClawDSH 模式`.
+- ✅ Owner channel turns use `clawdsh`; every non-owner or group turn uses `clawdsh-messaging-safe` after OpenClaw admission.
+- ✅ Disabled channel and Automation behavior may omit credentials; the product Settings increment will move optional runtime control behind mounted plugins' validated `enabled` settings.
+- ✅ `tools/link-clawdsh.sh` installs only ClawDSH ids, warns about legacy `openclaw` assets, and neither aliases nor mutates them.
+- ⚠️ A channel configuration row does not establish `enabled`; ADR-0008 requires certification first.
 
-- ✅ matrix: "implemented".
-- ✅ code: pure incremental directory merge, no install execution, no credentials.
-- ❌ `openclaw/README.md` line 40 roster status still "planning" — must read "implemented (phase 3 ✅)".
+## Model-visible logging ledger
 
-## automation
-
-| Link | Content |
-|---|---|
-| OpenClaw 源 | Cron / Automation (scheduled agent turns) |
-| dsh seam | `ctx.agents` + `ctx.sessions` via croner — **not** `ctx.schedule` (no such seam; `ctx.schedule` was rejected) |
-| 落地包 | `packages/openclaw/automation/src/index.ts`; rule kinds `cron/at/every`, `SessionId('automation:${id}')`, `agent.session.append('automation/run', {ruleId, scheduledAt, status})`, resume-or-create via `ctx.agents.resume` |
-| 触发 | cron/at/every rules → agent turn |
-| 呈现 | `automation/run` session event (`AutomationRunEvent` declaration-merged into `SessionEventMap`) |
-
-- ✅ matrix: "implemented".
-- ✅ code: croner `Cron`, `MAX_TIMER_DELAY_MS`, session-event append, resume-or-create.
-- ✅ model-visible ⟺ logged: `automation/run` logged + plugin-sourced turns.
-- ❌ `openclaw/README.md` line 41: status still "planning" **and** seam mislabeled `ctx.schedule / ctx.jobs` — must read "implemented (phase 3 ✅, disabled opt-in)" and "`ctx.agents` + `ctx.sessions`".
-
-## preset-openclaw wiring
-
-| Link | Content |
-|---|---|
-| 形态 | `clawdsh` agent preset (`preset.yml` display name `ClawDSH 模式` + `agent.cordis.yml`), example soul (`souls/assistant.md`), and `clawdsh` profile template (`profile/cordis.patch.yml`) |
-| 层叠 | `profile/package.json` composes `@deepseek-ai/dsh-base` then `@deepseek-ai/dsh-web-app`; soul mounts through the agent preset rather than the profile |
-| profile patch | `system-prompt` persona → `channel-core` → `channel-telegram` (`disabled: true`) → `channel-feishu` (`disabled: true`, env credential references) → `memory` → `embeddings-ark` → `skills-hub` → `automation` (`disabled: true`) → `agent-presets.default: clawdsh` |
-| 凭证 | Disabled channels may omit credentials; Feishu uses env references when enabled, and Ark resolves `ARK_API_KEY` on demand — no value is committed to the profile |
-
-- ✅ wiring complete: all six runtime features are covered by the profile patch, and soul by the agent preset.
-- ✅ layer separation correct: soul is an agent-preset concern, channels/memory/skills/automation are profile-patch concerns.
-- ✅ Feishu, Telegram, and Automation ship `disabled: true`, so the clean-install Web Host starts without their credentials.
-- ✅ these optional features temporarily use Loader `disabled`; the capability Settings increment keeps their business plugins mounted and moves control to validated `enabled` settings.
-- ✅ `tools/link-clawdsh.sh` installs only the `clawdsh` ids and preserves legacy `openclaw` assets after warning; it creates no compatibility alias.
-- ✅ the managed manifest, integrity repair, and `clawdsh doctor` belong to the public-distribution CLI rather than this profile source.
-
-## Doc–code inconsistency ledger
-
-| # | Location | Today | Should read | Severity |
-|---|---|---|---|---|
-| 1 | `openclaw/README.md:40` | skills-hub "planning" | "implemented (phase 3 ✅)" | ❌ |
-| 2 | `openclaw/README.md:41` | automation "planning", seam "`ctx.schedule` / `ctx.jobs`" | "implemented (phase 3 ✅, disabled opt-in)", seam "`ctx.agents` + `ctx.sessions`" | ❌ |
-| 3 | `openclaw/README.md:39` | embeddings-ark "e2e pending credentials" | reconcile vs `roadmap.md` "real ARK e2e" | ⚠️ |
-| 4 | `docs/matrix/parity.md:46` | Federation "to be named / Deferred (evaluated at end of Phase 3)" | ADR-0005 `'clawd-federation'` transport provider; Phase 3 concluded | ❌ |
-| 5 | `AGENTS.md:18` (CLAUDE.md symlink) | "当前阶段：阶段 2" | "阶段 4" | ❌ |
-| 6 | `docs/specs/roadmap.md:36,42` | Phase 2 header lacks ✅; Phase 3 has no completion marker | both carry ✅ (completed 2026-08-14) | ⚠️ |
-| 7 | `docs/adr/0001-project-foundation.md` decision 3 | physical-isolation list omits `docs/upstream-proposal/` | add it (CLAUDE.md brand section already lists it) | ⚠️ |
-
-Items 1–2, 4–5 are publish-blocking (a reader would be actively misled); items 3, 6–7 are pre-publish cleanup with no correctness risk.
-
-## Model-visible ⟺ logged, per feature
-
-| Feature | Model-visible input | Logged as | Verdict |
+| Feature input | Model-visible form | Logged as | Status |
 |---|---|---|---|
-| soul | system-prompt section | `request/header` | ✅ |
-| memory recall | system-prompt section | `request/header` | ✅ |
-| memory search | tool result | tool-result event | ✅ |
-| memory flush | (not model-visible) | `memory-flush` source, `NO_REPLY` | ✅ |
-| channel inbound | user message | `user/message` | ✅ |
-| channel outbound | assistant message | `assistant/message` | ✅ |
-| ack reaction | (not model-visible) | — | ✅ |
-| automation run | plugin-sourced turn | `automation/run` event | ✅ |
-| skills | skill tool/instructions | skill tool events | ✅ |
+| Persona | system prompt | `request/header` | ✅ |
+| Memory recall | system prompt | `request/header` | ✅ |
+| Memory search | tool result | normal tool-result event | ✅ |
+| Automation trigger | plugin-sourced user turn | `automation/run` plus normal turn events | ✅ |
+| Current channel admission | user content and verified images | known `user/message` with sanitized channel source; authority in Agent ledger | ✅ |
+| Current delivery update | not model input | Provider and Agent delivery ledgers | ✅ |
+| Channel health and IPC bookkeeping | not model input | Provider health and ledger only | ✅ |
+| Activity semantic record | not an additional model input | standard Session history plus ClawDSH sidecar projection | ⏳ |
+
+## Release gaps
+
+1. Implement the `/clawdsh/` product shell, Settings control plane, semantic Activity, and Harness Advanced navigation without changing upstream GUI source.
+2. Finish the public installer and managed preset/profile repair path while preserving user settings, credentials, memory, and skills.
+3. Add an owned keyless Gateway-to-Agent snapshot lane and complete exact per-channel assembly evidence.
+4. Keep Windows fail-closed until named-pipe ACL enforcement provides equivalent authorization.
+5. Add durable non-image attachments and outbound staging before enabling those media paths.
+6. Run fresh Telegram and Feishu certification before enabling either route.
+7. Obtain an ignorable append mechanism before persisting namespaced `channel/*` Session events.
+8. Remove legacy adapters and archive their Notes only after every replacement condition passes.

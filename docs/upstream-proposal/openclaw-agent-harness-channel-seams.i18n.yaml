@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upstream-proposal/openclaw-agent-harness-channel-seams.md
+openclaw-agent-harness-channel-seams.md: f2ec065459cbd072af7afb11da1a50e20cea27bc
+openclaw-agent-harness-channel-seams.zh.md: 390767181160a7b84a126587587cc1b123893406

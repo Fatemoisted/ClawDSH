@@ -1,7 +1,8 @@
 /**
- * The `ctx.channels` seam: an adapter registry that routes inbound channel
- * messages to per-thread agent sessions, drives each turn to quiescence, and
- * delivers the extracted reply back through the owning adapter.
+ * The legacy `ctx.legacyChannels` seam: an experimental adapter registry that
+ * routes inbound channel messages to per-thread agent sessions, drives each
+ * turn to quiescence, and delivers the extracted reply through the owning
+ * adapter. It remains only until the credentialed OpenClaw sidecar cutover.
  * @module @clawdsh/dsh-channel-core
  */
 
@@ -45,7 +46,7 @@ export type { AckReactionScope, IdentityConfig, PresentationConfig } from './pre
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    channels: ChannelRegistry
+    legacyChannels: LegacyChannelRegistry
   }
 
   interface Events {
@@ -143,10 +144,10 @@ export const Config: z<Config> = z.object({
 })
 
 /**
- * Registry of channel adapters plus the inbound routing that turns their
- * messages into agent turns and returns each reply through its adapter.
+ * Legacy registry of channel adapters plus the inbound routing that turns
+ * their messages into agent turns and returns each reply through its adapter.
  */
-export class ChannelRegistry extends Service {
+export class LegacyChannelRegistry extends Service {
   static inject = ['agents', 'sessions', 'agentDefaultModel']
   static Config: z<Config> = Config
 
@@ -157,7 +158,7 @@ export class ChannelRegistry extends Service {
   private readonly requireMention: boolean
 
   constructor(ctx: Context, config: Config = {}) {
-    super(ctx, 'channels')
+    super(ctx, 'legacyChannels')
     this.presentation = {
       ...(config.identity === undefined ? {} : { identity: config.identity }),
       ...(config.responsePrefix === undefined || config.responsePrefix === '' ? {} : { responsePrefix: config.responsePrefix }),
@@ -167,7 +168,7 @@ export class ChannelRegistry extends Service {
     this.requireMention = config.requireMention ?? true
     ctx.on('channel/inbound', (message) => {
       this.route(message).catch((error: unknown) => {
-        this.ctx.logger.warn(`channels: inbound routing failed: ${describe(error)}`)
+        this.ctx.logger.warn(`legacyChannels: inbound routing failed: ${describe(error)}`)
       })
     })
   }
@@ -189,16 +190,17 @@ export class ChannelRegistry extends Service {
    */
   registerAdapter(adapter: ChannelAdapter): () => void {
     if (this.adapters.has(adapter.id)) {
-      throw new Error(`channels: adapter "${adapter.id}" is already registered`)
+      throw new Error(`legacyChannels: adapter "${adapter.id}" is already registered`)
     }
-    return this.ctx.effect(() => {
+    const dispose = this.ctx.effect(() => {
       this.adapters.set(adapter.id, adapter)
       const stop = adapter.start(this.ctx)
       return () => {
         this.adapters.delete(adapter.id)
         stop()
       }
-    }, `channels.register(${adapter.id})`)
+    }, `legacyChannels.register(${adapter.id})`)
+    return () => { void dispose() }
   }
 
   /**
@@ -225,7 +227,7 @@ export class ChannelRegistry extends Service {
     entry.tail = entry.tail
       .then(() => this.driveTurn(entry, message))
       .catch((error: unknown) => {
-        this.ctx.logger.warn(`channels: turn for "${message.channel}" failed: ${describe(error)}`)
+        this.ctx.logger.warn(`legacyChannels: turn for "${message.channel}" failed: ${describe(error)}`)
       })
     await entry.tail
   }
@@ -263,7 +265,7 @@ export class ChannelRegistry extends Service {
       )) {
       // Fire-and-forget: the ack marks receipt; a failed reaction must not block the reply.
       void adapter.react(message, emoji).catch((error: unknown) => {
-        this.ctx.logger.warn(`channels: ack reaction for "${message.channel}" failed: ${describe(error)}`)
+        this.ctx.logger.warn(`legacyChannels: ack reaction for "${message.channel}" failed: ${describe(error)}`)
       })
     }
     const firstSeq = agent.session.seq
@@ -293,18 +295,19 @@ export class ChannelRegistry extends Service {
  * registry's identity presentation. Every channel adapter's `apply()` performs
  * this identical wiring; this is the single entry point so the derivation stays
  * symmetric across channels.
- * @param ctx - Cordis context carrying the `channels` service.
+ * @param ctx - Cordis context carrying the `legacyChannels` service.
  * @param build - builds the adapter from the derived mention patterns.
  * @returns the disposer that stops the adapter and removes it from the registry.
  */
-export function registerChannelAdapter(
+export function registerLegacyChannelAdapter(
   ctx: Context,
   build: (mentionPatterns: readonly RegExp[]) => ChannelAdapter,
 ): () => void {
-  const presentation = ctx.channels.getPresentation()
+  const presentation = ctx.legacyChannels.getPresentation()
   const mentionPatterns = deriveMentionPatterns(presentation.identity?.name, presentation.identity?.emoji)
   const adapter = build(mentionPatterns)
-  return ctx.effect(() => ctx.channels.registerAdapter(adapter), `channel-${adapter.id}.register()`)
+  const dispose = ctx.effect(() => ctx.legacyChannels.registerAdapter(adapter), `legacy-channel-${adapter.id}.register()`)
+  return () => { void dispose() }
 }
 
-export default ChannelRegistry
+export default LegacyChannelRegistry

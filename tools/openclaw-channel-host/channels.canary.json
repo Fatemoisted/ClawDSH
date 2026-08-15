@@ -1,0 +1,537 @@
+{
+  "schemaVersion": 1,
+  "track": "canary",
+  "hostCommit": "f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0",
+  "sourceRef": "main",
+  "observedAt": "2026-08-15T08:18:37Z",
+  "expectedCount": 31,
+  "channels": [
+    {
+      "id": "buzz",
+      "label": "Buzz",
+      "docsPath": "/channels/buzz",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/buzz",
+        "packageName": "@openclaw/buzz",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/buzz",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "clickclack",
+      "label": "ClickClack",
+      "docsPath": "/channels/clickclack",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/clickclack",
+        "packageName": "@openclaw/clickclack",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/clickclack",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "discord",
+      "label": "Discord",
+      "docsPath": "/channels/discord",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/discord",
+        "packageName": "@openclaw/discord",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/discord",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "feishu",
+      "label": "Feishu",
+      "docsPath": "/channels/feishu",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/feishu",
+        "packageName": "@openclaw/feishu",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/feishu",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "googlechat",
+      "label": "Google Chat",
+      "docsPath": "/channels/googlechat",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/googlechat",
+        "packageName": "@openclaw/googlechat",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/googlechat",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "imessage",
+      "label": "iMessage",
+      "docsPath": "/channels/imessage",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/imessage",
+        "packageName": "@openclaw/imessage",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/imessage",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "irc",
+      "label": "IRC",
+      "docsPath": "/channels/irc",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/irc",
+        "packageName": "@openclaw/irc",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/irc",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "line",
+      "label": "LINE",
+      "docsPath": "/channels/line",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/line",
+        "packageName": "@openclaw/line",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/line",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "matrix",
+      "label": "Matrix",
+      "docsPath": "/channels/matrix",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/matrix",
+        "packageName": "@openclaw/matrix",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/matrix",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "mattermost",
+      "label": "Mattermost",
+      "docsPath": "/channels/mattermost",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/mattermost",
+        "packageName": "@openclaw/mattermost",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/mattermost",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "msteams",
+      "label": "Microsoft Teams",
+      "docsPath": "/channels/msteams",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/msteams",
+        "packageName": "@openclaw/msteams",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/msteams",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "nextcloud-talk",
+      "label": "Nextcloud Talk",
+      "docsPath": "/channels/nextcloud-talk",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/nextcloud-talk",
+        "packageName": "@openclaw/nextcloud-talk",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/nextcloud-talk",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "nostr",
+      "label": "Nostr",
+      "docsPath": "/channels/nostr",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/nostr",
+        "packageName": "@openclaw/nostr",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/nostr",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "qqbot",
+      "label": "QQ Bot",
+      "docsPath": "/channels/qqbot",
+      "status": "external",
+      "source": {
+        "path": null,
+        "packageName": null,
+        "manifestVersion": null
+      },
+      "npm": {
+        "status": "verified",
+        "name": "@tencent-connect/openclaw-qqbot",
+        "version": "2.0.1",
+        "integrity": "sha512-2010PaCummeQaxerLtaGfQ/5HChiXaW/KpTERid7V/1zyTs46S2ACi0hgZQ1SB7tH0t1InWr8tzVBJV/pLss3Q=="
+      }
+    },
+    {
+      "id": "raft",
+      "label": "Raft",
+      "docsPath": "/channels/raft",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/raft",
+        "packageName": "@openclaw/raft",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/raft",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "reef",
+      "label": "Reef",
+      "docsPath": "/channels/reef",
+      "status": "bundled",
+      "source": {
+        "path": "extensions/reef",
+        "packageName": "@openclaw/reef",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": null,
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "signal",
+      "label": "Signal",
+      "docsPath": "/channels/signal",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/signal",
+        "packageName": "@openclaw/signal",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/signal",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "slack",
+      "label": "Slack",
+      "docsPath": "/channels/slack",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/slack",
+        "packageName": "@openclaw/slack",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/slack",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "sms",
+      "label": "SMS",
+      "docsPath": "/channels/sms",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/sms",
+        "packageName": "@openclaw/sms",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/sms",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "synology-chat",
+      "label": "Synology Chat",
+      "docsPath": "/channels/synology-chat",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/synology-chat",
+        "packageName": "@openclaw/synology-chat",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/synology-chat",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "telegram",
+      "label": "Telegram",
+      "docsPath": "/channels/telegram",
+      "status": "bundled",
+      "source": {
+        "path": "extensions/telegram",
+        "packageName": "@openclaw/telegram",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": null,
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "tlon",
+      "label": "Tlon",
+      "docsPath": "/channels/tlon",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/tlon",
+        "packageName": "@openclaw/tlon",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/tlon",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "twitch",
+      "label": "Twitch",
+      "docsPath": "/channels/twitch",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/twitch",
+        "packageName": "@openclaw/twitch",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/twitch",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "webchat",
+      "label": "WebChat",
+      "docsPath": "/web/webchat",
+      "status": "core",
+      "source": {
+        "path": null,
+        "packageName": null,
+        "manifestVersion": null
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": null,
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "wechat",
+      "label": "WeChat",
+      "docsPath": "/channels/wechat",
+      "status": "external",
+      "source": {
+        "path": null,
+        "packageName": null,
+        "manifestVersion": null
+      },
+      "npm": {
+        "status": "verified",
+        "name": "@tencent-weixin/openclaw-weixin",
+        "version": "2.4.6",
+        "integrity": "sha512-qw9k3PLTiMWGNjjsknHgcTManH1w4j+Ji1ArWIaYLKCq3aFRsVwcqnPi127bvOoVMJGW4dbyJ8NECEMgoO+iRw=="
+      }
+    },
+    {
+      "id": "wecom",
+      "label": "WeCom",
+      "docsPath": "/channels/wecom",
+      "status": "external",
+      "source": {
+        "path": null,
+        "packageName": null,
+        "manifestVersion": null
+      },
+      "npm": {
+        "status": "verified",
+        "name": "@wecom/wecom-openclaw-plugin",
+        "version": "2026.5.7",
+        "integrity": "sha512-TCkP9as00WfEhgFWG8YL/rcmaWGIshAki2HQh83nTRccGfVBCoGjrEboTTqq3yDmK9koWTV11zi8u8A4dNtvug=="
+      }
+    },
+    {
+      "id": "whatsapp",
+      "label": "WhatsApp",
+      "docsPath": "/channels/whatsapp",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/whatsapp",
+        "packageName": "@openclaw/whatsapp",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/whatsapp",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "yuanbao",
+      "label": "Yuanbao",
+      "docsPath": "/channels/yuanbao",
+      "status": "external",
+      "source": {
+        "path": null,
+        "packageName": null,
+        "manifestVersion": null
+      },
+      "npm": {
+        "status": "verified",
+        "name": "openclaw-plugin-yuanbao",
+        "version": "2.15.0",
+        "integrity": "sha512-3GD+mf3EjTSUTOAREjTHAyp/deXdpgqB+q+xE0b19Qtat4ADhUV1mHDwFkVCRqTCBY5ATFKtKcipoDejqFj/+w=="
+      }
+    },
+    {
+      "id": "zalo",
+      "label": "Zalo",
+      "docsPath": "/channels/zalo",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/zalo",
+        "packageName": "@openclaw/zalo",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/zalo",
+        "version": null,
+        "integrity": null
+      }
+    },
+    {
+      "id": "zaloclawbot",
+      "label": "Zalo ClawBot",
+      "docsPath": "/channels/zaloclawbot",
+      "status": "external",
+      "source": {
+        "path": null,
+        "packageName": null,
+        "manifestVersion": null
+      },
+      "npm": {
+        "status": "verified",
+        "name": "@zalo-platforms/openclaw-zaloclawbot",
+        "version": "0.1.4",
+        "integrity": "sha512-5IxZriHJYACLLGqkCPPsTP9tas62kXEOFqTFAFMdunAM3SPhIJwVFRp0WvoP/m7L2PX85weD0g8LOtxM93VDYg=="
+      }
+    },
+    {
+      "id": "zalouser",
+      "label": "Zalo Personal",
+      "docsPath": "/channels/zalouser",
+      "status": "repo-official",
+      "source": {
+        "path": "extensions/zalouser",
+        "packageName": "@openclaw/zalouser",
+        "manifestVersion": "2026.8.1"
+      },
+      "npm": {
+        "status": "cataloged",
+        "name": "@openclaw/zalouser",
+        "version": null,
+        "integrity": null
+      }
+    }
+  ]
+}

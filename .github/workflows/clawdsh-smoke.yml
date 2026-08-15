@@ -1,5 +1,5 @@
 # ClawDSH 冒烟工作流（本仓库自有；上游 CI 文件一律不动）
-# ClawDSH 自有代码、profile 与真实浏览器入口的独立门禁。
+# ClawDSH 自有代码、profile、通信平面与真实浏览器入口的独立门禁。
 name: clawdsh-smoke
 
 on:
@@ -27,7 +27,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install
@@ -52,3 +52,16 @@ jobs:
         env:
           DSH_SNAPSHOT: replay
         run: pnpm exec vitest run --config packages/openclaw/preset-openclaw/gui-tests/vitest.gui.config.ts packages/openclaw/preset-openclaw/gui-tests/real-profile.e2e.ts
+
+      - name: ClawDSH communication-plane gates
+        run: |
+          npm ci --ignore-scripts --prefix packages/openclaw/channel-openclaw/runtime
+          pnpm exec vitest run packages/openclaw/channel/tests packages/openclaw/channel-agent/tests packages/openclaw/channel-openclaw/tests packages/openclaw/preset-clawdsh-messaging-safe/tests
+          node --test packages/openclaw/channel-openclaw/bridge/test/*.test.mjs
+          node packages/openclaw/channel-openclaw/bridge/verify.mjs
+          pnpm exec vitest run --config tools/openclaw-channel-host/vitest.config.ts
+          pnpm exec tsc -p tools/openclaw-channel-host/tsconfig.json --noEmit
+          pnpm exec tsx tools/openclaw-channel-host/verify.ts --check --host-root packages/openclaw/channel-openclaw/runtime/node_modules/openclaw
+          pnpm exec tsx tools/openclaw-channel-host/generate-parity.ts --check
+          pnpm exec vitest run --config tools/openclaw-channel-migration.vitest.config.ts
+          pnpm run verify-translation-pairing

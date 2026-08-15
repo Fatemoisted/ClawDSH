@@ -2,13 +2,13 @@
 
 English | [中文](README.zh.md)
 
-**Purpose**: Feishu (Lark) channel adapter — implements `ChannelAdapter`, wrapped with the official `@larksuiteoapi/node-sdk`: WebSocket long-connection inbound (`WSClient` + `EventDispatcher`) + `im.message.create` outbound. **The initiator's first-priority channel** (established 2026-08-14).
+**Purpose**: legacy Feishu (Lark) adapter over `ctx.legacyChannels`, using the official `@larksuiteoapi/node-sdk` for WebSocket inbound and `im.message.create` outbound. It remains only until credentialed OpenClaw sidecar live cutover.
 
 **OpenClaw correspondence**: ✅ upstream's official `extensions/feishu` — introduced 2026-02-03 (commit `2483f26c23` "Channels: add Feishu/Lark support" → `0223416c61` "finish Feishu/Lark integration"), shipped since v2026.2.12. Use that extension as the functional reference for the port: it likewise uses `@larksuiteoapi/node-sdk`'s long-connection mode (`Lark.Client` + `Lark.WSClient` + `Lark.EventDispatcher` registering `im.message.receive_v1`).
 
-**Seam**: `ctx.channels` (@clawdsh/dsh-channel-core, ADR-0002). Complements Telegram's (polling) form, jointly validating the seam.
+**Seam**: legacy-only `ctx.legacyChannels` (@clawdsh/dsh-channel-core, historical ADR-0002). It has no compatibility alias to the production `ctx.channels` service.
 
-**Specification**: docs/specs/roadmap.md (stage 2 deliverable) · **Status**: implemented
+**Specification**: docs/specs/roadmap.md (historical stage 2 deliverable) · **Status**: legacy, disabled by default, pending decommission; sidecar live cutover is not yet claimed
 
 ## Design notes
 
@@ -35,6 +35,8 @@ Only the relayed message text reaches the model, through channel-core's session 
 Append-only through channel-core's user-message write.
 
 ## Known Limitations and Deferred Work
+
+- **decommission gate**: remove this adapter only after a credentialed Feishu account passes the OpenClaw sidecar live-cutover matrix; unit and contract tests do not satisfy that gate.
 
 - **rich text / interactive cards / attachments**: text messages only; rich-text, interactive cards, images, and `reply_in_thread` quoted replies all belong to stage 3 channel extensions.
 - **p2p session thread**: p2p/private uses the sender's `open_id` as the thread id, with `chat_id` as the fallback only when the sender is missing.

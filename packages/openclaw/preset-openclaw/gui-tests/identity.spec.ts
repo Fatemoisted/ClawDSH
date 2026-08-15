@@ -18,12 +18,13 @@ const repositoryRoot = resolve(import.meta.dirname, '../../../..')
 const assemblyRoot = join(repositoryRoot, 'packages/openclaw/preset-openclaw')
 const profileSource = join(assemblyRoot, 'profile')
 const presetSource = assemblyRoot
+const safePresetSource = join(repositoryRoot, 'packages/openclaw/preset-clawdsh-messaging-safe')
 const linkScript = join(repositoryRoot, 'tools/link-clawdsh.sh')
 const legacyLinkScript = join(repositoryRoot, 'tools/link-openclaw.sh')
 const linkedPackages = [
-  'channel-core',
-  'channel-feishu',
-  'channel-telegram',
+  'channel',
+  'channel-agent',
+  'channel-openclaw',
   'memory',
   'embeddings',
   'embeddings-ark',
@@ -80,13 +81,20 @@ describe('ClawDSH installed profile identity', () => {
     expect(preset).toMatch(/^name: ClawDSH 模式$/m)
   })
 
-  it.each(['channel-feishu', 'channel-telegram', 'automation'])(
-    'keeps %s disabled in the clean-install profile',
-    (id) => {
-      const entry = loaderEntry(read(join(profileSource, 'cordis.patch.yml')), id)
-      expect(entry).toMatch(/^      disabled: true$/m)
-    },
-  )
+  it('keeps the OpenClaw communication sidecar disabled in the clean-install profile', () => {
+    const entry = loaderEntry(read(join(profileSource, 'cordis.patch.yml')), 'clawdsh-communication-plane')
+    expect(entry).toContain("disabled: !!js process.env.CLAWDSH_OPENCLAW_CHANNELS_ENABLED !== '1'")
+    expect(entry).toMatch(/name: '@clawdsh\/dsh-channel'/)
+    expect(entry).toMatch(/ownerPreset: clawdsh/)
+    expect(entry).toMatch(/safePreset: clawdsh-messaging-safe/)
+    expect(entry).toMatch(/name: '@clawdsh\/dsh-channel-openclaw'/)
+    expect(entry).not.toMatch(/dsh-channel-(?:feishu|telegram|core)/)
+  })
+
+  it('keeps Automation disabled in the clean-install profile', () => {
+    const entry = loaderEntry(read(join(profileSource, 'cordis.patch.yml')), 'automation')
+    expect(entry).toMatch(/^      disabled: true$/m)
+  })
 
   it('does not retain the obsolete development command', () => {
     expect(existsSync(linkScript)).toBe(true)
@@ -99,6 +107,7 @@ describe.skipIf(process.platform === 'win32')('ClawDSH development refresh', () 
     const home = temporaryHome()
     const profile = join(home, 'profiles/clawdsh')
     const preset = join(home, '.agent-presets/clawdsh')
+    const safePreset = join(home, '.agent-presets/clawdsh-messaging-safe')
 
     const first = runRefresh(home)
     expectRefreshSuccess(first)
@@ -109,8 +118,12 @@ describe.skipIf(process.platform === 'win32')('ClawDSH development refresh', () 
     expect(read(join(preset, 'preset.yml'))).toBe(read(join(presetSource, 'preset.yml')))
     expect(read(join(preset, 'agent.cordis.yml'))).toBe(read(join(presetSource, 'agent.cordis.yml')))
     expect(read(join(preset, 'souls/assistant.md'))).toBe(read(join(presetSource, 'souls/assistant.md')))
+    expect(read(join(safePreset, 'preset.yml'))).toBe(read(join(safePresetSource, 'preset.yml')))
+    expect(read(join(safePreset, 'agent.cordis.yml'))).toBe(read(join(safePresetSource, 'agent.cordis.yml')))
+    expect(read(join(safePreset, 'souls/assistant.md'))).toBe(read(join(safePresetSource, 'souls/assistant.md')))
     expect(existsSync(join(home, 'profiles/openclaw'))).toBe(false)
     expect(existsSync(join(home, '.agent-presets/openclaw'))).toBe(false)
+    expect(existsSync(join(home, '.agent-presets/openclaw-messaging-safe'))).toBe(false)
 
     for (const packageName of linkedPackages) {
       const link = join(home, 'profiles/node_modules/@clawdsh', `dsh-${packageName}`)
@@ -125,15 +138,18 @@ describe.skipIf(process.platform === 'win32')('ClawDSH development refresh', () 
   })
 
   it.each([
-    { label: 'profile only', hasProfile: true, hasPreset: false },
-    { label: 'preset only', hasProfile: false, hasPreset: true },
-    { label: 'profile and preset', hasProfile: true, hasPreset: true },
-  ])('warns accurately about legacy $label assets without changing them', ({ hasProfile, hasPreset }) => {
+    { label: 'profile only', hasProfile: true, hasPreset: false, hasSafePreset: false },
+    { label: 'preset only', hasProfile: false, hasPreset: true, hasSafePreset: false },
+    { label: 'safe preset only', hasProfile: false, hasPreset: false, hasSafePreset: true },
+    { label: 'all assets', hasProfile: true, hasPreset: true, hasSafePreset: true },
+  ])('warns accurately about legacy $label assets without changing them', ({ hasProfile, hasPreset, hasSafePreset }) => {
     const home = temporaryHome()
     const legacyProfile = join(home, 'profiles/openclaw')
     const legacyPreset = join(home, '.agent-presets/openclaw')
+    const legacySafePreset = join(home, '.agent-presets/openclaw-messaging-safe')
     const profileSentinel = join(legacyProfile, 'legacy-profile.txt')
     const presetSentinel = join(legacyPreset, 'legacy-preset.txt')
+    const safePresetSentinel = join(legacySafePreset, 'legacy-safe-preset.txt')
     if (hasProfile) {
       mkdirSync(legacyProfile, { recursive: true })
       writeFileSync(profileSentinel, 'profile sentinel\n')
@@ -142,19 +158,24 @@ describe.skipIf(process.platform === 'win32')('ClawDSH development refresh', () 
       mkdirSync(legacyPreset, { recursive: true })
       writeFileSync(presetSentinel, 'preset sentinel\n')
     }
+    if (hasSafePreset) {
+      mkdirSync(legacySafePreset, { recursive: true })
+      writeFileSync(safePresetSentinel, 'safe preset sentinel\n')
+    }
 
     const result = runRefresh(home)
     expectRefreshSuccess(result)
 
-    expect(result.stderr.includes(legacyProfile)).toBe(hasProfile)
-    expect(result.stderr.includes(legacyPreset)).toBe(hasPreset)
+    expect(result.stderr.includes(`旧 profile：${legacyProfile}\n`)).toBe(hasProfile)
+    expect(result.stderr.includes(`旧 agent preset：${legacyPreset}\n`)).toBe(hasPreset)
+    expect(result.stderr.includes(`旧受限 preset：${legacySafePreset}\n`)).toBe(hasSafePreset)
     expect(result.stderr.includes('旧 Session 可能仍引用 preset id "openclaw"')).toBe(hasPreset)
     expect(result.stderr.includes('旧 profile 不再维护或刷新')).toBe(hasProfile)
-    expect(result.stderr.includes('启动它时仍须提供原有飞书凭据')).toBe(hasProfile)
+    expect(result.stderr.includes('旧渠道 Session 可能仍引用 preset id "openclaw-messaging-safe"')).toBe(hasSafePreset)
     expect(result.stderr).toContain('tools/link-clawdsh.sh')
     expect(result.stderr).toContain('pnpm dsh --profile clawdsh')
-    expect(result.stderr).toContain('人工清理')
-    expect(result.stderr).toContain('不会删除、移动或改写')
+    expect(result.stderr.includes('人工清理')).toBe(hasProfile || hasPreset)
+    expect(result.stderr.includes('不会删除、移动或改写')).toBe(hasProfile || hasPreset)
     if (hasProfile) {
       expect(readdirSync(legacyProfile)).toEqual(['legacy-profile.txt'])
       expect(read(profileSentinel)).toBe('profile sentinel\n')
@@ -162,6 +183,10 @@ describe.skipIf(process.platform === 'win32')('ClawDSH development refresh', () 
     if (hasPreset) {
       expect(readdirSync(legacyPreset)).toEqual(['legacy-preset.txt'])
       expect(read(presetSentinel)).toBe('preset sentinel\n')
+    }
+    if (hasSafePreset) {
+      expect(readdirSync(legacySafePreset)).toEqual(['legacy-safe-preset.txt'])
+      expect(read(safePresetSentinel)).toBe('safe preset sentinel\n')
     }
   })
 })

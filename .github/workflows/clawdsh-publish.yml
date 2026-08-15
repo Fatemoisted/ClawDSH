@@ -18,6 +18,8 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@v4
 
@@ -27,7 +29,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install
@@ -39,15 +41,38 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
+      - name: ClawDSH communication-plane gates
+        run: |
+          npm ci --ignore-scripts --prefix packages/openclaw/channel-openclaw/runtime
+          pnpm exec vitest run packages/openclaw/channel/tests packages/openclaw/channel-agent/tests packages/openclaw/channel-openclaw/tests packages/openclaw/preset-clawdsh-messaging-safe/tests
+          node --test packages/openclaw/channel-openclaw/bridge/test/*.test.mjs
+          node packages/openclaw/channel-openclaw/bridge/verify.mjs
+          pnpm exec vitest run --config tools/openclaw-channel-host/vitest.config.ts
+          pnpm exec tsc -p tools/openclaw-channel-host/tsconfig.json --noEmit
+          pnpm exec tsx tools/openclaw-channel-host/verify.ts --check --host-root packages/openclaw/channel-openclaw/runtime/node_modules/openclaw
+          pnpm exec tsx tools/openclaw-channel-host/generate-parity.ts --check
+          pnpm exec vitest run --config tools/openclaw-channel-migration.vitest.config.ts
+          pnpm run verify-translation-pairing
+
       - name: Publish (dry-run)
         if: ${{ inputs.dry-run }}
         env:
           NPM_CONFIG_REGISTRY: ${{ inputs.registry }}
-        run: pnpm -r --filter './packages/openclaw/*' publish --dry-run --no-git-checks
+        run: >-
+          pnpm -r --filter './packages/openclaw/*'
+          --filter '!@clawdsh/dsh-channel-core'
+          --filter '!@clawdsh/dsh-channel-telegram'
+          --filter '!@clawdsh/dsh-channel-feishu'
+          publish --dry-run --no-git-checks
 
       - name: Publish
         if: ${{ !inputs.dry-run }}
         env:
           NPM_CONFIG_REGISTRY: ${{ inputs.registry }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: pnpm -r --filter './packages/openclaw/*' publish --no-git-checks
+        run: >-
+          pnpm -r --filter './packages/openclaw/*'
+          --filter '!@clawdsh/dsh-channel-core'
+          --filter '!@clawdsh/dsh-channel-telegram'
+          --filter '!@clawdsh/dsh-channel-feishu'
+          publish --no-git-checks

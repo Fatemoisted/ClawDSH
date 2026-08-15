@@ -1,47 +1,37 @@
-# Feature spec: channel gateway seam (channel-core)
+# Feature specification: legacy channel-core adapter path
 
 English | [中文](feature-channel-core.zh.md)
 
-- **Status**: implemented (Phase 2 ✅, 2026-08-14)
+- **Status**: implemented legacy compatibility path; superseded for new development
 - **Implementation package**: `packages/openclaw/channel-core` (`@clawdsh/dsh-channel-core`)
-- **OpenClaw counterpart**: channel gateway (`src/gateway/`, baseline v2026.1.5). In OpenClaw every channel grows directly into the gateway and agent logic — the classic symptom of "architecture without seams"; this spec splits the gateway into a two-tier "thin assembly layer + channel adapters" structure.
+- **Decision history**: [ADR-0002](../adr/0002-channel-seam.md)
+- **Current replacement**: [OpenClaw channel-plane bridge](feature-channel-plane-bridge.md) / [ADR-0008](../adr/0008-openclaw-channel-plane.md)
 
-## Goals
+## Purpose
 
-- Provide the `ctx.channels` service — the project's **only newly added seam** (design in docs/adr/0002-channel-seam.md):
-  - **Adapter registry**: a channel plugin registers a `ChannelAdapter`, unique by id, unregistered on dispose (HMR-safe);
-  - **Inbound routing**: `channel/inbound` message → locate/create a per-thread agent session → write to session log → drive an agent turn;
-  - **Outbound delivery**: agent reply → `channel/outbound` + the corresponding `adapter.send`.
-- A channel plugin implements only the two capability facets `receive` (inbound events) and `send` (outbound delivery); routing, session binding, turn serialization, and retry policy all belong to `channel-core`.
-- The contract inherits dsh invariants: every inbound message and outbound reply must be written to the session log ("model-visible means logged").
+`channel-core` was the Phase 2 feasibility implementation of an in-process `ctx.channels` registry. It proved that Telegram and Feishu adapters could share Session routing and Agent turn logic without modifying upstream dsh. It is retained temporarily so existing local configurations are not deleted before the sidecar replacement has equivalent evidence.
 
-## Non-goals
+This package is no longer the owner of the current channel architecture. New consumers use `@clawdsh/dsh-channel`; new platform integrations belong to the locked OpenClaw Gateway rather than new ClawDSH adapter packages.
 
-- Attachments / quoted replies / rich text / interactive cards — Phase 3 channel extensions (the ADR "minimal surface");
-- Cross-message interleaving, multi-sender aggregation, message grouping — Phase 3; this phase falls back to per-thread tail-chain serialization;
-- Unified abstraction of channel features (quotes, card model) — not assumed; extracted only after a second channel's features settle.
+## Legacy contract
 
-## Seam (confirmed in Phase 2)
+- `registerAdapter(adapter)` registered a unique in-process `ChannelAdapter` and disposed it with the contributing Cordis effect.
+- An adapter emitted `channel/inbound` with channel, optional thread and sender, and text; the core selected or created an in-memory per-thread Agent Session.
+- Turns for one thread were serialized, driven through `ctx.agents`, flushed through `ctx.sessions`, and followed by a text reply through `adapter.send` and `channel/outbound`.
+- Identity presentation, mention stripping, response prefix, and acknowledgement reaction were resolved within the old adapter path.
+- The contract had no durable route binding, host identity, idempotency ledger, delivery receipt, capability negotiation, rich action, or attachment semantics.
 
-`ctx.channels` (`ChannelRegistry extends Service`, `super(ctx, 'channels')`):
+## Compatibility rules
 
-- `static inject = ['agents', 'sessions', 'agentDefaultModel']`;
-- `registerAdapter(adapter)`: id-uniqueness validation → `adapter.start(ctx)` inside `ctx.effect` + store in map, returns disposer;
-- `getAdapter(id)` / `listAdapters()`;
-- private `route(message)`: per-thread session map (key = `${channel}\0${threadId ?? ''}`) → `ctx.agents.create` (first message) or reuse (subsequent) → `followup(createUserMessage(...))` → `whenIdle()` → `sessions.flush()` → scan `assistant/message` text blocks for the reply → `adapter.send(outMsg)` + `ctx.emit('channel/outbound', outMsg)`;
-- events (declaration merging): `channel/inbound`, `channel/outbound`.
+- The legacy service registers as `ctx.legacyChannels`. Do not connect it and the current `ctx.channels` path to the same platform account.
+- Do not add another adapter or widen `ChannelMessage`. Required channel coverage belongs to the sidecar catalog and V1 bridge.
+- Keep credentials in environment-backed adapter configuration while the legacy path remains installed.
+- Keep the legacy identity-presentation and acknowledgement-reaction Agent Notes with the code until removal; do not project their behavior onto the sidecar.
 
-**Conclusion: the seam hypothesis holds** — channel integration = one `ChannelAdapter` implementation, no upstream source line changed, `agent-loop` untouched.
+## Verification status
 
-## Config surface
+The package and adapter contract tests remain historical implementation evidence. Earlier Telegram and Feishu development established that the minimal contract could be mounted; it did not establish current release certification. Both legacy adapters are at most `installable`, not `certified` or `enabled`, under ADR-0008's state model without current credentialed evidence.
 
-No `Config` (service package, not a function plugin). Adapter plugins register via `ctx.channels.registerAdapter(adapter)`; deployment-level credentials live in each adapter plugin's `Config`, overridden through profile/patch.
+## Removal gate
 
-## Acceptance criteria (Phase 2 conclusion)
-
-1. ✅ **Register/unregister (HMR rollback)**: after `registerAdapter`, `listAdapters` contains it, removed after dispose (test-covered);
-2. ✅ **Duplicate id fail-loud**: registering an adapter with the same name throws (test-covered);
-3. ✅ **Inbound → outbound round-trip loop**: MockAdapter + the seven-piece harness verifies "inbound → real agent turn → reply out" + `channel/outbound` received + reply text non-empty (test-covered, keyless);
-4. ✅ **Per-thread session reuse**: same thread reuses the same session, different threads each create new ones (test asserts via `ctx.agents.list().length`);
-5. ✅ **Dual-channel verification**: Telegram (polling) + Feishu (webhook) two adapters mount the same contract, core has no channel-specific branches (`channel-telegram`/`channel-feishu` contract-test-covered);
-6. ✅ **Full typecheck green**: three build-chain registrations (tsconfig.base paths, tsconfig.host references, tsdown exclude removal).
+Delete `channel-core`, `channel-telegram`, and `channel-feishu` together only after the production OpenClaw sidecar is reproducibly assembled, its owned keyless Gateway-to-Agent snapshot is running, and fresh Telegram and Feishu certification covers inbound admission, Agent execution, outbound delivery, duplicates, reconnect, and failure paths. Archive the legacy Agent Notes only in that removal change.

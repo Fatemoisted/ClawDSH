@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/specs/feature-channel-core.md
-feature-channel-core.md: f1d9e3e6465958b772912f9b599cf62aee27dd95
-feature-channel-core.zh.md: 0988cfe5d82832718c82188e0901a670604184f5
+feature-channel-core.md: fe55609ce8cfa9894a8f973ad1e6d15f7173b85d
+feature-channel-core.zh.md: 033dad4e486ef3acfbfdd3f20d61ee877693ea17

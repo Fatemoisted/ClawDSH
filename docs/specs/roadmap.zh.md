@@ -1,72 +1,115 @@
-# ClawDSH 项目目的与实施方案
+# ClawDSH 项目目的与实施计划
 
 [English](roadmap.md) | 中文
 
-> 本文档是 ClawDSH 的纲领：回答"为什么做、做什么、怎么做"。决策细节在 `docs/adr/`，功能对齐在 `docs/matrix/parity.md`，规范在 `docs/standards/`。
+> 本章程说明 ClawDSH 存在的原因与工作顺序。决策位于 `docs/adr/`，精确状态位于 `docs/matrix/parity.md`，运维规则位于 `docs/standards/`。
 
-## 一、项目目的
+## 1. 目的
 
-**ClawDSH = OpenClaw 的个人助手功能集，重建于 DeepSeek Harness (dsh) 的 Cordis 插件底盘之上。**
+**ClawDSH 在 DeepSeek Harness 的 Cordis plugin 基础上重建 OpenClaw 的个人助手形态。** dsh 拥有 Agent 执行、Sessions、tools 与可组合 capability seam；ClawDSH 以独立 package 提供 persona、memory、skills、automation、产品展示与通信平面集成。
 
-OpenClaw 的困境的本质，不是"社区 PR 太多"，而是**架构没有接缝（seam）**：任何社区功能都无法以插件形式落地，只能不断堆进核心，导致耦合失控、代码不可维护，最终走向崩塌。
+本项目避免把社区功能变成对单体 core 的修改。每项功能属于一个完整 capability seam 或建立在既有 seam 上，声明依赖，可逆挂载，记录每个模型可见输入，并让 specification 与 verification evidence 随实现维护。
 
-dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖、通过类型化事件协作、挂载卸载可逆）从架构上根治这个问题：**每个社区功能是一个独立插件，新增能力不再触碰核心**。用户通过 profile/patch 机制自由组合出自己想要的个人 Agent。
+## 2. 原则
 
-## 二、核心原则（不可妥协）
+1. **dsh upstream 保持只读。** 自有代码限于 `packages/openclaw/`、指定 docs、tools 与 ClawDSH workflow；root build registration 只是有 ADR 支撑的窄增量。
+2. **只接受完整 seam。** 新能力包含 Service Definition、Service Provider 与 Consumer。缺少 dsh seam 时，需要 ADR 及自有实现或明确 proposal。
+3. **在正确边界复用完整子系统。** 非渠道功能在足够时使用早期 OpenClaw reference。通信跟随另行批准的当前 OpenClaw lock，因为平台覆盖与安全行为位于该处。
+4. **输入不可变，支持状态明确。** Floating ref 永远不是 deploy dependency。渠道支持只按 `cataloged → installable → certified → enabled` 推进。
+5. **垂直证据。** Package test 证明局部行为，assembled snapshot 证明用户可见 composition，credentialed smoke 证明一个外部传输。三者不能互相替代。
+6. **ClawDSH 是产品。** 本地 GUI 默认展示 ClawDSH，并把原生 Harness 保留为高级入口。切换 Agent preset 不会卸载 Host capability。
+7. **不 patch 上游 GUI。** 产品壳消费公开 dsh Web 与 Host API，不增加 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。
+8. **不提前删除 legacy。** 只有等价 assembly、snapshot、live behavior 与 failure handling 通过后，替换项才删除旧路径。
 
-1. **上游只读**：dsh 上游代码（`vendor/`、`packages/*`（openclaw/ 除外）、`apps/`、`website/`）保持不改；一切定制落在 ClawDSH 自有插件或应用组装、profile 与 patch 中。
-2. **Upstream-first**：缺少 dsh seam 时，先向上游提 PR，本地用 patch 过渡，上游合并后删除 patch。ClawDSH GUI 消费 dsh 既有公开 API，属于应用组装而非缺失接缝；如果实现需要上游改动，本 GUI 工作会停止，并在批准的 local-only 边界内重新设计，而不是发起上游 PR（[ADR-0007](../adr/0007-clawdsh-local-gui-product.md)）。
-3. **移植对象是功能类别，不是 PR**：OpenClaw 上万 PR 里绝大多数是 bugfix/重构/重复功能，我们要的是 20~40 个功能域。
-4. **垂直切片优先**：每个阶段都要有"能跑起来的东西"，不做大而全的空想。
-5. **反 OpenClaw 病**：任何 PR 必须链接规格 + 更新矩阵 + 过契约测试才可合入（见 `docs/standards/pr-policy.md`）。
+## 3. 已完成基础
 
-## 三、实施阶段
+### 阶段 0 · 可行性 spike
 
-### 阶段 0 · 可行性 Spike ✅（2026-08-14 完成）
+`soul` plugin 证明自有 package 可以贡献或替换 system-prompt section，通过 Cordis lifecycle 回卷，并经 profile 组合且不修改上游 Agent code。
 
-- 产出：功能对齐矩阵 v1；`@clawdsh/dsh-soul` 插件（replace/append 双模式 + 灵魂文件加载）。
-- 退出标准**全部达成**：soul 能替换/叠加 agent 系统提示词（契约测试 10/10）、热插拔（卸载即回卷）、未改上游一行源码（仅构建注册豁免，见 ADR-0001 决策 4）；全量 typecheck 绿；`--profile clawdsh --dump-config` 覆盖当前 profile 身份。
-- **结论：接缝假设成立，项目继续。** 验证细节见 docs/specs/feature-soul.md 的验收标准节。
+### 阶段 1 · 功能领域映射
 
-### 阶段 1 · 基线选型 + 矩阵定稿 ✅（2026-08-14 完成）
+项目选择 OpenClaw `v2026.1.5` 作为紧凑的非渠道 reference，并将 Sessions、tools、persona、memory、skills、automation、channels、federation 与 clients 分类为 reuse、plugin、new seam、product assembly 或 deferred。早期 tag 缺少选定领域时，仍可引用后续源码。
 
-- **基线定稿：`v2026.1.5`（`197b8f7c3b`）**——首个发布 tag，网关+5 渠道+cron+sessions 核心体验完整，所有 tag 中代码量最瘦（1537 文件/1.6MB），无 bloat 迹象；v2026.1.15 起文件数翻倍、extensions/plugins/部署矩阵出现。功能补全参考：whatsapp/memory/channels → v2026.1.15（`9c4c9c5edd`）。
-- OpenClaw 派生功能域的四分类已经定稿，见 `docs/matrix/parity.md`（矩阵 v2，含每个移植域的基线出处路径）。ClawDSH 原生产品面另用「产品组装」分类。
+### 阶段 2 · 个人助手 vertical slice
 
-### 阶段 2 · 核心骨架（垂直切片）✅（2026-08-14 完成）
+`soul`、Memory 与 Embeddings package、内部 `preset-openclaw` 组装，以及旧 `channel-core` / Telegram / Feishu path 建立首个可运行个人助手 composition。旧 adapter path 证明 Session routing，但不建立当前 channel certification。
 
-- `channel-core`（新 seam，按 ADR-0002 设计）+ `channel-telegram`（第一个渠道）+ **`channel-feishu`（发起人第一优先，ADR-0002 seam 验证备选渠道）** + `soul` + `memory` + `preset-openclaw`。
-- 退出标准：`pnpm dsh --profile clawdsh` 启动，Telegram 消息进 → 人格化 agent 跑 → 回复出；`ctx.channels` 契约同时通过 Telegram 与飞书两个适配器的验证（飞书出处：OpenClaw `extensions/feishu`，v2026.2.12）。
-- **状态（2026-08-14）**：核心交付完成并收口——渠道 seam + 双适配器（飞书真实 e2e 全链路验证；Telegram 凭证阻塞）、soul 深读定稿（replace/append 即最终形态，相对 `source` 按 `ctx.baseUrl` 解析）、memory 三包 + `ctx.embeddings` seam（ADR-0003）+ 真实 ARK e2e（tools/ark-e2e.ts）、preset 常驻化且 embeddings-ark 已启用、双语 26 对完成。见 docs/journal/2026-08-14.md。
+### 阶段 3 · 本地生态 plugin
 
-### 阶段 3 · 渠道铺开 + 自动化 ✅（2026-08-14 完成）
+`skills-hub` 与 opt-in `automation` 使用既有 dsh seam。Channel identity presentation 与 acknowledgement behavior 通过旧路径继续可用。Federation 按 ADR-0005 保持 evaluation-only。
 
-- 每个渠道一个包（WhatsApp/Email/Web Chat…），互不阻塞；`automation`（schedule 桥接）、`skills-hub`（ClawHub provider）。
-- **渠道范围原则**：只做 OpenClaw 上游有出处的渠道（见 docs/matrix/parity.md「国内平台」节）——微信系/钉钉/QQ 上游无对应，不实现。
-- 联邦节点（clawd）走 `ctx.subagents` transport，作为独立里程碑评估。
-- **状态（2026-08-14）**：`skills-hub` 与 `automation` 已交付（automation 默认 disabled、croner 走 `ctx.agents`/`ctx.sessions`）；ack-reaction 渠道身份呈现、memory 宿主 watcher、npm 发布（ADR-0004）、clawd 联邦（ADR-0005，仅评估）均已收口。当前干净安装的 profile 也默认关闭飞书与 Telegram，使三个可选外部行为都能在无凭据时启动。其余渠道与联邦实现仍暂缓。见 docs/journal/2026-08-14.md。
+## 4. 当前阶段 4 · 产品 GUI、渠道平面与发行
 
-### 阶段 4 · 用户生态（进行中）
+阶段 4 有三个并行 workstream。它们共享 `clawdsh` 产品 identity 与 clean-install 要求，但各自拥有独立证据。
 
-- 插件开发模板 + 契约文档公开；接入 dsh 的 `dsh-plugin` 发现机制。
-- 仅 preset 的 dsh Web GUI 基线使用 `clawdsh` profile 与 `clawdsh` preset，并显示为 `ClawDSH 模式`。[ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 定义了待实现的 ClawDSH 产品壳、能力 Settings、语义 Activity 与 Harness 高级入口，且不修改上游 GUI。
-- `tools/link-clawdsh.sh` 是开发安装脚本，检测到旧 `openclaw` 资产时只警告并保留。托管安装 manifest、`clawdsh doctor`、公共发行物与迁移指南仍是阶段 4 的发行交付项。
+### 4.1 ClawDSH 本地 GUI
 
-### 贯穿全程
+仅 preset 的 dsh Web 基线使用 `clawdsh` profile 与 `clawdsh` preset，显示为 `ClawDSH 模式`。[ADR-0007](../adr/0007-clawdsh-local-gui-product.md)定义已接受的产品壳：
 
-- 上游同步 CI（每周 rebase + 冒烟）；里程碑功能冻结（只修 bug 不收新功能）。
+- `/clawdsh/` 是默认产品 route；`/` 保留原生 dsh Web，并标记为 Harness 高级。
+- 导航为对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级。
+- 对话复用公开 dsh client plugin graph 与 renderer；ClawDSH 拥有 shell、Settings、Activity 与 Control Runtime。
+- Settings 投影 allowlisted ClawDSH capability schema、credential presence、revision 与 restart requirement，不暴露任意 Loader mutation。
+- Activity 提供 Prompt、Memory、Channels、Skills 与 Automation 的语义视图，raw Trajectory 留在 Harness 高级。
+- `dsh --profile web` 保持纯 Harness 入口。
 
-## 四、成功标准
+### 4.2 当前渠道平面
 
-1. 一个社区功能 = 一个插件包，合入不碰核心——OpenClaw 的死亡模式在架构上不可能发生；
-2. 用户能用一份配置自由组合渠道/人格/记忆/自动化，得到自己的个人 Agent；
-3. 对 dsh 上游的净分叉趋近于零（能上游化的全部上游化）；
-4. 本地用户无需编辑原始 Cordis entry，即可配置、理解并检查 ClawDSH，同时纯净 dsh Web profile 与原始 Harness 诊断仍然可用。
+[ADR-0008](../adr/0008-openclaw-channel-plane.md)把 production OpenClaw Gateway 锁定为 `v2026.7.1-2` / commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`，记录 source-only canary，并建立 **24 个 core/bundled/repository-official + 3 个 external** public chat transport 的 production catalog。
 
-## 五、待定事项
+基础由 `@clawdsh/dsh-channel`、`@clawdsh/dsh-channel-agent`、`@clawdsh/dsh-channel-openclaw` 与 `tools/openclaw-channel-host` 组成。Profile 把三个 runtime package 装配为默认关闭的 group。没有渠道 certified 或 enabled；逐渠道 assembly、自有 keyless snapshot evidence、当前 live smoke、Windows endpoint authorization 与剩余 media support 尚未完成。
 
-- [ ] OpenClaw 基线 commit（阶段 1 首个任务）
-- [x] Soul Spike 结论（✅ 可行，继续）
-- [ ] `ctx.channels` seam 是否被 dsh 上游接受（影响 patch 层厚度）
-- [ ] ClawDSH 本地 GUI 产品壳（[ADR-0007](../adr/0007-clawdsh-local-gui-product.md)）
-- [x] 私有远程仓库创建（Fatemoisted/ClawDSH，2026-08-14 完成）
+旧渠道 package 在 `ctx.legacyChannels` 下单独保留，用于替换验证。它们不得与 OpenClaw 通信平面连接同一 platform account，并且只能在替换条件通过后删除。
+
+### 4.3 公共发行
+
+`tools/link-clawdsh.sh` 是开发安装器。它只安装 `clawdsh` identity，检测到旧 `openclaw` profile 与 preset asset 时警告，并保持其不变。公共发行工作拥有 idempotent CLI、精确 dsh 与 ClawDSH bundle version、managed manifest、`clawdsh doctor`、preset backup 与 repair、clean-home smoke，以及 public npm provenance。
+
+## 5. 工作顺序
+
+### 产品 GUI 顺序
+
+1. 构建 nested ClawDSH Web entry、Control Runtime、`/clawdsh/` route、产品导航与只读 capability overview。
+2. 增加 schema-driven Settings、credential reference、optimistic revision check、desired/runtime revision display、restart requirement 与专用 Automation editor。
+3. 增加 current-Session Activity，使用有界且受权限限制的 sidecar JSONL，并从 standard Session history 提供 fallback projection。
+4. 在 browser 与 real-profile regression test 中持续保留 native GUI、raw Trajectory 与 `dsh --profile web`。
+
+### 渠道顺序
+
+1. 维护可复现 production host 与 bridge assembly，包括 sole-AgentHarness routing 与精确 runtime inspection。
+2. 增加自有 keyless Gateway-to-Agent snapshot lane，并关闭 protocol、recovery、delivery、action 与 attachment evidence gap。
+3. 运行逐渠道 certification，从 Telegram 与 Feishu 开始，记录精确 host、channel、OS 与 live-traffic evidence。
+4. 只启用 certified combination，然后在同一变更中删除 legacy package 并归档其 Agent Note。
+5. 按 ecosystem value、credential availability、platform risk 与 external-package review 分批提升更多 production catalog entry。
+
+### 发行顺序
+
+1. 在 ClawDSH bundle 中打包 profile、presets、Control Runtime、GUI assets 与精确 feature dependencies。
+2. 只有 npm scope ownership、public-source provenance 与精确 dsh compatibility 通过后，才把 CLI 与自有 package 以 `0.1.0-rc.1` 发布到 public npm `next` tag。
+3. 证明 clean installation、second-run idempotency、user-change preservation、tarball integrity，以及不存在 private registry、workspace、file 或 symlink reference。
+
+## 6. 成功标准
+
+1. Clean dsh home 无渠道凭证也能启动 `/clawdsh/`，新 Session 默认使用 `ClawDSH 模式`。
+2. 对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级均可访问，同时纯 `dsh --profile web` 行为不变。
+3. ClawDSH capability setting 由 schema 驱动，可安全处理冲突，不泄露 credential，并诚实展示 restart requirement 与 runtime state。
+4. Activity 解释 ClawDSH Prompt、Memory、Channels、Skills 与 Automation behavior，不声称能重建最终 flattened prompt，也不替代 raw Trajectory。
+5. 一个已批准 OpenClaw production host 暴露 stable 27-entry catalog，且 ClawDSH 不复制 platform SDK integration。
+6. OpenClaw model fallback 不能回答 channel turn，重复 input 或 ambiguous delivery 不能静默复制 Agent 或 delivery side effect。
+7. Support label 与 evidence 对应，交付 profile 只激活 certified host-and-channel combination。
+8. Public installation 精确、idempotent、可恢复，并保留用户 settings、credentials、memory、skills 与 custom patch。
+
+## 7. 开放条件
+
+- [ ] 实现 ClawDSH 产品壳与只读 capability overview。
+- [ ] 实现 Settings control plane 与 credential-safe mutation flow。
+- [ ] 实现 semantic Activity 与 sidecar degradation behavior。
+- [ ] 为产品壳增加自有 real-profile browser 与 keyless snapshot。
+- [ ] 在把任何 production entry 提升为 installable 前增加逐渠道 configuration、capability probe 与 keyless contract evidence。
+- [ ] 完成新的 Telegram 与 Feishu certification；两者都未 certified 或 enabled。
+- [ ] 在 Windows channel support 推进前增加 Windows named-pipe ACL enforcement。
+- [ ] 在宣传对应 media path 前增加 durable non-image attachment 与 outbound staging。
+- [ ] 在持久化冗余 `channel/*` event 前增加 ignorable Session append mechanism。
+- [ ] 只有全部替换条件通过后才能删除 legacy channel package。
+- [ ] 发布前完成 public npm ownership、provenance、exact-version compatibility 与 clean-install smoke。

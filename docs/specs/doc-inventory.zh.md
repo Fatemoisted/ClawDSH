@@ -1,79 +1,110 @@
-# 文档清点 — dsh vs ClawDSH
+# 文档与所有权清单——dsh 与 ClawDSH
 
 [English](doc-inventory.md) | 中文
 
-- **状态**：阶段 4 入口交付物（2026-08-14）
-- **目的**：按归属清点仓库每个文件，让发布计划（ADR-0006）能精确说出：哪些上游处置需要 ADR 豁免、哪些文件本来就可自由重写。
-- **方法**：三类归属——(a) 上游只读（细分为「品牌段可改」vs「完全不可碰」），(b) ClawDSH 自有，(c) 依 ADR 豁免嵌入上游文件的 ClawDSH 内容。其中 (c) 的依据是 ADR-0001 决策 4 与 ADR-0004。
+- **状态**：阶段 4 产品化与渠道平面集成
+- **用途**：识别仓库中哪些位置是上游只读、ClawDSH 自有或有 ADR 支撑的窄增量
+- **权威**：root `AGENTS.md`、ADR-0001、ADR-0004、ADR-0006、[GUI ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 与 [渠道 ADR-0008](../adr/0008-openclaw-channel-plane.md)
 
-## (a) 上游只读
+## 1. 上游只读位置
 
-「上游」指 `deepseek-ai/deepseek-harness`（git 远程 `upstream`）。只读，仅允许两类改动：品牌段置顶、以及 ADR 背书的新增式元数据/构建改动。
+上游指通过 `upstream` remote 跟踪的 `deepseek-ai/deepseek-harness`。默认禁止直接编辑。品牌段与 additive build metadata 是列明的例外，不代表可以重写文件其余部分。
 
-### (a1) 品牌段可改（仅一处置顶品牌段）
+### 可编辑品牌文件
 
-| 文件 | 品牌段 | 允许的改动 |
-|---|---|---|
-| `README.md` | 第 1–9 行，以 `<!-- ⬇ 以下为上游 README 原文 -->` 为界 | 仅替换品牌段 |
-| `README.zh.md` | 第 1–9 行，同一分隔符 | 仅替换品牌段 |
-| `AGENTS.md`（=`CLAUDE.md` 符号链接） | 第 1–22 行，以 `<!-- ⬇ 以下为上游原文 -->` 为界 | 仅替换品牌段 |
-
-仅这三个文件可改品牌段。`packages/AGENTS.md` 与 `examples/AGENTS.md`（均为 `CLAUDE.md` 符号链接）**未**置顶品牌段——它们保持上游原样（见 a2）。
-
-### (a2) 完全不可碰（无品牌段、不可直接改）
-
-| 位置 | 备注 |
+| 文件 | 允许的 ClawDSH 编辑 |
 |---|---|
-| `vendor/` | vendored Cordis 源码；清单 + 同步流程见 `vendor/README.md` |
-| `packages/*`（除 `packages/openclaw/`） | 全部 `@deepseek-ai/dsh-*` 包 |
-| `apps/`、`website/`（+ 其 `docs/`） | 上游应用与站点 |
-| `native/`、`python/`、`examples/`、`assets/`、`patches/` | 上游运行时、SDK、示例、资源、补丁目录 |
-| `docs/` 上游页 | `architecture`、`development`、`glossary`、`capability-seams`、`cordis-primer`、`cordis-tutorial`、`cordis-api`、`config-catalog`、`testing`、`defensive-patterns`、`event-producer-consumer`、`persistence-catalog`、`tool-catalog`、`tool-execution-pipeline`、`agent-lifecycle`、`api-gateway`、`rescope`、`module-graph`、`graph-atlas`、`web-styling`、`postmortem/`、`subsystems/`、`user/`、`cookbook/`、`i18n/`、`AGENTS.md` |
-| `CONTRIBUTING.md`、`CONTRIBUTING.zh.md` | 上游贡献立场（见 ADR-0006） |
-| `LICENSE` | 上游 MIT，`Copyright (c) 2026 DeepSeek`（见 ADR-0006） |
-| `THIRD_PARTY_NOTICES.md`、`BENCHMARK.md` | 上游声明/基准 |
-| `packages/AGENTS.md`、`examples/AGENTS.md` | 上游包/示例规则（未置顶品牌的 `CLAUDE.md` 符号链接） |
-| `scripts/` | 上游门禁/生成器（含一处新增分支，见 c） |
-| `.github/workflows/*`（除 `clawdsh-*`） | 上游 CI |
-| `.agents/skills/`、`.agents/notes/` | 上游技能 + 笔记（ClawDSH 追加自有笔记，见 c） |
-| 根配置 | `package.json`、`pnpm-workspace.yaml`、`pnpm-lock.yaml`、`tsconfig*.json`、`tsdown.config.ts`、`vitest*.ts`、`knip.json`、`lefthook.yml`、`.editorconfig`、`.gitattributes`、`.gitignore`、`.gitlab-ci.yml`、`.jscpd.json`、`.oxlintrc*.json`、`.rgignore`、`pytest.ini`——凡适用者各带一处 (c) 所列的新增式编辑 |
+| `README.md`、`README.zh.md` | 在保留上游正文之上固定 ClawDSH brand section |
+| `AGENTS.md`（`CLAUDE.md` symlink） | 在保留上游规则之上固定 ClawDSH 仓库规则 |
+| `CONTRIBUTING.md`、`CONTRIBUTING.zh.md` | 按 ADR-0006 增加 ClawDSH contribution section，同时保留上游 attribution |
 
-## (b) ClawDSH 自有文件
+### 完全由上游拥有的 tree
 
-| 位置 | 内容 |
+| 位置 | 处理方式 |
 |---|---|
-| `packages/openclaw/` | 唯一可重写的代码域——`preset-openclaw/` 是 `clawdsh` profile 与 preset 的内部源码；其余条目为 `channel-core/`、`channel-telegram/`、`channel-feishu/`、`channel-wechat/`（决策记录）、`soul/`、`memory/`、`embeddings/`、`embeddings-ark/`、`skills-hub/`、`automation/`、`_template/` |
-| `docs/adr/` | 0001–0005（项目基石、渠道 seam、embedding seam、npm 发布、clawd 联邦） |
-| `docs/specs/` | `roadmap.md` + `feature-soul` / `feature-channel-core` / `feature-memory` / `feature-skills-hub` / `feature-automation` |
-| `docs/matrix/parity.md` | feature 对齐的单一事实源 |
-| `docs/standards/` | `naming`、`plugin-contract`、`pr-policy`、`upstream-sync` |
-| `docs/journal/2026-08-14.md` | 详尽开发日志 |
-| `docs/upstream-proposal/ctx-channels.md` | 向上游提交的 `ctx.channels` seam 提案 |
-| `tools/` | `ark-e2e.ts`、`link-clawdsh.sh`、`sync-upstream.sh`；安装脚本检测到旧 `openclaw` 资产时只警告并保留 |
-| `.github/workflows/clawdsh-publish.yml`、`clawdsh-smoke.yml` | ClawDSH CI |
+| `vendor/` | 只通过 vendoring procedure 同步 |
+| `packages/*`（`packages/openclaw/` 除外） | 不为 ClawDSH behavior 修改 |
+| `apps/`、`website/`、`native/`、`python/`、`examples/`、`assets/`、`patches/` | 上游 application、runtime、SDK、example 与 asset source |
+| 上游文档与 generated catalog | 只引用，或通过 owning upstream workflow 重新生成 |
+| `scripts/` | 上游 check 与 generator；不放 ClawDSH feature implementation |
+| `.github/workflows/*`（`clawdsh-*` 除外） | 上游 CI |
+| `.agents/skills/` 与既有 `.agents/notes/` | 上游 operational knowledge；archived note 保持冻结 |
 
-## (c) 嵌入上游文件的 ClawDSH 内容
+## 2. ClawDSH 自有位置
 
-| 文件 | 嵌入内容 | ADR 依据 |
+| 位置 | 当前内容 |
+|---|---|
+| `packages/openclaw/` | 功能包、当前渠道 seam、保留的旧渠道包、受限 preset、产品组装与包模板 |
+| `docs/adr/` | ClawDSH 决策；ADR-0007 拥有 GUI 产品形态，ADR-0008 取代 ADR-0002 成为渠道架构 |
+| `docs/specs/` | roadmap、context map、inventory、product chain、GUI spec、当前 feature spec 与旧渠道 reference |
+| `docs/matrix/parity.md` | 产品与渠道支持投影；精确渠道 artifact 仍在机器 catalog |
+| `docs/standards/` | naming、plugin、PR、dsh upstream sync 与 OpenClaw channel sync 规则 |
+| `docs/journal/` | 带日期的开发历史，不是当前状态权威 |
+| `docs/upstream-proposal/` | dsh Session-event 与 OpenClaw AgentHarness proposal；不表示存在 upstream PR |
+| `tools/openclaw-channel-host/` | production 与 canary host lock、channel catalog、schema、verifier 与 test |
+| 其他 `tools/` 条目 | ClawDSH installer、migration、verification 与 e2e driver |
+| `.github/workflows/clawdsh-*` | ClawDSH 专用 CI 与 release workflow |
+| `.agents/notes/` 下新的日期文件 | ClawDSH Agent Note；implemented note 跟踪已交付事实，archived note 保持冻结 |
+
+`channel-openclaw` 还在 bridge distribution 旁拥有 `LICENSE.openclaw` 与 `THIRD_PARTY_NOTICES.md`。它们保留 OpenClaw attribution，并随锁定 artifact 或复制的 bridge code 变化。
+
+## 3. 上游文件中的窄 ClawDSH 增量
+
+| 文件 | 增量内容 | 支撑 |
 |---|---|---|
-| `README.md`、`README.zh.md` | 品牌段（第 1–9 行） | ADR-0001 决策 4 |
-| `AGENTS.md` | 品牌段（第 1–22 行） | ADR-0001 决策 4 |
-| `package.json` | `"name": "clawdsh"` | ADR-0001 决策 4 |
-| `tsdown.config.ts` | workspace `exclude` 列表新增 `packages/openclaw/**` | ADR-0001 决策 4 |
-| `tsconfig.base.json` | 9 条 `@clawdsh/dsh-*` `paths`（仅新增） | ADR-0001 决策 4 |
-| `tsconfig.host.json` | 9 条 `@clawdsh/dsh-*` `references`（仅新增） | ADR-0001 决策 4 |
-| `scripts/check-workspace-constraints.ts` | `@clawdsh/` 发布形态分支 + 非包目录跳过 | ADR-0004 |
-| `.agents/notes/` | 11 条 ClawDSH 笔记（33 文件），日期 2026-08-14，仅追加 | 笔记机制（无 ADR——见灰度） |
+| `README*`、`AGENTS.md`、`CONTRIBUTING*` | 有 delimiter 的 ClawDSH brand 或 contribution section | ADR-0001 / ADR-0006 |
+| `LICENSE` | 保留上游 notice 并增加 ClawDSH contributor notice | ADR-0006 |
+| root `package.json` | project identity 与 repository metadata | ADR-0001 / ADR-0006 |
+| `pnpm-lock.yaml` | 自有 workspace package 的 generated dependency graph | package implementation；只生成，不手改 |
+| `tsconfig.base.json` | 自有 package 所需精确 `@clawdsh/*` source alias | ADR-0001 additive registration |
+| `tsconfig.host.json` | 匹配的自有 package project reference | ADR-0001 additive registration |
+| `tsdown.config.ts` | workspace layout 所需自有 package build exclusion 或 registration | ADR-0001 additive registration |
+| `scripts/check-workspace-constraints.ts` | 仍需要时保留窄 `@clawdsh/` package rule | ADR-0004 |
 
-## 边界灰度
+Rebase 时先取上游版本，再只重放这些精确增量。例外不会转移文件其余部分的所有权。
 
-- `.agents/notes/` 是 ClawDSH **无 ADR** 就往上游树写自有内容的唯一一处。它只追加（文件名带日期戳、上游不会新增 `2026-08-14-*`），故 rebase 干净，但 CLAUDE.md 的「自有代码只允许出现在…」清单未枚举它。需决定：补进清单，还是补一条一行 ADR 说明。
-- `docs/upstream-proposal/` 是 ClawDSH 自有、且已列入 CLAUDE.md 品牌段，但 ADR-0001 决策 3（物理隔离清单）漏掉它，因该目录晚于该决策出现。需对齐两份清单。
-- `docs/postmortem/` 是上游目录，但适用与笔记相同的追加机制；ClawDSH 以后可在此追加自有 postmortem。
-- `tools/` 是自有代码（非文档），但它是 ClawDSH 脚本与 e2e 驱动的指定归宿。
+## 4. 本地 GUI 所有权
 
-## 面向发布的缺口（移交 ADR-0006）
+| 主题 | Owner |
+|---|---|
+| 产品形态、route 与禁止的上游修改 | ADR-0007 |
+| 用户可见页面与验收行为 | `feature-gui-web` |
+| `/clawdsh/` shell、Settings、Activity、Control Runtime 与 nested build | `preset-openclaw` |
+| `/` 下原生 dsh Web GUI 与 raw Trajectory | 上游 dsh，不修改源码直接消费 |
+| Profile 与 preset identity | `clawdsh`；物理 `preset-openclaw` source directory 是唯一保留的旧路径名 |
+| Managed installation、integrity repair 与 `clawdsh doctor` | future public-distribution CLI |
 
-- `CONTRIBUTING.md` / `CONTRIBUTING.zh.md` 仍保留上游「we cannot accept external pull requests」立场——与可发布开源项目相矛盾。它不在品牌段可改清单里，故需 ADR 豁免（把品牌段置顶扩展到 CONTRIBUTING，或在 README 品牌段承载 ClawDSH 贡献指引）。
-- `LICENSE` 是上游 MIT（`Copyright (c) 2026 DeepSeek`）；派生 fork 必须保留上游声明，并可追加一行 ClawDSH 版权。
-- `package.json` 缺指向 `Fatemoisted/ClawDSH` 的 `homepage`/`bugs`/`repository` 字段；可发布包需要这些字段。这是 (c) 类编辑、需 ADR 说明。
+ClawDSH GUI 可以使用公开 dsh Web、Settings、Credentials、Session、loader observation 与 Connection RPC API。它不注册 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。
+
+## 5. 渠道平面所有权
+
+| 主题 | Owner |
+|---|---|
+| OpenClaw production 与 canary artifact identity 和 public channel roster | `tools/openclaw-channel-host/*.json` |
+| 渠道架构与角色分配 | ADR-0008 |
+| 当前 V1 behavior、assembly 与 gap | `feature-channel-plane-bridge` |
+| OpenClaw host gap 与提议的 public semantics | `openclaw-agent-harness-channel-seams` |
+| Promotion、certification 与 rollback | `openclaw-channel-sync` standard |
+| 用户可见支持状态 | parity matrix |
+| Runtime protocol 与 ledger | `channel`、`channel-agent` 与 `channel-openclaw` |
+| Legacy adapter behavior | ADR-0002、`feature-channel-core`、legacy package 与其 active Agent Note |
+
+OpenClaw source archive 与 npm tarball 是外部输入，不是仓库自有 source tree。不要把完整 host 复制到 `packages/openclaw/`。Production bridge 可以分发许可证允许的最小 derived code 与 notice；lock verifier 仍是外部 host 权威。
+
+## 6. 过渡状态
+
+- `channel-core`、`channel-telegram` 与 `channel-feishu` 自有但 legacy。它们保留到 ADR-0008 替换条件通过；不得提前归档其 Agent Note。
+- `channel-wechat` 是历史排除记录，其可用性说明已被 production external WeChat catalog 取代。它不是 runtime package 或当前状态权威。
+- Production sidecar 未 certified 或 enabled。文档不得把 catalog 或 package evidence 转换为 live support claim。
+- Canary 有批准的 source archive，但没有锁定 built artifact，只作为 audit input。
+- 上游 snapshot runner 不发现自有 channel package，且上游 `examples/` tree 保持只读。
+- Downstream `channel/*` Session event 在可运行路径中保持禁用，直到存在 ignorable append mechanism；持久 channel ledger 与已知 `user/message` source 是当前权威。
+- `clawdsh` 与 `clawdsh-messaging-safe` preset 在公共安装器拥有 manifest 与 repair flow 前仍是 managed user preset。
+
+## 7. Rebase checklist
+
+1. 对上游自有文件取上游版本。
+2. 只重放上面列出的 delimited brand section 与精确 additive registration。
+3. 保留每个自有 directory 与 active ClawDSH Agent Note；绝不通过编辑 archived note 解决当前变更。
+4. OpenClaw host lock 独立于 dsh upstream baseline 校验。
+5. 在声明本 inventory 当前有效前，运行 bilingual pairing 与相关 package、build、browser、snapshot 和 documentation check。

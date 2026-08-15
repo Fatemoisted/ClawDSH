@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { ChannelMessage } from '@clawdsh/dsh-channel-core'
 import type { AdapterDeps } from '@clawdsh/dsh-channel-telegram'
-import { createAdapter, detectBotMention, toInbound } from '@clawdsh/dsh-channel-telegram'
+import { createAdapter, detectBotMention, inject, toInbound } from '@clawdsh/dsh-channel-telegram'
 
 /** A minimal stand-in for the grammY bot surface this adapter touches. */
 function mockBot() {
@@ -13,6 +13,7 @@ function mockBot() {
   const stop = vi.fn(async () => {})
   const bot = {
     api: { sendMessage },
+    botInfo: { username: 'mockbot' },
     on,
     catch: catchFn,
     start,
@@ -22,6 +23,10 @@ function mockBot() {
 }
 
 describe('the telegram channel adapter', () => {
+  it('depends only on the legacy channel registry', () => {
+    expect(inject).toEqual(['legacyChannels'])
+  })
+
   it('maps a text context to an inbound message', () => {
     expect(toInbound({ message: { text: 'hi', message_id: 11 }, chat: { id: 42 }, from: { id: 7 } }))
       .toMatchObject({ channel: 'telegram', direction: 'in', threadId: '42', sender: '7', messageId: '11', text: 'hi' })

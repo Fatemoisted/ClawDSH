@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "track": "production",
+  "hostCommit": "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c",
+  "sourceCatalog": "channels.production.json",
+  "observedAt": "2026-08-15T09:08:04Z",
+  "expectedCount": 3,
+  "channels": [
+    {
+      "id": "wechat",
+      "packageName": "@tencent-weixin/openclaw-weixin",
+      "version": "2.4.6",
+      "integrity": "sha512-qw9k3PLTiMWGNjjsknHgcTManH1w4j+Ji1ArWIaYLKCq3aFRsVwcqnPi127bvOoVMJGW4dbyJ8NECEMgoO+iRw==",
+      "license": {
+        "declaredSpdx": "MIT",
+        "status": "pending-review",
+        "evidence": [
+          "https://registry.npmjs.org/@tencent-weixin%2Fopenclaw-weixin/2.4.6"
+        ]
+      },
+      "platformTerms": {
+        "status": "pending-review",
+        "evidence": []
+      },
+      "security": {
+        "status": "pending-review",
+        "evidence": []
+      }
+    },
+    {
+      "id": "yuanbao",
+      "packageName": "openclaw-plugin-yuanbao",
+      "version": "2.15.0",
+      "integrity": "sha512-3GD+mf3EjTSUTOAREjTHAyp/deXdpgqB+q+xE0b19Qtat4ADhUV1mHDwFkVCRqTCBY5ATFKtKcipoDejqFj/+w==",
+      "license": {
+        "declaredSpdx": "MIT",
+        "status": "pending-review",
+        "evidence": [
+          "https://registry.npmjs.org/openclaw-plugin-yuanbao/2.15.0"
+        ]
+      },
+      "platformTerms": {
+        "status": "pending-review",
+        "evidence": []
+      },
+      "security": {
+        "status": "pending-review",
+        "evidence": []
+      }
+    },
+    {
+      "id": "zaloclawbot",
+      "packageName": "@zalo-platforms/openclaw-zaloclawbot",
+      "version": "0.1.4",
+      "integrity": "sha512-5IxZriHJYACLLGqkCPPsTP9tas62kXEOFqTFAFMdunAM3SPhIJwVFRp0WvoP/m7L2PX85weD0g8LOtxM93VDYg==",
+      "license": {
+        "declaredSpdx": "MIT",
+        "status": "pending-review",
+        "evidence": [
+          "https://registry.npmjs.org/@zalo-platforms%2Fopenclaw-zaloclawbot/0.1.4"
+        ]
+      },
+      "platformTerms": {
+        "status": "pending-review",
+        "evidence": []
+      },
+      "security": {
+        "status": "pending-review",
+        "evidence": []
+      }
+    }
+  ]
+}
