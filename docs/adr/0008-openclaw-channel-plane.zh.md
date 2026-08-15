@@ -19,7 +19,7 @@ ADR-0002 证明了 Cordis 渠道 seam 能驱动 Agent 回合，但它的纯文�
 
 ClawDSH 在受监督的本地 sidecar 中复用精确的 OpenClaw Gateway 发行物，而不是逐个移植平台 SDK 接入。OpenClaw 拥有渠道插件发现、平台认证、webhook 或轮询生命周期、发送者与会话身份、配对与 allowlist 准入、入站规范化、原生渠道动作、媒体暂存和最终平台投递。sidecar 必须只选择 ClawDSH AgentHarness；OpenClaw 模型 provider 或 fallback 不得回答渠道回合。
 
-生产 lock 是 OpenClaw `v2026.7.1-2`、解引用 commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`、npm 包 `openclaw@2026.7.1-2`，以及已检入的 archive 与解包文件树摘要。批准的 canary 是 commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`，观测于 2026-08-15，但其 lock 指向 source archive，而不是构建后的部署产物。因此在另行锁定可复现的构建产物之前，canary 只允许隔离的源码审计。机器可读权威是 `tools/openclaw-channel-host/host.production.json`、`host.canary.json` 及其渠道目录。
+生产 lock 是 OpenClaw `v2026.7.1-2`、解引用 commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`、npm 包 `openclaw@2026.7.1-2`，以及已检入的 archive、解包文件树、依赖 lock 与安装运行时摘要。获批的运行时 assembly 是 Darwin arm64 与 Linux x64；其他平台组合全部 fail closed。批准的 canary 是 commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`，观测于 2026-08-15，但其 lock 指向 source archive，而不是构建后的部署产物。因此在另行锁定可复现的构建产物之前，canary 只允许隔离的源码审计。机器可读权威是 `tools/openclaw-channel-host/host.production.json`、`host.canary.json`、各自的渠道目录，以及 `packages/openclaw/channel-openclaw/runtime/production-lock.json`。
 
 | Track | 批准的不可变输入 | Runtime 处置 |
 |---|---|---|
@@ -37,6 +37,8 @@ ClawDSH 在受监督的本地 sidecar 中复用精确的 OpenClaw Gateway 发行
 | 既有 dsh 服务 | Agent 与 Session 生命周期、持久化、模型选择、工具、storage domain 和持久图片附件 |
 
 V1 bridge 接受 `turn.run`、`turn.cancel`、`session.reset`、`session.close`、`channel.action` 和 `health.get`；可协商 `turn.progress` 通知与 `delivery.report` 扩展。每次 handshake 都锁定协议版本、Gateway lineage、启动 nonce、OpenClaw tag、commit、artifact SHA-512、Node engine、AgentHarness generation 与精确能力列表。handshake 是身份凭据，不是传输授权；provider 还拥有逐次启动密钥和私有端点策略。
+
+Ready 要求已认证 handshake 与持久 route 恢复全部完成。临时 transport detach 会释放 socket 拥有的等待，但允许已准入 Agent 工作到达持久终态；Provider 正式关闭会在 storage 关闭前中止并排空活动和已 detach handler。Progress 保持绑定准入该轮次的 peer。有副作用 action 的恢复使用内部只读 `channel.reconcile` request，绝不重新派发缺失或非终态操作。
 
 `channel.action` 是闭合 union，覆盖发送、编辑、删除、回应、投票、输入状态、目录查询与目标解析。协商出的 capability 只表示已连接 Gateway 接受该动作；所选平台仍可明确返回不支持。投递状态区分 accepted、confirmed、retrying、ambiguous 与 dead-letter。ambiguous 结果绝不允许盲目重跑 Agent 工具或盲目重发。
 
@@ -59,11 +61,11 @@ V1 bridge 接受 `turn.run`、`turn.cancel`、`session.reset`、`session.close`�
 
 ## 已知缺口
 
-- **Gateway bridge 与部署**：V1 Service Definition、持久 Agent driver、lock 校验、POSIX 认证 IPC provider 和协议支持已实现。生产 profile 已把它们装配进一个默认关闭的 group，但没有启用任何 Channel。Canary 没有锁定的构建产物。
+- **Gateway bridge 与部署**：V1 Service Definition、持久 Agent driver、lock 校验、POSIX 认证 IPC provider 和协议支持已实现。生产 profile 会始终挂载这些组件及按包过滤的 invariant registry，同时保持 Gateway setting 关闭，并且不启用任何 Channel。Canary 没有锁定的构建产物。
 - **Windows 端点授权**：POSIX 使用私有 `0700` 父目录和 `0600` Unix socket。Windows named-pipe ACL 强制缺少所需 native seam，因此 provider 在 Windows 上 fail closed。
 - **附件**：入站暂存图片在进入 dsh attachment store 前校验路径、符号链接、大小、media type 与 SHA-256。音频、视频和通用文件缺少持久的非图片 attachment seam。出站媒体缺少 dsh staging writer，并明确失败。
 - **Plugin Session event**：当前安全路径使用已知 `user/message` source 与持久 sidecar ledger。持久化已声明的 `channel/*` event 会使 resume fail closed，因为 downstream code 不能把它们标记为 ignorable；这些 event name 在上游 append seam 出现前保持禁用。
-- **Snapshots**：上游 snapshot 配置不发现 `packages/openclaw/`，上游 `examples/` 树又只读。目前没有无密钥的 Gateway-to-Agent 装配 transcript。
+- **装配证据**：自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，并在 Linux x64 上贯穿锁定 Gateway、stable bridge 与 DSH Agent。测试有意终止于最终平台投递之前，因为锁定 host 没有可关联的公共 hook。
 - **真实认证**：本次变更没有运行带凭证的 Telegram 或 Feishu 流量。旧适配器和 sidecar 渠道都不得标记为 certified 或 enabled。
 
 ## 影响

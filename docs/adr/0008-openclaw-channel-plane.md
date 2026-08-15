@@ -19,7 +19,7 @@ The channel plane therefore needs a different version policy from the older feat
 
 ClawDSH reuses an exact OpenClaw Gateway distribution in a supervised local sidecar instead of porting platform SDK integrations one by one. OpenClaw owns channel plugin discovery, platform authentication, webhook or polling lifecycles, sender and conversation identity, pairing and allowlist admission, inbound normalization, native channel actions, media staging, and final platform delivery. The sidecar must select the ClawDSH AgentHarness exclusively; an OpenClaw model provider or fallback may not answer a channel turn.
 
-The production lock is OpenClaw `v2026.7.1-2`, dereferenced commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`, npm package `openclaw@2026.7.1-2`, and its checked-in archive and extracted-tree digests. The approved canary is commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`, observed 2026-08-15, but its lock names a source archive rather than a built deploy artifact. Canary is therefore isolated and source-audit-only until a separately reproducible built artifact is locked. The machine-readable authorities are `tools/openclaw-channel-host/host.production.json`, `host.canary.json`, and their channel catalogs.
+The production lock is OpenClaw `v2026.7.1-2`, dereferenced commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`, npm package `openclaw@2026.7.1-2`, and its checked-in archive, extracted-tree, dependency-lock, and installed-runtime digests. The approved runtime assemblies are Darwin arm64 and Linux x64; all other platform pairs fail closed. The approved canary is commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`, observed 2026-08-15, but its lock names a source archive rather than a built deploy artifact. Canary is therefore isolated and source-audit-only until a separately reproducible built artifact is locked. The machine-readable authorities are `tools/openclaw-channel-host/host.production.json`, `host.canary.json`, their channel catalogs, and `packages/openclaw/channel-openclaw/runtime/production-lock.json`.
 
 | Track | Approved immutable input | Runtime disposition |
 |---|---|---|
@@ -37,6 +37,8 @@ The production lock is OpenClaw `v2026.7.1-2`, dereferenced commit `0790d9f593ad
 | Existing dsh services | Agent and Session lifecycle, persistence, model selection, tools, storage domains, and durable image attachments |
 
 The V1 bridge admits `turn.run`, `turn.cancel`, `session.reset`, `session.close`, `channel.action`, and `health.get`; it can negotiate `turn.progress` notifications and the `delivery.report` extension. Every handshake pins the protocol version, Gateway lineage, startup nonce, OpenClaw tag, commit, artifact SHA-512, Node engine, AgentHarness generation, and exact capability lists. The handshake is identity evidence, not transport authorization: the provider also owns the per-startup secret and private endpoint policy.
+
+Readiness requires both the authenticated handshake and completed durable route recovery. A transient transport detach releases socket-owned waits but lets admitted Agent work reach a durable terminal state; explicit Provider shutdown aborts and drains active and detached handlers before storage closes. Progress remains bound to the peer that admitted the turn. Recovery of a side-effecting action uses the internal read-only `channel.reconcile` request and never redispatches a missing or non-terminal operation.
 
 `channel.action` is a closed union covering send, edit, delete, react, poll, typing, directory queries, and target resolution. A negotiated capability only says that the connected Gateway accepts the action; the selected platform may still return an explicit unsupported result. Delivery states distinguish accepted, confirmed, retrying, ambiguous, and dead-letter outcomes. An ambiguous result never permits a blind rerun of Agent tools or a blind resend.
 
@@ -59,11 +61,11 @@ Each state implies every state to its left. The production catalog is 24 core, b
 
 ## Known gaps
 
-- **Gateway bridge and deployment**: the V1 Service Definition, durable Agent driver, lock verification, authenticated POSIX IPC provider, and protocol support are implemented. The production profile assembles them in one default-disabled group, but enables no channel. Canary has no locked built artifact.
+- **Gateway bridge and deployment**: the V1 Service Definition, durable Agent driver, lock verification, authenticated POSIX IPC provider, and protocol support are implemented. The production profile always mounts them with a package-filtered invariant registry while the Gateway setting remains disabled, and it enables no channel. Canary has no locked built artifact.
 - **Windows endpoint authorization**: POSIX uses a private `0700` parent and `0600` Unix socket. Windows named-pipe ACL enforcement lacks the required native seam, so the provider fails closed on Windows.
 - **Attachments**: inbound staged images are path-, symlink-, size-, media-type-, and SHA-256-verified before entering the dsh attachment store. Audio, video, and generic files lack a durable non-image attachment seam. Outbound media lacks a dsh staging writer and fails explicitly.
 - **Plugin Session events**: the current safe path uses the known `user/message` source plus durable sidecar ledgers. Persisting the declared `channel/*` events would make resume fail closed because downstream code cannot mark them ignorable; those event names remain disabled pending an upstream append seam.
-- **Snapshots**: the upstream snapshot configuration does not discover `packages/openclaw/`, while the upstream `examples/` tree is read-only. No keyless assembled Gateway-to-Agent transcript exists yet.
+- **Assembled evidence**: an owned keyless smoke validates safe Telegram and Feishu configuration against the real stable schema and traverses the locked Gateway, stable bridge, and DSH Agent on Linux x64. It deliberately stops before final platform delivery because the locked host has no correlatable public hook.
 - **Live certification**: this change did not run credentialed Telegram or Feishu traffic. Neither legacy adapter nor sidecar channel may be labeled certified or enabled.
 
 ## Consequences

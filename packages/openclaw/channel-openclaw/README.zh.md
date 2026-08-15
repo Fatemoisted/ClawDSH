@@ -69,9 +69,9 @@ OpenClaw JSON 必须用唯一的 `clawdsh/local` 替换模型注册表，让每�
 
 Provider 在私有 Unix socket 上接受一个 bridge。每次启动都会创建随机 bearer token 与 nonce，只通过受监管进程的环境变量注入，并要求首帧同时提供二者以及精确的 Gateway 实例、OpenClaw lock、Node engine 和 AgentHarness 代际。Token 使用恒定时间比较。第二条连接、错误身份、超时或不受支持的宿主 lineage 都会被拒绝，且不会回退到其他模型。
 
-认证后，双方通过有界 UTF-8 NDJSON 交换严格 JSON-RPC 2.0 对象。额外 envelope 字段、同时包含 `result` 与 `error` 的 response、格式错误的 error，以及未知 notification 都会 fail closed。Router 实现 `turn.run`、`turn.cancel`、`session.reset`、`session.close`、`channel.action` 和 `health.get`；协商后的 `turn.progress` 仅用于展示，待处理进度写入受 `maxInFlight` 限制，因此背压时可以丢弃多余更新。每个 DSH 到 Gateway request 都有本地 deadline。超时或 IPC 断开不会取消远端工作或 Agent run。重连会恢复传输，而持久化 Agent 和 Provider ledger 决定能否回放工作或投递。
+认证后，双方通过有界 UTF-8 NDJSON 交换严格 JSON-RPC 2.0 对象。额外 envelope 字段、同时包含 `result` 与 `error` 的 response、格式错误的 error，以及未知 notification 都会 fail closed。Router 实现 `turn.run`、`turn.cancel`、`session.reset`、`session.close`、`channel.action` 和 `health.get`；协商后的 `turn.progress` 仅用于展示，待处理进度写入受 `maxInFlight` 限制，因此背压时可以丢弃多余更新。每个 DSH 到 Gateway request 都有本地 deadline。request 超时只释放本地等待，不能据此安全重试远端工作。Provider 侧临时 transport detach 会拒绝该 socket 拥有的等待和新调用，但允许已准入 handler 把结果写入持久 Agent ledger；这些 handler 的 progress 仍绑定原 peer，断开后成为 no-op，不会泄漏到重连。Provider 正式关闭会把所有活动或已 detach peer 升级为 abort，向已准入 handler 发出 signal，并在关闭存储前等待它们结束。重连会恢复传输，而持久化 Agent 和 Provider ledger 决定能否回放工作或投递。
 
-启动流程使用 restart-scoped Settings snapshot，依次校验运行时、产物、扩展、Node engine、fail-closed 配置、OpenClaw 配置校验器和运行时插件检查，然后才绑定 Provider 并 spawn `gateway run`。本地控制面也可以运行同一套完整预检；该过程不会创建目录、打开存储、绑定 IPC 或启动 Gateway，只会执行经过校验和锁定的检查子进程。每个 Node 预检和 Gateway 都会收到显式 tombstone，用于删除继承的 `NODE_*`、`LD_*`、`DYLD_*`、OpenSSL 模块与配置、TLS 信任路径和 TLS 密钥日志变量，防止 ambient loader 或 Node option 改变已校验运行时。进程保持存活并完成已认证 bridge 握手后才进入 ready。dispose 会停止接受新 peer、终止并等待 Gateway 进程树、关闭 Provider、只移除精确 socket 条目，并释放 storage domain。相互独立的清理错误会被聚合返回，而不会被隐藏。
+启动流程使用 restart-scoped Settings snapshot，依次校验运行时、产物、扩展、Node engine、fail-closed 配置、OpenClaw 配置校验器和运行时插件检查，然后才绑定 Provider 并 spawn `gateway run`。本地控制面也可以运行同一套完整预检；该过程不会创建目录、打开存储、绑定 IPC 或启动 Gateway，只会执行经过校验和锁定的检查子进程。每个 Node 预检和 Gateway 都会收到显式 tombstone，用于删除继承的 `NODE_*`、`LD_*`、`DYLD_*`、OpenSSL 模块与配置、TLS 信任路径和 TLS 密钥日志变量，防止 ambient loader 或 Node option 改变已校验运行时。进程保持存活、完成已认证 bridge 握手，并在持久 route 恢复后由 bridge 报告 ready，Provider 才会进入 ready。dispose 会停止接受新 peer、终止并等待 Gateway 进程树、同步拥有并排空活动及已 detach RPC peer，然后才关闭 socket 与 storage domain，并且只移除精确 socket 条目。Provider drain 受 `shutdownGraceMs` 限制；超时或相互独立的清理错误会被返回，而不会被隐藏。
 
 [`bridge`](bridge/README.md) 目录负责 OpenClaw 加载的 V1/V2 适配器及其更窄的宿主侧能力细节。
 
@@ -84,6 +84,21 @@ Provider 在私有 Unix socket 上接受一个 bridge。每次启动都会创建
 ## 扩展点
 
 `OpenClawChannelProvider` 实现 `ChannelProviderV1`，并注册为唯一的 `ctx.channels` Provider。`OpenClawSupervisor` 负责已校验的进程生命周期。导出的 lock 和校验函数供获取工具与部署预检使用；它们不授权调用方削弱已检查身份。平台专用代码应放在 OpenClaw Channel 插件中，不属于本包。
+
+## 已组装无密钥冒烟测试
+
+Linux x64 通信平面工作流固定使用 Node `24.19.0` 与 npm `10.9.7`，安装嵌套的锁定运行时，获取精确的生产 NPM 产物，并立即运行已组装冒烟测试。经评审的 Darwin arm64 assembly 也支持同一命令，但 Node 版本必须满足宿主 lock：
+
+```sh
+npx --yes npm@10.9.7 ci --ignore-scripts --prefix packages/openclaw/channel-openclaw/runtime
+artifact_dir=$(mktemp -d)
+npx --yes npm@10.9.7 pack --silent --ignore-scripts --pack-destination "$artifact_dir" openclaw@2026.7.1-2 >/dev/null
+pnpm exec tsx packages/openclaw/channel-openclaw/tests/assembled-smoke.ts "$artifact_dir/openclaw-2026.7.1-2.tgz"
+```
+
+该测试使用真实稳定版 OpenClaw schema 校验无凭据且策略完备的 Telegram 与 Feishu 配置，启动已校验的生产 Gateway，贯穿稳定 V1 bridge 和真实 DSH `channel`、`channel-agent` 包，并从确定性 mock LLM 获得终态回答。随后它断开 Provider，证明第二个 Gateway request 返回 bridge 故障、`fallbackUsed: false`，并且不会再次调用 DSH 模型。
+
+该 request 有意不使用 `--deliver`。断言终止于终态 `ChannelTurnResultV1` 和已完成的 Agent ledger 记录，因为锁定宿主没有可关联最终平台投递的公共 hook。该测试不会伪造平台 receipt，也不会据此认证 Channel。
 
 ## Model Experience
 
@@ -103,7 +118,7 @@ Provider 在私有 Unix socket 上接受一个 bridge。每次启动都会创建
 
 ## Known Limitations and Deferred Work
 
-- **Production 当前只准入 Darwin arm64 运行时字节**：其安装项目 aggregate 由已检查的 `darwin/arm64` assembly 生成。Linux、Windows 和其他 CPU 组合会 fail closed，直到获取流程为各自平台生成并评审独立 lock。Canary lock 记录了审计后的 source snapshot 和 AgentHarness V2 代际，但没有获批的解压文件树或运行时依赖 lock，因此 managed Canary 同样会 fail closed。
+- **Production 只准入经评审的 Darwin arm64 与 Linux x64 运行时字节**：两个安装项目 aggregate 都由已检查的依赖 lock 和 npm `10.9.7` 生成。Windows 和其他 CPU 组合会 fail closed，直到获取流程为各自平台生成并评审独立 lock。Canary lock 记录了审计后的 source snapshot 和 AgentHarness V2 代际，但没有获批的解压文件树或运行时依赖 lock，因此 managed Canary 同样会 fail closed。
 - **仅支持 POSIX**：在原生实现能够强制 peer ACL 前，Windows named pipe 保持禁用；本包绝不会改用 localhost TCP。
 - **锁定 bridge 只声明 `send` 和 `poll`**：其他 V1 action variant 在协议层仍然有效，但在 OpenClaw bridge 具备等效公共宿主 API 前会因能力检查失败。
 - **媒体支持不对称**：在 DSH 拥有已校验 staging writer 前，出站 Provider action 会拒绝媒体；stable V1 因 AgentHarness 缺少安全的已 materialize 文件 fact 而拒绝入站媒体，V2 只接受已校验的本地 staging 文件。

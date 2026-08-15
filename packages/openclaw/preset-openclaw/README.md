@@ -64,6 +64,8 @@ The profile always mounts the complete communication seam in this order:
 2. `@clawdsh/dsh-channel-agent`, the durable Agent Driver and route-scoped `message` tool;
 3. `@clawdsh/dsh-channel-openclaw`, the authenticated IPC Provider and locked Gateway supervisor.
 
+The same always-mounted communication group includes a package-filtered invariant registry plus the Service Definition, Agent, and Provider invariant companions. Enabled deployments therefore validate restored Channel provenance and each seam role's owned runtime relations.
+
 Channel Protocol always provides the Service Definition, and Agent Bridge always registers its network-inert Driver. OpenClaw Gateway remains mounted with its validated `enabled` setting false, so it performs no artifact check, socket binding, process launch, or Provider registration. The legacy in-process Telegram and Feishu packages are absent from the active profile, and external extension selection defaults to empty. OpenClaw remains the only owner of platform credentials; this profile neither reads nor copies them. Never connect a legacy adapter and the OpenClaw communication plane to the same platform account.
 
 The Provider's configuration, artifact checks, admission defaults, and runtime limitations are documented in the [channel-openclaw README](../channel-openclaw/README.md). The checked support catalog is conservative: presence in OpenClaw's catalog does not mean a channel is installable, certified, or enabled. [ADR-0008](../../../docs/adr/0008-openclaw-channel-plane.md) owns the architecture and replacement conditions.
