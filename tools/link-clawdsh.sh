@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # ClawDSH 本地开发刷新脚本 —— 用法: tools/link-clawdsh.sh
-# 1) 把 preset-openclaw/profile/* 复制到 ~/.dsh/profiles/clawdsh/；
-# 2) 为 @clawdsh/* 包建立 ~/.dsh/profiles/node_modules/@clawdsh/ 下的 symlink 过渡；
-# 3) 安装 clawdsh owner preset 与 clawdsh-messaging-safe 受限 preset。
+# 1) 校验 nested ClawDSH 产品 runtime 与 browser assets 已构建；
+# 2) 把 preset-openclaw/profile/* 复制到 ~/.dsh/profiles/clawdsh/；
+# 3) 为 @clawdsh/* 包建立 ~/.dsh/profiles/node_modules/@clawdsh/ 下的 symlink 过渡；
+# 4) 安装 clawdsh owner preset 与 clawdsh-messaging-safe 受限 preset。
 # 幂等：重复执行即刷新。脚本不读取、复制、移动或删除凭据与旧 OpenClaw 资产。
 set -euo pipefail
 
@@ -13,6 +14,10 @@ PROFILE_DIR="$DSH_HOME_DIR/profiles/clawdsh"
 LINK_DIR="$DSH_HOME_DIR/profiles/node_modules/@clawdsh"
 PRESET_DIR="$DSH_HOME_DIR/.agent-presets/clawdsh"
 SAFE_PRESET_DIR="$DSH_HOME_DIR/.agent-presets/clawdsh-messaging-safe"
+PRODUCT_SHELL_DIR="$PWD/packages/openclaw/preset-openclaw/product-shell"
+PRODUCT_RUNTIME_DIR="$PRODUCT_SHELL_DIR/runtime"
+PRODUCT_RUNTIME_ENTRY="$PRODUCT_RUNTIME_DIR/lib/index.mjs"
+PRODUCT_BROWSER_INDEX="$PRODUCT_RUNTIME_DIR/web/index.html"
 LEGACY_PROFILE_DIR="$DSH_HOME_DIR/profiles/openclaw"
 LEGACY_PRESET_DIR="$DSH_HOME_DIR/.agent-presets/openclaw"
 LEGACY_SAFE_PRESET_DIR="$DSH_HOME_DIR/.agent-presets/openclaw-messaging-safe"
@@ -39,18 +44,27 @@ if [ "$legacy_found" = true ]; then
   echo '请使用 `tools/link-clawdsh.sh` 刷新，并以 `pnpm dsh --profile clawdsh` 启动新 profile。' >&2
 fi
 
-echo "==> 1/3 复制 profile 模板到 $PROFILE_DIR"
+echo '==> 1/4 校验 ClawDSH 产品 runtime 与 browser assets'
+if [ ! -f "$PRODUCT_RUNTIME_ENTRY" ] || [ ! -f "$PRODUCT_BROWSER_INDEX" ]; then
+  echo '错误：ClawDSH 产品 runtime 或 browser assets 尚未构建。' >&2
+  echo '请先运行：pnpm --dir packages/openclaw/preset-openclaw/product-shell run build' >&2
+  exit 1
+fi
+
+echo "==> 2/4 复制 profile 模板到 $PROFILE_DIR"
 mkdir -p "$PROFILE_DIR"
 cp -R packages/openclaw/preset-openclaw/profile/. "$PROFILE_DIR/"
 
-echo "==> 2/3 建立 @clawdsh 包 symlink（过渡，发布后移除）"
+echo "==> 3/4 建立 @clawdsh 包 symlink（过渡，发布后移除）"
 mkdir -p "$LINK_DIR"
 for pkg in channel channel-agent channel-openclaw memory embeddings embeddings-ark skills-hub automation soul; do
   ln -sfn "$PWD/packages/openclaw/$pkg" "$LINK_DIR/dsh-$pkg"
   echo "    $LINK_DIR/dsh-$pkg -> packages/openclaw/$pkg"
 done
+ln -sfn "$PRODUCT_RUNTIME_DIR" "$LINK_DIR/dsh-product-runtime"
+echo "    $LINK_DIR/dsh-product-runtime -> packages/openclaw/preset-openclaw/product-shell/runtime"
 
-echo "==> 3/3 安装 owner 与 messaging-safe agent presets"
+echo "==> 4/4 安装 owner 与 messaging-safe agent presets"
 mkdir -p "$PRESET_DIR/souls" "$SAFE_PRESET_DIR/souls"
 cp packages/openclaw/preset-openclaw/preset.yml "$PRESET_DIR/"
 cp packages/openclaw/preset-openclaw/agent.cordis.yml "$PRESET_DIR/"

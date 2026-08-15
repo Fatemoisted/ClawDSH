@@ -1,0 +1,12 @@
+{
+  "name": "@clawdsh/dsh-product-shell-build",
+  "version": "0.1.0-rc.1",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --dir runtime run build && pnpm --dir browser run build",
+    "typecheck": "pnpm --dir runtime run typecheck && pnpm --dir browser run typecheck",
+    "test": "pnpm --dir runtime run test && pnpm --dir browser run test"
+  }
+}

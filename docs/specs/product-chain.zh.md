@@ -15,7 +15,7 @@
 
 | 功能 | 落地包 | 主要 seam | 当前结果 |
 |---|---|---|---|
-| ClawDSH 本地 GUI | `preset-openclaw` | 公开 dsh Web 组装 | ✅ 仅 preset 基线；⏳ 产品壳、Settings 与 Activity |
+| ClawDSH 本地 GUI | `preset-openclaw` | 公开 dsh Web 组装 | ✅ 产品壳与只读总览；⏳ 可写 Settings 与语义 Activity |
 | 当前渠道平面 | `channel`、`channel-agent`、`channel-openclaw` | 自有 `ctx.channels` V1 | ✅ 基础；⚠️ 没有 certified 或 enabled 渠道 |
 | 旧渠道路径 | `channel-core`、`channel-telegram`、`channel-feishu` | `ctx.legacyChannels` | ✅ 保留 compatibility；⚠️ 没有当前认证 |
 | Persona | `soul` | `ctx.systemPrompt` | ✅ 已实现 |
@@ -26,22 +26,22 @@
 
 ## ClawDSH 本地 GUI
 
-### 当前基线
+### 当前产品增量
 
-`tools/link-clawdsh.sh` 安装 `clawdsh` profile 与 preset。`pnpm dsh --profile clawdsh` 启动原生 dsh Web client，新 Session 默认使用 `ClawDSH 模式`。Clean-install 基线关闭 Feishu、Telegram 与 Automation，因此 Web Host 不需要其凭证。
+nested build 在 `tools/link-clawdsh.sh` 安装 `clawdsh` profile 与 preset 前产出 `@clawdsh/dsh-product-runtime` 及其 browser asset。`pnpm dsh --profile clawdsh` 在 Loader 结算后只打印 `/clawdsh/` 产品 URL；`/` 保留原生 dsh Web client，新 Session 默认使用 `ClawDSH 模式`。Feishu、Telegram 与 Automation 保持关闭，因此 clean home 无需其凭证或 OpenClaw artifact 即可启动。
 
-### 已接受的产品链
+### 产品链
 
 | 环节 | Owner 与行为 |
 |---|---|
 | 入口 | `/clawdsh/` 是 ClawDSH 产品 route；`/` 保留原生 dsh Web |
 | 对话 | 复用公开 dsh client module graph、loading state 与 chat renderer |
-| Settings | ClawDSH Control Runtime 投影 allowlisted feature schema、desired/runtime revision、restart state 与 credential presence |
-| Activity | 当前 Session 的 Prompt、Memory、Channels、Skills 与 Automation 语义投影；raw Trajectory 留在 Harness 高级 |
+| Settings | 当前目的地投影只读 capability 与 Loader 总览；下一 Control Runtime 增量拥有 allowlisted schema、revision、restart state 与 credential presence |
+| Activity | 当前目的地明确标示 deferred 状态；下一增量增加当前 Session 的 Prompt、Memory、Channels、Skills 与 Automation 记录，raw Trajectory 留在 Harness 高级 |
 | Harness 高级 | 显式进入未修改的原生 dsh GUI 与 diagnostics |
 | 隔离 | 不新增 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source |
 
-⏳ ADR-0007 已接受该产品形态，但仅 preset 基线尚未实现产品壳与控制页面。`dsh --profile web` 保持纯 Harness 路径。
+✅ 产品壳、两个 route、四个目的地、只读能力总览、未知 route 状态与 keyless real-profile snapshot 已实现。⏳ Settings mutation 与语义 Activity 仍为 deferred。`dsh --profile web` 保持纯 Harness 路径。
 
 ## 当前 OpenClaw 渠道平面
 
@@ -132,7 +132,7 @@ Inbound image 被限制在 canonical staging root，校验 symlink、size、medi
 
 ## 发布缺口
 
-1. 在不修改上游 GUI source 的前提下实现 `/clawdsh/` 产品壳、Settings control plane、semantic Activity 与 Harness Advanced navigation。
+1. 在不修改上游 GUI source 的前提下，在已交付的 `/clawdsh/` 产品壳后实现 Settings control plane 与 semantic Activity。
 2. 完成公共 installer 与 managed preset/profile repair path，同时保留用户 settings、credentials、memory 与 skills。
 3. 增加自有 keyless Gateway-to-Agent snapshot lane，并完成精确逐渠道 assembly evidence。
 4. 在 named-pipe ACL enforcement 提供等价 authorization 前保持 Windows fail-closed。

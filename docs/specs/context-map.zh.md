@@ -2,7 +2,7 @@
 
 [English](context-map.md) | 中文
 
-- **状态**：阶段 4 产品化与渠道平面集成
+- **状态**：阶段 4 产品化；产品壳与只读能力总览已经实现
 - **用途**：ClawDSH 所有权、包角色与实现所需上游材料的入口
 - **配套文档**：[文档清单](doc-inventory.md) · [路线图](roadmap.md) · [GUI 规格](feature-gui-web.md) · [渠道 bridge 规格](feature-channel-plane-bridge.md)
 
@@ -33,7 +33,7 @@
 | `embeddings-ark/` | Service Provider | embeddings | Volcano Ark embeddings |
 | `skills-hub/` | Service Provider | skills | ClawHub-compatible skill directory |
 | `automation/` | function plugin | Agents、Sessions、default model | opt-in scheduled Agent turns |
-| `preset-openclaw/` | 产品组装 | 公开 dsh Web 与 Host API | `clawdsh` profile、`clawdsh` preset、产品壳、Settings 与 Activity 的内部源码 |
+| `preset-openclaw/` | 产品组装 | 公开 dsh Web 与 Host API | `clawdsh` profile 与 preset，以及嵌套的 product-shell browser、Host runtime、shared protocol、只读 Settings 总览与 Activity 空状态 |
 | `preset-clawdsh-messaging-safe/` | preset carrier | soul | 以 `clawdsh-messaging-safe` 安装的受限渠道 preset |
 | `_template/` | skeleton | — | 新自有 plugin 的起点 |
 
@@ -59,9 +59,9 @@ dsh runtime 是 plugin tree。Service、event 与 registration 都是随 plugin 
 
 ### ClawDSH 产品壳
 
-本地 GUI 是公开 dsh Web runtime 之上的 ClawDSH 产品，不是另一个 dsh agent preset。`/clawdsh/` 拥有产品导航——对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级——而 `/` 保留原生 dsh Web GUI。对话页复用公开 client module graph、loading state 与 `buildRenderApp()`；ClawDSH 拥有外层 shell、Settings、Activity、Control Runtime 与 `/clawdsh` RPC channel。
+本地 GUI 是公开 dsh Web runtime 之上的 ClawDSH 产品，不是另一个 dsh agent preset。`/clawdsh/` 拥有产品导航——对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级——而 `/` 保留原生 dsh Web GUI。「对话」复用公开 client module graph、Loader、Slot renderer 与完整 `buildRenderApp()` root。`preset-openclaw/product-shell/` 下的嵌套非 workspace build 拥有外层 shell、静态路由、Host runtime、shared DTO 与 `/clawdsh-rpc` Connection channel。
 
-该组装不注册新的 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、上游 generated file 或上游 GUI source。`dsh --profile web` 保持纯 Harness 入口。
+控制 channel 当前只实现 loopback-authorized `bootstrap/get` 与 `capabilities/list`。Settings 是只读能力与 Loader projection，Activity 是明确空状态；setting mutation、credential operation、语义记录与 sidecar 存储不属于当前 runtime。该组装不注册新的 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、上游 generated file 或上游 GUI source。`dsh --profile web` 保持纯 Harness 入口。
 
 ### Profile layering 与 identity
 
@@ -89,8 +89,8 @@ Clean-install profile 保持完整的 `channel → channel-agent → channel-ope
 | `ctx.attachments` | dsh | channel-agent | durable image；尚无 general-file seam |
 | `ctx.storageDomain` | dsh | channel-agent、channel-openclaw | durable route、execution 与 delivery ledger |
 | `ctx.subprocess` | dsh | channel-openclaw | supervised Gateway lifecycle |
-| Settings 与 Credentials | dsh | ClawDSH Control Runtime | schema-backed user layer 与 credential reference |
-| Connection RPC | dsh | ClawDSH Control Runtime 与产品壳 | loopback-only `/clawdsh` control channel |
+| Settings 与 Credentials | dsh | 后续 ClawDSH Settings 控制面 | 可用公开 API；当前只读 runtime 尚不消费 |
+| Connection RPC | dsh | ClawDSH Control Runtime 与产品壳 | loopback-only `/clawdsh-rpc`，包含 `bootstrap/get` 与 `capabilities/list` |
 | `ctx.skills` | dsh | skills-hub | skill Provider registry |
 | `ctx.subagents` | dsh | future federation | delegation transport |
 | `ctx.channels` | ClawDSH，ADR-0008 | channel-openclaw、channel-agent | bidirectional channel V1 dispatch |
@@ -120,7 +120,7 @@ ADR-0002、`feature-channel-core` 与 `channel-wechat` 解释 legacy path；它�
 |---|---|---|
 | 任何 ClawDSH 变更 | 本页、owning feature spec 与 parity row | 广泛重读上游源码 |
 | Product-shell 变更 | ADR-0007、GUI spec 与公开 dsh Web entry API | Client Catalog、generated GUI file 与未批准 Slot |
-| Settings 或 Activity 变更 | GUI spec、owning Config schema、Settings/Credentials/Session API | 任意 Loader control 与上游 SessionEventMap 修改 |
+| Settings 或 Activity 变更 | GUI spec、owning Config schema、Settings/Credentials/Session API 与当前 `/clawdsh-rpc` protocol | 任意 Loader control 与上游 SessionEventMap 修改 |
 | Channel protocol 变更 | channel package source、ADR-0008、bridge spec、sync standard | 除非 locked-host compatibility 改变，否则跳过 platform SDK implementation |
 | OpenClaw release 更新 | machine lock/catalog、release artifact、精确 compatibility input | 解析批准 commit 后的 floating `main` |
 | 新 dsh seam | 对应 upstream Service Definition 与 complete-seam rule | 无关 package |

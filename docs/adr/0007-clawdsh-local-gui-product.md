@@ -2,13 +2,13 @@
 
 English | [中文](0007-clawdsh-local-gui-product.zh.md)
 
-- **Status**: Accepted (implementation pending)
+- **Status**: Accepted (read-only product shell implemented; Settings control plane and semantic Activity pending)
 - **Date**: 2026-08-15
 - **Depends on**: ADR-0001 (own-code isolation), the [current dsh Web GUI assembly](../../.agents/notes/implemented/feature/2026-08-15-openclaw-gui-dsh-web-app.md)
 
 ## Context
 
-The current local GUI composes the stock `dsh-web-app` bundle with the `clawdsh` agent preset displayed as `ClawDSH 模式`. It already runs Soul, Memory, Skills, channels, and the standard agent toolset, but its information architecture remains DeepSeek Harness: ClawDSH appears only as a per-session preset, its settings and capability dependencies are not visible as one product, and the raw Trajectory view does not explain ClawDSH-specific behavior.
+The local GUI composes the stock `dsh-web-app` bundle, the `clawdsh` agent preset displayed as `ClawDSH 模式`, and an owned product runtime. `/clawdsh/` provides the ClawDSH navigation and a read-only capability overview, while `/` preserves the complete DeepSeek Harness application. The Settings mutation plane and semantic Activity records remain separate implementation increments.
 
 A profile and an agent preset have different lifecycles. The profile mounts Host plugins for the process, while a preset composes one Session's Agent plane. Selecting the `standard` preset inside the ClawDSH profile therefore does not unload ClawDSH channels, Memory, Skills, or Automation and cannot truthfully mean “pure DeepSeek Harness.”
 
@@ -36,7 +36,7 @@ The detailed ownership and verification rationale lives in the [ClawDSH product-
 - The product and advanced routes share one Host process and persistence, but they may have separate page-local UI state.
 - Capability switches describe ClawDSH behavior. They do not expose unrestricted Cordis Loader mutation.
 - The managed `clawdsh` preset temporarily lives in dsh's user preset root. ClawDSH Settings offers no delete action, while the unmodified Harness preset manager can still delete it as a user preset; the public-distribution `clawdsh doctor` repairs that state explicitly.
-- The existing preset-only GUI remains the current implementation until the product shell ships; this ADR does not rewrite that implemented record into future state.
+- The initial product shell owns routing, navigation, the read-only overview, and explicit deferred states. It does not claim that Settings mutation or semantic Activity storage has shipped.
 
 ## Alternatives
 

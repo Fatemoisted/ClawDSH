@@ -45,14 +45,15 @@
 
 ### 4.1 ClawDSH 本地 GUI
 
-仅 preset 的 dsh Web 基线使用 `clawdsh` profile 与 `clawdsh` preset，显示为 `ClawDSH 模式`。[ADR-0007](../adr/0007-clawdsh-local-gui-product.md)定义已接受的产品壳：
+`clawdsh` profile 现已把原生 dsh Web 应用与自有 nested 产品 runtime 组合起来。[ADR-0007](../adr/0007-clawdsh-local-gui-product.md)的首个产品增量已经实现：
 
 - `/clawdsh/` 是默认产品 route；`/` 保留原生 dsh Web，并标记为 Harness 高级。
 - 导航为对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级。
 - 对话复用公开 dsh client plugin graph 与 renderer；ClawDSH 拥有 shell、Settings、Activity 与 Control Runtime。
-- Settings 投影 allowlisted ClawDSH capability schema、credential presence、revision 与 restart requirement，不暴露任意 Loader mutation。
-- Activity 提供 Prompt、Memory、Channels、Skills 与 Automation 的语义视图，raw Trajectory 留在 Harness 高级。
+- ClawDSH 设置当前显示只读能力总览；schema-driven mutation、credential presence、revision 与 restart requirement 留给下一增量。
+- ClawDSH 活动当前明确显示 deferred 状态；Prompt、Memory、Channels、Skills 与 Automation 语义记录仍待完成，raw Trajectory 留在 Harness 高级。
 - `dsh --profile web` 保持纯 Harness 入口。
+- real-profile browser 旅程从没有模型 key 或 OpenClaw artifact 的 clean home 启动，并验证两个 route、四个目的地、未知 route 处理与 keyless 产品 snapshot。
 
 ### 4.2 当前渠道平面
 
@@ -70,7 +71,7 @@
 
 ### 产品 GUI 顺序
 
-1. 构建 nested ClawDSH Web entry、Control Runtime、`/clawdsh/` route、产品导航与只读 capability overview。
+1. ✅ nested ClawDSH Web entry、产品 runtime、`/clawdsh/` route、四目的地导航、只读 capability overview 与 keyless real-profile 旅程已经实现。
 2. 增加 schema-driven Settings、credential reference、optimistic revision check、desired/runtime revision display、restart requirement 与专用 Automation editor。
 3. 增加 current-Session Activity，使用有界且受权限限制的 sidecar JSONL，并从 standard Session history 提供 fallback projection。
 4. 在 browser 与 real-profile regression test 中持续保留 native GUI、raw Trajectory 与 `dsh --profile web`。
@@ -102,10 +103,10 @@
 
 ## 7. 开放条件
 
-- [ ] 实现 ClawDSH 产品壳与只读 capability overview。
+- [x] 实现 ClawDSH 产品壳与只读 capability overview。
 - [ ] 实现 Settings control plane 与 credential-safe mutation flow。
 - [ ] 实现 semantic Activity 与 sidecar degradation behavior。
-- [ ] 为产品壳增加自有 real-profile browser 与 keyless snapshot。
+- [x] 为产品壳增加自有 real-profile browser 与 keyless snapshot。
 - [ ] 在把任何 production entry 提升为 installable 前增加逐渠道 configuration、capability probe 与 keyless contract evidence。
 - [ ] 完成新的 Telegram 与 Feishu certification；两者都未 certified 或 enabled。
 - [ ] 在 Windows channel support 推进前增加 Windows named-pipe ACL enforcement。

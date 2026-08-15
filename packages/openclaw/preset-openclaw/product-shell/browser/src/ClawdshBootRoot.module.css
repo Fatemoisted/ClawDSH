@@ -1,0 +1,65 @@
+.boot {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--dsw-alias-label-primary, #17191d);
+  background: var(--dsw-alias-bg-base, #f7f8fa);
+}
+
+.card {
+  min-width: 260px;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: linear-gradient(145deg, #4b75ff, #7255ea);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.card > p {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary, #62666d);
+  font-size: 12px;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 12%));
+  border-top-color: var(--dsw-alias-brand-primary, #476ef5);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.failure {
+  width: min(560px, calc(100vw - 48px));
+  padding: 20px;
+  border: 1px solid var(--dsw-alias-state-error-primary, #d64141);
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+  background: var(--dsw-alias-bg-layer-1, white);
+}
+
+.failure code,
+.failure pre {
+  margin: 0;
+  overflow: auto;
+  color: var(--dsw-alias-label-secondary, #62666d);
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

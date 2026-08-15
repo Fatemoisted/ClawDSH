@@ -8,7 +8,7 @@ The directory is not a Cordis plugin. It supplies:
 
 1. the `clawdsh` Agent preset (`preset.yml`, `agent.cordis.yml`, and `souls/assistant.md`), displayed as `ClawDSH 模式`;
 2. the `clawdsh` profile template (`profile/`), which composes dsh base and Web bundles with ClawDSH Host plugins;
-3. the ClawDSH product shell, Control Runtime, Settings, and Activity nested build as those increments land;
+3. the nested ClawDSH browser shell and `@clawdsh/dsh-product-runtime`, with a read-only capability overview and explicit deferred states for later Settings and Activity increments;
 4. the development installation source consumed by `tools/link-clawdsh.sh`.
 
 The OpenClaw Gateway is an external communication-plane provider inside this product. It does not define the product, profile, or Agent preset identity.
@@ -18,13 +18,15 @@ The OpenClaw Gateway is an external communication-plane provider inside this pro
 Install or refresh the profile, owned package links, and both Agent presets:
 
 ```bash
+pnpm --dir packages/openclaw/preset-openclaw/product-shell install --frozen-lockfile
+pnpm --dir packages/openclaw/preset-openclaw/product-shell run build
 tools/link-clawdsh.sh
 pnpm dsh --profile clawdsh
 ```
 
 New Web Sessions default to the `clawdsh` preset shown as `ClawDSH 模式`. The restricted channel preset is installed as `clawdsh-messaging-safe`. A model credential is needed only when a conversation makes a model request; the Web Host itself starts without external credentials.
 
-`tools/link-clawdsh.sh` warns when it finds legacy `openclaw` profile or preset assets and leaves them untouched. It creates no compatibility alias and does not delete, move, rewrite, or adopt user data. Review any legacy `agent-presets.default` override before removing an old preset that saved Sessions may still reference.
+The product shell has its own lockfile because it stays outside the root workspace and Client aggregate. Install that nested workspace before building it. The development installer requires `product-shell/runtime/lib/index.mjs` and `product-shell/runtime/web/index.html` to exist and fails with the exact build command when either artifact is absent. It links the nested runtime as `@clawdsh/dsh-product-runtime`, warns when it finds legacy `openclaw` profile or preset assets, and leaves them untouched. It creates no compatibility alias and does not delete, move, rewrite, or adopt user data. Review any legacy `agent-presets.default` override before removing an old preset that saved Sessions may still reference.
 
 ## Communication plane
 
@@ -76,9 +78,11 @@ Memory and Skills Hub remain enabled. Ark Embeddings resolves `ARK_API_KEY` only
 
 Optional features temporarily use Loader `disabled` rows. The Settings control-plane increment keeps business plugins mounted and moves user control to validated `enabled` settings with desired and runtime revisions, restart requirements, and credential references.
 
-## Product shell target
+## Product shell
 
-[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md) and the [local GUI spec](../../../docs/specs/feature-gui-web.md) define the product shell. `/clawdsh/` owns Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced; `/` retains native dsh Web. Conversation reuses the public dsh client graph and renderer, while ClawDSH owns its outer shell and control pages.
+[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md) and the [local GUI spec](../../../docs/specs/feature-gui-web.md) define the product shell. `/clawdsh/` owns Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced; `/` retains native dsh Web. Conversation reuses the public dsh client graph and renderer, while the initial ClawDSH Settings destination presents a read-only overview and Activity identifies its deferred state. Unknown product paths render an explicit not-found page instead of falling through to Harness.
+
+The profile suppresses the native `dsh web:` readiness line and mounts `@clawdsh/dsh-product-runtime`. After the Loader settles, that runtime prints `clawdsh web: http://127.0.0.1:<port>/clawdsh/`, owns the product static routes, and leaves the stock fallback at `/` unchanged. The nested browser build writes assets into `product-shell/runtime/web/`; neither nested package enters the root workspace or Client aggregate.
 
 The assembly does not register a new Client Slot and does not modify `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source. Raw Trajectory remains in Harness Advanced, and `dsh --profile web` remains a pure Harness entry point.
 

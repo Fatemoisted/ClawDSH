@@ -1,0 +1,33 @@
+@import '@deepseek-ai/dsh-client-ui-theme/styles/base.css';
+@import '@deepseek-ai/dsh-client-ui-theme/styles/design-platform.css';
+@import '@deepseek-ai/dsh-client-ui-theme/styles/scrollbar.css';
+@import '@deepseek-ai/dsh-client-ui-theme/styles/gradient-shadow-text.css';
+@import '@deepseek-ai/dsh-client-ui-theme/styles/shiki.css';
+
+html,
+body,
+#clawdsh-root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-base);
+  font-family: var(--dsw-font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+* {
+  box-sizing: border-box;
+}

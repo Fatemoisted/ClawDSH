@@ -39,6 +39,15 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Install ClawDSH product shell
+        run: pnpm --dir packages/openclaw/preset-openclaw/product-shell install --frozen-lockfile
+
+      - name: ClawDSH product shell
+        run: |
+          pnpm --dir packages/openclaw/preset-openclaw/product-shell run typecheck
+          pnpm --dir packages/openclaw/preset-openclaw/product-shell run test
+          pnpm --dir packages/openclaw/preset-openclaw/product-shell run build
+
       - name: ClawDSH identity contracts
         run: pnpm exec vitest run --config packages/openclaw/preset-openclaw/gui-tests/vitest.gui.config.ts packages/openclaw/preset-openclaw/gui-tests/identity.spec.ts
 

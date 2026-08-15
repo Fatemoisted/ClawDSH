@@ -47,8 +47,8 @@ Production 渠道平面锁定 OpenClaw `v2026.7.1-2`、commit `0790d9f593ad30c94
 | Approval / security policy | later OpenClaw security reference | approvals 与 guards | Reuse/config | — | 可直接使用 |
 | Federation node | outside early baseline | `ctx.subagents` transport | Plugin | `clawd-federation` | 仅 ADR-0005 评估；实现推迟 |
 | Smart home | outside selected scope | 无已接受 seam | Deferred | — | 需要经审查的来源与能力设计 |
-| 本地浏览器对话 | dsh Web client | `dsh-web-app` + `clawdsh` preset | Reuse/config | 内部 `preset-openclaw` source | 仅 preset 基线已实现 |
-| ClawDSH 产品壳、Settings 与 Activity | ClawDSH-native | 公开 dsh Web 组装、Settings、Credentials 与 Session history | Product assembly | 内部 `preset-openclaw` source | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 已接受；实现待完成 |
+| 本地浏览器对话 | dsh Web client | `dsh-web-app` + `clawdsh` preset | Reuse/config | 内部 `preset-openclaw` source | 在产品壳内部与原生 `/` route 复用 |
+| ClawDSH 产品壳、Settings 与 Activity | ClawDSH-native | 公开 dsh Web 组装、Settings、Credentials 与 Session history | Product assembly | 内部 `preset-openclaw` source | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 产品壳与只读总览已实现；Settings mutation 与语义 Activity 待完成 |
 
 Channel Agent 路径把完整且净化后的模型可见来源存储在已知 `user/message.source.kind = 'channel'` 字段中，并把 admission、idempotency 与 delivery 权威留在持久 channel ledger。它不持久化已声明的 `channel/*` Session event，因为下游代码不能将其标记为 ignorable，静态 known-event reader 会使 resume fail closed。
 

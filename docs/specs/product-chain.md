@@ -15,7 +15,7 @@ English | [中文](product-chain.zh.md)
 
 | Feature | Landing packages | Primary seam | Current result |
 |---|---|---|---|
-| ClawDSH local GUI | `preset-openclaw` | public dsh Web assembly | ✅ preset-only baseline; ⏳ product shell, Settings, and Activity |
+| ClawDSH local GUI | `preset-openclaw` | public dsh Web assembly | ✅ product shell and read-only overview; ⏳ writable Settings and semantic Activity |
 | Current channel plane | `channel`, `channel-agent`, `channel-openclaw` | owned `ctx.channels` V1 | ✅ foundation; ⚠️ no certified or enabled channel |
 | Legacy channel path | `channel-core`, `channel-telegram`, `channel-feishu` | `ctx.legacyChannels` | ✅ retained compatibility; ⚠️ no current certification |
 | Persona | `soul` | `ctx.systemPrompt` | ✅ implemented |
@@ -26,22 +26,22 @@ English | [中文](product-chain.zh.md)
 
 ## ClawDSH local GUI
 
-### Current baseline
+### Current product slice
 
-`tools/link-clawdsh.sh` installs the `clawdsh` profile and preset. `pnpm dsh --profile clawdsh` starts the native dsh Web client, and new Sessions default to `ClawDSH 模式`. Feishu, Telegram, and Automation are disabled in the clean-install baseline, so the Web Host does not require their credentials.
+The nested build emits `@clawdsh/dsh-product-runtime` and its browser assets before `tools/link-clawdsh.sh` installs the `clawdsh` profile and presets. `pnpm dsh --profile clawdsh` prints only the `/clawdsh/` product URL after Loader settlement; `/` remains the native dsh Web client, and new Sessions default to `ClawDSH 模式`. Feishu, Telegram, and Automation are disabled, so a clean home starts without their credentials or an OpenClaw artifact.
 
-### Accepted product chain
+### Product chain
 
 | Link | Owner and behavior |
 |---|---|
 | Entry | `/clawdsh/` is the ClawDSH product route; `/` remains native dsh Web |
 | Conversation | reuse the public dsh client module graph, loading state, and chat renderer |
-| Settings | ClawDSH Control Runtime projects allowlisted feature schemas, desired/runtime revisions, restart state, and credential presence |
-| Activity | current-Session semantic projection for Prompt, Memory, Channels, Skills, and Automation; raw Trajectory stays in Harness Advanced |
+| Settings | the current destination projects a read-only capability and Loader overview; the next Control Runtime increment owns allowlisted schemas, revisions, restart state, and credential presence |
+| Activity | the current destination identifies the deferred state; the next increment adds current-Session Prompt, Memory, Channels, Skills, and Automation records while raw Trajectory stays in Harness Advanced |
 | Harness Advanced | explicit route to the unmodified native dsh GUI and diagnostics |
 | Isolation | no new Client Slot and no changes to `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source |
 
-⏳ ADR-0007 accepts this product posture, but the product shell and control pages are not implemented by the preset-only baseline. `dsh --profile web` remains a pure Harness path.
+✅ The shell, both routes, four destinations, read-only capability overview, unknown-route state, and keyless real-profile snapshot are implemented. ⏳ Settings mutation and semantic Activity remain deferred. `dsh --profile web` remains a pure Harness path.
 
 ## Current OpenClaw channel plane
 
@@ -132,7 +132,7 @@ Inbound images are confined to a canonical staging root, checked for symlinks, s
 
 ## Release gaps
 
-1. Implement the `/clawdsh/` product shell, Settings control plane, semantic Activity, and Harness Advanced navigation without changing upstream GUI source.
+1. Implement the Settings control plane and semantic Activity behind the shipped `/clawdsh/` shell without changing upstream GUI source.
 2. Finish the public installer and managed preset/profile repair path while preserving user settings, credentials, memory, and skills.
 3. Add an owned keyless Gateway-to-Agent snapshot lane and complete exact per-channel assembly evidence.
 4. Keep Windows fail-closed until named-pipe ACL enforcement provides equivalent authorization.

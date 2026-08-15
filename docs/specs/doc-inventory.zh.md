@@ -2,7 +2,7 @@
 
 [English](doc-inventory.md) | 中文
 
-- **状态**：阶段 4 产品化与渠道平面集成
+- **状态**：阶段 4 产品化；产品壳与只读能力总览已经实现
 - **用途**：识别仓库中哪些位置是上游只读、ClawDSH 自有或有 ADR 支撑的窄增量
 - **权威**：root `AGENTS.md`、ADR-0001、ADR-0004、ADR-0006、[GUI ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 与 [渠道 ADR-0008](../adr/0008-openclaw-channel-plane.md)
 
@@ -34,7 +34,7 @@
 
 | 位置 | 当前内容 |
 |---|---|
-| `packages/openclaw/` | 功能包、当前渠道 seam、保留的旧渠道包、受限 preset、产品组装与包模板 |
+| `packages/openclaw/` | 功能包、当前渠道 seam、保留的旧渠道包、受限 preset、产品组装、嵌套非 workspace GUI/runtime build 与包模板 |
 | `docs/adr/` | ClawDSH 决策；ADR-0007 拥有 GUI 产品形态，ADR-0008 取代 ADR-0002 成为渠道架构 |
 | `docs/specs/` | roadmap、context map、inventory、product chain、GUI spec、当前 feature spec 与旧渠道 reference |
 | `docs/matrix/parity.md` | 产品与渠道支持投影；精确渠道 artifact 仍在机器 catalog |
@@ -69,12 +69,13 @@ Rebase 时先取上游版本，再只重放这些精确增量。例外不会转�
 |---|---|
 | 产品形态、route 与禁止的上游修改 | ADR-0007 |
 | 用户可见页面与验收行为 | `feature-gui-web` |
-| `/clawdsh/` shell、Settings、Activity、Control Runtime 与 nested build | `preset-openclaw` |
+| `/clawdsh/` shell、静态路由、只读 Settings 总览、Activity 空状态、Control Runtime 与 nested build | `preset-openclaw/product-shell` |
 | `/` 下原生 dsh Web GUI 与 raw Trajectory | 上游 dsh，不修改源码直接消费 |
 | Profile 与 preset identity | `clawdsh`；物理 `preset-openclaw` source directory 是唯一保留的旧路径名 |
-| Managed installation、integrity repair 与 `clawdsh doctor` | future public-distribution CLI |
+| 开发安装 | `tools/link-clawdsh.sh`；它要求已构建产品 artifact，并把 runtime 链接进托管开发 profile |
+| Managed installation、integrity repair 与 `clawdsh doctor` | 当前没有 package；不属于开发安装器职责 |
 
-ClawDSH GUI 可以使用公开 dsh Web、Settings、Credentials、Session、loader observation 与 Connection RPC API。它不注册 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。
+当前 ClawDSH GUI 使用公开 dsh Web boot 与 rendering API、Loader observation、静态 Host route、index transform 与 Connection RPC。它不注册 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。`/clawdsh-rpc` 只允许 loopback，并且只暴露只读 `bootstrap/get` 与 `capabilities/list`；Settings、Credentials、Activity persistence 与 Activity query 尚未接入。
 
 ## 5. 渠道平面所有权
 
@@ -100,6 +101,7 @@ OpenClaw source archive 与 npm tarball 是外部输入，不是仓库自有 sou
 - 上游 snapshot runner 不发现自有 channel package，且上游 `examples/` tree 保持只读。
 - Downstream `channel/*` Session event 在可运行路径中保持禁用，直到存在 ignorable append mechanism；持久 channel ledger 与已知 `user/message` source 是当前权威。
 - `clawdsh` 与 `clawdsh-messaging-safe` preset 在公共安装器拥有 manifest 与 repair flow 前仍是 managed user preset。
+- ClawDSH Settings 只提供能力与 Loader 证据，不提供 mutation 或 credential method。ClawDSH Activity 是不含 Session projection 与 sidecar 的空状态。
 
 ## 7. Rebase checklist
 

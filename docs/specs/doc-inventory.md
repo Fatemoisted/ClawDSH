@@ -2,7 +2,7 @@
 
 English | [中文](doc-inventory.zh.md)
 
-- **Status**: Phase 4 productization and channel-plane integration
+- **Status**: Phase 4 productization; the product shell and read-only capability overview are implemented
 - **Purpose**: identify repository locations that are upstream read-only, ClawDSH-owned, or narrow ADR-backed additions
 - **Authority**: root `AGENTS.md`, ADR-0001, ADR-0004, ADR-0006, [GUI ADR-0007](../adr/0007-clawdsh-local-gui-product.md), and [channel ADR-0008](../adr/0008-openclaw-channel-plane.md)
 
@@ -34,7 +34,7 @@ Upstream means `deepseek-ai/deepseek-harness` through the `upstream` remote. Dir
 
 | Location | Current content |
 |---|---|
-| `packages/openclaw/` | feature packages, the current channel seam, retained legacy channel packages, restricted preset, product assembly, and package template |
+| `packages/openclaw/` | feature packages, the current channel seam, retained legacy channel packages, restricted preset, product assembly, nested non-workspace GUI/runtime build, and package template |
 | `docs/adr/` | ClawDSH decisions; ADR-0007 owns the GUI product posture and ADR-0008 supersedes ADR-0002 for channel architecture |
 | `docs/specs/` | roadmap, context map, inventory, product chain, GUI spec, current feature specs, and legacy channel reference |
 | `docs/matrix/parity.md` | product and channel support projection; exact channel artifacts remain in machine catalogs |
@@ -69,12 +69,13 @@ During a rebase, take the upstream version first and replay only these exact add
 |---|---|
 | Product posture, routes, and prohibited upstream modifications | ADR-0007 |
 | User-visible pages and acceptance behavior | `feature-gui-web` |
-| `/clawdsh/` shell, Settings, Activity, Control Runtime, and nested build | `preset-openclaw` |
+| `/clawdsh/` shell, static routes, read-only Settings overview, Activity empty state, Control Runtime, and nested build | `preset-openclaw/product-shell` |
 | Native dsh Web GUI at `/` and raw Trajectory | upstream dsh, consumed without source changes |
 | Profile and preset identity | `clawdsh`; the physical `preset-openclaw` source directory is the only retained legacy path name |
-| Managed installation, integrity repair, and `clawdsh doctor` | future public-distribution CLI |
+| Development installation | `tools/link-clawdsh.sh`; it requires built product artifacts and links the runtime into the managed development profile |
+| Managed installation, integrity repair, and `clawdsh doctor` | no current package; outside the development installer's responsibilities |
 
-The ClawDSH GUI may use public dsh Web, Settings, Credentials, Session, loader-observation, and Connection RPC APIs. It does not register a Client Slot or modify `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source.
+The current ClawDSH GUI uses public dsh Web boot and rendering APIs, Loader observation, static Host routing, index transforms, and Connection RPC. It does not register a Client Slot or modify `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source. `/clawdsh-rpc` is loopback-only and exposes only read-only `bootstrap/get` and `capabilities/list`; Settings, Credentials, Activity persistence, and Activity queries are not connected yet.
 
 ## 5. Channel-plane ownership
 
@@ -100,6 +101,7 @@ OpenClaw source archives and npm tarballs are external inputs, not repository-ow
 - The upstream snapshot runner does not discover owned channel packages, and the upstream `examples/` tree remains read-only.
 - Downstream `channel/*` Session events are disabled in the runnable path until an ignorable append mechanism exists; durable channel ledgers and the known `user/message` source are current authority.
 - The `clawdsh` and `clawdsh-messaging-safe` presets remain managed user presets until the public installer owns their manifest and repair flow.
+- ClawDSH Settings exposes capability and Loader evidence without mutations or credential methods. ClawDSH Activity is an empty state without Session projection or sidecars.
 
 ## 7. Rebase checklist
 

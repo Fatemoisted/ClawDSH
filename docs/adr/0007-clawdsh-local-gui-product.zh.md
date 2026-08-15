@@ -2,13 +2,13 @@
 
 [English](0007-clawdsh-local-gui-product.md) | 中文
 
-- **状态**：已接受（实现待完成）
+- **状态**：已接受（只读产品壳已实现；Settings 控制面与语义 Activity 待完成）
 - **日期**：2026-08-15
 - **依赖**：ADR-0001（自有代码隔离）、[当前 dsh Web GUI 组装](../../.agents/notes/implemented/feature/2026-08-15-openclaw-gui-dsh-web-app.md)
 
 ## Context
 
-当前本地 GUI 把原生 `dsh-web-app` bundle 与显示为 `ClawDSH 模式` 的 `clawdsh` agent preset 组合起来。它已经能够运行 Soul、Memory、Skills、渠道与标准 agent 工具集，但信息架构仍属于 DeepSeek Harness：ClawDSH 只表现为逐会话 preset，其设置和能力依赖没有形成一个产品视图，原始 Trajectory 视图也不解释 ClawDSH 特有行为。
+本地 GUI 把原生 `dsh-web-app` bundle、显示为 `ClawDSH 模式` 的 `clawdsh` agent preset 与自有产品 runtime 组合起来。`/clawdsh/` 提供 ClawDSH 导航和只读能力总览，`/` 保留完整 DeepSeek Harness 应用。Settings mutation plane 与语义 Activity 记录仍属于独立实现增量。
 
 profile 与 agent preset 的生命周期不同。profile 为进程挂载 Host 插件，preset 则组合某个 Session 的 Agent plane。因此，在 ClawDSH profile 内选择 `standard` preset 不会卸载 ClawDSH 的渠道、Memory、Skills 或 Automation，也不能诚实地表示「纯净 DeepSeek Harness」。
 
@@ -36,7 +36,7 @@ dsh 公开 Web 组装已经提供 Session runtime、浏览器模块图、RPC car
 - 产品路由与高级路由共享同一个 Host 进程和持久化，但可以拥有相互独立的页面本地 UI 状态。
 - 能力开关描述 ClawDSH 行为，不暴露不受限制的 Cordis Loader mutation。
 - 托管的 `clawdsh` preset 暂时位于 dsh 用户 preset 根目录。ClawDSH Settings 不提供删除操作，但未修改的 Harness preset 管理器仍可把它作为用户 preset 删除；公共发行的 `clawdsh doctor` 会显式修复该状态。
-- 在产品壳交付前，现有 preset-only GUI 仍是当前实现；本 ADR 不会把该 implemented 记录改写成未来状态。
+- 初始产品壳拥有路由、导航、只读总览和明确的 deferred 状态；它不宣称 Settings mutation 或语义 Activity 存储已经交付。
 
 ## Alternatives
 

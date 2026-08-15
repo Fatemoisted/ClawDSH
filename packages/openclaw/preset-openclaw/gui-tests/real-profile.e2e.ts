@@ -11,6 +11,9 @@ const repositoryRoot = resolve(import.meta.dirname, '../../../..')
 const linkScript = join(repositoryRoot, 'tools/link-clawdsh.sh')
 const builtCli = join(repositoryRoot, 'apps/cli/lib/bin.js')
 const builtWeb = join(repositoryRoot, 'apps/web/dist/index.html')
+const productShell = join(repositoryRoot, 'packages/openclaw/preset-openclaw/product-shell')
+const builtProductRuntime = join(productShell, 'runtime/lib/index.mjs')
+const builtProductWeb = join(productShell, 'runtime/web/index.html')
 const expectedSnapshot = join(import.meta.dirname, 'snapshots/real-profile/ui.expected.md')
 const externalCredentialNames = [
   'ARK_API_KEY',
@@ -34,6 +37,8 @@ interface LocatorLike {
   getByText(text: string, options?: { exact?: boolean }): LocatorLike
   /** Count matching elements. */
   count(): Promise<number>
+  /** Read one DOM attribute without depending on implementation-only selectors. */
+  getAttribute(name: string): Promise<string | null>
 }
 
 interface PageLike {
@@ -41,6 +46,10 @@ interface PageLike {
   goto(url: string, options?: { waitUntil?: 'load' }): Promise<unknown>
   /** Locate a page element by accessible role. */
   getByRole(role: string, options?: { name?: string | RegExp; exact?: boolean }): LocatorLike
+  /** Locate a page element by visible text. */
+  getByText(text: string | RegExp, options?: { exact?: boolean }): LocatorLike
+  /** Locate browser elements by a CSS selector. */
+  locator(selector: string): LocatorLike
 }
 
 interface BrowserLike {
@@ -72,7 +81,11 @@ async function chromiumLauncher(): Promise<BrowserLauncherLike> {
 function keylessEnvironment(harnessHome: string, agentsHome: string): NodeJS.ProcessEnv {
   const externalCredentials = new Set<string>(externalCredentialNames)
   const environment = Object.fromEntries(
-    Object.entries(process.env).filter(([name]) => !externalCredentials.has(name)),
+    Object.entries(process.env).filter(([name]) => (
+      !externalCredentials.has(name)
+      && !name.startsWith('CLAWDSH_OPENCLAW_')
+      && name !== 'CLAWDSH_CHANNEL_CWD'
+    )),
   )
   environment.DSH_HOME = harnessHome
   environment.DSH_AGENTS_HOME = agentsHome
@@ -80,7 +93,14 @@ function keylessEnvironment(harnessHome: string, agentsHome: string): NodeJS.Pro
   return environment
 }
 
-function waitForReadyLine(child: ChildProcess): Promise<string> {
+interface ReadyOutput {
+  /** Canonical product URL emitted only after the Loader settles. */
+  productUrl: string
+  /** Combined process output through the readiness line. */
+  output: string
+}
+
+function waitForReadyLine(child: ChildProcess): Promise<ReadyOutput> {
   return new Promise((resolveReady, reject) => {
     let output = ''
     const timer = setTimeout(() => {
@@ -88,10 +108,10 @@ function waitForReadyLine(child: ChildProcess): Promise<string> {
     }, 90_000)
     const observe = (chunk: Buffer): void => {
       output += chunk.toString()
-      const match = /dsh web: (http:\/\/[^\s]+)/.exec(output)
+      const match = /(?:^|\n)clawdsh web: (http:\/\/127\.0\.0\.1:\d+\/clawdsh\/)/.exec(output)
       if (match?.[1] === undefined) return
       clearTimeout(timer)
-      resolveReady(match[1])
+      resolveReady({ productUrl: match[1], output })
     }
     child.stdout?.on('data', observe)
     child.stderr?.on('data', observe)
@@ -148,17 +168,29 @@ function compareOrRefresh(snapshot: string): void {
 }
 
 describe('ClawDSH isolated real profile browser entry', () => {
-  it('boots keyless and exposes the clawdsh default as ClawDSH 模式', async () => {
+  it('boots both routes keyless and exposes the product navigation and read-only overview', async () => {
     expect(existsSync(builtCli), 'built CLI missing; run `pnpm run build` before this lane').toBe(true)
     expect(existsSync(builtWeb), 'built Web app missing; run `pnpm run build` before this lane').toBe(true)
 
     const temporaryRoot = mkdtempSync(join(tmpdir(), 'clawdsh-real-profile-'))
     const harnessHome = join(temporaryRoot, '.dsh')
     const environment = keylessEnvironment(harnessHome, join(temporaryRoot, '.agents'))
+    expect(externalCredentialNames.every(name => environment[name] === undefined)).toBe(true)
+    expect(Object.keys(environment).some(name => name.startsWith('CLAWDSH_OPENCLAW_'))).toBe(false)
     let child: ChildProcess | undefined
     let browser: BrowserLike | undefined
 
     try {
+      const productBuild = spawnSync('pnpm', ['--dir', productShell, 'run', 'build'], {
+        cwd: repositoryRoot,
+        encoding: 'utf8',
+        env: environment,
+      })
+      expect(productBuild.error).toBeUndefined()
+      expect(productBuild.status, `${productBuild.stdout}\n${productBuild.stderr}`).toBe(0)
+      expect(existsSync(builtProductRuntime), 'nested product runtime build did not emit lib/index.mjs').toBe(true)
+      expect(existsSync(builtProductWeb), 'nested browser build did not emit runtime/web/index.html').toBe(true)
+
       const linked = spawnSync(linkScript, [], {
         cwd: repositoryRoot,
         encoding: 'utf8',
@@ -176,15 +208,30 @@ describe('ClawDSH isolated real profile browser entry', () => {
           stdio: ['ignore', 'pipe', 'pipe'],
         },
       )
-      const baseUrl = await waitForReadyLine(child)
-      expect(baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
-      expect((await fetch(baseUrl)).status).toBe(200)
+      const ready = await waitForReadyLine(child)
+      expect(ready.productUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/clawdsh\/$/)
+      expect(ready.output).not.toMatch(/(?:^|\n)dsh web: http:\/\//)
+      const harnessUrl = new URL('/', ready.productUrl).href
+      expect((await fetch(ready.productUrl)).status).toBe(200)
+      expect((await fetch(harnessUrl)).status).toBe(200)
 
       const chromium = await chromiumLauncher()
       const channel = process.env.DSH_PLAYWRIGHT_CHANNEL
       browser = await chromium.launch(channel === undefined || channel === '' ? {} : { channel })
       const page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: 'zh-CN' })
-      await page.goto(baseUrl, { waitUntil: 'load' })
+      await page.goto(ready.productUrl, { waitUntil: 'load' })
+
+      const conversationLink = page.getByRole('link', { name: '对话', exact: true })
+      const settingsLink = page.getByRole('link', { name: 'ClawDSH 设置', exact: true })
+      const activityLink = page.getByRole('link', { name: 'ClawDSH 活动', exact: true })
+      const advancedLink = page.getByRole('link', { name: 'Harness 高级', exact: true })
+      for (const destination of [conversationLink, settingsLink, activityLink, advancedLink]) {
+        await destination.waitFor({ timeout: 30_000 })
+      }
+      expect(await advancedLink.getAttribute('href')).toBe('/')
+      const navigationSnapshot = await Promise.all(
+        [conversationLink, settingsLink, activityLink, advancedLink].map(async link => (await link.ariaSnapshot()).trim()),
+      )
 
       const productEntry = page.getByRole('button', { name: 'ClawDSH 模式', exact: true })
       await productEntry.waitFor({ timeout: 30_000 })
@@ -205,12 +252,51 @@ describe('ClawDSH isolated real profile browser entry', () => {
       const current = settings.getByRole('button', { name: /^当前使用: ClawDSH 模式$/ })
       await current.waitFor({ timeout: 10_000 })
       expect(await current.getByText('clawdsh', { exact: true }).count()).toBe(1)
+      const currentSnapshot = (await current.ariaSnapshot()).trim()
+      await settings.getByRole('button', { name: '关闭', exact: true }).click()
+      await settings.waitFor({ state: 'detached', timeout: 10_000 })
+
+      await settingsLink.click()
+      const overview = page.getByRole('heading', { name: 'ClawDSH 总览', exact: true })
+      await overview.waitFor({ timeout: 10_000 })
+      expect(await page.getByRole('button', { name: /^(?:启用|停用|保存|重置)$/ }).count()).toBe(0)
+      await page.getByRole('status', { name: 'Soul 运行中', exact: true }).waitFor({ timeout: 10_000 })
+      await page.getByRole('status', { name: 'Channels 已关闭', exact: true }).waitFor({ timeout: 10_000 })
+      expect(await page.locator('[data-capability="channels"] [data-support="cataloged"]').count()).toBe(27)
+      expect(await page.locator('[data-origin="ClawDSH"]').count()).toBeGreaterThan(0)
+      expect(await page.locator('[data-origin="Platform"]').count()).toBeGreaterThan(0)
+      const overviewSnapshot = (await overview.ariaSnapshot()).trim()
+
+      await activityLink.click()
+      const activity = page.getByRole('heading', { name: 'ClawDSH 活动', exact: true })
+      await activity.waitFor({ timeout: 10_000 })
+      const activityDeferred = page.getByText(/后续阶段/, { exact: false })
+      await activityDeferred.waitFor({ timeout: 10_000 })
+      const activitySnapshot = (await activity.ariaSnapshot()).trim()
+      const activityDeferredSnapshot = (await activityDeferred.ariaSnapshot()).trim()
+
+      await page.goto(new URL('not-found', ready.productUrl).href, { waitUntil: 'load' })
+      const notFound = page.getByRole('heading', { name: '页面不存在', exact: true })
+      await notFound.waitFor({ timeout: 10_000 })
+      const notFoundSnapshot = (await notFound.ariaSnapshot()).trim()
+
+      await page.goto(harnessUrl, { waitUntil: 'load' })
+      await page.getByRole('button', { name: 'ClawDSH 模式', exact: true }).waitFor({ timeout: 30_000 })
+      expect(await page.getByRole('link', { name: 'ClawDSH 设置', exact: true }).count()).toBe(0)
+      expect(await page.getByRole('link', { name: 'ClawDSH 活动', exact: true }).count()).toBe(0)
 
       compareOrRefresh([
-        '# ClawDSH product entry',
-        (await productEntry.ariaSnapshot()).trim(),
+        '# ClawDSH navigation',
+        ...navigationSnapshot,
+        '# Read-only overview',
+        overviewSnapshot,
+        '# Deferred activity',
+        activitySnapshot,
+        activityDeferredSnapshot,
+        '# Unknown product page',
+        notFoundSnapshot,
         '# Installed preset identity',
-        (await current.ariaSnapshot()).trim(),
+        currentSnapshot,
       ].join('\n\n'))
     } finally {
       try {

@@ -7,7 +7,17 @@
     persona: >-
       You are a personal AI assistant.
 
+# ClawDSH 产品 runtime 负责唯一的启动 URL；原生 Harness 仍完整保留在 `/`。
+- id: web-runtime
+  config:
+    printUrl: false
+    surfaceContext: true
+    trustedHosts: !!js ctx.webStartup.trustedHosts
+
 - insert:
+    - id: clawdsh-product-runtime
+      name: '@clawdsh/dsh-product-runtime'
+
     # OpenClaw 独占平台凭据、准入和投递；DSH 独占 Agent、Session、工具与审批。
     # 旧 Telegram/Feishu adapter 不再出现在 profile 中。切换前须先停掉旧登录，避免同一账号双登录。
     - id: clawdsh-communication-plane

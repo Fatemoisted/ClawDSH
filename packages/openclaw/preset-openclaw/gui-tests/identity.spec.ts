@@ -19,6 +19,8 @@ const assemblyRoot = join(repositoryRoot, 'packages/openclaw/preset-openclaw')
 const profileSource = join(assemblyRoot, 'profile')
 const presetSource = assemblyRoot
 const safePresetSource = join(repositoryRoot, 'packages/openclaw/preset-clawdsh-messaging-safe')
+const productRuntimeSource = join(assemblyRoot, 'product-shell/runtime')
+const productIndex = join(productRuntimeSource, 'web/index.html')
 const linkScript = join(repositoryRoot, 'tools/link-clawdsh.sh')
 const legacyLinkScript = join(repositoryRoot, 'tools/link-openclaw.sh')
 const linkedPackages = [
@@ -66,6 +68,14 @@ function loaderEntry(config: string, id: string): string {
   return config.slice(start, next === -1 ? undefined : next)
 }
 
+function profileOverride(config: string, id: string): string {
+  const marker = `- id: ${id}\n`
+  const start = config.indexOf(marker)
+  expect(start, `missing profile override ${id}`).toBeGreaterThanOrEqual(0)
+  const next = config.indexOf('\n- ', start + marker.length)
+  return config.slice(start, next === -1 ? undefined : next)
+}
+
 afterEach(() => {
   for (const home of temporaryHomes.splice(0)) rmSync(home, { recursive: true, force: true })
 })
@@ -94,6 +104,16 @@ describe('ClawDSH installed profile identity', () => {
   it('keeps Automation disabled in the clean-install profile', () => {
     const entry = loaderEntry(read(join(profileSource, 'cordis.patch.yml')), 'automation')
     expect(entry).toMatch(/^      disabled: true$/m)
+  })
+
+  it('gives product URL ownership to the ClawDSH runtime', () => {
+    const patch = read(join(profileSource, 'cordis.patch.yml'))
+    const webRuntime = profileOverride(patch, 'web-runtime')
+    const productRuntime = loaderEntry(patch, 'clawdsh-product-runtime')
+
+    expect(webRuntime).toMatch(/^    printUrl: false$/m)
+    expect(webRuntime).toMatch(/^    surfaceContext: true$/m)
+    expect(productRuntime).toMatch(/name: '@clawdsh\/dsh-product-runtime'/)
   })
 
   it('does not retain the obsolete development command', () => {
@@ -130,6 +150,10 @@ describe.skipIf(process.platform === 'win32')('ClawDSH development refresh', () 
       expect(lstatSync(link).isSymbolicLink()).toBe(true)
       expect(realpathSync(link)).toBe(realpathSync(join(repositoryRoot, 'packages/openclaw', packageName)))
     }
+    const productRuntimeLink = join(home, 'profiles/node_modules/@clawdsh/dsh-product-runtime')
+    expect(lstatSync(productRuntimeLink).isSymbolicLink()).toBe(true)
+    expect(realpathSync(productRuntimeLink)).toBe(realpathSync(productRuntimeSource))
+    expect(existsSync(productIndex), 'development refresh must build the nested browser assets').toBe(true)
 
     writeFileSync(join(profile, 'package.json'), '{"name":"drifted"}\n')
     const second = runRefresh(home)

@@ -1,0 +1,14 @@
+{
+  "extends": "../../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "noEmit": true,
+    "paths": {},
+    "rootDir": "..",
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src", "tests", "../shared/src", "tsdown.config.ts", "vitest.config.ts"]
+}

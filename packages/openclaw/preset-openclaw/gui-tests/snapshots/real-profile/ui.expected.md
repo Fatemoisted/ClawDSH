@@ -1,9 +1,30 @@
-# ClawDSH product entry
+# ClawDSH navigation
 
-- button "ClawDSH 模式":
-  - img
-  - text: ClawDSH 模式
-  - img
+- link "对话":
+  - /url: /clawdsh/
+
+- link "ClawDSH 设置":
+  - /url: /clawdsh/settings
+
+- link "ClawDSH 活动":
+  - /url: /clawdsh/activity
+
+- link "Harness 高级":
+  - /url: /
+
+# Read-only overview
+
+- heading "ClawDSH 总览" [level=2]
+
+# Deferred activity
+
+- heading "ClawDSH 活动" [level=1]
+
+- paragraph: Prompt、Memory、渠道、Skills 与 Automation 活动将在后续阶段显示在这里。
+
+# Unknown product page
+
+- heading "页面不存在" [level=1]
 
 # Installed preset identity
 

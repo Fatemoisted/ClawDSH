@@ -1,0 +1,5 @@
+packages:
+  - browser
+  - runtime
+allowBuilds:
+  esbuild: true

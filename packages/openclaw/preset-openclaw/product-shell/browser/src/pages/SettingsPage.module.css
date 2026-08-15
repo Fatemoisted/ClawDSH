@@ -1,0 +1,251 @@
+.page {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  padding: 48px 40px 80px;
+  display: grid;
+  gap: 28px;
+}
+
+.header {
+  display: grid;
+  gap: 8px;
+}
+
+.header h1,
+.section h2,
+.header p,
+.section p {
+  margin: 0;
+}
+
+.header h1 {
+  font-size: 30px;
+  line-height: 38px;
+  letter-spacing: -0.02em;
+}
+
+.header > p:last-child,
+.sectionHeading p,
+.capability > p {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.eyebrow {
+  color: var(--dsw-alias-brand-primary);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.section {
+  padding: 24px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 16px;
+  background: var(--dsw-alias-bg-layer-1);
+  display: grid;
+  gap: 20px;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.sectionHeading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.section h2 {
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.count,
+.state,
+.origin {
+  border-radius: 999px;
+  padding: 3px 9px;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.capabilities {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.capability {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.capabilityTopline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.state[data-state='active'] {
+  color: var(--dsw-alias-state-success-primary);
+  background: var(--dsw-alias-state-success-tertiary);
+}
+
+.state[data-state='failed'] {
+  color: var(--dsw-alias-state-error-primary);
+  background: color-mix(in srgb, var(--dsw-alias-state-error-secondary) 16%, transparent);
+}
+
+.state[data-state='disabled'] {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.state[data-state='misconfigured'] {
+  color: var(--dsw-alias-state-warn-label);
+  background: var(--dsw-alias-state-warn-tertiary);
+}
+
+.capability dl {
+  margin: 0;
+  display: grid;
+  gap: 5px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+}
+
+.capability dl > div {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.capability dt,
+.capability dd {
+  margin: 0;
+}
+
+.capability dd {
+  overflow-wrap: anywhere;
+}
+
+.components,
+.channels ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.components {
+  padding-top: 10px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.components li,
+.channels li {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.components li > span:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.components small {
+  color: var(--dsw-alias-label-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.channels {
+  padding-top: 10px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.channels li > span:last-child {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.status {
+  padding: 32px 0;
+  text-align: center;
+}
+
+.failure {
+  padding: 20px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dsw-alias-state-error-secondary) 16%, transparent);
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.failure button {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: inherit;
+  background: var(--dsw-alias-bg-layer-1);
+  cursor: pointer;
+}
+
+.tableWrap {
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+
+  max-width: 100%;
+  overflow: auto;
+}
+
+.tableWrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+
+.tableWrap th,
+.tableWrap td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.tableWrap code {
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+.origin[data-origin='ClawDSH'] {
+  color: var(--dsw-alias-brand-primary);
+}
+
+@media (max-width: 720px) {
+  .page { padding: 28px 20px 64px; }
+  .section { padding: 18px; }
+  .sectionHeading { flex-direction: column; gap: 10px; }
+}

@@ -2,104 +2,75 @@
 
 [English](feature-gui-web.md) | 中文
 
-- **状态**：仅 preset 的 dsh Web 基线已经实现；ClawDSH 产品壳已由 [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 接受，实现待完成
-- **当前组装**：`packages/openclaw/preset-openclaw/`
-- **产品角色**：与飞书、Telegram 及未来渠道前台并列的 ClawDSH 本地前台
+- **状态**：ClawDSH 产品壳与只读能力总览已经实现；可编辑 Settings 与语义 Activity 记录尚不可用
+- **组装位置**：`packages/openclaw/preset-openclaw/product-shell/`
+- **产品角色**：与 Gateway 接入的通讯前台并列的 ClawDSH 本地前台
 
-## 当前基线
+## 产品边界
 
-`pnpm dsh --profile clawdsh` 把原生 `dsh-web-app` bundle 与 `clawdsh` agent preset 组合起来。浏览器在 `http://127.0.0.1:3080` 启动，新 Session 默认使用显示为 `ClawDSH 模式` 的 preset，GUI 对话能够获得 Soul、Memory、Skills 与标准 agent 工具。干净安装默认关闭飞书、Telegram 与 Automation，因此 Web Host 无需这些功能的凭据即可启动。
+`clawdsh` profile 启动一个 dsh Host 进程并提供两个浏览器应用。`/clawdsh/` 是 ClawDSH 产品入口，`/` 则保留未修改的 dsh Web 应用，并以「Harness 高级」暴露。两个应用使用相同的 Host service、Session、Connection transport 与持久化。单独启动的 `dsh --profile web` 进程仍是纯净 Harness 入口。
 
-该基线有意不包含 ClawDSH 自有浏览器代码，因此它的 Settings 与 Trajectory 呈现 Harness 信息模型，而不是完整的 ClawDSH 产品模型。
+产品边界是进程级 `clawdsh` profile，而不是逐 Session preset 选择。新 Session 默认使用显示为 `ClawDSH 模式` 的 `clawdsh` preset；选择其他 preset 只会改变该 Session 的 Agent 组装，不会卸载 ClawDSH Host plugin。
 
-开发安装脚本为 `tools/link-clawdsh.sh`。它检测到旧 `openclaw` profile 与 preset 目录时只给出警告，不删除、不移动，也不创建别名。产品级安装状态、托管 manifest 与 `clawdsh doctor` 属于公共发行 CLI。
+产品壳不增加模型可见输入。对话请求继续使用所选 agent preset 与已挂载的能力 plugin。
 
-## 目标
+## 路由与导航
 
-目标本地 GUI 是构建在 dsh 公开 Web runtime 之上的独立 ClawDSH 产品界面。它保留成熟的 Harness 对话实现，同时让用户能够在一个位置理解、配置并检查把 Harness 变成 ClawDSH 的附加能力。由于公开 `buildRenderApp()` face 渲染完整 Harness root 而不是单独 Chat，v1 会把该完整 root 挂载在「对话」目的地内。
+Host 以 HTTP 308 把 `/clawdsh` 重定向到 `/clawdsh/`，并保留 query string。它在 `/clawdsh/` 下提供产品 SPA 与静态 asset，只允许 GET 和 HEAD 访问静态产品路由，拒绝路径穿越，并应用 dsh 用于 boot manifest 与 theme preboot 的相同 index transform。未知 `/clawdsh/*` 路径渲染产品内 404。
 
-产品壳不会创建第二套 agent runtime。ClawDSH 与 Harness 高级共享同一个 Host 进程、Session store、Connection transport 与持久化；两者只在应用导航和呈现上不同。
+固定导航为：
 
-## 非目标
+1. `/clawdsh/` 下的**对话**。
+2. `/clawdsh/settings` 下的**ClawDSH 设置**。
+3. `/clawdsh/activity` 下的**ClawDSH 活动**。
+4. 全页跳转到 `/` 的**Harness 高级**链接。
 
-- 不 fork 或重新实现 dsh Chat、Session 状态、流式输出、审批、工具呈现或原始 Trajectory。
-- 不把产品导航插入原生 Settings 或 Trajectory Slot，也不新增 Client Slot。
-- 不用 CSS、私有 Slot 或私有 import 抽取或隐藏 Chat-only subtree。
-- 不把不受限制的 Cordis Loader mutation 暴露成普通产品设置。
-- 不把逐 Session preset 选择描述成卸载进程级 ClawDSH 能力。
-- 不改变飞书、Telegram 或其他渠道的前台路径。
+ClawDSH runtime 隐藏原生 Host ready line，只在 Loader settle 后打印 `clawdsh web: http://127.0.0.1:<port>/clawdsh/`。启动失败或 runtime 已 dispose 时不会打印成功的产品 URL。
 
-## 入口与生命周期
+## 对话组装
 
-- `http://127.0.0.1:<port>/clawdsh/` 是默认 ClawDSH 产品入口。
-- `/` 保留未修改的 dsh Web 应用，并以「Harness 高级」链接。
-- `dsh --profile web` 启动不含 ClawDSH Host 能力集的纯净 Harness 进程。
-- ClawDSH profile 使用 `clawdsh` id，新 Session 默认使用 `clawdsh` agent preset，并显示为 `ClawDSH 模式`。
-- 在运行中的 ClawDSH profile 内选择其他 agent preset，只会改变该 Session 的 Agent 组装。它不会卸载进程级 ClawDSH 插件，也不会被描述成切换到纯净 Harness。
+「对话」从公开 boot manifest 与静态 module table 加载完整原生 dsh Client plugin 图。`ClawdshWebEntry` 使用公开 Loader、`createSlotRenderer()` 与 `buildRenderApp()` 组装，并让生成的 Harness root 始终挂载在产品壳内。因此 Chat、Session 选择、流式输出、审批、工具、原生 Settings 与 raw Trajectory 仍归 dsh 所有；ClawDSH 不复制其状态，也不实现替代品。
 
-## 导航
+Browser、Host runtime 与 shared protocol 组成 `preset-openclaw/product-shell/` 下的嵌套非 workspace build。构建把浏览器应用输出到 runtime distribution，并使用 Vite base `/clawdsh/`。`tools/link-clawdsh.sh` 在 runtime 与 browser artifact 均存在前拒绝安装开发 profile，随后把 runtime 以 `@clawdsh/dsh-product-runtime` 链接。
 
-产品壳有四个稳定的顶层目的地：
+## 只读控制面
 
-1. **对话**挂载包含原生 frame 与诊断在内的完整 dsh Client root，从而复用 Chat、流式输出、审批、工具呈现、分页与 Session 持久化。
-2. **ClawDSH 设置**呈现产品能力及其受支持配置，而不是任意 Cordis Loader entry。
-3. **ClawDSH 活动**呈现与当前 Session 关联的 ClawDSH 行为语义记录。
-4. **Harness 高级**打开原生 dsh Web 界面，用于原始 Settings、Loader 与 Trajectory 诊断。
+冻结的 protocol-v1 Connection channel 是 `/clawdsh-rpc`。它以 loopback-only authority 注册，因此配置的 trusted host 不能调用。每个请求都是严格的 `{ version: 1 }` object；未知字段、version、endpoint 与 response field 都会校验失败。已实现 method 为：
 
-## 配置面
+- `bootstrap/get`：返回产品 identity、稳定 route 以及只读和仅本机控制标记。
+- `capabilities/list`：返回仅含 JSON 的产品能力、净化后的 Loader 证据与锁定的 OpenClaw channel catalog。
 
-Settings 视图把每项 ClawDSH 功能作为具有稳定 namespace 的产品能力。每项能力都显示所属包、对应 Loader entry 与 Fiber 状态、依赖、启用状态、凭据就绪状态、配置字段与变更生效时间。来源使用一套固定映射：`@clawdsh/*` 属于 ClawDSH，`@deepseek-ai/*` 与 `cordis:*` 属于 Platform，其他来源全部属于 Community。
+控制 runtime 返回 data-transfer object，而不是 live Cordis object。Connection 不是 loopback 时，浏览器也会拒绝产品控制调用。远程 trusted-host 页面仍可使用 Harness 对话，但 ClawDSH Settings 与 Activity 控制数据只在本机提供。
 
-| 能力 | Namespace | Profile base | 生效时间 |
-|---|---|---:|---|
-| Soul | `clawdsh-soul` | 启用 | 新 Session |
-| Channel Core | `clawdsh-channel-core` | 必需 | 重启 |
-| Feishu | `clawdsh-feishu` | 关闭 | 重启 |
-| Telegram | `clawdsh-telegram` | 关闭 | 重启 |
-| Memory | `clawdsh-memory` | 启用 | 重启 |
-| Ark Embeddings | `clawdsh-embeddings-ark` | 按需 | 下次调用或重启 |
-| Skills Hub | `clawdsh-skills-hub` | 启用 | 重启 |
-| Automation | `clawdsh-automation` | 关闭 | 重启 |
+## 能力总览
 
-配置字段由每项能力在服务端拥有的 Config schema 描述。用户设置覆盖 profile base，reset 移除 user layer，带 revision 的写入防止旧浏览器状态覆盖新值。视图区分 desired revision 与 runtime revision，并报告是否需要重启。
+ClawDSH Settings 当前是只读总览。它显示 Soul、Channels、Memory、Skills Hub、Automation 与 Activity 的依赖、生效时间、组件 package 与 Loader 状态，也提供完整只读 Loader inventory 用于诊断。它不提供启用、关闭、保存、重置、任意 Loader mutation 或凭据操作。
 
-在 Settings 控制面交付前，飞书、Telegram 与 Automation 使用 Loader `disabled` 配置项建立上述干净安装默认值。Settings 控制面增量会保持其业务插件挂载，并把运行控制迁移到经过校验的 `enabled` 字段；产品 UI 不暴露任意 Loader mutation。
+Loader 组装状态与渠道支持证据是两个独立概念：
 
-秘密值留在 dsh credentials provider 中。浏览器可以知道 allowlist 内的 credential reference 是否已配置，但 Host 绝不返回秘密值。秘密只在 write-only input draft 与其发出的 `credentials.set` 请求中短暂存在，请求完成后即清空，也不会保留在 Settings state，或持久化到日志、Session 文件与 Activity 记录。关闭的可选能力可以缺少凭据；启用能力时，要在最早能够判断的位置验证其必需 reference。
+- Loader 状态为 `disabled`、`starting`、`active`、`failed` 或 `misconfigured`，从配置 entry 与观测到的 Fiber lifecycle 推导。
+- 渠道支持为 `cataloged`、`installable`、`certified` 或 `enabled`，从明确的产品证据推导，绝不从 Gateway 进程正在运行推断。
 
-Channel Core 始终是必需的内部能力；Embeddings 等实现依赖显示在所属产品能力之下，而不是作为无关的顶层开关。Advanced 视图保留只读 Loader inventory；产品 UI 不暴露不受限制的插件 mutation。
+即使 Cordis 会让 group carrier 本身保持 active 并省略已关闭的子 entry，受管 communication-plane 父组的关闭状态仍是 Channels 的权威依据。只有默认 `clawdsh` preset 包含准确且已启用的受管 Soul entry，并且它的 standing composition 成功挂载时，Soul 才显示为 active。
 
-托管的 `clawdsh` preset 暂时位于 dsh 用户 preset 根目录。ClawDSH Settings 不提供删除操作，但未修改的 Harness preset 管理器仍将它归类为用户资产，因而可以删除。公共发行的 `clawdsh doctor` 会校验并修复该托管资产；产品壳不宣称上游用户 preset 操作不可用。
+Channels 包含三个组件：Channel Protocol（`@clawdsh/dsh-channel`）、Agent Bridge（`@clawdsh/dsh-channel-agent`）与 OpenClaw Gateway Provider（`@clawdsh/dsh-channel-openclaw`）。飞书、Telegram 与其他锁定 production entry 在 Gateway 下显示为支持状态为 `cataloged` 的 catalog item；它们不是独立 dsh plugin card。Legacy `channel-core`、`channel-feishu` 与 `channel-telegram` entry 可以出现在 raw Loader inventory 中，但不影响产品健康状态。
 
-## ClawDSH 活动
+Package 来源遵循固定映射：`@clawdsh/*` 属于 ClawDSH，`@deepseek-ai/*` 与 `cordis:*` 属于 Platform，其他来源全部属于 Community。
 
-Activity 把记录分成 Soul/Prompt、Memory、Channels、Skills 与 Automation。它跟随当前 Session，并支持分页、时间排序和类别过滤。Prompt 条目只描述 ClawDSH 自有贡献，不声称能够还原最终扁平化 System Prompt。
+## Activity 与 Settings 缺口
 
-当标准 Session history 已经包含所需事实时，视图从中推导记录；对于 Session log 不拥有的事实，再以限制隐私的 ClawDSH sidecar 补充。sidecar 缺失、损坏、轮转或不可写时，只让 Activity 降级，绝不阻断对话、渠道投递或自动化。原始 Trajectory 继续通过 Harness 高级访问，不被 Activity 替换。
+Activity route 当前渲染明确的空状态。它不读取 Session history，不创建 sidecar，不提供 filter，也不声称已经存在 Prompt、Memory、Channel、Skill 或 Automation 语义记录。Raw Trajectory 继续由 Harness 高级提供。
 
-## 组装接缝与集成约束
+当前 RPC protocol 不实现 `settings/describe`、`settings/mutate`、`settings/reset`、credential method 或 `activity/list`。产品设置不可修改，没有 secret 穿过 ClawDSH 浏览器控制路径，也没有挂载 `@clawdsh/dsh-activity` package。更完整的 Settings 与 Activity 设计仍属于 proposal 范围，直到对应 server、browser、持久化与隐私行为共同交付。
 
-- 产品壳复用公开 dsh boot manifest、浏览器模块图、加载状态、完整 root renderer、Connection transport 与 Client 插件；不 fork Chat 或 Session 状态。
-- ClawDSH 拥有 shell、路由、控制 runtime、Settings 页面、Activity 页面、能力 schema 与 sidecar 存储。
-- 浏览器与 runtime 源码继续嵌套在 `packages/openclaw/preset-openclaw/` 下，不进入根 Client aggregate 或 shipped Client Catalog。
-- ClawDSH 自有 shell 代码不注册新 Client Slot，不调用 `ctx.slots.register()` 注入产品 UI，不修改 `api-proxy`、Agent Loop、生成文件或任何上游自有源码，也不通过规避仓库检查的方式伪装 catalog 改动。被复用的 dsh Client 插件继续注册其既有 Slot。
-- 静态产品路由拥有 `/clawdsh/`；控制 method 使用不重叠的 `/clawdsh-rpc` Connection channel，并以 `{ authority: 'loopback' }` 注册，因此配置的 trusted host 仍不能调用它。
-- 该 channel 只拥有 `bootstrap/get`、`capabilities/list`、`settings/describe`、`settings/mutate`、`settings/reset`、`credentials/describe`、`credentials/set` 与 `credentials/unset`。
-- 如果实现发现产品需要缺失的 dsh capability 或任何上游改动，本 GUI 工作会停止，并在批准的 local-only 边界内重新设计；它不会发起上游 PR。
+## 集成约束
 
-## 模型可见面
+- ClawDSH 不 fork 或重新实现 dsh Chat、Session 状态、流式输出、审批、工具呈现、原生 Settings 或 raw Trajectory。
+- ClawDSH 不新增 Client Slot，不调用 `ctx.slots.register()` 注入产品 UI，也不进入根 Client aggregate 或 Client Catalog。
+- ClawDSH 只导入公开 package export；不导入上游 `src/*` 路径，也不修改 `api-proxy`、Agent Loop、generated file 或上游自有源码。
+- 产品使用 `/clawdsh/` 作为静态路由，并使用不重叠的 `/clawdsh-rpc` 名称作为 Connection RPC。
+- 物理 `preset-openclaw` 目录保持内部实现，因为既有仓库检查对该路径提供窄例外。安装 id、命令与产品文案使用 `clawdsh`。
 
-产品壳本身不增加模型可见输入。对话请求继续使用所选 agent preset 与已挂载的能力插件。未来任何改变 prompt、工具、Memory、Skills、渠道或 Automation 的 Settings 变更，都必须能够从所属 dsh seam 要求的权威 Session event 中重建。
+## 当前验证
 
-## 目标验收标准
-
-1. 空 dsh home 且没有任何外部凭据时，可以启动 ClawDSH profile 并打开 `/clawdsh/`。
-2. 新 ClawDSH Session 默认使用 `clawdsh` preset，并显示为 `ClawDSH 模式`。
-3. 对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级均可访问。
-4. 产品壳与原生 dsh Web 应用使用同一 Host Session 与持久化，在「对话」中挂载其完整公开 root，且不重新实现或私下抽取 Chat。
-5. Settings 显示能力来源、依赖、配置、凭据就绪状态、desired/runtime revision 与重启要求；过期写入以 conflict 失败。
-6. 秘密值只通过 write-only credential draft 与其发出的请求跨越浏览器边界；Host 绝不返回，draft 在请求完成后清空，Settings state、日志、Session 持久化与 Activity 存储均不保留秘密值。
-7. 可选渠道与 Automation 在无凭据时默认关闭，能力变更会在其记录的生效时间真实改变 runtime。
-8. Activity 显示可获得的 Prompt、Memory、Channel、Skill 与 Automation 记录，同时限制隐私的 sidecar 失败不影响底层行为运行。
-9. 原始 Trajectory 继续通过 Harness 高级访问，`dsh --profile web` 保持纯净 Harness 行为。
-10. 在产品壳标记为 implemented 前，browser typecheck、真实 profile Playwright 旅程与 keyless 产品 snapshot 覆盖完整组装应用。
+嵌套 build 拥有独立 browser/runtime typecheck、focused test 与 build output 检查。真实 profile keyless journey 会构建嵌套应用，把它安装到隔离 dsh home，等待 Loader-settled 产品 URL，验证全部产品目的地与只读总览，确认未知产品路由渲染产品 404，并确认 `/` 不包含 ClawDSH 产品导航。Identity coverage 校验 `clawdsh` preset 与幂等开发安装。
