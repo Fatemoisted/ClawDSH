@@ -2,7 +2,7 @@
 
 [English](ctx-channels.md) | 中文
 
-> 本文是 `ctx.channels` 消息渠道 seam 的内部设计记录（属 `docs/upstream-proposal/`，目录名沿用，内容不再作为待提交 PR）。契约已在本地以 `channel-core` 与多个 adapter 验证；[ADR-0002](../adr/0002-channel-seam.md)负责基础 seam 决策，[ADR-0007](../adr/0007-deferred-channel-images-and-address-continuity.md)负责图片/地址连续性。发起人 2026-08-14 决定跳过上游 PR、快速推进——本 seam 作为 ClawDSH 自有能力长期保留，本文仅记录契约与装配语义。
+> 本文是 `ctx.channels` 消息渠道 seam 的内部设计记录（属 `docs/upstream-proposal/`，目录名沿用，内容不再作为待提交 PR）。契约已在本地以 `channel-core` 与多个 adapter 验证；[ADR-0002](../adr/0002-channel-seam.md)负责基础 seam 决策，[ADR-0009](../adr/0009-deferred-channel-images-and-address-continuity.md)负责图片/地址连续性。发起人 2026-08-14 决定跳过上游 PR、快速推进——本 seam 作为 ClawDSH 自有能力长期保留，本文仅记录契约与装配语义。
 
 ## 动机
 

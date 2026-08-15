@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-14-openclaw-catalog-face.md
-2026-08-14-openclaw-catalog-face.md: 4e31790f635d70ac0d1f8659bf628572ee5dc187
-2026-08-14-openclaw-catalog-face.zh.md: 46269fd5a8912d8fac871d068feaf6283d71f366
+2026-08-14-openclaw-catalog-face.md: f6f88ac8687438b5bcae9c554b1b6e3f779842cd
+2026-08-14-openclaw-catalog-face.zh.md: 79567b21b536600337d9e1afb429c1bd6b72b8b2

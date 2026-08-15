@@ -9,18 +9,21 @@
 - 使用专用测试 bot。如果 token 曾出现在聊天、日志、shell history 或已提交文件中，测试前通过 BotFather 更换。
 - 用户必须先打开 bot 私聊并发送消息；Telegram bot 不能主动发起用户会话。
 - 为 Harness 模型路由导出 `DEEPSEEK_API_KEY`。本流程不强制要求 `ARK_API_KEY`：缺失时 `memory_search` 必须明确报错，而显式 `memory_get` 仍可读取已知 Memory 文件。
-- 从仓库 checkout 构建并链接，且 `tools/link-openclaw.sh` 与所有 `dsh` 调用使用同一个 `DSH_HOME`。
+- 从仓库 checkout 构建并链接，且 `tools/link-clawdsh.sh` 与所有 `dsh` 调用使用同一个 `DSH_HOME`。
 - 一个 bot token 只运行一个长轮询进程。第二个 `getUpdates` 消费方会产生 409 冲突，也可能从受测进程抢走 update。
 
 ## 在不存储 token 的前提下启用 Telegram
 
-随附的 `openclaw` profile 禁用 Telegram 并启用飞书。请把以下 overlay 放到仓库外的 `$DSH_HOME/telegram-e2e.patch.yml`。此后 `tools/link-openclaw.sh` 可刷新已安装 profile，而不会覆盖该启用选择。
+随附的 `clawdsh` profile 在干净安装中默认禁用飞书、Telegram、Discord 与 Automation。请把以下 overlay 放到仓库外的 `$DSH_HOME/telegram-e2e.patch.yml`；它只启用 Telegram，并保留其余安全默认值。此后 `tools/link-clawdsh.sh` 可刷新已安装 profile，而不会覆盖该启用选择。
 
 ```yaml
 - id: channel-feishu
   disabled: true
 
 - id: channel-discord
+  disabled: true
+
+- id: automation
   disabled: true
 
 - id: channel-telegram
@@ -40,12 +43,12 @@ export TELEGRAM_BOT_TOKEN='<new token>'
 export DEEPSEEK_API_KEY='<model key>'
 
 pnpm run build
-tools/link-openclaw.sh
-pnpm dsh --profile openclaw --patch "$DSH_HOME/telegram-e2e.patch.yml" --dump-config
-pnpm dsh --profile openclaw --patch "$DSH_HOME/telegram-e2e.patch.yml"
+tools/link-clawdsh.sh
+pnpm dsh --profile clawdsh --patch "$DSH_HOME/telegram-e2e.patch.yml" --dump-config
+pnpm dsh --profile clawdsh --patch "$DSH_HOME/telegram-e2e.patch.yml"
 ```
 
-dump 必须显示 `channel-telegram` 已启用、飞书/Discord 已禁用，以及非机密凭证引用 `botTokenEnv: TELEGRAM_BOT_TOKEN`。配置 dump 不会解析或验证 token 身份。
+dump 必须显示 `channel-telegram` 已启用、飞书/Discord/Automation 已禁用，以及非机密凭证引用 `botTokenEnv: TELEGRAM_BOT_TOKEN`。配置 dump 不会解析或验证 token 身份。
 
 `imageDownloadTimeoutMs` 限制 Telegram 文件元数据查询与流式字节读取的总时间。其默认值为 30000 毫秒，可配置范围为 1000 至 2147483647。只有 channel-core 已准入消息，且解析到的模型声明支持图片输入时，该 deadline 才会生效；随附的 DeepSeek 文本路由不会下载文件。
 

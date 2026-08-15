@@ -48,7 +48,7 @@ Why a provider and not a reimplementation: the skill seam already owns discovery
 
 ## Consequences
 
-- skills-hub mounts host-plane, enabled in the openclaw preset: purely additive catalog merge, absent directories yield empty lists, no credentials, no install execution — existing OpenClaw users' `~/.clawdbot/skills` works out of the box.
+- skills-hub mounts host-plane, enabled in the `clawdsh` preset: purely additive catalog merge, absent directories yield empty lists, no credentials, no install execution — existing OpenClaw users' `~/.clawdbot/skills` works out of the box.
 - Rank choice is a contract: 300 (workspace) / 350 (extra) / 450 (managed) sit between dsh-native project (100–200) and user (400–500) slots; same-rank ties resolve by provider registration order, so skill-filesystem wins 300-ties.
 - Gating is best-effort (PATH probe, no child processes); the parity spec records this as a limitation, not a guarantee.
 - Install execution and any future ClawHub remote registry revisit this note rather than assuming structure.

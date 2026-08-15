@@ -13,9 +13,11 @@
 
 **自有代码只允许出现在**：`packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal,upstream-proposal}/`、`tools/`、`.github/workflows/clawdsh-*`。
 
-**Harness 复用（最高优先级）**：日常开发先读架构、子系统约定、生成目录和 [ClawDSH 复用地图](docs/matrix/harness-reuse.md)，只依赖公开 `ctx.*` 服务、事件与类型，禁止导入或复制具体 Harness provider。仅在诊断内部 BUG、安全/并发/性能行为、未记录约定、缺失 seam 或上游破坏性变更时下钻所属源码；由此发现的约定缺口随同一变更补入文档或 ADR。决策见 [ADR-0006](docs/adr/0006-harness-contract-first.md)。
+**Harness 复用（最高优先级）**：日常开发先读 [dsh 上下文地图](docs/specs/context-map.md)、子系统约定、生成目录和 [ClawDSH 复用地图](docs/matrix/harness-reuse.md)，只依赖公开 `ctx.*` 服务、事件与类型，禁止导入或复制具体 Harness provider。仅在诊断内部 BUG、安全/并发/性能行为、未记录约定、缺失 seam 或上游破坏性变更时下钻对应 Service Definition 或所属源码；由此发现的约定缺口随同一变更补入文档或 ADR。决策见 [ADR-0008](docs/adr/0008-harness-contract-first.md)。
 
 **新增插件流程**：复制 `tools/openclaw-plugin-template/` → 写 `docs/specs/feature-*.md` → 更新 `docs/matrix/parity.md` → 接入 workspace/tsconfig → 过契约测试。规范见 [docs/standards/plugin-contract.md](docs/standards/plugin-contract.md) 与 [docs/standards/pr-policy.md](docs/standards/pr-policy.md)。
+
+**当前阶段**：阶段 4（用户生态）。阶段 0–3 已收尾（PR #1–#8 合入 clawdsh）。
 
 **文档索引**：决策 `docs/adr/` · 规格 `docs/specs/` · 功能状态 `docs/matrix/parity.md` · Harness 复用 `docs/matrix/harness-reuse.md` · 规范 `docs/standards/` · 开发日志 `docs/journal/`
 

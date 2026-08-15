@@ -40,7 +40,7 @@
 每个包必须提供：
 
 - **契约测试**：对自己实现的 seam 接口跑通最小行为面（挂载 → 行为 → 卸载回卷）；
-- **profile 冒烟**：`pnpm dsh --profile openclaw --dump-config` 能解析出该包的挂载行；
+- **profile 冒烟**：运行 `tools/link-clawdsh.sh` 后，`pnpm dsh --profile clawdsh --dump-config` 能解析出该包的挂载行；干净安装检查必须保持飞书、Telegram、Discord 与 Automation 关闭；
 - 渠道类插件：一次入站 → 一次出站的端到端会话测试（可 mock 渠道 API）。
 
 ## 7. 公开面变更
@@ -65,4 +65,4 @@ OpenClaw 实现用于确认 provider 行为；Harness 一侧采用不同的阅�
 1. 先读 [Harness 架构](../architecture.md)、所属[子系统页面](../subsystems/README.md)、生成式[关系图索引](../graph-atlas.md)、包 README 和 [ClawDSH 复用地图](../matrix/harness-reuse.md)。
 2. 通过约定复用已记录的 `ctx.*` 服务、事件、公开类型、工具库和现有 provider；禁止为继承实现而导入或复制具体 Harness provider。
 3. 仅在处理内部 BUG、安全/并发/性能行为、未记录约定、缺失 seam 或上游破坏性变更时检查所属 Harness 源码。缺失约定会影响后续集成时，同一变更必须补齐文档。
-4. 没有合适的既有 seam 时，遵循第 5 节并停在 ADR，不建设私有平行核心。决策理由由 [ADR-0006](../adr/0006-harness-contract-first.md)负责。
+4. 没有合适的既有 seam 时，遵循第 5 节并停在 ADR，不建设私有平行核心。决策理由由 [ADR-0008](../adr/0008-harness-contract-first.md)负责。

@@ -138,10 +138,14 @@ Requires: `channels` · `timer`
 ```ts config-catalog
 /** Plugin config: app identity plus which Open Platform region to dial. */
 export interface Config {
-  /** Feishu app ID (from the developer console); must not be committed. */
-  appId: string
-  /** Feishu app secret; must not be committed. */
-  appSecret: string
+  /** Literal Feishu app ID for programmatic compatibility; prefer {@link appIdEnv}. */
+  appId?: string
+  /** Harness credential reference resolved before opening the WebSocket. */
+  appIdEnv?: string
+  /** Literal Feishu app secret for programmatic compatibility; prefer {@link appSecretEnv}. */
+  appSecret?: string
+  /** Harness credential reference resolved before opening the WebSocket. */
+  appSecretEnv?: string
   /** Open Platform region; `feishu` (default) or `lark`. */
   domain?: FeishuDomain
 }
@@ -150,7 +154,7 @@ export interface Config {
 export type FeishuDomain = 'feishu' | 'lark'
 ```
 
-Source: [`packages/openclaw/channel-feishu/src/index.ts:34`](../packages/openclaw/channel-feishu/src/index.ts)
+Source: [`packages/openclaw/channel-feishu/src/index.ts:43`](../packages/openclaw/channel-feishu/src/index.ts)
 
 <a id="clawdshdsh-channel-telegram"></a>
 

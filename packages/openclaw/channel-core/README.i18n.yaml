@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/openclaw/channel-core/README.md
-README.md: 28ce776aacf7e128b8787a3bfb00c5c01cabefef
-README.zh.md: f3bf30e8e40e62eaf9fc1adee4984921216ed82f
+README.md: d2d187c6420f37e3869c6e5850feb258fc91d596
+README.zh.md: 2765612a7b3872b0c566af8a3f86b5f87d5a2c0c

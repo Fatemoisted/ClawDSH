@@ -1,10 +1,10 @@
-# ADR-0007：延迟式渠道图片导入与会话地址连续性
+# ADR-0009：延迟式渠道图片导入与会话地址连续性
 
-[English](0007-deferred-channel-images-and-address-continuity.md) | 中文
+[English](0009-deferred-channel-images-and-address-continuity.md) | 中文
 
 - **状态**：已接受（2026-08-15）
 - **日期**：2026-08-15
-- **依赖**：ADR-0002（渠道网关 seam）、ADR-0006（Harness 契约优先复用）
+- **依赖**：ADR-0002（渠道网关 seam）、ADR-0008（Harness 契约优先复用）
 
 ## 上下文
 

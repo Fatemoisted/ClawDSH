@@ -1,6 +1,6 @@
-# ADR-0006: Harness 契约优先复用
+# ADR-0008: Harness 契约优先复用
 
-[English](0006-harness-contract-first.md) | 中文
+[English](0008-harness-contract-first.md) | 中文
 
 - **状态**：已接受（2026-08-15）
 - **日期**：2026-08-15

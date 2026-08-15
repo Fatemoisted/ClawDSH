@@ -1,8 +1,7 @@
-# ClawDSH「openclaw」profile 层（复制到 $DSH_HOME/profiles/openclaw/ 后生效）。
+# ClawDSH「clawdsh」profile 层（复制到 $DSH_HOME/profiles/clawdsh/ 后生效）。
 # 格式：顶层 YAML 数组的 loader patch entries（覆盖既有行 / insert 新行）。
 # 阶段 0：把部署级默认人格换成 OpenClaw 的中性开场——验证 profile 层叠机制。
-# 阶段 2：insert 渠道行（channel-core 注册表 + Telegram/飞书/Discord 适配器）。飞书已启用（凭证走 env），
-#         Telegram 与 Discord 保持 disabled（无账号）。
+# 干净安装默认关闭飞书、Telegram、Discord 与 Automation，确保无任何外部凭据时 GUI 仍可启动。
 
 - id: system-prompt
   config:
@@ -10,22 +9,15 @@
       You are a personal AI assistant.
 
 - insert:
-    # 复用 Harness 的 agent-presets 事务化组合：渠道 Agent 创建/恢复时均挂载
-    # openclaw preset，且 preset id 写入 session header，避免重启后人格漂移。
-    - id: agent-presets
-      name: '@deepseek-ai/dsh-agent-presets'
-      config:
-        default: openclaw
-
-    # ctx.channels 注册表 + 双适配器。飞书凭证走环境变量（FEISHU_APP_ID / FEISHU_APP_SECRET），
-    # 不落盘；未设置时 boot 会 fail-loud（appId/appSecret required）。适配器 inject 'channels'，
-    # 启用时须与 channel-core 同启。
+    # ctx.channels 注册表 + 三个适配器。适配器干净安装时关闭；启用后，渠道通过
+    # Harness credentials 解析命名引用，并以 launch environment 回退，凭证值不落盘。
+    # 适配器 inject 'channels'，启用时须与 channel-core 同启；缺凭证时保持不可用并明确告警。
     # 渠道身份呈现（阶段 3）：identity 只驱动呈现（出站前缀/ack 表情/mention 正则），从不进 prompt。
     # responsePrefix 'auto' = [name]；ackReaction 缺省回退 identity.emoji → 👀。
     - id: channel-core
       name: '@clawdsh/dsh-channel-core'
       config:
-        agentPreset: openclaw
+        agentPreset: clawdsh
         groupMode: mention
         ackReactionScope: group-mentions
         # identity:
@@ -49,9 +41,10 @@
 
     - id: channel-feishu
       name: '@clawdsh/dsh-channel-feishu'
+      disabled: true
       config:
-        appId: !!js process.env.FEISHU_APP_ID
-        appSecret: !!js process.env.FEISHU_APP_SECRET
+        appIdEnv: FEISHU_APP_ID
+        appSecretEnv: FEISHU_APP_SECRET
         domain: feishu
 
     # 阶段 2 补漏：memory（Markdown 记忆事实源）+ embeddings-ark（语义召回后端）。
@@ -87,3 +80,9 @@
     - id: automation
       name: '@clawdsh/dsh-automation'
       disabled: true
+
+# 阶段 4（GUI 接线）：默认 agent preset 指向 clawdsh，覆盖 web bundle 的 default: standard，
+# 让 GUI 新会话自动挂上「ClawDSH 模式」preset（soul 人格 + 完整工具集）。
+- id: agent-presets
+  config:
+    default: clawdsh

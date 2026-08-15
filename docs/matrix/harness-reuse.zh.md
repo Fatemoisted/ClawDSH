@@ -2,7 +2,7 @@
 
 [English](harness-reuse.md) | 中文
 
-本参考把 ClawDSH 自有包映射到其使用的 DeepSeek Harness 公开能力。它只记录集成视图，不重复 Harness 包目录；完整约定以链接的子系统和包文档为准。强制规则与理由分别见[插件契约](../standards/plugin-contract.md)和 [ADR-0006](../adr/0006-harness-contract-first.md)。
+本参考把 ClawDSH 自有包映射到其使用的 DeepSeek Harness 公开能力。它只记录集成视图，不重复 Harness 包目录；完整约定以链接的子系统和包文档为准。强制规则与理由分别见[插件契约](../standards/plugin-contract.md)和 [ADR-0008](../adr/0008-harness-contract-first.md)。
 
 ## Harness 模块入口
 

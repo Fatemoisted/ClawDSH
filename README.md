@@ -14,20 +14,18 @@ Prerequisites are Node.js 22.19 or later within the 22.x line, or Node.js 24 or 
 corepack enable
 pnpm install --frozen-lockfile
 pnpm run build
-tools/link-openclaw.sh
-export FEISHU_APP_ID=cli_xxx
-export FEISHU_APP_SECRET=xxx
-export DEEPSEEK_API_KEY=sk_xxx
-pnpm dsh --profile openclaw
+tools/link-clawdsh.sh
+pnpm dsh --profile clawdsh
 ```
 
-The installed `openclaw` profile is a resident Feishu channel daemon, not the Web UI or a one-shot headless runner. It uses `$DSH_HOME` or `~/.dsh` by default; use the same `DSH_HOME` for both `tools/link-openclaw.sh` and `pnpm dsh`. Telegram, Discord, and automation are installed but disabled in the default profile. The link script is the pre-publication development path and refreshes the installed profile from the current checkout. Follow the [Telegram credentialed-e2e cookbook](docs/cookbook/telegram-e2e.md) to enable and verify Telegram without putting its token in the repository.
+The installed `clawdsh` profile composes the stock `dsh-web-app` GUI with the `clawdsh` agent preset displayed as `ClawDSH 模式`. It uses `$DSH_HOME` or `~/.dsh` by default; use the same `DSH_HOME` for both `tools/link-clawdsh.sh` and `pnpm dsh`. Feishu, Telegram, Discord, and Automation are installed but disabled in a clean installation, so the Web Host starts without their credentials. A model credential is needed only when a conversation makes a model request.
 
-This keyless check validates profile composition without connecting to Feishu, then runs the ClawDSH package tests:
+The current baseline is the stock dsh Web interface with the ClawDSH preset. The separate ClawDSH product shell, Settings, and Activity interface remain pending under [ADR-0007](docs/adr/0007-clawdsh-local-gui-product.md). The link script is the pre-publication development path and refreshes the installed profile from the current checkout. Follow the [Telegram credentialed-e2e cookbook](docs/cookbook/telegram-e2e.md) to opt in to Telegram without putting its token in the repository.
+
+This keyless check validates profile composition without connecting to an external channel, then runs the ClawDSH package tests:
 
 ```bash
-FEISHU_APP_ID=cli-smoke FEISHU_APP_SECRET=smoke \
-  pnpm dsh --profile openclaw --dump-config
+pnpm dsh --profile clawdsh --dump-config
 pnpm run test:openclaw
 ```
 
@@ -52,7 +50,7 @@ Ordinary ClawDSH development starts from Harness contracts and existing componen
 | How each ClawDSH package reuses Harness | [Harness reuse map](docs/matrix/harness-reuse.md) |
 | ClawDSH package configuration and limitations | [Owned package roster](packages/openclaw/README.md) |
 
-Consume documented `ctx.*` services, events, and public types; do not import or copy a concrete Harness provider. Read owning source only when diagnosing an internal bug, security/concurrency/performance behavior, an undocumented contract, a missing seam, or an upstream breaking change. A missing contract discovered that way must be added to the owning documentation or an ADR. The binding rule is in the [plugin contract](docs/standards/plugin-contract.md), with rationale in [ADR-0006](docs/adr/0006-harness-contract-first.md).
+Consume documented `ctx.*` services, events, and public types; do not import or copy a concrete Harness provider. Read owning source only when diagnosing an internal bug, security/concurrency/performance behavior, an undocumented contract, a missing seam, or an upstream breaking change. A missing contract discovered that way must be added to the owning documentation or an ADR. The binding rule is in the [plugin contract](docs/standards/plugin-contract.md), with rationale in [ADR-0008](docs/adr/0008-harness-contract-first.md).
 
 ## Project references
 
@@ -60,7 +58,7 @@ Consume documented `ctx.*` services, events, and public types; do not import or 
 - [OpenClaw feature alignment](docs/matrix/parity.md)
 - [Architecture decisions](docs/adr/)
 - [Development standards](docs/standards/)
-- [OpenClaw profile and credentials](tools/openclaw-preset-openclaw/README.md)
+- [ClawDSH profile and credentials](tools/openclaw-preset-openclaw/README.md)
 
 ## Development checks
 

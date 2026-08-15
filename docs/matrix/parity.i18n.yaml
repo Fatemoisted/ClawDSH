@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/matrix/parity.md
-parity.md: 8f2e9d9fc44bbd3f05eb3ea39109ef537cf9e5cb
-parity.zh.md: a3b08c2976881ed3e54bc80be795a5fe05b222be
+parity.md: e2e672b7455e830ef642b95e92e4d4f6ddaff208
+parity.zh.md: 28667b56387571820f899d48c3259b920205061f

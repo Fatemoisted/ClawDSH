@@ -8,7 +8,7 @@
 
 **接缝**：**新增** `ctx.channels`（设计见 docs/adr/0002-channel-seam.md）。上游 dsh 没有消息渠道概念，这是本项目的核心增量；按 ADR-0002，它是 ClawDSH 长期自有 seam，并非临时上游 patch。
 
-**规格**：[ADR-0002](../../../docs/adr/0002-channel-seam.md) · [ADR-0007](../../../docs/adr/0007-deferred-channel-images-and-address-continuity.md) · **状态**：implemented
+**规格**：[ADR-0002](../../../docs/adr/0002-channel-seam.md) · [ADR-0009](../../../docs/adr/0009-deferred-channel-images-and-address-continuity.md) · **状态**：implemented
 
 ## 使用
 
@@ -16,7 +16,7 @@
 - id: channel-core
   name: '@clawdsh/dsh-channel-core'
   config:
-    agentPreset: openclaw       # resolved/mounted by dsh-agent-presets
+    agentPreset: clawdsh        # resolved/mounted by dsh-agent-presets
     groupMode: mention          # mention | always
     ackReactionScope: group-mentions  # all | direct | group-all | group-mentions | off | none
     idleTimeoutMs: 1800000      # Harness timer; 0 disables eviction

@@ -14,9 +14,9 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 
 ## 二、核心原则（不可妥协）
 
-1. **上游只读**：dsh 上游代码（`vendor/`、`packages/*`（openclaw/ 除外）、`apps/`、`website/`）一行不改；一切定制走插件、profile、patch。
-2. **Upstream-first**：缺接缝时先向上游提 PR，本地用 patch 过渡，上游合并后删 patch（避免分叉死亡）。
-3. **Harness 约定优先**：日常开发使用已记录的服务、事件、公开类型、生成式参考和[复用地图](../matrix/harness-reuse.md)；仅在缺陷、缺失约定/seam 或上游破坏性变更时阅读所属源码（ADR-0006）。
+1. **上游只读**：dsh 上游代码（`vendor/`、`packages/*`（openclaw/ 除外）、`apps/`、`website/`）保持不改；一切定制落在 ClawDSH 自有插件或应用组装、profile 与 patch 中。
+2. **Upstream-first**：缺少 dsh seam 时，先向上游提 PR，本地用 patch 过渡，上游合并后删除 patch。ClawDSH GUI 消费 dsh 既有公开 API，属于应用组装而非缺失接缝；如果实现需要上游改动，本 GUI 工作会停止，并在批准的 local-only 边界内重新设计，而不是发起上游 PR（[ADR-0007](../adr/0007-clawdsh-local-gui-product.md)）。
+3. **Harness 约定优先**：日常开发使用已记录的服务、事件、公开类型、生成式参考和[复用地图](../matrix/harness-reuse.md)；仅在缺陷、缺失约定/seam 或上游破坏性变更时阅读所属源码（[ADR-0008](../adr/0008-harness-contract-first.md)）。
 4. **移植对象是功能类别，不是 PR**：OpenClaw 上万 PR 里绝大多数是 bugfix/重构/重复功能，我们要的是 20~40 个功能域。
 5. **垂直切片优先**：每个阶段都要有"能跑起来的东西"，不做大而全的空想。
 6. **反 OpenClaw 病**：任何 PR 必须链接规格 + 更新矩阵 + 过契约测试才可合入（见 `docs/standards/pr-policy.md`）。
@@ -26,29 +26,32 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 ### 阶段 0 · 可行性 Spike ✅（2026-08-14 完成）
 
 - 产出：功能对齐矩阵 v1；`@clawdsh/dsh-soul` 插件（replace/append 双模式 + 灵魂文件加载）。
-- 退出标准**全部达成**：soul 能替换/叠加 agent 系统提示词（契约测试 10/10）、热插拔（卸载即回卷）、未改上游一行源码（仅构建注册豁免，见 ADR-0001 决策 4）；全量 typecheck 绿；`--profile openclaw --dump-config` 冒烟通过。
+- 退出标准**全部达成**：soul 能替换/叠加 agent 系统提示词（契约测试 10/10）、热插拔（卸载即回卷）、未改上游一行源码（仅构建注册豁免，见 ADR-0001 决策 4）；全量 typecheck 绿；`--profile clawdsh --dump-config` 覆盖当前 profile 身份。
 - **结论：接缝假设成立，项目继续。** 验证细节见 docs/specs/feature-soul.md 的验收标准节。
 
 ### 阶段 1 · 基线选型 + 矩阵定稿 ✅（2026-08-14 完成）
 
 - **基线定稿：`v2026.1.5`（`197b8f7c3b`）**——首个发布 tag，网关+5 渠道+cron+sessions 核心体验完整，所有 tag 中代码量最瘦（1537 文件/1.6MB），无 bloat 迹象；v2026.1.15 起文件数翻倍、extensions/plugins/部署矩阵出现。功能补全参考：whatsapp/memory/channels → v2026.1.15（`9c4c9c5edd`）。
-- 功能域四分类定稿，见 `docs/matrix/parity.md`（矩阵 v2，含每个功能域的基线出处路径）。
+- OpenClaw 派生功能域的四分类已经定稿，见 `docs/matrix/parity.md`（矩阵 v2，含每个移植域的基线出处路径）。ClawDSH 原生产品面另用「产品组装」分类。
 
-### 阶段 2 · 核心骨架（垂直切片）
+### 阶段 2 · 核心骨架（垂直切片）✅（2026-08-15 完成）
 
 - `channel-core`（新 seam，按 ADR-0002 设计）+ `channel-telegram`（第一个渠道）+ **`channel-feishu`（发起人第一优先，ADR-0002 seam 验证备选渠道）** + `soul` + `memory` + `tools/openclaw-preset-openclaw`。
-- 退出标准：`pnpm dsh --profile openclaw` 启动，Telegram 消息进 → 人格化 agent 跑 → 回复出；`ctx.channels` 契约同时通过 Telegram 与飞书两个适配器的验证（飞书出处：OpenClaw `extensions/feishu`，v2026.2.12）。
+- 退出标准：`pnpm dsh --profile clawdsh` 启动，Telegram 消息进 → 人格化 agent 跑 → 回复出；`ctx.channels` 契约同时通过 Telegram 与飞书两个适配器的验证（飞书出处：OpenClaw `extensions/feishu`，v2026.2.12）。
 - **状态（2026-08-15）**：核心交付完成并收口——渠道 seam + 两个已跑通带凭证闭环的适配器（飞书文本与 Telegram 私聊/群聊文本/caption；Telegram 图片导入与文本模型不下载行为已通过无密钥测试但未线上验证，forum topic 真实覆盖仍待完成）、soul 深读定稿（replace/append 即最终形态，相对 `source` 按 `ctx.baseUrl` 解析）、memory 三包 + `ctx.embeddings` seam（ADR-0003）+ 真实 ARK e2e（tools/ark-e2e.ts）、preset 常驻化且 embeddings-ark 已启用，以及成对的双语文档。见 docs/journal/2026-08-15.md。
 
-### 阶段 3 · 渠道铺开 + 自动化
+### 阶段 3 · 渠道铺开 + 自动化 ✅（2026-08-15 完成）
 
 - 每个渠道一个包（WhatsApp/Email/Web Chat…），互不阻塞；`automation`（schedule 桥接）、`skills-hub`（ClawHub provider）。
 - **渠道范围原则**：只做 OpenClaw 上游有出处的渠道（见 docs/matrix/parity.md「国内平台」节）——微信系/钉钉/QQ 上游无对应，不实现。
 - 联邦节点（clawd）走 `ctx.subagents` transport，作为独立里程碑评估。
+- **状态（2026-08-15）**：`skills-hub`、Automation 与 Discord 已交付；Automation 仍为 disabled opt-in，并记录了 one-shot `at` 失败限制；Discord 已有无密钥覆盖，带凭证线上 E2E 仍待完成。渠道身份呈现、memory 宿主 watcher、受保护的私有 registry 发布路径（ADR-0004）和 clawd 联邦评估（ADR-0005）均有记录。干净安装的 profile 默认关闭飞书、Telegram、Discord 与 Automation，因此无需渠道或自动化凭据即可启动。其余渠道与联邦实现仍暂缓。见 docs/journal/2026-08-15.md。
 
-### 阶段 4 · 生态化
+### 阶段 4 · 用户生态（进行中）
 
-- 插件开发模板 + 契约文档公开；接入 dsh 的 `dsh-plugin` 发现机制；老 OpenClaw 用户迁移指南（会话/技能导入）。
+- 插件开发模板 + 契约文档公开；接入 dsh 的 `dsh-plugin` 发现机制。
+- `tools/openclaw-preset-openclaw` 中仅 preset 的 dsh Web GUI 基线使用 `clawdsh` profile 与 `clawdsh` preset，并显示为 `ClawDSH 模式`。[ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 定义了待实现的 ClawDSH 产品壳、能力 Settings、语义 Activity 与 Harness 高级入口，且不修改上游 GUI。
+- `tools/link-clawdsh.sh` 是开发安装脚本，检测到旧 `openclaw` 资产时只警告并保留。托管安装 manifest、`clawdsh doctor`、公共发行物与迁移指南仍是阶段 4 的发行交付项。
 
 ### 贯穿全程
 
@@ -58,11 +61,14 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 
 1. 一个社区功能 = 一个插件包，合入不碰核心——OpenClaw 的死亡模式在架构上不可能发生；
 2. 用户能用一份配置自由组合渠道/人格/记忆/自动化，得到自己的个人 Agent；
-3. 对 dsh 上游的净分叉趋近于零（能上游化的全部上游化）。
+3. 对 dsh 上游的净分叉趋近于零（能上游化的全部上游化）；
+4. 本地用户无需编辑原始 Cordis entry，即可配置、理解并检查 ClawDSH，同时纯净 dsh Web profile 与原始 Harness 诊断仍然可用。
 
 ## 五、待定事项
 
 - [x] OpenClaw 基线 commit（`v2026.1.5`，`197b8f7c3b`）
 - [x] Soul Spike 结论（✅ 可行，继续）
 - [ ] `ctx.channels` seam 是否被 dsh 上游接受（影响 patch 层厚度）
+- [ ] Discord 带凭证线上 E2E
+- [ ] ClawDSH 本地 GUI 产品壳（[ADR-0007](../adr/0007-clawdsh-local-gui-product.md)）
 - [x] 私有远程仓库创建（Fatemoisted/ClawDSH，2026-08-14 完成）

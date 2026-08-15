@@ -1,0 +1,16 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "noEmit": true,
+    "sourceMap": false
+  },
+  "include": [
+    "identity.spec.ts",
+    "real-profile.e2e.ts",
+    "vitest.gui.config.ts"
+  ]
+}

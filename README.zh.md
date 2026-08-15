@@ -14,20 +14,18 @@ ClawDSH 保持 Harness 运行时不变，并增加独立归属的插件层。产
 corepack enable
 pnpm install --frozen-lockfile
 pnpm run build
-tools/link-openclaw.sh
-export FEISHU_APP_ID=cli_xxx
-export FEISHU_APP_SECRET=xxx
-export DEEPSEEK_API_KEY=sk_xxx
-pnpm dsh --profile openclaw
+tools/link-clawdsh.sh
+pnpm dsh --profile clawdsh
 ```
 
-安装后的 `openclaw` profile 是飞书渠道常驻 daemon，不是 Web UI 或一次性 headless runner。它使用 `$DSH_HOME`，默认值为 `~/.dsh`；`tools/link-openclaw.sh` 与 `pnpm dsh` 必须使用同一个 `DSH_HOME`。默认 profile 已安装但禁用了 Telegram、Discord 与 automation。链接脚本是发布前的开发路径，每次运行都会用当前 checkout 刷新已安装的 profile。如需在不向仓库写入 token 的前提下启用并验证 Telegram，请按 [Telegram 带凭证 e2e 实操手册](docs/cookbook/telegram-e2e.md)操作。
+安装后的 `clawdsh` profile 把原生 `dsh-web-app` GUI 与显示为 `ClawDSH 模式` 的 `clawdsh` agent preset 组合起来。它使用 `$DSH_HOME`，默认值为 `~/.dsh`；`tools/link-clawdsh.sh` 与 `pnpm dsh` 必须使用同一个 `DSH_HOME`。干净安装默认禁用飞书、Telegram、Discord 与 Automation，因此 Web Host 无需这些渠道或定时能力的凭据即可启动。只有对话发起模型请求时才需要模型凭据。
 
-以下无密钥检查先验证 profile 组装且不连接飞书，再运行 ClawDSH 包测试：
+当前基线是带 ClawDSH preset 的原生 dsh Web 界面。独立的 ClawDSH 产品壳、Settings 与 Activity 界面仍按 [ADR-0007](docs/adr/0007-clawdsh-local-gui-product.md)等待实现。链接脚本是发布前的开发路径，每次运行都会用当前 checkout 刷新已安装的 profile。如需在不向仓库写入 token 的前提下启用 Telegram，请按 [Telegram 带凭证 e2e 实操手册](docs/cookbook/telegram-e2e.md)操作。
+
+以下无密钥检查先验证 profile 组装且不连接任何外部渠道，再运行 ClawDSH 包测试：
 
 ```bash
-FEISHU_APP_ID=cli-smoke FEISHU_APP_SECRET=smoke \
-  pnpm dsh --profile openclaw --dump-config
+pnpm dsh --profile clawdsh --dump-config
 pnpm run test:openclaw
 ```
 
@@ -52,7 +50,7 @@ pnpm run test:openclaw
 | 每个 ClawDSH 包如何复用 Harness | [Harness 复用地图](docs/matrix/harness-reuse.md) |
 | ClawDSH 包配置与限制 | [自有包清单](packages/openclaw/README.md) |
 
-开发只消费已记录的 `ctx.*` 服务、事件和公开类型，不导入或复制具体 Harness provider。仅在诊断内部 BUG、安全/并发/性能行为、未记录约定、缺失 seam 或上游破坏性变更时阅读所属源码；由此发现的缺失约定必须补入所属文档或 ADR。强制规则见[插件契约](docs/standards/plugin-contract.md)，决策理由见 [ADR-0006](docs/adr/0006-harness-contract-first.md)。
+开发只消费已记录的 `ctx.*` 服务、事件和公开类型，不导入或复制具体 Harness provider。仅在诊断内部 BUG、安全/并发/性能行为、未记录约定、缺失 seam 或上游破坏性变更时阅读所属源码；由此发现的缺失约定必须补入所属文档或 ADR。强制规则见[插件契约](docs/standards/plugin-contract.md)，决策理由见 [ADR-0008](docs/adr/0008-harness-contract-first.md)。
 
 ## 项目参考
 
@@ -60,7 +58,7 @@ pnpm run test:openclaw
 - [OpenClaw 功能对齐](docs/matrix/parity.md)
 - [架构决策](docs/adr/)
 - [开发规范](docs/standards/)
-- [OpenClaw profile 与凭证](tools/openclaw-preset-openclaw/README.md)
+- [ClawDSH profile 与凭证](tools/openclaw-preset-openclaw/README.md)
 
 ## 开发检查
 

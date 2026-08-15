@@ -27,7 +27,7 @@ Typechecking splits into three pieces:
 
 ## Consequences
 
-- openclaw is no longer part of the upstream program: it owns its aggregate (`tsconfig.json`) and its check program (`tsconfig.check.json`); `tools/link-openclaw.sh` and `.github/workflows/clawdsh-smoke.yml` run both.
+- openclaw is no longer part of the upstream program: it owns its aggregate (`tsconfig.json`) and its check program (`tsconfig.check.json`); `tools/link-clawdsh.sh` and `.github/workflows/clawdsh-smoke.yml` run both.
 - Any future openclaw Context key or event must be registered in the walk-exemption tables (currently 4 entries) or wait for an upstream seam PR; forgetting one fails `verify-cordis-catalog`, not silently.
 - The check program requires the openclaw aggregate (or the host build) to have run first — it reads the built `vendor/*/lib/types`.
 - `packages/openclaw/README.md` onboarding step 4 documents the aggregate registration instead of the old host-reference flow.

@@ -8,7 +8,7 @@ English | [中文](feature-channel-core.zh.md)
 
 ## Goals
 
-- Provide the `ctx.channels` service — the project's **only newly added seam** (base design in [ADR-0002](../adr/0002-channel-seam.md), image/address rules in [ADR-0007](../adr/0007-deferred-channel-images-and-address-continuity.md)):
+- Provide the `ctx.channels` service — the project's **only newly added seam** (base design in [ADR-0002](../adr/0002-channel-seam.md), image/address rules in [ADR-0009](../adr/0009-deferred-channel-images-and-address-continuity.md)):
   - **Adapter registry**: a channel plugin registers a `ChannelAdapter`, unique by id, unregistered on dispose (HMR-safe);
   - **Inbound routing**: awaited parallel `channel/inbound` message → resolve a conversation/topic and apply its group-mention policy → resume/create the durable Harness agent session → inside its FIFO check exact-model input modalities and materialize accepted image sources as Harness attachment references when needed → write to the session log → drive and flush the turn; success or failure returns to the adapter;
   - **Outbound delivery**: agent reply → `channel/outbound` + the corresponding `adapter.send`.

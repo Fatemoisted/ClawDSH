@@ -2,7 +2,7 @@
 
 English | [中文](ctx-channels.zh.md)
 
-> This document is the internal design record of the `ctx.channels` messaging-channel seam (lives under `docs/upstream-proposal/`, directory name retained, content no longer a pending PR). The contract has been validated locally with `channel-core` and multiple adapters; [ADR-0002](../adr/0002-channel-seam.md) owns the base seam decision and [ADR-0007](../adr/0007-deferred-channel-images-and-address-continuity.md) owns image/address continuity. The initiator decided on 2026-08-14 to skip the upstream PR and move fast — this seam is kept long-term as ClawDSH's own capability, and this document only records the contract and assembly semantics.
+> This document is the internal design record of the `ctx.channels` messaging-channel seam (lives under `docs/upstream-proposal/`, directory name retained, content no longer a pending PR). The contract has been validated locally with `channel-core` and multiple adapters; [ADR-0002](../adr/0002-channel-seam.md) owns the base seam decision and [ADR-0009](../adr/0009-deferred-channel-images-and-address-continuity.md) owns image/address continuity. The initiator decided on 2026-08-14 to skip the upstream PR and move fast — this seam is kept long-term as ClawDSH's own capability, and this document only records the contract and assembly semantics.
 
 ## Motivation
 

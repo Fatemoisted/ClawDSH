@@ -1,10 +1,10 @@
-# ADR-0007: Deferred channel image import and address continuity
+# ADR-0009: Deferred channel image import and address continuity
 
-English | [中文](0007-deferred-channel-images-and-address-continuity.zh.md)
+English | [中文](0009-deferred-channel-images-and-address-continuity.zh.md)
 
 - **Status**: Accepted (2026-08-15)
 - **Date**: 2026-08-15
-- **Depends on**: ADR-0002 (channel gateway seam), ADR-0006 (contract-first Harness reuse)
+- **Depends on**: ADR-0002 (channel gateway seam), ADR-0008 (contract-first Harness reuse)
 
 ## Context
 

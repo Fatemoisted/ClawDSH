@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-15-clawdsh-identity-and-safe-defaults.md
+2026-08-15-clawdsh-identity-and-safe-defaults.md: a5b4fa7ec73149da79780f093c409fcb763fea97
+2026-08-15-clawdsh-identity-and-safe-defaults.zh.md: 340bb7983781d69b933fd66f102ddb1882c05cf4

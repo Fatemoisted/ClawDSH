@@ -56,8 +56,6 @@ const releaseMemberDirectory = /^(?:packages\/[^/]+\/[^/]+|apps\/[^/]+|vendor\/[
 const clawdshMemberDirectory = /^packages\/openclaw\/[^/]+$/
 
 const localArtifactDirs = new Set(['node_modules'])
-/** ClawDSH dirs under packages/openclaw that are not npm packages (template, unstarted channel, profile bundle). */
-const clawdshNonPackageDirs = new Set(['_template', 'channel-wechat', 'preset-openclaw'])
 const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh': ['lib/*.js', 'config'],
   // The Web build emits sourcemaps for browser debugging; publishing them is
@@ -419,7 +417,6 @@ function checkHierarchyShape(): string[] {
     for (const pkg of readdirSync(join(packagesRoot, group.name), { withFileTypes: true })) {
       if (!pkg.isDirectory()) continue
       if (localArtifactDirs.has(pkg.name)) continue
-      if (group.name === 'openclaw' && clawdshNonPackageDirs.has(pkg.name)) continue
       const pkgRel = join(groupRel, pkg.name)
       if (!existsSync(join(packagesRoot, group.name, pkg.name, 'package.json'))) {
         errors.push(`${pkgRel}: expected a package here (no package.json found) — the hierarchy is exactly packages/<group>/<pkg>, no deeper nesting`)

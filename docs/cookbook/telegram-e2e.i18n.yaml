@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/cookbook/telegram-e2e.md
-telegram-e2e.md: ed560c29f76363de6a7eaeeb0f5c7cf414f1cca1
-telegram-e2e.zh.md: de0850bea90215195cb02b23f28a494fb1d6d966
+telegram-e2e.md: 5363818ff17b4beeef3c88ee5a06fba2a42b7eac
+telegram-e2e.zh.md: b2fba4ef99970787588c190f8779aa2bd73a5659

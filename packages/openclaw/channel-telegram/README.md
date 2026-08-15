@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 **Seam**: `ctx.channels` (@clawdsh/dsh-channel-core).
 
-**Specification**: stage 2 deliverable · [ADR-0007](../../../docs/adr/0007-deferred-channel-images-and-address-continuity.md) · **Status**: implemented
+**Specification**: stage 2 deliverable · [ADR-0009](../../../docs/adr/0009-deferred-channel-images-and-address-continuity.md) · **Status**: implemented
 
 ## Design notes
 

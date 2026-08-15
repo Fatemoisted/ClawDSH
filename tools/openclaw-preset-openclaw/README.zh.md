@@ -1,57 +1,89 @@
-# @clawdsh/dsh-preset-openclaw
+# ClawDSH 组装层
 
 [English](README.md) | 中文
 
-**定位**：ClawDSH 的组装层——把 dsh 既有能力与 `packages/openclaw/*` 插件组合成"OpenClaw 形态"的个人助手。不改上游任何代码，只用 dsh 的 profile / bundle / preset / patch 机制叠加。
+本目录是 ClawDSH 的组装层。它通过 profile、bundle、preset 和 patch 机制，把 dsh 能力与 `packages/openclaw/*` 插件组合成个人助手，不修改上游源码。物理目录名 `openclaw-preset-openclaw` 只是仓库内部例外；安装 id 与产品文案统一使用 `clawdsh`。
 
-**OpenClaw 对应**：整体产品形态（gateway + 渠道 + soul + memory + automation 的默认组合）。
+它对应 OpenClaw 的整体个人助手组合：gateway、渠道、Soul、Memory、Skills 与 Automation。
 
-**接缝**：不是插件，是组装配置。本目录现在交付三样东西：
-1. **agent preset**（`preset.yml` + `agent.cordis.yml`）——挂载 `@clawdsh/dsh-soul` 行，可被 dsh 的 agent-presets 发现机制发现（用户 preset 根目录为 `.agent-presets/`）；
-2. **示例灵魂**（`souls/assistant.md`）；
-3. **profile 模板**（`profile/`）——复制到 `$DSH_HOME/profiles/openclaw/` 即成为 `--profile openclaw` 的组装基座（bundles：`dsh-base`，常驻 daemon；不含 `dsh-headless`，那是一次性任务跑器）。
+本目录不是插件，提供：
 
-**规格**：docs/specs/roadmap.md（阶段 0/2 交付物） · **状态**：已完成本地组装和无密钥覆盖，以及带凭证的飞书与 Telegram 文本 e2e；尚未实际执行 npm 发布
+1. `clawdsh` agent preset（`preset.yml`、`agent.cordis.yml` 与 `souls/assistant.md`），界面显示为 `ClawDSH 模式`，安装到 dsh 用户 preset 根目录；
+2. `clawdsh` profile 模板（`profile/`），把 `dsh-base`、`dsh-web-app` 与 ClawDSH Host 插件组合起来；
+3. 开发安装器 `tools/link-clawdsh.sh`，构建本地包、安装 profile 与 preset、初始化 Memory，并链接本地 `@clawdsh/*` 包及 Harness `dsh-agent-presets` bridge。
+
+干净安装默认关闭飞书、Telegram、Discord 与 Automation，因此无需这些外部凭证即可启动 dsh Web GUI。Memory 与 Skills Hub 保持启用；Ark Embeddings 只在实际 embedding 调用时解析显式 Harness 凭证引用 `ARK_API_KEY`。
+
+**规格**：[roadmap](../../docs/specs/roadmap.md) · **状态**：已完成本地组装与无密钥覆盖，以及带凭证的飞书和 Telegram 文本 e2e；尚未实际执行 npm 发布
 
 ## 已验证组装
 
-- ✅（阶段 0）soul 行在 agent 作用域内的挂载语义——由 `../../packages/openclaw/soul/tests/soul.spec.ts` 的 10 个契约测试覆盖；
-- ✅（阶段 0）profile 解析与层叠机制——`DSH_HOME` 指向含本模板 profile 的目录后 `pnpm dsh --profile openclaw --dump-config` 可解析；
-- ✅ 渠道行接线——`profile/cordis.patch.yml` 已 `insert` `channel-core`、Telegram、飞书与 Discord；`channel-core` + 飞书启用，Telegram 与 Discord 在明确配置前保持 `disabled: true`。Telegram 行通过 `botTokenEnv: TELEGRAM_BOT_TOKEN` 指定 Harness 凭证引用，不内嵌 secret；
-- ✅（阶段 2）飞书真实 e2e——官方 SDK `LarkChannel` WebSocket 入站 → `channel-core` 持久 conversation/topic 回合 → DeepSeek 回复 → SDK 出站，用户已在飞书确认收到；
-- ✅（阶段 2）Telegram 真实 e2e——Bot API 身份验证、私聊/群聊文本路由、原生引用、Memory 与会话恢复、web search、caption、离线补收、Unicode-safe 分片、中断恢复与同一聊天 FIFO 已经带凭证部署跑通；forum topic 仍只有无密钥覆盖；
-- ✅（阶段 2 补漏）memory 行接线——`profile/cordis.patch.yml` 已 `insert` `memory`（root 默认 `dshHomePath('memory')`）+ `embeddings-ark`，并显式使用 Harness 凭证引用 `apiKeyEnv: ARK_API_KEY`（**已启用**：缺凭证时 boot 无感，只在 `memory_search` 调用时 fail-loud）；
-- ✅（阶段 2 收尾）soul 文件路径随 preset 目录解析——相对 `source` 按挂载树 `ctx.baseUrl` 解析，`agent.cordis.yml` 已切 `source: ./souls/assistant.md`；
-- ✅ Harness 原生渠道 Agent——`channel-core` 生成持久且不泄露平台 id 的 session id，经 `sessionPersistence` 恢复，并在创建/恢复两条路径都用 `dsh-agent-presets` 解析、挂载日志记录的 `openclaw` 组合；
-- ✅ 飞书/Telegram/Discord 渠道行为——channel-core 提供持久、失败可传播的 `ctx.parallel` 路由，并在停机时排空已准入回合；结构化 mention、原生引用/topic/thread、ack reaction、按平台上限 Unicode-safe 分片、SDK 自有传输重试与进程重启后会话连续性均有无密钥契约测试；
-- ✅ Memory 写入与宿主编辑——模型侧额外写能力只有窄化的 `memory_append`，存储和 sandbox 围栏继续委托 Harness `ctx.fs`，不扩大普通文件或 shell 工具权限；宿主 watcher 只失效变化的索引条目，首次缺失的 root 在 append 前视为空，flush 周期归属在 memory 插件 remount 后仍可从日志恢复；
-- ✅ symlink 过渡脚本化——`tools/link-openclaw.sh` 构建 10 个包，安装 profile 与 `.agent-presets/openclaw`，初始化 memory 目录，创建 10 个 `@clawdsh/*` 链接，并为仓库 checkout 桥接 Harness `dsh-agent-presets` 包；
-- ✅ 独立私有 registry 发布线——10 个包共享 `clawdsh` family 版本/tag；同步 bump/verify/pack/publish、packed-install 验证与凭证隔离 workflow 均已实现，registry URL 只从受保护的 `npm-publish` environment 变量 `NPM_REGISTRY_URL` 读取（ADR-0004）；
-- ⏳（阶段 3）headless 一次性任务形态挂 openclaw preset（飞书 daemon 已验证 preset+agent 组合；headless 的 preset 选择接线留阶段 3）；
-- ⏳ 实际 npm 发布——当前工作树尚未有意发布任何 `@clawdsh/*` tarball，symlink 路径仍作为本地开发过渡。
+- ✅ Soul 在 agent 作用域内的挂载语义——由 `../../packages/openclaw/soul/tests/soul.spec.ts` 的契约测试覆盖；
+- ✅ profile 解析与层叠——安装本模板后，`pnpm dsh --profile clawdsh --dump-config` 可解析；
+- ✅ 安全的渠道接线——`channel-core` 保持启用，飞书、Telegram 与 Discord 默认关闭；Telegram 和 Discord 行通过 `botTokenEnv` 指定 `TELEGRAM_BOT_TOKEN` 与 `DISCORD_BOT_TOKEN`，不内嵌 secret；
+- ✅ ClawDSH GUI 身份——无密钥真实 profile 浏览器门禁会启动 Web Host，并验证新 Session 默认使用界面显示为 `ClawDSH 模式` 的 `clawdsh` preset；
+- ✅ 飞书真实 e2e——官方 SDK `LarkChannel` WebSocket 入站 → `channel-core` 持久 conversation/topic 回合 → DeepSeek 回复 → SDK 出站，已在飞书确认收到；
+- ✅ Telegram 真实 e2e——Bot API 身份验证、私聊/群聊文本路由、原生引用、Memory 与会话恢复、web search、caption、离线补收、Unicode-safe 分片、中断恢复与同一聊天 FIFO 已通过带凭证部署；forum topic 仍只有无密钥覆盖；
+- ✅ Memory 接线——`memory` 使用 `dshHomePath('memory')`；`embeddings-ark` 显式使用 `apiKeyEnv: ARK_API_KEY`，因此缺凭证时 boot 无感，只在 `memory_search` 调用时 fail-loud；
+- ✅ Harness 原生渠道 Agent——`channel-core` 生成持久且不泄露平台 id 的 session id，经 `sessionPersistence` 恢复，并在创建与恢复时通过 `dsh-agent-presets` 解析、挂载日志记录的 `clawdsh` 组合；
+- ✅ 飞书/Telegram/Discord 渠道行为——结构化 mention、原生引用/topic/thread、ack reaction、按平台上限 Unicode-safe 分片、SDK 自有重试与进程重启后会话连续性都有无密钥契约覆盖；
+- ✅ Memory 写入与宿主编辑——`memory_append` 把存储和 sandbox 围栏委托给 Harness `ctx.fs`；watcher 只失效变化的索引条目，插件 remount 后仍能恢复 flush 归属；
+- ✅ 本地安装——`tools/link-clawdsh.sh` 构建 10 个包，安装 `clawdsh` profile 与 preset，初始化 Memory，创建 10 个 `@clawdsh/*` 链接，并桥接 Harness `dsh-agent-presets`；
+- ⏳ 实际 npm 发布——当前工作树尚未有意发布任何 `@clawdsh/*` tarball，symlink 仍作为本地开发过渡。
+
+## 本地开发
+
+```bash
+tools/link-clawdsh.sh
+pnpm dsh --profile clawdsh
+```
+
+新 Session 默认使用界面显示为 `ClawDSH 模式` 的 `clawdsh` preset。只有对话发起模型请求时才需要模型凭证；Web Host 本身可无外部凭证启动。
+
+## 临时功能启用
+
+Capability Settings 上线前，通过后置 `--patch` overlay 启用可选能力。各行相互独立：删除所有不需要运行的能力，并在使用前替换 Automation 示例规则。飞书沿用 profile 中的 Harness credential reference；Telegram 与 Discord 需要重复完整 Config，因为按 id 定位的 patch 会替换已提供字段。
+
+```yaml
+- id: channel-feishu
+  disabled: false
+
+- id: channel-telegram
+  disabled: false
+  config:
+    botTokenEnv: TELEGRAM_BOT_TOKEN
+
+- id: channel-discord
+  disabled: false
+  config:
+    botTokenEnv: DISCORD_BOT_TOKEN
+    messageContentIntent: false
+
+- id: automation
+  disabled: false
+  config:
+    rules:
+      - id: daily-check-in
+        schedule:
+          kind: cron
+          expr: '0 9 * * *'
+        message: Review today's priorities.
+```
+
+把选中的行保存为 `clawdsh-enable.cordis.yml`，只为启用的渠道提供凭证，再检查最终组合或启动：
+
+```bash
+pnpm dsh --profile clawdsh --patch ./clawdsh-enable.cordis.yml --dump-config
+pnpm dsh --profile clawdsh --patch ./clawdsh-enable.cordis.yml
+```
+
+禁用行可以缺少凭证；启用后，所属插件会在最早可验证点对缺失配置 fail-loud。飞书、Telegram 与 Discord 均解析各自命名的 Harness 凭证引用（`FEISHU_APP_ID` / `FEISHU_APP_SECRET`、`TELEGRAM_BOT_TOKEN`、`DISCORD_BOT_TOKEN`），并以启动环境作为回退。
 
 ## 当前部署限制
 
-- 默认 profile 是飞书常驻 daemon，不启动 Web UI，也不把 OpenClaw preset 挂入 headless 一次性 runner。
-- `tools/link-openclaw.sh` 会刷新已安装 profile，并创建绑定当前 checkout 的 symlink；link 与 run 必须使用相同的 `DSH_HOME`。
-- Telegram 在模板中仍默认禁用。请使用 [Telegram 带凭证 e2e 实操手册](../../docs/cookbook/telegram-e2e.md)中位于仓库外的 overlay 只做启用选择；模板里的 `botTokenEnv` 会经 Harness credentials 解析，并以启动环境为回退，匹配的托管凭证更新会热切换 adapter。这样链接脚本可刷新已安装 profile，而不会覆盖启用选择或存储 token。
-- 各 provider 的凭证、生命周期与部署 e2e 限制分别由 [Telegram](../../packages/openclaw/channel-telegram/README.md)、[Discord](../../packages/openclaw/channel-discord/README.md#known-limitations-and-deferred-work)和[飞书](../../packages/openclaw/channel-feishu/README.md)包 README 负责。Automation 仍默认禁用；启用规则前先阅读其[包限制](../../packages/openclaw/automation/README.md#known-limitations-and-deferred-work)。
+- `tools/link-clawdsh.sh` 刷新绑定当前 checkout 的资产；链接与运行必须使用相同的 `DSH_HOME`。
+- 安装器发现旧 `openclaw` profile 或 preset 时只告警并保持原样，不创建兼容别名，也不迁移或删除用户数据。删除旧资产前请检查旧 `agent-presets.default` override。
+- 当前 preset 位于 dsh 用户 preset 根目录，因为 launcher 尚未暴露由安装程序拥有的 ClawDSH preset 根目录。在发行 CLI 接管修复前，重新运行开发安装器可恢复仓库内置 preset 文件。
+- 各 provider 的凭证、生命周期与部署 e2e 限制分别见 [Telegram](../../packages/openclaw/channel-telegram/README.md)、[Discord](../../packages/openclaw/channel-discord/README.md#known-limitations-and-deferred-work)与[飞书](../../packages/openclaw/channel-feishu/README.md)。启用规则前请阅读 [Automation 限制](../../packages/openclaw/automation/README.md#known-limitations-and-deferred-work)。
 
-## 使用（飞书 daemon，本地开发）
-
-```bash
-# Build and refresh the profile, agent preset, and local package links.
-tools/link-openclaw.sh
-
-# Supply credentials through the environment; never commit them.
-export FEISHU_APP_ID=cli_xxx
-export FEISHU_APP_SECRET=xxx
-export DEEPSEEK_API_KEY=sk-xxx
-
-# Start the resident channel daemon.
-pnpm dsh --profile openclaw
-```
-
-`@clawdsh/*` 包发布到私有 registry 后（ADR-0004），上面的 symlink 步骤可选：用 `dsh plugin --profile openclaw add @clawdsh/dsh-<pkg>`（每包一条）声明式安装——这是用户路径；symlink 脚本仍是发布前开发路径。
-
-未设 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 时配置校验会 fail-loud（`appId`/`appSecret` required）。启动后，SDK 的身份/连接失败会写入渠道日志；平台权限或 WebSocket 部署变更后需再做一次带凭证验证。
+目标产品壳、Capability Settings、Activity 视图与 Harness Advanced 路由详见[本地 GUI 功能规格](../../docs/specs/feature-gui-web.md)。

@@ -8,7 +8,7 @@
 
 **接缝**：`ctx.channels`（@clawdsh/dsh-channel-core）。
 
-**规格**：阶段 2 交付物 · [ADR-0007](../../../docs/adr/0007-deferred-channel-images-and-address-continuity.md) · **状态**：implemented
+**规格**：阶段 2 交付物 · [ADR-0009](../../../docs/adr/0009-deferred-channel-images-and-address-continuity.md) · **状态**：implemented
 
 ## 设计要点
 

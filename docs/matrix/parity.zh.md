@@ -2,12 +2,15 @@
 
 [English](parity.md) | 中文
 
-> 本矩阵是 ClawDSH 的**单一事实源**：OpenClaw 的每个功能域在这里得到唯一分类与状态。任何 PR 涉及功能变更必须同步更新本文件（见 `docs/standards/pr-policy.md`）。
+> 本矩阵是 ClawDSH 的**单一事实源**：每个 OpenClaw 派生域或 ClawDSH 原生产品域都在这里得到唯一分类与状态。任何 PR 涉及功能变更必须同步更新本文件（见 `docs/standards/pr-policy.md`）。
+>
+> 复用、插件、新 seam 与暂缓继续构成 OpenClaw 派生域的四分类。「产品组装」是只用于 ClawDSH 原生产品面的独立分类。
 >
 > 分类含义：
 > - **复用**：dsh 原生能力，直接用，不写代码；
 > - **插件**：挂到 dsh 既有接缝上的增量包（`packages/openclaw/*`）；
 > - **新 seam**：dsh 没有对应接缝，需要新增（必须有 ADR；除非 ADR 明确记录项目另行决策，否则 upstream-first）；
+> - **产品组装**：基于 dsh 公开 API 的 ClawDSH 自有应用/profile 组合，不修改上游源码；
 > - **暂缓**：本轮不做，记录原因。
 
 ## 基线（阶段 1 定稿，2026-08-14）
@@ -28,7 +31,7 @@
 
 ## 矩阵 v2（基线定稿）
 
-| OpenClaw 功能域 | 基线出处（v2026.1.5） | dsh 对应接缝 | 分类 | 落地包 | 状态 |
+| OpenClaw 或 ClawDSH 产品域 | 基线出处（v2026.1.5） | dsh 对应接缝 | 分类 | 落地包 | 状态 |
 |---|---|---|---|---|---|
 | 会话 / 消息历史 | `src/sessions/` | `ctx.sessions`（append-only log） | 复用 | — | 直接可用 |
 | 会话追溯 / 回放 / 分叉 | —（dsh 原生） | Trajectory 视图 / replay | 复用 | — | 直接可用 |
@@ -43,9 +46,10 @@
 | 渠道：iMessage / Signal / Slack | `src/imessage/` 等 | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
 | 渠道：WhatsApp | 参考 v2026.1.15 `src/whatsapp/` | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
 | 审批 / 安全策略 | `src/security/`（1.15 起） | `ctx.approval` / guard | 复用（配置） | — | 直接可用 |
-| 联邦节点（clawd） | 基线早期无 | `ctx.subagents`（transport） | 插件 | 待命名 | 暂缓（阶段 3 末评估） |
+| 联邦节点（clawd） | 基线早期无 | `ctx.subagents`（transport） | 插件 | `clawd-federation` | ADR-0005（仅评估），实现暂缓 |
 | 智能家居（casa） | 基线无 | 无 | 新插件域 | 待命名 | 暂缓 |
-| 桌面/移动客户端 | `ui/`（+ `apps/`） | `apps/web`（dsh Web UI） | 复用 | — | 后续评估定制面 |
+| 本地浏览器对话 | `ui/`（+ `apps/`） | `dsh-web-app` + `clawdsh` preset（`ClawDSH 模式`） | 复用（profile/preset） | `tools/openclaw-preset-openclaw` + `dsh-web-app` | **implemented 基线**（阶段 4；干净安装关闭飞书/Telegram/Discord/Automation） |
+| ClawDSH 产品壳、Settings 与语义 Activity | —（ClawDSH 原生） | 公开 dsh Web 组装 + Settings/Credentials/Session history；无 Client Slot | 产品组装 | `tools/openclaw-preset-openclaw` | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 已接受；实现待完成 |
 
 ## 国内平台（原则：OpenClaw 上游有的才实现）
 
@@ -67,11 +71,11 @@
 
 ## 分发状态（不属于功能对齐）
 
-10 个 `packages/openclaw/*` 成员现已组成独立、共享版本的 `clawdsh` release family，使用 `clawdsh-v*` tag。同步 bump/verify/pack/publish、workspace 约束、pack 产物、主路径与 invariant 路径的全新 packed-install 验证及受保护的私有 registry `.github/workflows/clawdsh-publish.yml` 路径均已实现。当前工作树尚未执行 ClawDSH npm 发布；本地 profile 组装仍使用 `tools/link-openclaw.sh` symlink。
+10 个 `packages/openclaw/*` 成员现已组成独立、共享版本的 `clawdsh` release family，使用 `clawdsh-v*` tag。同步 bump/verify/pack/publish、workspace 约束、pack 产物、主路径与 invariant 路径的全新 packed-install 验证及受保护的私有 registry `.github/workflows/clawdsh-publish.yml` 路径均已实现。当前工作树尚未执行 ClawDSH npm 发布；本地 profile 组装仍使用 `tools/link-clawdsh.sh` symlink。
 
 ## 维护规则
 
 1. 新增/删除/重新分类任何功能域 = 改本表 + 提交说明里注明；
 2. "暂缓"条目必须写原因与解除条件；
 3. 每次 dsh 上游同步后复查本表（OpenClaw 基线是功能清单快照，不再变动；若需深读某一功能，按"基线出处"列查 `/tmp/openclaw-ref`）；
-4. 无上游出处的功能域不落矩阵（原则性排除），决策记录在对应包 README 或 journal。
+4. 没有上游出处的 OpenClaw 功能域不落矩阵（原则性排除），决策记录在对应包 README 或 journal；ClawDSH 原生产品面是显式例外，并使用「产品组装」分类。

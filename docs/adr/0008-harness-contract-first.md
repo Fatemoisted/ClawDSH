@@ -1,6 +1,6 @@
-# ADR-0006: Contract-first Harness reuse
+# ADR-0008: Contract-first Harness reuse
 
-English | [中文](0006-harness-contract-first.zh.md)
+English | [中文](0008-harness-contract-first.zh.md)
 
 - **Status**: Accepted (2026-08-15)
 - **Date**: 2026-08-15

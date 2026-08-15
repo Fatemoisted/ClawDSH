@@ -8,7 +8,7 @@
 
 ## 目标
 
-- 提供 `ctx.channels` 服务——本项目**唯一新增 seam**（基础设计见 [ADR-0002](../adr/0002-channel-seam.md)，图片/地址规则见 [ADR-0007](../adr/0007-deferred-channel-images-and-address-continuity.md)）：
+- 提供 `ctx.channels` 服务——本项目**唯一新增 seam**（基础设计见 [ADR-0002](../adr/0002-channel-seam.md)，图片/地址规则见 [ADR-0009](../adr/0009-deferred-channel-images-and-address-continuity.md)）：
   - **适配器注册表**：渠道插件注册一个 `ChannelAdapter`，按 id 唯一，注销即回卷（HMR 安全）；
   - **入站路由**：可等待的 parallel `channel/inbound` 消息 → 解析会话/topic 并应用群聊 mention 策略 → 恢复/创建持久 Harness agent session → 在其 FIFO 内检查准确模型输入模态，并按需把已接受 image source materialize 成 Harness attachment 引用 → 写入 session log → 驱动并 flush 该 turn；成功或失败都会返回 adapter；
   - **出站投递**：agent 回复 → `channel/outbound` + 对应 `adapter.send`。

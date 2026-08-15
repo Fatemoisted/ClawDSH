@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 **Seam**: **new** `ctx.channels` (design in docs/adr/0002-channel-seam.md). Upstream dsh has no message-channel concept; this is the project's core increment. Per ADR-0002 it is a long-lived ClawDSH seam, not a temporary upstream patch.
 
-**Specifications**: [ADR-0002](../../../docs/adr/0002-channel-seam.md) · [ADR-0007](../../../docs/adr/0007-deferred-channel-images-and-address-continuity.md) · **Status**: implemented
+**Specifications**: [ADR-0002](../../../docs/adr/0002-channel-seam.md) · [ADR-0009](../../../docs/adr/0009-deferred-channel-images-and-address-continuity.md) · **Status**: implemented
 
 ## Usage
 
@@ -16,7 +16,7 @@ English | [中文](README.zh.md)
 - id: channel-core
   name: '@clawdsh/dsh-channel-core'
   config:
-    agentPreset: openclaw       # resolved/mounted by dsh-agent-presets
+    agentPreset: clawdsh        # resolved/mounted by dsh-agent-presets
     groupMode: mention          # mention | always
     ackReactionScope: group-mentions  # all | direct | group-all | group-mentions | off | none
     idleTimeoutMs: 1800000      # Harness timer; 0 disables eviction

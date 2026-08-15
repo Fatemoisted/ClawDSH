@@ -27,7 +27,7 @@ openclaw 包**永久不进 `tsconfig.host.json`**；seam 经 `scripts/gen-cordis
 
 ## 影响
 
-- openclaw 不再是上游程序的一部分：自有聚合（`tsconfig.json`）+ 自有检查程序（`tsconfig.check.json`）；`tools/link-openclaw.sh` 与 `.github/workflows/clawdsh-smoke.yml` 都跑两者。
+- openclaw 不再是上游程序的一部分：自有聚合（`tsconfig.json`）+ 自有检查程序（`tsconfig.check.json`）；`tools/link-clawdsh.sh` 与 `.github/workflows/clawdsh-smoke.yml` 都跑两者。
 - 今后 openclaw 每新增 Context key 或事件，都要在 walk 豁免表登记（当前 4 条）或等上游 seam PR；漏登记会让 `verify-cordis-catalog` 显式失败，不会静默。
 - 检查程序要求先跑 openclaw 聚合（或 host 构建）——它读构建好的 `vendor/*/lib/types`。
 - `packages/openclaw/README.md` 接入流程第 4 步改述聚合注册，替代旧的 host-reference 流程。

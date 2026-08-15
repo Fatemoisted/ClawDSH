@@ -34,6 +34,6 @@ Note 中成文延后（记入 channel-core README）：`shouldBypassMention`（�
 
 - channel-core README 移除「ack scope 恒开」与「`deriveMentionPatterns` 无消费者」两条限制；控制命令旁路与 reply 后删除成为 ack scope 仅剩的延后项。
 - 飞书 `react: false` 的 Known Limitation 移除；`capabilities.react: true` 现与 Telegram 并列为适配器模板。
-- openclaw preset 的 channel-core 行显式携带 `groupMode: mention` 与 `ackReactionScope: group-mentions`。
+- `clawdsh` preset 的 channel-core 行显式携带 `groupMode: mention` 与 `ackReactionScope: group-mentions`。
 - `chatType` 和 `mention.{detectable,botMentioned}` 契约写入 `ChannelMessage` JSDoc；未来结构化适配器必须保留「未提及」与「不可检测」的区别。
 - 测试：`presentation.spec`（表驱动 `shouldAckReaction` + `''` 禁用）、`channel-core.spec`（跨 scope 的路由与 ack 门控）、适配器 spec（Telegram 实体/回复映射、飞书归一化提及映射与 reaction 载荷）。

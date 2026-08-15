@@ -9,18 +9,21 @@ This cookbook verifies the deployed Telegram path one layer at a time: Bot API a
 - Use a dedicated test bot. If its token has appeared in chat, logs, shell history, or a committed file, replace it through BotFather before testing.
 - The user must open the bot's private chat and send a message first; Telegram bots cannot initiate a user conversation.
 - Export `DEEPSEEK_API_KEY` for the Harness model route. `ARK_API_KEY` is optional for this procedure: without it, `memory_search` must fail loud, while an explicit `memory_get` can still read a known memory file.
-- Build and link from the repository checkout, and use the same `DSH_HOME` for `tools/link-openclaw.sh` and every `dsh` invocation.
+- Build and link from the repository checkout, and use the same `DSH_HOME` for `tools/link-clawdsh.sh` and every `dsh` invocation.
 - Run only one long-polling process for a bot token. A second `getUpdates` consumer produces a 409 conflict and can take updates away from the process under test.
 
 ## Enable Telegram without storing its token
 
-The shipped `openclaw` profile keeps Telegram disabled and Feishu enabled. Put the following overlay at `$DSH_HOME/telegram-e2e.patch.yml`, outside the repository. `tools/link-openclaw.sh` can then refresh the installed profile without overwriting this opt-in.
+The shipped `clawdsh` profile keeps Feishu, Telegram, Discord, and Automation disabled in a clean installation. Put the following overlay at `$DSH_HOME/telegram-e2e.patch.yml`, outside the repository; it enables only Telegram and preserves the other safe defaults. `tools/link-clawdsh.sh` can then refresh the installed profile without overwriting this opt-in.
 
 ```yaml
 - id: channel-feishu
   disabled: true
 
 - id: channel-discord
+  disabled: true
+
+- id: automation
   disabled: true
 
 - id: channel-telegram
@@ -40,12 +43,12 @@ export TELEGRAM_BOT_TOKEN='<new token>'
 export DEEPSEEK_API_KEY='<model key>'
 
 pnpm run build
-tools/link-openclaw.sh
-pnpm dsh --profile openclaw --patch "$DSH_HOME/telegram-e2e.patch.yml" --dump-config
-pnpm dsh --profile openclaw --patch "$DSH_HOME/telegram-e2e.patch.yml"
+tools/link-clawdsh.sh
+pnpm dsh --profile clawdsh --patch "$DSH_HOME/telegram-e2e.patch.yml" --dump-config
+pnpm dsh --profile clawdsh --patch "$DSH_HOME/telegram-e2e.patch.yml"
 ```
 
-The dump must show `channel-telegram` enabled, Feishu/Discord disabled, and the non-secret credential reference `botTokenEnv: TELEGRAM_BOT_TOKEN`. A config dump does not resolve or authenticate the token.
+The dump must show `channel-telegram` enabled, Feishu/Discord/Automation disabled, and the non-secret credential reference `botTokenEnv: TELEGRAM_BOT_TOKEN`. A config dump does not resolve or authenticate the token.
 
 `imageDownloadTimeoutMs` bounds Telegram file metadata lookup and the streamed byte read. It defaults to 30000 milliseconds and accepts values from 1000 through 2147483647. The deadline matters only when channel-core has admitted the message and the resolved model declares image input; the shipped text-only DeepSeek route does not download the file.
 

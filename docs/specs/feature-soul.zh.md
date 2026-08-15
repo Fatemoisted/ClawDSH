@@ -51,8 +51,8 @@ soul:
 3. ✅ **不改上游源码**：仅新增 `packages/openclaw/soul` + 构建注册（tsconfig paths/reference，属 ADR-0001 豁免）；全量 `pnpm typecheck` 绿；
 4. ✅ **日志不变式**：灵魂文本是 prompt section，参与装配即进入 session 事件流（由上游 session 机制保证，"model-visible means logged"）；
 5. ✅ **append 优先级声明**：append 模式在灵魂文本前烘焙 OpenClaw 风格优先级声明（`Soul: persona and tone. Follow it unless higher-priority instructions (such as direct user instructions) override it.`），对齐原版 soul.md 注入语义。三态验证（测试：`precedenceNote: false keeps the append-mode soul bare`、`replace mode never adds the precedence note`、`apply-level fallback: omitted mode and precedenceNote behave like their schema defaults`）；renderPrompt 逐字断言钉住模型可见文本；
-6. ✅ **profile 层叠**：`--profile openclaw --dump-config` 解析出 dsh-base + dsh-headless + 我们的 persona 覆盖（冒烟通过）。
-7. ⏳ `--profile openclaw` 下**真实 agent 挂载 preset**：属阶段 2（headless 形态的 preset 接线），见 tools/openclaw-preset-openclaw/README.md。
+6. ✅ **profile 层叠**：`--profile clawdsh --dump-config` 解析出 `dsh-base` + `dsh-web-app` + ClawDSH profile patch。
+7. ✅ **真实 agent 挂载 preset**：`--profile clawdsh` 让新 Session 默认使用显示为 `ClawDSH 模式` 的 `clawdsh` preset；见[组装层 README](../../tools/openclaw-preset-openclaw/README.md)。
 8. ✅ **identity 映射文档化（阶段 2 深读定稿）**：OpenClaw identity 四层结构到 dsh 接缝的完整映射落于 Agent Note（`.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping`）、本规格与 parity 矩阵三处一致；soul 代码零改动。
 9. ✅ **文件路径随 preset 目录解析（阶段 2 收尾）**：相对 `source` 以挂载树 `ctx.baseUrl` 为锚解析（preset → 组合目录、profile → profile 目录、裸上下文 → cwd 回退）；测试 12 例含 baseUrl 相对解析与 cwd 回退两例。
 

@@ -2,7 +2,7 @@
 
 English | [中文](harness-reuse.zh.md)
 
-This reference maps ClawDSH-owned packages to the public DeepSeek Harness capabilities they use. It is the integration view, not a duplicate Harness package catalog; follow the linked subsystem and package documentation for full contracts. The governing rule and rationale are in the [plugin contract](../standards/plugin-contract.md) and [ADR-0006](../adr/0006-harness-contract-first.md).
+This reference maps ClawDSH-owned packages to the public DeepSeek Harness capabilities they use. It is the integration view, not a duplicate Harness package catalog; follow the linked subsystem and package documentation for full contracts. The governing rule and rationale are in the [plugin contract](../standards/plugin-contract.md) and [ADR-0008](../adr/0008-harness-contract-first.md).
 
 ## Harness module entry
 

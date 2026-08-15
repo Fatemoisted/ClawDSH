@@ -15,6 +15,8 @@
 
 **规格**：docs/specs/feature-automation.md · **状态**：implemented（阶段 3）；修复下述重试缺陷前，失败的一次性 `at` 执行仍不安全
 
+干净安装的 `clawdsh` profile 默认禁用本 Loader 配置项，因此没有显式 opt-in 就不会启动规则。该包尚未暴露业务级 `enabled` 字段；能力 Settings 增量会保持插件挂载，并增加经过校验的开关。
+
 ## 用法
 
 ```yaml
@@ -72,7 +74,7 @@ Append-only：帧消息与其他回合输入一样落在日志中段；无系统
 ## Known Limitations and Deferred Work
 
 - **无渠道投递**：OpenClaw 的 `deliver`（把回复投到渠道）未移植；回复留在规则的会话日志里；
-- **无主会话摘要**：OpenClaw 的 `main` 目标（`System:` 行注入主会话）未移植——openclaw profile 尚无主会话接线；
+- **无主会话摘要**：OpenClaw 的 `main` 目标（`System:` 行注入主会话）未移植——`clawdsh` profile 尚无主会话接线；
 - **失败的一次性 `at` 循环**：`at` 回合记录 `error` 后，规则保持未完成且 deadline 已在过去，timer 会以 0 ms 重新挂载并可能快速重复模型调用。修复前不要启用 `at` 规则；cron 与 `every` 仍会正常推进；
 - **无运行时编辑规则**：规则由 Config 声明；OpenClaw 的 job store + `cron.add/remove/…` 工具与 CLI 延后到有消费者需要运行时编辑时；
 - **`at` once-guard 依赖会话产物**：持久会话日志被删除后，过期的一次性规则会再触发一次（at-least-once 语义）；

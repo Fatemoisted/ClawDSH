@@ -1,12 +1,36 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Timer from '@deepseek-ai/cordis-plugin-timer'
+import { CredentialProvider, credentialRef } from '@deepseek-ai/dsh-credentials'
+import type { CredentialInfo, CredentialRef, ResolvedCredential } from '@deepseek-ai/dsh-credentials'
 import { LarkChannelError } from '@larksuiteoapi/node-sdk'
 import type { LarkChannel, NormalizedMessage } from '@larksuiteoapi/node-sdk'
 import type { ChannelMessage } from '@clawdsh/dsh-channel-core'
-import { createAdapter, toInbound } from '../src/index.ts'
+import {
+  createAdapter,
+  FEISHU_DEFAULT_APP_ID_ENV,
+  FEISHU_DEFAULT_APP_SECRET_ENV,
+  toInbound,
+} from '../src/index.ts'
 
 const CONFIG = { appId: 'app', appSecret: 'secret' }
+
+/** Minimal Harness credentials backend used to exercise the real context seam. */
+class StubCredentials extends CredentialProvider {
+  readonly resolved: CredentialRef[] = []
+
+  async resolve(ref: CredentialRef): Promise<ResolvedCredential | undefined> {
+    this.resolved.push(ref)
+    return { value: ` value-${String(ref)} `, source: 'stub' }
+  }
+
+  async describe(_ref: CredentialRef): Promise<CredentialInfo> {
+    return { configured: true, source: 'stub', writable: false }
+  }
+
+  async set(_ref: CredentialRef, _value: string): Promise<void> {}
+  async unset(_ref: CredentialRef): Promise<void> {}
+}
 
 function normalized(overrides: Partial<NormalizedMessage> = {}): NormalizedMessage {
   return {
@@ -57,6 +81,10 @@ function nextInbound(ctx: Context): Promise<ChannelMessage> {
       resolve(message)
     })
   })
+}
+
+async function settleMicrotasks(): Promise<void> {
+  for (let index = 0; index < 6; index++) await Promise.resolve()
 }
 
 describe('the Feishu channel adapter', () => {
@@ -124,6 +152,129 @@ describe('the Feishu channel adapter', () => {
 
   it('drops an empty normalized body', () => {
     expect(toInbound(normalized({ content: '  ' }))).toBeUndefined()
+  })
+
+  it('resolves both default references through the Harness credentials service', async () => {
+    const sdk = mockChannel()
+    const channelFactory = vi.fn(() => sdk.channel)
+    const ctx = new Context()
+    await ctx.plugin(StubCredentials)
+    const adapter = createAdapter({}, { channelFactory })
+
+    const dispose = adapter.start(ctx)
+    await vi.waitFor(() => { expect(sdk.connect).toHaveBeenCalledOnce() })
+
+    expect(channelFactory).toHaveBeenCalledWith({
+      appId: `value-${FEISHU_DEFAULT_APP_ID_ENV}`,
+      appSecret: `value-${FEISHU_DEFAULT_APP_SECRET_ENV}`,
+    })
+    expect((ctx.credentials as StubCredentials).resolved).toEqual([
+      credentialRef(FEISHU_DEFAULT_APP_ID_ENV),
+      credentialRef(FEISHU_DEFAULT_APP_SECRET_ENV),
+    ])
+    expect(adapter.capabilities).toEqual({ receive: true, send: true, react: true })
+    await dispose()
+  })
+
+  it('keeps literal config as the compatibility override and ignores reference updates', async () => {
+    const sdk = mockChannel()
+    const channelFactory = vi.fn(() => sdk.channel)
+    const resolveCredential = vi.fn(async () => 'unused')
+    const ctx = new Context()
+    const adapter = createAdapter({
+      appId: ' literal-app ',
+      appIdEnv: 'CUSTOM_FEISHU_APP_ID',
+      appSecret: ' literal-secret ',
+      appSecretEnv: 'CUSTOM_FEISHU_APP_SECRET',
+      domain: 'lark',
+    }, { channelFactory, resolveCredential })
+
+    const dispose = adapter.start(ctx)
+    await vi.waitFor(() => { expect(sdk.connect).toHaveBeenCalledOnce() })
+    expect(channelFactory).toHaveBeenCalledWith({
+      appId: 'literal-app',
+      appSecret: 'literal-secret',
+      domain: 'lark',
+    })
+    expect(resolveCredential).not.toHaveBeenCalled()
+
+    ctx.emit('credentials/updated', credentialRef('CUSTOM_FEISHU_APP_SECRET'))
+    await settleMicrotasks()
+    expect(channelFactory).toHaveBeenCalledOnce()
+    await dispose()
+  })
+
+  it('falls back to the Harness launch environment when no credentials service is mounted', async () => {
+    vi.stubEnv('CLAWDSH_TEST_FEISHU_APP_ID', ' launch-app ')
+    vi.stubEnv('CLAWDSH_TEST_FEISHU_APP_SECRET', ' launch-secret ')
+    try {
+      const sdk = mockChannel()
+      const channelFactory = vi.fn(() => sdk.channel)
+      const adapter = createAdapter({
+        appIdEnv: 'CLAWDSH_TEST_FEISHU_APP_ID',
+        appSecretEnv: 'CLAWDSH_TEST_FEISHU_APP_SECRET',
+      }, { channelFactory })
+
+      const dispose = adapter.start(new Context())
+      await vi.waitFor(() => { expect(sdk.connect).toHaveBeenCalledOnce() })
+      expect(channelFactory).toHaveBeenCalledWith({ appId: 'launch-app', appSecret: 'launch-secret' })
+      await dispose()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('fails loudly and remains unavailable when either credential is absent', async () => {
+    const channelFactory = vi.fn()
+    const ctx = new Context()
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    const adapter = createAdapter({}, {
+      channelFactory,
+      resolveCredential: async () => undefined,
+    })
+
+    const dispose = adapter.start(ctx)
+    await vi.waitFor(() => {
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(FEISHU_DEFAULT_APP_ID_ENV))
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(FEISHU_DEFAULT_APP_SECRET_ENV))
+    })
+    expect(channelFactory).not.toHaveBeenCalled()
+    expect(adapter.capabilities).toEqual({ receive: false, send: false, react: false })
+    expect(() => adapter.send({
+      channel: 'feishu', direction: 'out', conversationId: 'oc_1', text: 'reply',
+    })).toThrow(/no app credentials resolved/)
+    await dispose()
+  })
+
+  it('drains and rebuilds the SDK channel after either referenced credential changes', async () => {
+    const first = mockChannel()
+    const second = mockChannel()
+    const channels = [first.channel, second.channel]
+    let appSecret = 'secret-one'
+    const resolveCredential = vi.fn(async (_ctx: Context, ref: CredentialRef) => (
+      ref === credentialRef(FEISHU_DEFAULT_APP_ID_ENV) ? 'app-one' : appSecret
+    ))
+    const channelFactory = vi.fn(() => {
+      const next = channels.shift()
+      if (next === undefined) throw new Error('unexpected extra Lark channel')
+      return next
+    })
+    const ctx = new Context()
+    const adapter = createAdapter({}, { channelFactory, resolveCredential })
+    const dispose = adapter.start(ctx)
+    await vi.waitFor(() => { expect(first.connect).toHaveBeenCalledOnce() })
+
+    ctx.emit('credentials/updated', credentialRef('UNRELATED_FEISHU_SECRET'))
+    await settleMicrotasks()
+    expect(channelFactory).toHaveBeenCalledOnce()
+
+    appSecret = 'secret-two'
+    ctx.emit('credentials/updated', credentialRef(FEISHU_DEFAULT_APP_SECRET_ENV))
+    await vi.waitFor(() => { expect(second.connect).toHaveBeenCalledOnce() })
+    expect(first.disconnect).toHaveBeenCalledOnce()
+    expect(channelFactory).toHaveBeenCalledTimes(2)
+    expect(resolveCredential).toHaveBeenCalledTimes(4)
+    await dispose()
   })
 
   it('connects the SDK channel and emits normalized inbound messages', async () => {

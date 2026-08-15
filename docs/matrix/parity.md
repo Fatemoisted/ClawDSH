@@ -2,12 +2,15 @@
 
 English | [中文](parity.zh.md)
 
-> This matrix is ClawDSH's **single source of truth**: each OpenClaw feature domain gets its sole classification and status here. Any PR touching a feature change must update this file in sync (see `docs/standards/pr-policy.md`).
+> This matrix is ClawDSH's **single source of truth**: each OpenClaw-derived or ClawDSH-native product domain gets its sole classification and status here. Any PR touching a feature change must update this file in sync (see `docs/standards/pr-policy.md`).
+>
+> Reuse, Plugin, New seam, and Deferred remain the four-way classification for OpenClaw-derived domains. Product assembly is a separate classification only for ClawDSH-native product surfaces.
 >
 > Classification meanings:
 > - **Reuse**: native dsh capability, used directly, no code written;
 > - **Plugin**: incremental package mounted on an existing dsh seam (`packages/openclaw/*`);
 > - **New seam**: dsh has no corresponding seam, must add (requires an ADR; upstream-first unless that ADR records an explicit project decision otherwise);
+> - **Product assembly**: ClawDSH-owned application/profile composition over public dsh APIs, with no upstream source modification;
 > - **Deferred**: not this round, reason recorded.
 
 ## Baseline (finalized Phase 1, 2026-08-14)
@@ -28,7 +31,7 @@ English | [中文](parity.zh.md)
 
 ## Matrix v2 (baseline finalized)
 
-| OpenClaw feature domain | Baseline source (v2026.1.5) | dsh seam | Classification | Landing package | Status |
+| OpenClaw or ClawDSH product domain | Baseline source (v2026.1.5) | dsh seam | Classification | Landing package | Status |
 |---|---|---|---|---|---|
 | Sessions / message history | `src/sessions/` | `ctx.sessions` (append-only log) | Reuse | — | directly usable |
 | Session tracing / replay / forking | — (dsh-native) | Trajectory view / replay | Reuse | — | directly usable |
@@ -43,9 +46,10 @@ English | [中文](parity.zh.md)
 | Channel: iMessage / Signal / Slack | `src/imessage/` etc. | `ctx.channels` | Plugin | per-package later | Deferred (Phase 3) |
 | Channel: WhatsApp | reference v2026.1.15 `src/whatsapp/` | `ctx.channels` | Plugin | per-package later | Deferred (Phase 3) |
 | Approval / security policy | `src/security/` (from 1.15) | `ctx.approval` / guard | Reuse (config) | — | directly usable |
-| Federation node (clawd) | absent in early baseline | `ctx.subagents` (transport) | Plugin | to be named | Deferred (evaluated at end of Phase 3) |
+| Federation node (clawd) | absent in early baseline | `ctx.subagents` (transport) | Plugin | `clawd-federation` | ADR-0005 (evaluation-only), implementation deferred |
 | Smart home (casa) | absent in baseline | none | new plugin domain | to be named | Deferred |
-| Desktop/mobile client | `ui/` (+ `apps/`) | `apps/web` (dsh Web UI) | Reuse | — | customization surface evaluated later |
+| Local browser conversation | `ui/` (+ `apps/`) | `dsh-web-app` + `clawdsh` preset (`ClawDSH 模式`) | Reuse (profile/preset) | `tools/openclaw-preset-openclaw` + `dsh-web-app` | **implemented baseline** (Phase 4; Feishu/Telegram/Discord/Automation disabled on clean install) |
+| ClawDSH product shell, Settings, and semantic Activity | — (ClawDSH-native) | Public dsh Web assembly + Settings/Credentials/Session history; no Client Slot | Product assembly | `tools/openclaw-preset-openclaw` | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) accepted; implementation pending |
 
 ## Domestic platforms (principle: only implement what OpenClaw upstream has)
 
@@ -67,11 +71,11 @@ WeChat family not in the matrix (not implemented), decision record in `docs/spec
 
 ## Distribution status (not feature parity)
 
-The ten `packages/openclaw/*` members now form an independent, shared-version `clawdsh` release family with `clawdsh-v*` tags. Synchronized bump/verify/pack/publish, workspace constraints, pack artifacts, fresh packed-install verification for the main and invariant paths, and the protected private-registry `.github/workflows/clawdsh-publish.yml` path are implemented. No ClawDSH npm publication has been executed from this worktree; local profile assembly still uses `tools/link-openclaw.sh` symlinks.
+The ten `packages/openclaw/*` members now form an independent, shared-version `clawdsh` release family with `clawdsh-v*` tags. Synchronized bump/verify/pack/publish, workspace constraints, pack artifacts, fresh packed-install verification for the main and invariant paths, and the protected private-registry `.github/workflows/clawdsh-publish.yml` path are implemented. No ClawDSH npm publication has been executed from this worktree; local profile assembly still uses `tools/link-clawdsh.sh` symlinks.
 
 ## Maintenance rules
 
 1. Add/remove/reclassify any feature domain = edit this table + note in commit message;
 2. "Deferred" entries must write the reason and unblocking condition;
 3. Re-review this table after each dsh upstream sync (the OpenClaw baseline is a feature-list snapshot, no longer changing; to deep-read a feature, look up `/tmp/openclaw-ref` by the "baseline source" column);
-4. Feature domains with no upstream source do not enter the matrix (principled exclusion), decision recorded in the corresponding package README or journal.
+4. OpenClaw feature domains with no upstream source do not enter the matrix (principled exclusion), with the decision recorded in the corresponding package README or journal; ClawDSH-native product surfaces are explicit exceptions and use the Product assembly classification.

@@ -40,7 +40,7 @@ Adding a `ctx.*` service is the highest-cost change, and the process is mandator
 Every package must provide:
 
 - **Contract tests**: exercise the minimal behavior surface of the seam interface it implements (mount → behavior → teardown rollback);
-- **profile smoke test**: `pnpm dsh --profile openclaw --dump-config` resolves the package's mount line;
+- **profile smoke test**: after `tools/link-clawdsh.sh`, `pnpm dsh --profile clawdsh --dump-config` resolves the package's mount line; the clean-install check must leave Feishu, Telegram, Discord, and Automation disabled;
 - Channel-type plugins: one end-to-end session test of one inbound → one outbound (the channel API may be mocked).
 
 ## 7. Public-surface changes
@@ -65,4 +65,4 @@ The OpenClaw implementation establishes provider behavior; the Harness side uses
 1. Start with the [Harness architecture](../architecture.md), owning [subsystem page](../subsystems/README.md), generated [graph index](../graph-atlas.md), package README, and the [ClawDSH reuse map](../matrix/harness-reuse.md).
 2. Reuse documented `ctx.*` services, events, public types, utilities, and existing providers through their contracts. Do not import or copy a concrete Harness provider to inherit its implementation.
 3. Inspect the owning Harness source only for an internal bug, security/concurrency/performance behavior, an undocumented contract, a missing seam, or an upstream breaking change. If the missing contract affects future integration, document it in the same change.
-4. When no existing seam fits, follow section 5 and stop at an ADR instead of building a private parallel core. [ADR-0006](../adr/0006-harness-contract-first.md) owns the rationale.
+4. When no existing seam fits, follow section 5 and stop at an ADR instead of building a private parallel core. [ADR-0008](../adr/0008-harness-contract-first.md) owns the rationale.

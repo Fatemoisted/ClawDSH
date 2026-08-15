@@ -14,9 +14,9 @@ dsh's Cordis architecture (everything is a plugin: plugins declare dependencies 
 
 ## 2. Core principles (non-negotiable)
 
-1. **Upstream read-only**: dsh upstream code (`vendor/`, `packages/*` (except openclaw/), `apps/`, `website/`) untouched by a single line; all customization goes through plugins, profile, patch.
-2. **Upstream-first**: when a seam is missing, first raise a PR upstream, bridge locally with a patch, and delete the patch after upstream merges (avoiding a fork's death).
-3. **Harness contracts first**: ordinary development uses documented services, events, public types, generated references, and the [reuse map](../matrix/harness-reuse.md); owning source is read only for defects, missing contracts/seams, or breaking upstream changes (ADR-0006).
+1. **Upstream read-only**: dsh upstream code (`vendor/`, `packages/*` (except openclaw/), `apps/`, `website/`) remains untouched; all customization lands in ClawDSH-owned plugins or application assemblies, profiles, and patches.
+2. **Upstream-first**: when a dsh seam is missing, first raise a PR upstream, bridge locally with a patch, and delete the patch after upstream merges. The ClawDSH GUI consumes existing public dsh APIs and is an application assembly rather than a missing seam; if its implementation would require an upstream change, this GUI work stops and is redesigned within its approved local-only boundary instead of opening an upstream PR ([ADR-0007](../adr/0007-clawdsh-local-gui-product.md)).
+3. **Harness contracts first**: ordinary development uses documented services, events, public types, generated references, and the [reuse map](../matrix/harness-reuse.md); owning source is read only for defects, missing contracts/seams, or breaking upstream changes ([ADR-0008](../adr/0008-harness-contract-first.md)).
 4. **Port the feature category, not the PR**: of OpenClaw's tens of thousands of PRs, most are bugfix/refactor/duplicate features; we want 20~40 feature domains.
 5. **Vertical slice first**: each phase must have "something runnable", no big-and-complete fantasy.
 6. **Anti-OpenClaw-disease**: any PR must link a spec + update the matrix + pass contract tests before merging (see `docs/standards/pr-policy.md`).
@@ -26,29 +26,32 @@ dsh's Cordis architecture (everything is a plugin: plugins declare dependencies 
 ### Phase 0 · Feasibility Spike ✅ (completed 2026-08-14)
 
 - Output: feature alignment matrix v1; the `@clawdsh/dsh-soul` plugin (replace/append dual mode + soul-file loading).
-- Exit criteria **all met**: soul can replace/overlay the agent system prompt (contract tests 10/10), hot-plug (unload rolls back), no upstream source line changed (build-registration exemption only, see ADR-0001 decision 4); full typecheck green; `--profile openclaw --dump-config` smoke passed.
+- Exit criteria **all met**: soul can replace/overlay the agent system prompt (contract tests 10/10), hot-plug (unload rolls back), no upstream source line changed (build-registration exemption only, see ADR-0001 decision 4); full typecheck green; `--profile clawdsh --dump-config` covers the current profile identity.
 - **Conclusion: the seam hypothesis holds, the project continues.** Verification details in docs/specs/feature-soul.md's acceptance-criteria section.
 
 ### Phase 1 · Baseline selection + matrix finalization ✅ (completed 2026-08-14)
 
 - **Baseline finalized: `v2026.1.5` (`197b8f7c3b`)** — the first release tag, complete gateway + 5 channels + cron + sessions core experience, the thinnest codebase of all tags (1537 files/1.6MB), no bloat signs; from v2026.1.15 file count doubles and extensions/plugins/deploy matrix appear. Feature-completion reference: whatsapp/memory/channels → v2026.1.15 (`9c4c9c5edd`).
-- Feature-domain four-way classification finalized, see `docs/matrix/parity.md` (matrix v2, with each feature domain's baseline-source path).
+- The four-way classification for OpenClaw-derived feature domains was finalized, see `docs/matrix/parity.md` (matrix v2, with each ported domain's baseline-source path). ClawDSH-native product surfaces use a separate Product assembly classification.
 
-### Phase 2 · Core skeleton (vertical slice)
+### Phase 2 · Core skeleton (vertical slice) ✅ (completed 2026-08-15)
 
 - `channel-core` (new seam, per ADR-0002) + `channel-telegram` (first channel) + **`channel-feishu` (initiator's first priority, ADR-0002 seam-verification alternate channel)** + `soul` + `memory` + `tools/openclaw-preset-openclaw`.
-- Exit criteria: `pnpm dsh --profile openclaw` starts, Telegram message in → personalized agent runs → reply out; the `ctx.channels` contract passes verification through both the Telegram and Feishu adapters (Feishu source: OpenClaw `extensions/feishu`, v2026.2.12).
+- Exit criteria: `pnpm dsh --profile clawdsh` starts, Telegram message in → personalized agent runs → reply out; the `ctx.channels` contract passes verification through both the Telegram and Feishu adapters (Feishu source: OpenClaw `extensions/feishu`, v2026.2.12).
 - **Status (2026-08-15)**: core deliverables shipped and closed out — channel seam + two adapters with credentialed closed loops (Feishu text and Telegram direct/group text/caption; Telegram image import and text-only no-download behavior are keyless-tested but not live-tested, and forum-topic live coverage remains open), soul deep-read finalized (replace/append is the final form, preset-relative `source` via `ctx.baseUrl`), memory three packages with the `ctx.embeddings` seam (ADR-0003) and a real ARK e2e (tools/ark-e2e.ts), preset daemon-ized with `embeddings-ark` enabled, and bilingual documentation paired. See docs/journal/2026-08-15.md.
 
-### Phase 3 · Channel rollout + automation
+### Phase 3 · Channel rollout + automation ✅ (completed 2026-08-15)
 
 - One package per channel (WhatsApp/Email/Web Chat…), none blocking each other; `automation` (schedule bridging), `skills-hub` (ClawHub provider).
 - **Channel-scope principle**: only build channels that have a source in OpenClaw upstream (see docs/matrix/parity.md "Domestic platforms" section) — WeChat-family/DingTalk/QQ have no upstream counterpart, not implemented.
 - Federation node (clawd) goes over `ctx.subagents` transport, evaluated as an independent milestone.
+- **Status (2026-08-15)**: `skills-hub`, Automation, and Discord shipped; Automation remains disabled opt-in with its one-shot `at` failure limitation documented, while Discord has keyless coverage and still awaits a credentialed live E2E. Channel identity presentation, the memory host watcher, the protected private-registry release path (ADR-0004), and clawd federation evaluation (ADR-0005) are recorded. The clean-install profile keeps Feishu, Telegram, Discord, and Automation disabled, so it starts without channel or automation credentials. Further channels and federation implementation remain deferred. See docs/journal/2026-08-15.md.
 
-### Phase 4 · Ecosystem
+### Phase 4 · User ecosystem (in progress)
 
-- Plugin development template + contract docs published; joins dsh's `dsh-plugin` discovery mechanism; migration guide for old OpenClaw users (session/skill import).
+- Plugin development template + contract docs published; joins dsh's `dsh-plugin` discovery mechanism.
+- The preset-only dsh Web GUI baseline in `tools/openclaw-preset-openclaw` uses the `clawdsh` profile and `clawdsh` preset, displayed as `ClawDSH 模式`. [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) defines the pending ClawDSH product shell, capability Settings, semantic Activity, and Harness Advanced entry point without modifying the upstream GUI.
+- `tools/link-clawdsh.sh` is the development installer. It warns about legacy `openclaw` assets and preserves them; the managed install manifest, `clawdsh doctor`, public distribution, and migration guide remain Phase 4 distribution deliverables.
 
 ### Throughout
 
@@ -58,11 +61,14 @@ dsh's Cordis architecture (everything is a plugin: plugins declare dependencies 
 
 1. One community feature = one plugin package, merging touches no core — OpenClaw's death mode is architecturally impossible;
 2. Users can freely compose channels/persona/memory/automation from a single config and get their own personal Agent;
-3. Net divergence from dsh upstream trends to zero (everything upstreamable is upstreamed).
+3. Net divergence from dsh upstream trends to zero (everything upstreamable is upstreamed);
+4. Local users can configure, understand, and inspect ClawDSH without editing raw Cordis entries, while the pure dsh Web profile and raw Harness diagnostics remain available.
 
 ## 5. Open items
 
 - [x] OpenClaw baseline commit (`v2026.1.5`, `197b8f7c3b`)
 - [x] Soul Spike conclusion (✅ feasible, continue)
 - [ ] Whether the `ctx.channels` seam is accepted by dsh upstream (affects patch-layer thickness)
+- [ ] Credentialed Discord live E2E
+- [ ] ClawDSH local GUI product shell ([ADR-0007](../adr/0007-clawdsh-local-gui-product.md))
 - [x] Private remote repo creation (Fatemoisted/ClawDSH, completed 2026-08-14)

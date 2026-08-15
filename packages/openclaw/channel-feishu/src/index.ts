@@ -14,6 +14,9 @@ import * as Lark from '@larksuiteoapi/node-sdk'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/cordis-plugin-timer'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
+import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { registerChannelAdapter, splitTextByUtf16Limit } from '@clawdsh/dsh-channel-core'
 import type { ChannelAdapter, ChannelMessage } from '@clawdsh/dsh-channel-core'
 
@@ -22,6 +25,12 @@ export const name = 'channel-feishu'
 
 /** The channel registry this adapter contributes to. */
 export const inject = ['channels', 'timer']
+
+/** Default Harness credential reference for the Feishu/Lark app id. */
+export const FEISHU_DEFAULT_APP_ID_ENV = 'FEISHU_APP_ID'
+
+/** Default Harness credential reference for the Feishu/Lark app secret. */
+export const FEISHU_DEFAULT_APP_SECRET_ENV = 'FEISHU_APP_SECRET'
 
 /** Adapter-level retry starts only when identity failed before the SDK created a WebSocket. */
 const INITIAL_CONNECT_RETRY_MS = 1000
@@ -32,24 +41,45 @@ export type FeishuDomain = 'feishu' | 'lark'
 
 /** Plugin config: app identity plus which Open Platform region to dial. */
 export interface Config {
-  /** Feishu app ID (from the developer console); must not be committed. */
-  appId: string
-  /** Feishu app secret; must not be committed. */
-  appSecret: string
+  /** Literal Feishu app ID for programmatic compatibility; prefer {@link appIdEnv}. */
+  appId?: string
+  /** Harness credential reference resolved before opening the WebSocket. */
+  appIdEnv?: string
+  /** Literal Feishu app secret for programmatic compatibility; prefer {@link appSecretEnv}. */
+  appSecret?: string
+  /** Harness credential reference resolved before opening the WebSocket. */
+  appSecretEnv?: string
   /** Open Platform region; `feishu` (default) or `lark`. */
   domain?: FeishuDomain
 }
 
 /** Runtime schema for the Feishu adapter. */
 export const Config: z<Config> = z.object({
-  appId: z.string().required(),
-  appSecret: z.string().required(),
+  appId: z.string(),
+  appIdEnv: z.string().role('credential-ref').default(FEISHU_DEFAULT_APP_ID_ENV),
+  appSecret: z.string().role('secret'),
+  appSecretEnv: z.string().role('credential-ref').default(FEISHU_DEFAULT_APP_SECRET_ENV),
   domain: z.union([z.const('feishu'), z.const('lark')]).default('feishu'),
 })
 
+/** Fully resolved SDK identity. Values never enter tracked configuration. */
+export interface ResolvedFeishuConfig {
+  /** Resolved Feishu/Lark app id. */
+  appId: string
+  /** Resolved Feishu/Lark app secret. */
+  appSecret: string
+  /** Open Platform region. */
+  domain?: FeishuDomain
+}
+
 /** Dependency injection seam so tests can substitute the high-level SDK channel. */
 export interface AdapterDeps {
+  /** Fixed high-level channel for focused adapter tests; bypasses credential resolution. */
   channel?: Lark.LarkChannel
+  /** Channel factory; production uses {@link buildLarkChannel}. */
+  channelFactory?: (config: ResolvedFeishuConfig) => Lark.LarkChannel
+  /** Credential resolver override; production uses Harness credentials / launch environment. */
+  resolveCredential?: (ctx: Context, ref: CredentialRef) => Promise<string | undefined>
 }
 
 /** Resolve the SDK `Domain` enum from the plugin's domain string. */
@@ -69,7 +99,7 @@ function resolveDomain(domain: FeishuDomain | undefined): Lark.Domain {
  * @param config - validated app identity and Open Platform region.
  * @returns the configured official high-level Lark channel.
  */
-export function buildLarkChannel(config: Config): Lark.LarkChannel {
+export function buildLarkChannel(config: ResolvedFeishuConfig): Lark.LarkChannel {
   return Lark.createLarkChannel({
     appId: config.appId,
     appSecret: config.appSecret,
@@ -84,6 +114,54 @@ export function buildLarkChannel(config: Config): Lark.LarkChannel {
       chatQueue: { enabled: false },
     },
   })
+}
+
+/** Treat blank credential values as absent, matching the Harness seam contract. */
+function normalizeCredential(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined
+  const normalized = value.trim()
+  return normalized === '' ? undefined : normalized
+}
+
+/** Resolve one identity field through literal, Harness credentials, then launch fallback. */
+async function resolveCredentialValue(
+  ctx: Context,
+  literal: string | undefined,
+  ref: CredentialRef,
+  override: AdapterDeps['resolveCredential'],
+): Promise<string | undefined> {
+  const configured = normalizeCredential(literal)
+  if (configured !== undefined) return configured
+  if (override !== undefined) return normalizeCredential(await override(ctx, ref))
+  const credentials = ctx.get('credentials')
+  if (credentials !== undefined) return normalizeCredential((await credentials.resolve(ref))?.value)
+  return normalizeCredential(launchEnvironmentOf(ctx).get(String(ref))?.value)
+}
+
+/** Resolve both SDK identity fields and fail with reference names, never secret values. */
+async function resolveFeishuConfig(
+  ctx: Context,
+  config: Config,
+  appIdRef: CredentialRef,
+  appSecretRef: CredentialRef,
+  override: AdapterDeps['resolveCredential'],
+): Promise<ResolvedFeishuConfig> {
+  const [appId, appSecret] = await Promise.all([
+    resolveCredentialValue(ctx, config.appId, appIdRef, override),
+    resolveCredentialValue(ctx, config.appSecret, appSecretRef, override),
+  ])
+  const missing = [
+    ...(appId === undefined ? [`appId (${String(appIdRef)})`] : []),
+    ...(appSecret === undefined ? [`appSecret (${String(appSecretRef)})`] : []),
+  ]
+  if (appId === undefined || appSecret === undefined) {
+    throw new Error(`channel-feishu: no credential resolved for ${missing.join(' and ')}`)
+  }
+  return {
+    appId,
+    appSecret,
+    ...(config.domain === undefined ? {} : { domain: config.domain }),
+  }
 }
 
 /**
@@ -116,9 +194,13 @@ export function toInbound(message: Lark.NormalizedMessage): ChannelMessage | und
   }
 }
 
-/** Render an arbitrary SDK/lifecycle failure for one log line. */
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+/** Render an SDK/lifecycle failure while redacting resolved identity values. */
+function describe(error: unknown, ...credentials: Array<string | undefined>): string {
+  let rendered = error instanceof Error ? error.message : String(error)
+  for (const credential of credentials) {
+    if (credential !== undefined && credential !== '') rendered = rendered.replaceAll(credential, '[redacted]')
+  }
+  return rendered
 }
 
 /** Permanent credential/shape failures cannot recover through reconnecting. */
@@ -162,7 +244,11 @@ async function disconnectChannel(channel: Lark.LarkChannel, connectedOnce: boole
 }
 
 /** Attach the SDK channel to Cordis and return a disposer that drains connection teardown. */
-function startChannel(ctx: Context, channel: Lark.LarkChannel): () => Promise<void> {
+function startChannel(
+  ctx: Context,
+  channel: Lark.LarkChannel,
+  credentials: readonly string[] = [],
+): () => Promise<void> {
   const inFlightMessages = new Set<Promise<void>>()
   const unsubscribeMessage = channel.on('message', (message) => {
     const inbound = toInbound(message)
@@ -179,7 +265,7 @@ function startChannel(ctx: Context, channel: Lark.LarkChannel): () => Promise<vo
     return operation
   })
   const unsubscribeError = channel.on('error', (error) => {
-    ctx.logger.warn(`channel-feishu: ${describe(error)}`)
+    ctx.logger.warn(`channel-feishu: ${describe(error, ...credentials)}`)
   })
   let disposed = false
   let connectedOnce = false
@@ -200,12 +286,12 @@ function startChannel(ctx: Context, channel: Lark.LarkChannel): () => Promise<vo
       // no reconnecting component yet.
       const sdkOwnsReconnect = channel.getConnectionStatus() !== undefined
       if (!isRetryableConnectError(error) || sdkOwnsReconnect) {
-        ctx.logger.warn(`channel-feishu: connect failed: ${describe(error)}`)
+        ctx.logger.warn(`channel-feishu: connect failed: ${describe(error, ...credentials)}`)
         return
       }
       const delay = Math.min(INITIAL_CONNECT_RETRY_MS * 2 ** attempt, MAX_CONNECT_RETRY_MS)
       attempt += 1
-      ctx.logger.warn(`channel-feishu: connect failed: ${describe(error)}; retrying in ${delay}ms`)
+      ctx.logger.warn(`channel-feishu: connect failed: ${describe(error, ...credentials)}; retrying in ${delay}ms`)
       cancelRetry = ctx.timeout(() => {
         cancelRetry = undefined
         connect()
@@ -228,7 +314,7 @@ function startChannel(ctx: Context, channel: Lark.LarkChannel): () => Promise<vo
     try {
       await disconnectChannel(channel, connectedOnce)
     } catch (error: unknown) {
-      ctx.logger.warn(`channel-feishu: disconnect failed: ${describe(error)}`)
+      ctx.logger.warn(`channel-feishu: disconnect failed: ${describe(error, ...credentials)}`)
     }
   }
 }
@@ -287,24 +373,145 @@ async function react(channel: Lark.LarkChannel, message: ChannelMessage, emoji: 
   await channel.addReaction(message.messageId, resolveReactionType(emoji))
 }
 
+/** Run one credential-backed SDK channel and rebuild it after a relevant rotation. */
+function startCredentialLifecycle(
+  ctx: Context,
+  config: Config,
+  appIdRef: CredentialRef,
+  appSecretRef: CredentialRef,
+  makeChannel: (config: ResolvedFeishuConfig) => Lark.LarkChannel,
+  setChannel: (channel: Lark.LarkChannel | undefined) => void,
+  capabilities: ChannelAdapter['capabilities'],
+  resolveCredentialOverride: AdapterDeps['resolveCredential'],
+): () => Promise<void> {
+  let active: { channel: Lark.LarkChannel; stop: () => Promise<void> } | undefined
+  let disposed = false
+  let maintenance = Promise.resolve()
+
+  const activate = async (): Promise<void> => {
+    const resolved = await resolveFeishuConfig(
+      ctx,
+      config,
+      appIdRef,
+      appSecretRef,
+      resolveCredentialOverride,
+    )
+    if (disposed) return
+    let channel: Lark.LarkChannel
+    let stop: () => Promise<void>
+    try {
+      channel = makeChannel(resolved)
+      stop = startChannel(ctx, channel, [resolved.appId, resolved.appSecret])
+    } catch (error: unknown) {
+      throw new Error(
+        `channel-feishu: activation failed: ${describe(error, resolved.appId, resolved.appSecret)}`,
+      )
+    }
+    active = { channel, stop }
+    setChannel(channel)
+    capabilities.receive = true
+    capabilities.send = true
+    capabilities.react = true
+  }
+
+  const deactivate = async (): Promise<void> => {
+    const current = active
+    capabilities.receive = false
+    if (current === undefined) {
+      capabilities.send = false
+      capabilities.react = false
+      setChannel(undefined)
+      return
+    }
+    await current.stop()
+    if (active !== current) return
+    active = undefined
+    setChannel(undefined)
+    capabilities.send = false
+    capabilities.react = false
+  }
+
+  const replace = async (): Promise<void> => {
+    await deactivate()
+    if (!disposed) await activate()
+  }
+  const queue = (operation: () => Promise<void>): void => {
+    const task = maintenance.then(operation, operation)
+    maintenance = task.catch(() => undefined)
+    void task.catch((error: unknown) => {
+      ctx.logger.warn(`channel-feishu: credential lifecycle failed: ${describe(error, config.appId, config.appSecret)}`)
+    })
+  }
+
+  queue(activate)
+  const literalAppId = normalizeCredential(config.appId) !== undefined
+  const literalAppSecret = normalizeCredential(config.appSecret) !== undefined
+  const disposeCredentialUpdate = ctx.on('credentials/updated', (updated) => {
+    const appIdChanged = !literalAppId && updated === appIdRef
+    const appSecretChanged = !literalAppSecret && updated === appSecretRef
+    if (disposed || (!appIdChanged && !appSecretChanged)) return
+    queue(replace)
+  })
+
+  return async () => {
+    disposed = true
+    disposeCredentialUpdate()
+    const task = maintenance.then(deactivate, deactivate)
+    maintenance = task.catch(() => undefined)
+    await task.catch((error: unknown) => {
+      ctx.logger.warn(`channel-feishu: lifecycle stop failed: ${describe(error, config.appId, config.appSecret)}`)
+    })
+  }
+}
+
 /**
  * Build the Feishu adapter from validated config.
  * @param config - validated app identity and region.
  * @param deps - optional high-level SDK channel for tests.
  * @returns the adapter to register with `ctx.channels`.
  */
-export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAdapter {
-  const channel = deps.channel ?? buildLarkChannel(config)
+export function createAdapter(config: Config = {}, deps: AdapterDeps = {}): ChannelAdapter {
+  const appIdRef = credentialRef(config.appIdEnv ?? FEISHU_DEFAULT_APP_ID_ENV)
+  const appSecretRef = credentialRef(config.appSecretEnv ?? FEISHU_DEFAULT_APP_SECRET_ENV)
+  const suppliedChannel = deps.channel
+  let channel = suppliedChannel
+  const capabilities = suppliedChannel === undefined
+    ? { receive: false, send: false, react: false }
+    : { receive: true, send: true, react: true }
+  const requireChannel = (): Lark.LarkChannel => {
+    if (channel === undefined) {
+      throw new Error(
+        `feishu: no app credentials resolved for ${String(appIdRef)} / ${String(appSecretRef)}`,
+      )
+    }
+    return channel
+  }
   return {
     id: 'feishu',
-    capabilities: { receive: true, send: true, react: true },
-    start: ctx => startChannel(ctx, channel),
-    send: message => sendMessage(channel, message),
-    react: (message, emoji) => react(channel, message, emoji),
+    capabilities,
+    start: suppliedChannel === undefined
+      ? ctx => startCredentialLifecycle(
+        ctx,
+        config,
+        appIdRef,
+        appSecretRef,
+        deps.channelFactory ?? buildLarkChannel,
+        (next) => { channel = next },
+        capabilities,
+        deps.resolveCredential,
+      )
+      : ctx => startChannel(
+        ctx,
+        suppliedChannel,
+        [normalizeCredential(config.appId), normalizeCredential(config.appSecret)]
+          .filter((value): value is string => value !== undefined),
+      ),
+    send: message => sendMessage(requireChannel(), message),
+    react: (message, emoji) => react(requireChannel(), message, emoji),
   }
 }
 
 /** Mount the Feishu adapter into the shared Harness-backed channel registry. */
-export function apply(ctx: Context, config: Config): void {
+export function apply(ctx: Context, config: Config = {}): void {
   registerChannelAdapter(ctx, () => createAdapter(config))
 }
