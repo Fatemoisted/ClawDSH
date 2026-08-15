@@ -23,6 +23,7 @@
 | Skills | `skills-hub` | `ctx.skills` | ✅ 已实现 |
 | Automation | `automation` | Agents 与 Sessions | ✅ 已实现；默认关闭 |
 | 产品 identity | 内部 `preset-openclaw` source | `clawdsh` profile 与 presets | ✅ `ClawDSH 模式`；旧 `openclaw` 资产仅 warning-only |
+| 公共发行 | `dsh-bundle`、`cli`、十个 runtime feature package 与受限 preset | 托管 dsh profile 安装与固定 npm 发行图 | ✅ `0.1.0-rc.1` 候选版本已准备；⚠️ 未发布 |
 
 ## ClawDSH 本地 GUI
 
@@ -113,7 +114,7 @@ Inbound image 被限制在 canonical staging root，校验 symlink、size、medi
 
 - ✅ 新 Web Session 默认使用 `clawdsh`，显示为 `ClawDSH 模式`。
 - ✅ Owner channel turn 使用 `clawdsh`；每个 non-owner 或 group turn 经 OpenClaw admission 后使用 `clawdsh-messaging-safe`。
-- ✅ Disabled channel 与 Automation 可以缺少凭证；product Settings 增量会把 optional runtime control 移到 mounted plugin 的 validated `enabled` setting 后。
+- ✅ Disabled channel 与 Automation 可以缺少凭证；mounted plugin 的 validated `enabled` setting 控制 optional runtime effect。
 - ✅ `tools/link-clawdsh.sh` 只安装 ClawDSH id，检测到旧 `openclaw` 资产时警告，且不创建 alias 或修改旧资产。
 - ⚠️ Channel configuration row 不能建立 `enabled`；ADR-0008 要求先认证。
 
@@ -128,15 +129,28 @@ Inbound image 被限制在 canonical staging root，校验 symlink、size、medi
 | 当前 channel admission | user content 与已校验 image | 已知 `user/message` 携带净化后的 channel source；权威在 Agent ledger | ✅ |
 | 当前 delivery update | 不是 model input | Provider 与 Agent delivery ledger | ✅ |
 | Channel health 与 IPC bookkeeping | 不是 model input | 仅 Provider health 与 ledger | ✅ |
-| Activity semantic record | 不是额外 model input | standard Session history + ClawDSH sidecar projection | ⏳ |
+| Activity semantic record | 不是额外 model input | standard Session history + ClawDSH sidecar projection | ✅ |
 
-## 发布缺口
+## 公共发行
 
-1. 在不修改上游 GUI source 的前提下，在已交付的 `/clawdsh/` 产品壳后实现 Settings control plane 与 semantic Activity。
-2. 完成公共 installer 与 managed preset/profile repair path，同时保留用户 settings、credentials、memory 与 skills。
-3. 增加自有 keyless Gateway-to-Agent snapshot lane，并完成精确逐渠道 assembly evidence。
-4. 在 named-pipe ACL enforcement 提供等价 authorization 前保持 Windows fail-closed。
-5. 在启用对应 media path 前增加 durable non-image attachment 与 outbound staging。
-6. 启用任何路径前运行新的 Telegram 与 Feishu certification。
-7. 持久化 namespaced `channel/*` Session event 前获得 ignorable append mechanism。
-8. 只有每项替换条件通过后才能删除 legacy adapter 并归档其 Note。
+| 环节 | Owner 与行为 |
+|---|---|
+| 包集合 | 精确 [13 包 allowlist](../../packages/openclaw/README.md#public-release-set) 使用 `0.1.0-rc.1`；legacy channel 与 nested product runtime 被排除 |
+| Bundle | `@clawdsh/dsh-bundle` 包含 profile patch、presets、Control Runtime、GUI asset、锁定 Channel asset 与精确 feature dependency |
+| 托管安装 | `@clawdsh/cli` 固定 bundle `0.1.0-rc.1` 与 dsh `0.1.0-rc.6`，原子安装、记录 `.clawdsh.json`、保留用户数据、带备份修复，并通过自身 dsh binary 启动 |
+| Channel 安装 | 显式且仅限 production 的命令校验锁定 SHA-512 archive 与 checked runtime，保留既有 OpenClaw 配置和 state，并且只在配置不存在时创建不含凭证且 fail-closed 的配置；普通初始化不获取 OpenClaw |
+| 发行验证 | 真实 tarball 在临时 registry 与隔离 home smoke 前拒绝本地协议、symlink、未声明文件、私有 registry URL 与发行图漂移 |
+| 发布 | 已准备 workflow 固定公共 npm `next`、OIDC trusted publishing、provenance、精确 allowlist、dependency-first 顺序与 `refs/heads/clawdsh`；package 创建与 npm trust 仍属于外部步骤 |
+
+✅ Bundle、CLI、Channel 安装器、发行审计与 workflow 已准备，且没有发布 package 或改变仓库可见性。⚠️ Registry 是 `bootstrap-required`，而不是 `OIDC-ready`：13 个 package object 均不存在，npm trust 与 staged publishing 都不能创建它们。必须先由用户另行授权交互式 2FA bootstrap；随后每条 package trust 记录必须匹配 `clawdsh-publish.yml`、environment `npm` 与 `npm publish`，且该 GitHub environment 只允许 `clawdsh` branch。
+
+## 开放条件
+
+1. 增加自有 keyless Gateway-to-Agent snapshot lane，并完成精确逐渠道 assembly evidence。
+2. 在 named-pipe ACL enforcement 提供等价 authorization 前保持 Windows fail-closed。
+3. 在启用对应 media path 前增加 durable non-image attachment 与 outbound staging。
+4. 启用任何路径前运行新的 Telegram 与 Feishu certification。
+5. 持久化 namespaced `channel/*` Session event 前获得 ignorable append mechanism。
+6. 只有每项替换条件通过后才能删除 legacy adapter 并归档其 Note。
+7. 选择并另行授权 bootstrap archive 与版本，再通过交互式 2FA 创建全部 13 个 package object；本仓库不执行该 bootstrap。
+8. 在 OIDC 发布前校验全部 13 条 npm trust 记录、branch-restricted `npm` environment、canonical `refs/heads/clawdsh`、公共仓库批准与精确 dsh compatibility。

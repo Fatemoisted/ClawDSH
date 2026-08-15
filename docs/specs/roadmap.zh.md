@@ -65,7 +65,9 @@
 
 ### 4.3 公共发行
 
-`tools/link-clawdsh.sh` 是开发安装器。它只安装 `clawdsh` identity，检测到旧 `openclaw` profile 与 preset asset 时警告，并保持其不变。公共发行工作拥有 idempotent CLI、精确 dsh 与 ClawDSH bundle version、managed manifest、`clawdsh doctor`、preset backup 与 repair、clean-home smoke，以及 public npm provenance。
+`tools/link-clawdsh.sh` 仍是开发安装器。公共发行源码提供 `@clawdsh/dsh-bundle` 与 `@clawdsh/cli`、幂等 managed manifest、`clawdsh doctor`、reset preset 前备份、显式且仅限 production 的 Channel 安装器、精确 tarball 审计，以及隔离 clean-install smoke。固定发行集合包含精确的 [13 个包](../../packages/openclaw/README.md#public-release-set)，版本均为 `0.1.0-rc.1`；CLI 固定使用 `@deepseek-ai/dsh@0.1.0-rc.6`。
+
+发行 workflow 通过 OIDC trusted publishing 与 provenance 发布到公共 npm `next`，常规发行绝不接受任意 registry 或长期 npm token。当前状态是 `bootstrap-required`，而不是 `OIDC-ready`：13 个 package name 均不存在，而 npm trust 与 staged publishing 都要求 package 已存在。必须先由用户另行授权交互式 2FA bootstrap 创建 package object，才能把每条 trust 记录绑定到 `clawdsh-publish.yml`、environment `npm` 与 `npm publish`。GitHub `npm` environment 随后必须只允许 `clawdsh` branch，release readiness 则要求 canonical ref `refs/heads/clawdsh`。这项准备不执行任何上述外部写入。
 
 ## 5. 工作顺序
 
@@ -86,9 +88,11 @@
 
 ### 发行顺序
 
-1. 在 ClawDSH bundle 中打包 profile、presets、Control Runtime、GUI assets 与精确 feature dependencies。
-2. 只有 npm scope ownership、public-source provenance 与精确 dsh compatibility 通过后，才把 CLI 与自有 package 以 `0.1.0-rc.1` 发布到 public npm `next` tag。
-3. 证明 clean installation、second-run idempotency、user-change preservation、tarball integrity，以及不存在 private registry、workspace、file 或 symlink reference。
+1. ✅ 在 ClawDSH bundle 中打包 profile、presets、Control Runtime、GUI asset、锁定 Channel asset 与精确 feature dependency。
+2. ✅ 提供 managed CLI、仅限 production 的 Channel 安装器、精确 13 包 packer、tarball verifier、临时 registry smoke，以及公共 npm OIDC/provenance workflow。
+3. 选择并另行授权一次性 bootstrap archive 与版本，再通过交互式 2FA 发布创建全部 13 个 package object；staged publishing 不能创建全新 package，bootstrap 也不得静默消耗预定的 OIDC 候选版本。
+4. 为全部 13 个 package 配置并校验指向 `clawdsh-publish.yml`、environment `npm` 与 `npm publish` 的 npm trusted-publisher 记录，并把该 GitHub environment 限制为 `clawdsh` branch。
+5. 只有 public-source provenance、精确 dsh compatibility 与发行授权通过后，才从 `refs/heads/clawdsh` 把已批准候选版本发布到公共 npm `next`。
 
 ## 6. 成功标准
 
@@ -113,4 +117,7 @@
 - [ ] 在宣传对应 media path 前增加 durable non-image attachment 与 outbound staging。
 - [ ] 在持久化冗余 `channel/*` event 前增加 ignorable Session append mechanism。
 - [ ] 只有全部替换条件通过后才能删除 legacy channel package。
-- [ ] 发布前完成 public npm ownership、provenance、exact-version compatibility 与 clean-install smoke。
+- [x] 在不发布的前提下准备精确 13 包 bundle、managed CLI、tarball 验证、隔离安装 smoke 与 OIDC/provenance workflow。
+- [ ] 获取一次性交互式 2FA bootstrap 的明确授权，包括精确 archive 与版本，并创建全部 13 个 package object；不得把 staged publishing 当作首次创建路径。
+- [ ] 配置并校验全部 13 条 npm trust 记录和只允许 `clawdsh` 的 `npm` environment branch rule；完成前 workflow 不是 `OIDC-ready`。
+- [ ] 在 OIDC 发布前确认 scope ownership、公共仓库批准、canonical `refs/heads/clawdsh` 与精确版本 compatibility。

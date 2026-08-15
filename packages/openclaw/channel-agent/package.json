@@ -1,7 +1,7 @@
 {
   "name": "@clawdsh/dsh-channel-agent",
   "description": "ClawDSH channel Consumer: durable OpenClaw turn routing, session isolation, media intake, and the message tool",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -23,7 +23,6 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
@@ -32,7 +31,7 @@
     "lib/types/**/*.d.ts"
   ],
   "peerDependencies": {
-    "@clawdsh/dsh-channel": "workspace:^",
+    "@clawdsh/dsh-channel": "workspace:0.1.0-rc.1",
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-agent": "workspace:^",
     "@deepseek-ai/dsh-agent-default-model": "workspace:^",
@@ -51,7 +50,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@clawdsh/dsh-channel": "workspace:^",
+    "@clawdsh/dsh-channel": "workspace:0.1.0-rc.1",
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-agent": "workspace:^",
     "@deepseek-ai/dsh-agent-default-model": "workspace:^",

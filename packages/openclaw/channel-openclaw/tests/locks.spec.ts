@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { CANARY_OPENCLAW_LOCK, lockFor, PRODUCTION_OPENCLAW_LOCK } from '../src/locks.ts'
 
@@ -26,5 +27,24 @@ describe('immutable OpenClaw host locks', () => {
     })
     expect(CANARY_OPENCLAW_LOCK.tree).toBeUndefined()
     expect(CANARY_OPENCLAW_LOCK.runtimeTrees).toBeUndefined()
+  })
+
+  it('keeps the public Channel installer lock identical to the provider lock', () => {
+    const installerLock = JSON.parse(readFileSync(
+      new URL('../runtime/production-lock.json', import.meta.url),
+      'utf8',
+    )) as Record<string, unknown>
+    expect(installerLock).toEqual({
+      schemaVersion: 1,
+      track: 'production',
+      packageName: 'openclaw',
+      packageVersion: PRODUCTION_OPENCLAW_LOCK.packageVersion,
+      nodeEngine: PRODUCTION_OPENCLAW_LOCK.nodeEngine,
+      artifactUrl: PRODUCTION_OPENCLAW_LOCK.artifactUrl,
+      artifactSha512: PRODUCTION_OPENCLAW_LOCK.artifactSha512,
+      runtimePackageLockSha512: PRODUCTION_OPENCLAW_LOCK.runtimePackageLockSha512,
+      tree: PRODUCTION_OPENCLAW_LOCK.tree,
+      runtimeTrees: PRODUCTION_OPENCLAW_LOCK.runtimeTrees,
+    })
   })
 })

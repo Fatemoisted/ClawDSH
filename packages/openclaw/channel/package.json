@@ -1,7 +1,7 @@
 {
   "name": "@clawdsh/dsh-channel",
   "description": "ClawDSH channel Service Definition: a versioned OpenClaw bridge protocol and single provider/driver runtime",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -23,7 +23,6 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [

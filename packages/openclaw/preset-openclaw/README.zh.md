@@ -9,7 +9,8 @@
 1. `clawdsh` Agent preset（`preset.yml`、`agent.cordis.yml` 与 `souls/assistant.md`），显示为 `ClawDSH 模式`；
 2. `clawdsh` profile template（`profile/`），把 dsh base 与 Web bundle 和 ClawDSH Host plugin 组合；
 3. nested ClawDSH browser shell 与 `@clawdsh/dsh-product-runtime`，包含能力总览、可编辑 Settings 控制面与跟随当前 Session 的语义 Activity；
-4. 供 `tools/link-clawdsh.sh` 消费的开发安装源。
+4. 供 `tools/link-clawdsh.sh` 消费的开发安装源；
+5. `@clawdsh/dsh-bundle`、`@clawdsh/cli` 与 fail-closed 发行验证的 nested 公共发行源码。
 
 OpenClaw Gateway 是产品内的外部通信平面 provider。它不定义产品、profile 或 Agent preset identity。
 
@@ -27,6 +28,33 @@ pnpm dsh --profile clawdsh
 新 Web Session 默认使用显示为 `ClawDSH 模式` 的 `clawdsh` preset。受限渠道 preset 安装为 `clawdsh-messaging-safe`。只有对话发起模型请求时才需要模型凭证；Web Host 本身无需外部凭证即可启动。
 
 产品壳保持在根 workspace 和 Client aggregate 之外，因此拥有独立 lockfile；构建前先安装这个 nested workspace。开发安装器要求 `product-shell/runtime/lib/index.mjs` 与 `product-shell/runtime/web/index.html` 已存在；任一产物缺失时，它会失败并给出精确 build 命令。安装器把 nested runtime 链接为 `@clawdsh/dsh-product-runtime`，检测到旧 `openclaw` profile 或 preset asset 时会警告，并保持其不变。它不创建 compatibility alias，也不删除、移动、改写或接管用户数据。移除保存的 Session 可能仍引用的旧 preset 前，先检查旧 `agent-presets.default` override。
+
+## 托管安装 CLI
+
+`@clawdsh/cli@0.1.0-rc.1` 精确依赖 `@clawdsh/dsh-bundle@0.1.0-rc.1` 与 `@deepseek-ai/dsh@0.1.0-rc.6`。
+
+发布条件通过后，npm 入口是：
+
+```bash
+npx --yes @clawdsh/cli@0.1.0-rc.1
+```
+
+安装后的命令集合是：
+
+```text
+clawdsh
+clawdsh init
+clawdsh init --reset-preset
+clawdsh start
+clawdsh start --profile <name>
+clawdsh doctor
+clawdsh channel install
+clawdsh channel doctor
+```
+
+没有子命令时，CLI 幂等地初始化或升级托管 profile，再通过自身精确 dsh 依赖启动 ClawDSH GUI。`start` 原样传递 `--host`、`--port` 与 `--trusted-host`；具名 custom profile 只会启动，不会被接管或修改。安装过程构建完整 staging candidate，验证 bundle 顺序 `@deepseek-ai/dsh-base → @deepseek-ai/dsh-web-app → @clawdsh/dsh-bundle`，随后以 `.clawdsh.json` manifest 原子发布托管 profile、presets 与 runtime asset。它保留 Settings、Credentials、Memory、Skills、OpenClaw state 与 custom profile patch。没有 marker 或被修改的 preset 会阻止静默替换；`--reset-preset` 在恢复托管副本前创建带时间戳和 integrity 的备份。同名且没有 marker 的 profile 绝不会被接管，旧 `openclaw` asset 只产生警告，不会被删除。
+
+Channel 获取与 `init` 分离。`clawdsh channel install` 要求当前 Node 可执行文件满足已锁定 Gateway engine，只接受 checked production track，下载精确 OpenClaw artifact，校验 SHA-512 与每个 archive member，在禁用 lifecycle script 的情况下组装 checked runtime，并且只在配置不存在时创建不含凭证且 fail-closed 的配置。既有 OpenClaw 配置与 state 保持不变，canary 只用于审计。`clawdsh channel doctor` 校验托管 identity，并把完整 fail-closed 配置检查委托给已安装 Provider，而不选择、返回或打印 platform credential。因此普通产品安装保持轻量；即使没有 OpenClaw artifact，也能在 Gateway 关闭时启动。
 
 ## 通信平面
 
@@ -85,9 +113,15 @@ Profile 关闭原生 `dsh web:` readiness line，并挂载 `@clawdsh/dsh-product
 
 该组装不注册新的 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。Activity 不增加上游 Session event type，Raw Trajectory 留在 Harness 高级，`dsh --profile web` 保持纯 Harness 入口。[Activity 规格](../../../docs/specs/feature-activity.md)拥有其存储、隐私与降级行为。
 
-## Managed-preset 限制
+## 托管 preset
 
-由于 launcher 没有 installation-owned ClawDSH preset root，preset 当前位于 dsh user preset root。ClawDSH 产品 Settings 页面不提供 preset 删除操作，但 Harness 高级仍把它们视为 user preset。公共发行 CLI 拥有 managed manifest、integrity check、reset 前 backup 与 `clawdsh doctor`；在此之前，重新运行开发安装器会恢复已检入 preset file。
+Launcher 没有 installation-owned ClawDSH preset root，因此两个 preset 都位于 dsh user preset root。ClawDSH 产品 Settings 页面不提供 preset 删除操作，但 Harness 高级仍把它们视为 user preset。CLI 的 managed manifest、integrity check、reset 前 backup 与 `clawdsh doctor` 会把已安装资产同普通 user preset 区分开来。开发安装器仍是 source-tree convenience，会恢复已检入 preset file，但不会接管用户数据。
+
+## 公共打包
+
+公共候选版本包含精确的 [13 包发行集合](../README.md#public-release-set)，版本均为 `0.1.0-rc.1`。`@clawdsh/dsh-bundle` 携带 profile patch、主 preset、Control Runtime、构建后的 `/clawdsh/` asset、Channel lock 与 bridge notice，并精确依赖十个 runtime feature package 和受限 preset。真实 tarball 验证会拒绝 `workspace:`、`file:`、symlink、未声明 asset、私有 registry URL、意外 package，以及固定发行图之外的任何依赖版本。
+
+发行 workflow 只以公共 npm 与 `next` tag 为目标。Dry run 打包并审计全部 13 个 tarball，按依赖顺序发布到临时 loopback registry，并在隔离 dsh home 中完成干净安装。Registry 状态仍是 `bootstrap-required`：npm trust 与 staged publishing 都要求 package 已存在，但 13 个 package name 均不存在。必须先由用户另行授权交互式 2FA bootstrap 创建 package object，才能把全部 13 条 trust 记录绑定到 `clawdsh-publish.yml`、environment `npm` 与 `npm publish`。OIDC readiness 还要求 GitHub `npm` environment 只允许 `clawdsh` branch，并通过 workflow 的精确 `refs/heads/clawdsh` 检查。本次实现不选择或发布 bootstrap artifact、不配置 trust、不改变仓库可见性，也不发布候选版本；完整条件由 [ADR-0009](../../../docs/adr/0009-public-npm-distribution.md)管理。
 
 ## 验证边界
 

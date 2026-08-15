@@ -1,7 +1,7 @@
 {
   "name": "@clawdsh/dsh-embeddings-ark",
   "description": "ClawDSH embeddings provider: Volcano Ark (火山方舟) text embeddings via the multimodal endpoint",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -23,7 +23,6 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
@@ -32,7 +31,7 @@
     "lib/types/**/*.d.ts"
   ],
   "peerDependencies": {
-    "@clawdsh/dsh-embeddings": "workspace:^",
+    "@clawdsh/dsh-embeddings": "workspace:0.1.0-rc.1",
     "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-launch-environment": "workspace:^",
@@ -44,7 +43,7 @@
     "@deepseek-ai/schemastery": "workspace:^"
   },
   "devDependencies": {
-    "@clawdsh/dsh-embeddings": "workspace:^",
+    "@clawdsh/dsh-embeddings": "workspace:0.1.0-rc.1",
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",

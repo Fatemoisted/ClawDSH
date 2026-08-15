@@ -1,7 +1,7 @@
 {
   "name": "@clawdsh/dsh-preset-messaging-safe",
   "description": "Restricted ClawDSH channel Agent preset installed for non-owner and group conversations",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -26,7 +26,6 @@
     "./agent.cordis.yml": "./agent.cordis.yml",
     "./preset.yml": "./preset.yml",
     "./souls/*": "./souls/*",
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
@@ -38,7 +37,7 @@
     "souls"
   ],
   "dependencies": {
-    "@clawdsh/dsh-soul": "workspace:^"
+    "@clawdsh/dsh-soul": "workspace:0.1.0-rc.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",

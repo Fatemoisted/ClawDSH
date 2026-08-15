@@ -1,7 +1,7 @@
 {
   "name": "@clawdsh/dsh-memory",
   "description": "ClawDSH memory row: OpenClaw-style long-term memory (MEMORY.md + memory/*.md) with semantic recall over the embeddings seam",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -23,7 +23,6 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
@@ -32,6 +31,7 @@
     "lib/types/**/*.d.ts"
   ],
   "peerDependencies": {
+    "@clawdsh/dsh-embeddings": "workspace:0.1.0-rc.1",
     "@deepseek-ai/dsh-agent": "workspace:^",
     "@deepseek-ai/dsh-compaction": "workspace:^",
     "@deepseek-ai/dsh-fs": "workspace:^",
@@ -50,7 +50,7 @@
     "chokidar": "^5.0.0"
   },
   "devDependencies": {
-    "@clawdsh/dsh-embeddings": "workspace:^",
+    "@clawdsh/dsh-embeddings": "workspace:0.1.0-rc.1",
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-agent": "workspace:^",
     "@deepseek-ai/dsh-agent-default-model": "workspace:^",

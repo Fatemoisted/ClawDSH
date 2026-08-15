@@ -1,0 +1,117 @@
+{
+  "name": "@clawdsh/dsh-bundle",
+  "description": "ClawDSH profile layer, managed presets, local product shell, and locked communication-plane assets",
+  "version": "0.1.0-rc.1",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fatemoisted/ClawDSH.git",
+    "directory": "packages/openclaw/preset-openclaw/distribution/bundle"
+  },
+  "type": "module",
+  "main": "lib/index.mjs",
+  "types": "lib/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.mts",
+      "default": "./lib/index.mjs"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./assets.json": "./assets.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "LICENSE",
+    "assets.json",
+    "cordis.patch.yml",
+    "lib/index.mjs",
+    "lib/index.d.mts",
+    "web/**",
+    "presets/**",
+    "channel/**"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "clawdsh": {
+    "distributionVersion": 1,
+    "assetManifest": "./assets.json",
+    "profile": {
+      "id": "clawdsh",
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "@clawdsh/dsh-bundle"
+      ],
+      "bundleVersions": {
+        "@deepseek-ai/dsh-base": "0.1.0-rc.6",
+        "@deepseek-ai/dsh-web-app": "0.1.0-rc.6",
+        "@clawdsh/dsh-bundle": "0.1.0-rc.1"
+      },
+      "preset": {
+        "id": "clawdsh",
+        "directory": "./presets/clawdsh"
+      },
+      "safePreset": {
+        "id": "clawdsh-messaging-safe",
+        "package": "@clawdsh/dsh-preset-messaging-safe"
+      }
+    },
+    "controlRuntime": "./lib/index.mjs",
+    "activity": {
+      "package": "@clawdsh/dsh-activity",
+      "namespace": "clawdsh-activity",
+      "storageVersion": 1
+    },
+    "channel": {
+      "track": "production",
+      "hostLock": "./channel/locks/host.production.json",
+      "catalog": "./channel/locks/channels.production.json",
+      "support": "./channel/locks/support.production.json",
+      "governance": "./channel/locks/governance.production.json",
+      "runtimeManifest": "./channel/runtime/package.json",
+      "runtimeLock": "./channel/runtime/npm-shrinkwrap.json",
+      "runtimeIdentity": "./channel/locks/runtime.production.json",
+      "bridge": "./channel/bridge/stable-v1",
+      "notices": "./channel/THIRD_PARTY_NOTICES.md"
+    }
+  },
+  "dependencies": {
+    "@clawdsh/dsh-activity": "workspace:0.1.0-rc.1",
+    "@clawdsh/dsh-automation": "workspace:0.1.0-rc.1",
+    "@clawdsh/dsh-channel": "workspace:0.1.0-rc.1",
+    "@clawdsh/dsh-channel-agent": "workspace:0.1.0-rc.1",
+    "@clawdsh/dsh-channel-openclaw": "workspace:0.1.0-rc.1",
+    "@clawdsh/dsh-embeddings": "workspace:0.1.0-rc.1",
+    "@clawdsh/dsh-embeddings-ark": "workspace:0.1.0-rc.1",
+    "@clawdsh/dsh-memory": "workspace:0.1.0-rc.1",
+    "@clawdsh/dsh-preset-messaging-safe": "workspace:0.1.0-rc.1",
+    "@clawdsh/dsh-skills-hub": "workspace:0.1.0-rc.1",
+    "@clawdsh/dsh-soul": "workspace:0.1.0-rc.1",
+    "@deepseek-ai/cordis-plugin-include": "1.0.6",
+    "@deepseek-ai/cordis-plugin-loader": "1.0.2",
+    "@deepseek-ai/dsh-agent-presets": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-connection": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-credentials": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-host-apiproxy": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-host-frontend-static": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-settings": "0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "3.18.1",
+    "js-yaml": "4.3.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.1"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "prepack": "node ../release-tools/bundle-prepack-guard.mjs"
+  }
+}

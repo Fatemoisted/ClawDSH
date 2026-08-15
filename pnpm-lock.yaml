@@ -5595,7 +5595,7 @@ importers:
         version: 4.4.3
     devDependencies:
       '@clawdsh/dsh-channel':
-        specifier: workspace:^
+        specifier: workspace:0.1.0-rc.1
         version: link:../channel
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -5715,7 +5715,7 @@ importers:
         version: 4.4.3
     devDependencies:
       '@clawdsh/dsh-channel':
-        specifier: workspace:^
+        specifier: workspace:0.1.0-rc.1
         version: link:../channel
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -5771,7 +5771,7 @@ importers:
         version: link:../../../vendor/schemastery
     devDependencies:
       '@clawdsh/dsh-embeddings':
-        specifier: workspace:^
+        specifier: workspace:0.1.0-rc.1
         version: link:../embeddings
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -5802,7 +5802,7 @@ importers:
         version: 5.0.0
     devDependencies:
       '@clawdsh/dsh-embeddings':
-        specifier: workspace:^
+        specifier: workspace:0.1.0-rc.1
         version: link:../embeddings
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -5856,7 +5856,7 @@ importers:
   packages/openclaw/preset-clawdsh-messaging-safe:
     dependencies:
       '@clawdsh/dsh-soul':
-        specifier: workspace:^
+        specifier: workspace:0.1.0-rc.1
         version: link:../soul
     devDependencies:
       '@deepseek-ai/cordis':

@@ -1,0 +1,4 @@
+packages:
+  - bundle
+  - cli
+verifyDepsBeforeRun: false

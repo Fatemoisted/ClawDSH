@@ -2,9 +2,11 @@
 
 English | [中文](0004-npm-publishing.zh.md)
 
-- **Status**: Accepted (2026-08-14)
+- **Status**: Superseded by ADR-0009 (2026-08-15)
 - **Date**: 2026-08-14
 - **Depends on**: ADR-0001 (build-chain exemption), ADR-0002 (own-seam precedent), ADR-0003 (embeddings seam)
+
+ADR-0009 replaces this private-registry package set, version baseline, installer path, and token-based workflow with the closed public release set, managed CLI, exact release candidates, and trusted publishing. This document remains the historical authority for the narrow workspace-constraint exemption.
 
 ## Context
 

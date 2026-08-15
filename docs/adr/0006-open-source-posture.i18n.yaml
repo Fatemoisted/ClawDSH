@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/adr/0006-open-source-posture.md
-0006-open-source-posture.md: f6efab722f1aa96a7b5b3f8d45ab8c05eab8f9ec
-0006-open-source-posture.zh.md: e4625d5cea7740ce7f11875c2343e557834d429b
+0006-open-source-posture.md: c45fe878722dbc6fbeefd8f32997a668cb32c797
+0006-open-source-posture.zh.md: 86efd17130303ed52c13eca11b28c70f0e81d992

@@ -23,6 +23,7 @@ English | [中文](product-chain.zh.md)
 | Skills | `skills-hub` | `ctx.skills` | ✅ implemented |
 | Automation | `automation` | Agents and Sessions | ✅ implemented; disabled by default |
 | Product identity | internal `preset-openclaw` source | `clawdsh` profile and presets | ✅ `ClawDSH 模式`; legacy `openclaw` assets are warning-only |
+| Public distribution | `dsh-bundle`, `cli`, and ten runtime feature packages plus the restricted preset | managed dsh profile installation and fixed npm release graph | ✅ `0.1.0-rc.1` candidate prepared; ⚠️ unpublished |
 
 ## ClawDSH local GUI
 
@@ -113,7 +114,7 @@ Inbound images are confined to a canonical staging root, checked for symlinks, s
 
 - ✅ New Web Sessions default to `clawdsh`, displayed as `ClawDSH 模式`.
 - ✅ Owner channel turns use `clawdsh`; every non-owner or group turn uses `clawdsh-messaging-safe` after OpenClaw admission.
-- ✅ Disabled channel and Automation behavior may omit credentials; the product Settings increment will move optional runtime control behind mounted plugins' validated `enabled` settings.
+- ✅ Disabled channel and Automation behavior may omit credentials; mounted plugins' validated `enabled` settings control optional runtime effects.
 - ✅ `tools/link-clawdsh.sh` installs only ClawDSH ids, warns about legacy `openclaw` assets, and neither aliases nor mutates them.
 - ⚠️ A channel configuration row does not establish `enabled`; ADR-0008 requires certification first.
 
@@ -128,15 +129,28 @@ Inbound images are confined to a canonical staging root, checked for symlinks, s
 | Current channel admission | user content and verified images | known `user/message` with sanitized channel source; authority in Agent ledger | ✅ |
 | Current delivery update | not model input | Provider and Agent delivery ledgers | ✅ |
 | Channel health and IPC bookkeeping | not model input | Provider health and ledger only | ✅ |
-| Activity semantic record | not an additional model input | standard Session history plus ClawDSH sidecar projection | ⏳ |
+| Activity semantic record | not an additional model input | standard Session history plus ClawDSH sidecar projection | ✅ |
 
-## Release gaps
+## Public distribution
 
-1. Implement the Settings control plane and semantic Activity behind the shipped `/clawdsh/` shell without changing upstream GUI source.
-2. Finish the public installer and managed preset/profile repair path while preserving user settings, credentials, memory, and skills.
-3. Add an owned keyless Gateway-to-Agent snapshot lane and complete exact per-channel assembly evidence.
-4. Keep Windows fail-closed until named-pipe ACL enforcement provides equivalent authorization.
-5. Add durable non-image attachments and outbound staging before enabling those media paths.
-6. Run fresh Telegram and Feishu certification before enabling either route.
-7. Obtain an ignorable append mechanism before persisting namespaced `channel/*` Session events.
-8. Remove legacy adapters and archive their Notes only after every replacement condition passes.
+| Link | Owner and behavior |
+|---|---|
+| Package set | the exact [13-package allowlist](../../packages/openclaw/README.md#public-release-set) uses `0.1.0-rc.1`; legacy channels and the nested product runtime are excluded |
+| Bundle | `@clawdsh/dsh-bundle` contains the profile patch, presets, Control Runtime, GUI assets, locked Channel assets, and exact feature dependencies |
+| Managed install | `@clawdsh/cli` pins bundle `0.1.0-rc.1` and dsh `0.1.0-rc.6`, installs atomically, records `.clawdsh.json`, preserves user data, repairs with backup, and launches through its own dsh binary |
+| Channel install | an explicit production-only command verifies the locked SHA-512 archive and checked runtime, preserves existing OpenClaw configuration and state, and creates a credential-free fail-closed configuration only when none exists; ordinary initialization does not acquire OpenClaw |
+| Release verification | real tarballs reject local protocols, symlinks, undeclared files, private registry URLs, and graph drift before a temporary-registry isolated-home smoke |
+| Publication | the prepared workflow fixes public npm `next`, OIDC trusted publishing, provenance, the exact allowlist, dependency-first order, and `refs/heads/clawdsh`; package creation and npm trust remain external |
+
+✅ The bundle, CLI, Channel installer, release audit, and workflow are prepared without publishing packages or changing repository visibility. ⚠️ The registry is `bootstrap-required`, not `OIDC-ready`: none of the thirteen package objects exists, and neither npm trust nor staged publishing can create a brand-new one. A separately authorized interactive 2FA bootstrap must run first; afterward every package trust record must match `clawdsh-publish.yml`, environment `npm`, and `npm publish`, and that GitHub environment must admit only branch `clawdsh`.
+
+## Open conditions
+
+1. Add an owned keyless Gateway-to-Agent snapshot lane and complete exact per-channel assembly evidence.
+2. Keep Windows fail-closed until named-pipe ACL enforcement provides equivalent authorization.
+3. Add durable non-image attachments and outbound staging before enabling those media paths.
+4. Run fresh Telegram and Feishu certification before enabling either route.
+5. Obtain an ignorable append mechanism before persisting namespaced `channel/*` Session events.
+6. Remove legacy adapters and archive their Notes only after every replacement condition passes.
+7. Select and separately authorize the bootstrap archives and version, then create all thirteen package objects through interactive 2FA; this repository does not execute that bootstrap.
+8. Verify all thirteen npm trust records, the branch-restricted `npm` environment, canonical `refs/heads/clawdsh`, public-repository approval, and exact dsh compatibility before OIDC publication.

@@ -1,0 +1,12 @@
+{
+  "name": "@clawdsh/distribution-build",
+  "version": "0.1.0-rc.1",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "stage:bundle": "node release-tools/bundle-stage.mjs",
+    "test": "node --test release-tools/*.test.mjs cli/tests/*.test.mjs",
+    "verify:bundle": "node release-tools/bundle-verify.mjs"
+  }
+}

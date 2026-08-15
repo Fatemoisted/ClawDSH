@@ -50,8 +50,11 @@ Production 渠道平面锁定 OpenClaw `v2026.7.1-2`、commit `0790d9f593ad30c94
 | 本地浏览器对话 | dsh Web client | `dsh-web-app` + `clawdsh` preset | Reuse/config | 内部 `preset-openclaw` source | 在产品壳内部与原生 `/` route 复用 |
 | ClawDSH 产品壳与 Settings | ClawDSH-native | 公开 dsh Web 组装、Settings 与 Credentials | Product assembly | 内部 `preset-openclaw` source | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 产品壳与 conflict-safe Settings 已实现 |
 | ClawDSH 语义 Activity | ClawDSH-native | standard Session history 加可选 `ctx.clawdshActivity` sidecar | Plugin + product assembly | `activity` 加内部 `preset-openclaw` UI | [语义 Activity](../specs/feature-activity.md) 已实现；在 `clawdsh` profile 中必需 |
+| ClawDSH 公共发行 | ClawDSH-native | dsh profile/bundle 安装与 npm 发布 | Product assembly | [精确 13 包 allowlist](../../packages/openclaw/README.md#public-release-set) | `0.1.0-rc.1` bundle、CLI、installer、tarball 审计与 OIDC/provenance workflow 已准备；需要 bootstrap；未发布 |
 
 Channel Agent 路径把完整且净化后的模型可见来源存储在已知 `user/message.source.kind = 'channel'` 字段中，并把 admission、idempotency 与 delivery 权威留在持久 channel ledger。它不持久化已声明的 `channel/*` Session event，因为下游代码不能将其标记为 ignorable，静态 known-event reader 会使 resume fail closed。
+
+Distribution CLI 固定使用 `@deepseek-ai/dsh@0.1.0-rc.6`，已准备的发行 workflow 只以公共 npm `next` 为目标，并使用 OIDC trusted publishing 与 provenance。13 个 package name 均不存在，因此发行状态是 `bootstrap-required`，而不是 `OIDC-ready`：首次创建需要用户另行授权交互式 2FA 发布，staged publishing 不适用于全新 package，后续 OIDC 权限则要求全部 13 条 trust 记录、branch-restricted GitHub `npm` environment 与精确 `refs/heads/clawdsh`。仓库保持 private，且没有执行 bootstrap、trust 配置或真实发布。
 
 ## Production 渠道目录
 

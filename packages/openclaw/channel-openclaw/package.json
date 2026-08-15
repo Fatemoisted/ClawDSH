@@ -1,7 +1,7 @@
 {
   "name": "@clawdsh/dsh-channel-openclaw",
   "description": "ClawDSH OpenClaw communication-plane Provider: authenticated local IPC and locked Gateway supervision",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -23,20 +23,22 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [
+    "LICENSE",
     "lib/index.js",
     "lib/invariant.js",
     "lib/types/**/*.d.ts",
-    "bridge/**",
-    "runtime/**",
+    "bridge/stable-v1/**",
+    "bridge/shared/**",
+    "runtime/package.json",
+    "runtime/package-lock.json",
     "LICENSE.openclaw",
     "THIRD_PARTY_NOTICES.md"
   ],
   "peerDependencies": {
-    "@clawdsh/dsh-channel": "workspace:^",
+    "@clawdsh/dsh-channel": "workspace:0.1.0-rc.1",
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",
@@ -49,7 +51,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@clawdsh/dsh-channel": "workspace:^",
+    "@clawdsh/dsh-channel": "workspace:0.1.0-rc.1",
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",

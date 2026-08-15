@@ -2,9 +2,11 @@
 
 [English](0004-npm-publishing.md) | 中文
 
-- **Status**: Accepted (2026-08-14)
+- **Status**：已被 ADR-0009 取代（2026-08-15）
 - **Date**: 2026-08-14
 - **Depends on**: ADR-0001（构建链豁免）、ADR-0002（自有接缝先例）、ADR-0003（embeddings 接缝）
+
+ADR-0009 用闭合公共发布集合、托管 CLI、精确候选版本与 trusted publishing 取代本 ADR 的私有 registry 包集合、版本基线、安装路径和 token 工作流。本文件继续作为狭窄 workspace constraint 豁免的历史权威。
 
 ## Context
 

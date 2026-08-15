@@ -13,19 +13,24 @@ on:
   push:
     branches: [clawdsh]
 
+permissions:
+  contents: read
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
     env:
       NODE_OPTIONS: --max-old-space-size=4096
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
         with:
           version: 11.7.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
@@ -74,3 +79,11 @@ jobs:
           pnpm exec tsx tools/openclaw-channel-host/generate-parity.ts --check
           pnpm exec vitest run --config tools/openclaw-channel-migration.vitest.config.ts
           pnpm run verify-translation-pairing
+
+      - name: ClawDSH distribution release-tool tests
+        run: node --test packages/openclaw/preset-openclaw/distribution/release-tools/*.test.mjs
+
+      - name: ClawDSH public CLI tests and strict typecheck
+        run: |
+          node --test packages/openclaw/preset-openclaw/distribution/cli/tests/*.test.mjs
+          pnpm exec tsc --noEmit -p packages/openclaw/preset-openclaw/distribution/cli/tsconfig.json

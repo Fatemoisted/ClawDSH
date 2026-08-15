@@ -50,8 +50,11 @@ The production channel plane is locked to OpenClaw `v2026.7.1-2`, commit `0790d9
 | Local browser conversation | dsh Web client | `dsh-web-app` + `clawdsh` preset | Reuse/config | internal `preset-openclaw` source | reused inside the product shell and at native `/` |
 | ClawDSH product shell and Settings | ClawDSH-native | public dsh Web assembly, Settings, and Credentials | Product assembly | internal `preset-openclaw` source | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) shell and conflict-safe Settings implemented |
 | ClawDSH semantic Activity | ClawDSH-native | standard Session history plus optional `ctx.clawdshActivity` sidecars | Plugin + product assembly | `activity` plus internal `preset-openclaw` UI | [semantic Activity](../specs/feature-activity.md) implemented; required in the `clawdsh` profile |
+| ClawDSH public distribution | ClawDSH-native | dsh profile/bundle installation and npm publication | Product assembly | [exact 13-package allowlist](../../packages/openclaw/README.md#public-release-set) | `0.1.0-rc.1` bundle, CLI, installer, tarball audit, and OIDC/provenance workflow prepared; bootstrap required; unpublished |
 
 The channel Agent path stores complete sanitized model provenance on the known `user/message.source.kind = 'channel'` field and keeps admission, idempotency, and delivery authority in durable channel ledgers. It does not persist declared `channel/*` Session events because downstream code cannot mark them ignorable and the static known-event reader would make resume fail closed.
+
+The distribution CLI pins `@deepseek-ai/dsh@0.1.0-rc.6`, and the prepared release workflow targets only public npm `next` with OIDC trusted publishing and provenance. None of the thirteen package names exists, so the release is `bootstrap-required`, not `OIDC-ready`: initial creation requires separately authorized interactive 2FA publication, staged publishing is unavailable for new packages, and subsequent OIDC authority requires all thirteen trust records, the branch-restricted GitHub `npm` environment, and exact `refs/heads/clawdsh`. The repository remains private and no bootstrap, trust configuration, or publication has occurred.
 
 ## Production channel catalog
 

@@ -1,78 +1,205 @@
-# ClawDSH 私有 registry 发布工作流（本仓库自有；上游 release 工作流一律不动）
-# 手动触发：inputs.registry 指定私有 registry URL，dry-run 只校验 tarball 不落盘。
+# ClawDSH public npm release preparation. Public writes require every readiness confirmation.
 name: clawdsh-publish
 
 on:
   workflow_dispatch:
     inputs:
-      registry:
-        description: 'Private npm registry URL (e.g. https://npm.example.com/)'
+      publish:
+        description: 'Publish the verified tarballs to public npm; false performs the complete dry run only'
         required: true
-        type: string
-      dry-run:
-        description: 'Pack and validate tarballs without publishing'
-        required: false
+        type: boolean
+        default: false
+      scope_ownership_confirmed:
+        description: '@clawdsh npm scope ownership has been confirmed'
+        required: true
+        type: boolean
+        default: false
+      trusted_publishing_confirmed:
+        description: 'npm trusted publishing is configured for this workflow and environment'
+        required: true
+        type: boolean
+        default: false
+      public_repository_approved:
+        description: 'The user explicitly approved making the source repository public'
+        required: true
+        type: boolean
+        default: false
+      rc6_compatibility_confirmed:
+        description: '@deepseek-ai/dsh@0.1.0-rc.6 compatibility is approved after the clean-install smoke'
+        required: true
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
+concurrency:
+  group: clawdsh-public-npm
+  cancel-in-progress: false
+
+env:
+  NODE_OPTIONS: --max-old-space-size=4096
+  CLAWDSH_RELEASE_ORDER: '@clawdsh/dsh-activity,@clawdsh/dsh-channel,@clawdsh/dsh-embeddings,@clawdsh/dsh-automation,@clawdsh/dsh-skills-hub,@clawdsh/dsh-soul,@clawdsh/dsh-channel-agent,@clawdsh/dsh-channel-openclaw,@clawdsh/dsh-embeddings-ark,@clawdsh/dsh-memory,@clawdsh/dsh-preset-messaging-safe,@clawdsh/dsh-bundle,@clawdsh/cli'
+
 jobs:
-  publish:
+  prepare:
     runs-on: ubuntu-latest
     env:
-      NODE_OPTIONS: --max-old-space-size=4096
+      CLAWDSH_RELEASE_DIRECTORY: ${{ runner.temp }}/clawdsh-release
+      CLAWDSH_BUNDLE_DIRECTORY: ${{ runner.temp }}/clawdsh-stage/bundle
+      CLAWDSH_REGISTRY_URL: http://127.0.0.1:4873/
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
         with:
           version: 11.7.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
 
-      - name: Install
+      - name: Require npm trusted-publishing support
+        run: node -e "const [major,minor]=process.argv[1].split('.').map(Number); if (major < 11 || (major === 11 && minor < 5)) throw new Error('npm 11.5.1 or newer is required')" "$(npm --version)"
+
+      - name: Install source dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm run build
-
-      - name: Typecheck
-        run: pnpm run typecheck
-
-      - name: ClawDSH communication-plane gates
+      - name: Typecheck and build source packages
         run: |
-          npm ci --ignore-scripts --prefix packages/openclaw/channel-openclaw/runtime
-          pnpm exec vitest run packages/openclaw/channel/tests packages/openclaw/channel-agent/tests packages/openclaw/channel-openclaw/tests packages/openclaw/preset-clawdsh-messaging-safe/tests
-          node --test packages/openclaw/channel-openclaw/bridge/test/*.test.mjs
-          node packages/openclaw/channel-openclaw/bridge/verify.mjs
-          pnpm exec vitest run --config tools/openclaw-channel-host/vitest.config.ts
-          pnpm exec tsc -p tools/openclaw-channel-host/tsconfig.json --noEmit
-          pnpm exec tsx tools/openclaw-channel-host/verify.ts --check --host-root packages/openclaw/channel-openclaw/runtime/node_modules/openclaw
-          pnpm exec tsx tools/openclaw-channel-host/generate-parity.ts --check
-          pnpm exec vitest run --config tools/openclaw-channel-migration.vitest.config.ts
-          pnpm run verify-translation-pairing
+          pnpm run typecheck
+          pnpm run build
 
-      - name: Publish (dry-run)
-        if: ${{ inputs.dry-run }}
-        env:
-          NPM_CONFIG_REGISTRY: ${{ inputs.registry }}
-        run: >-
-          pnpm -r --filter './packages/openclaw/*'
-          --filter '!@clawdsh/dsh-channel-core'
-          --filter '!@clawdsh/dsh-channel-telegram'
-          --filter '!@clawdsh/dsh-channel-feishu'
-          publish --dry-run --no-git-checks
+      - name: Build the nested product shell
+        run: |
+          pnpm --dir packages/openclaw/preset-openclaw/product-shell install --frozen-lockfile
+          pnpm --dir packages/openclaw/preset-openclaw/product-shell run typecheck
+          pnpm --dir packages/openclaw/preset-openclaw/product-shell run build
 
-      - name: Publish
-        if: ${{ !inputs.dry-run }}
+      - name: Verify release tools and the nested CLI without registry resolution
+        run: |
+          node --test packages/openclaw/preset-openclaw/distribution/release-tools/*.test.mjs
+          node --test packages/openclaw/preset-openclaw/distribution/cli/tests/*.test.mjs
+          pnpm exec tsc --noEmit -p packages/openclaw/preset-openclaw/distribution/cli/tsconfig.json
+
+      - name: Stage, pack, and inspect exactly 13 packages
+        run: |
+          mkdir -p "$(dirname "$CLAWDSH_BUNDLE_DIRECTORY")"
+          node packages/openclaw/preset-openclaw/distribution/release-tools/bundle-stage.mjs \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --out "$CLAWDSH_BUNDLE_DIRECTORY"
+          node packages/openclaw/preset-openclaw/distribution/release-tools/release-pack.mjs \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --bundle-directory "$CLAWDSH_BUNDLE_DIRECTORY" \
+            --output "$CLAWDSH_RELEASE_DIRECTORY"
+          node packages/openclaw/preset-openclaw/distribution/release-tools/release-verify.mjs \
+            "$CLAWDSH_RELEASE_DIRECTORY"
+
+      - name: Clean install through a temporary registry
+        run: |
+          REGISTRY_ROOT="$RUNNER_TEMP/clawdsh-registry"
+          REGISTRY_CONFIG="$RUNNER_TEMP/clawdsh-registry.json"
+          node packages/openclaw/preset-openclaw/distribution/release-tools/temporary-registry-config.mjs \
+            --output "$REGISTRY_CONFIG" \
+            --state "$REGISTRY_ROOT"
+          pnpm dlx verdaccio@6.2.2 \
+            --config "$REGISTRY_CONFIG" \
+            --listen 127.0.0.1:4873 \
+            >"$RUNNER_TEMP/clawdsh-registry.log" 2>&1 &
+          REGISTRY_PID=$!
+          trap 'kill "$REGISTRY_PID" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent "$CLAWDSH_REGISTRY_URL/-/ping" >/dev/null; then break; fi
+            if [[ "$attempt" = 60 ]]; then
+              cat "$RUNNER_TEMP/clawdsh-registry.log"
+              exit 1
+            fi
+            sleep 1
+          done
+          LOCAL_NPMRC="$RUNNER_TEMP/clawdsh-registry.npmrc"
+          node packages/openclaw/preset-openclaw/distribution/release-tools/temporary-registry-user.mjs \
+            --registry "$CLAWDSH_REGISTRY_URL" \
+            --output "$LOCAL_NPMRC"
+          NPM_CONFIG_USERCONFIG="$LOCAL_NPMRC" node packages/openclaw/preset-openclaw/distribution/release-tools/publish-release.mjs \
+            --directory "$CLAWDSH_RELEASE_DIRECTORY" \
+            --registry "$CLAWDSH_REGISTRY_URL" \
+            --order "$CLAWDSH_RELEASE_ORDER" \
+            --tag next \
+            --allow-loopback
+          node packages/openclaw/preset-openclaw/distribution/release-tools/clean-install-smoke.mjs \
+            --release-directory "$CLAWDSH_RELEASE_DIRECTORY" \
+            --registry "$CLAWDSH_REGISTRY_URL" \
+            --work-directory "$RUNNER_TEMP/clawdsh-clean-install" \
+            --attestation "$CLAWDSH_RELEASE_DIRECTORY/smoke-attestation.json"
+
+      - name: Confirm dry-run or requested public-release authority
         env:
-          NPM_CONFIG_REGISTRY: ${{ inputs.registry }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: >-
-          pnpm -r --filter './packages/openclaw/*'
-          --filter '!@clawdsh/dsh-channel-core'
-          --filter '!@clawdsh/dsh-channel-telegram'
-          --filter '!@clawdsh/dsh-channel-feishu'
-          publish --no-git-checks
+          CLAWDSH_PUBLISH_REQUESTED: ${{ inputs.publish }}
+          CLAWDSH_GITHUB_REF: ${{ github.ref }}
+          CLAWDSH_REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+          CLAWDSH_SCOPE_OWNERSHIP_CONFIRMED: ${{ inputs.scope_ownership_confirmed }}
+          CLAWDSH_TRUSTED_PUBLISHING_CONFIRMED: ${{ inputs.trusted_publishing_confirmed }}
+          CLAWDSH_PUBLIC_REPOSITORY_APPROVED: ${{ inputs.public_repository_approved }}
+          CLAWDSH_RC6_COMPATIBILITY_CONFIRMED: ${{ inputs.rc6_compatibility_confirmed }}
+          CLAWDSH_RELEASE_INDEX: ${{ runner.temp }}/clawdsh-release/release-index.json
+          CLAWDSH_SMOKE_ATTESTATION: ${{ runner.temp }}/clawdsh-release/smoke-attestation.json
+        run: node packages/openclaw/preset-openclaw/distribution/release-tools/release-readiness.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clawdsh-public-npm-candidate
+          path: ${{ runner.temp }}/clawdsh-release
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: ${{ inputs.publish && github.ref == 'refs/heads/clawdsh' }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: clawdsh-public-npm-candidate
+          path: ${{ runner.temp }}/clawdsh-release
+
+      - name: Recheck release authority and smoke evidence
+        env:
+          CLAWDSH_PUBLISH_REQUESTED: 'true'
+          CLAWDSH_GITHUB_REF: ${{ github.ref }}
+          CLAWDSH_REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+          CLAWDSH_SCOPE_OWNERSHIP_CONFIRMED: ${{ inputs.scope_ownership_confirmed }}
+          CLAWDSH_TRUSTED_PUBLISHING_CONFIRMED: ${{ inputs.trusted_publishing_confirmed }}
+          CLAWDSH_PUBLIC_REPOSITORY_APPROVED: ${{ inputs.public_repository_approved }}
+          CLAWDSH_RC6_COMPATIBILITY_CONFIRMED: ${{ inputs.rc6_compatibility_confirmed }}
+          CLAWDSH_RELEASE_INDEX: ${{ runner.temp }}/clawdsh-release/release-index.json
+          CLAWDSH_SMOKE_ATTESTATION: ${{ runner.temp }}/clawdsh-release/smoke-attestation.json
+        run: |
+          node packages/openclaw/preset-openclaw/distribution/release-tools/release-readiness.mjs
+          node packages/openclaw/preset-openclaw/distribution/release-tools/release-verify.mjs \
+            "$RUNNER_TEMP/clawdsh-release"
+
+      - name: Publish dependency-first to public npm next with provenance
+        run: |
+          node packages/openclaw/preset-openclaw/distribution/release-tools/publish-release.mjs \
+            --directory "$RUNNER_TEMP/clawdsh-release" \
+            --registry https://registry.npmjs.org/ \
+            --order "$CLAWDSH_RELEASE_ORDER" \
+            --tag next \
+            --provenance

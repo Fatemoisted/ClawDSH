@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "track": "production",
+  "packageName": "openclaw",
+  "packageVersion": "2026.7.1-2",
+  "nodeEngine": ">=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0",
+  "artifactUrl": "https://registry.npmjs.org/openclaw/-/openclaw-2026.7.1-2.tgz",
+  "artifactSha512": "c9c177c8f71b8cde9b50f79a531e8c87abf37b58505a80f7093ff059c983edaf316871c745468095aabe945c4c1dfd6cb0480e0d50308e5cd8aa9dadc24619ee",
+  "runtimePackageLockSha512": "cbb255ff2de5337f4bc6914a7083948a1ff9df2e30f66a9d86e35efc4c4ec49e703e755dc68f3802a343e3de54949383f40312266e7ab87c6b14cd0b68a92adb",
+  "tree": {
+    "fileCount": 8550,
+    "sha512": "b7b846411d1091a2067cfe964b9395d443aae0a64ae9d70707b9eed01ec4e949714b851db6e153e9ff84d9a9055408a2eb18c79dd94400d59293d39a648e0d8b"
+  },
+  "runtimeTrees": [
+    {
+      "platform": "darwin",
+      "architecture": "arm64",
+      "fileCount": 31942,
+      "sha512": "71c4b7b37c79dfa37efb2297c52315786130c5b44ca0fa0469a96e09334f5fbbd027988aac5aa559a7a003a3a002201bbf0231ea27dec30d9817bcb13a40cfb6"
+    }
+  ]
+}

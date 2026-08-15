@@ -5,6 +5,9 @@ English | [中文](0006-open-source-posture.zh.md)
 - **Status**: Accepted (2026-08-14)
 - **Date**: 2026-08-14
 - **Depends on**: ADR-0001 (brand/build exemption), ADR-0004 (npm publishing)
+- **Distribution clauses superseded by**: ADR-0009 (2026-08-15)
+
+ADR-0009 supersedes decision 5, the related private-registry consequences, and the public-npm alternative. The source, license, attribution, and contribution posture in this ADR remains current; making the repository public still requires separate user authorization.
 
 ## Context
 

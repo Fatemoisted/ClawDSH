@@ -1,7 +1,7 @@
 {
   "name": "@clawdsh/dsh-soul",
   "description": "ClawDSH soul row: file-backed OpenClaw-style persona for an agent scope (spike #1 on the system-prompt seam)",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -27,7 +27,6 @@
       "types": "./lib/types/startup.d.ts",
       "default": "./lib/startup.js"
     },
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [

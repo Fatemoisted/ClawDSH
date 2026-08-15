@@ -9,7 +9,8 @@ The directory is not a Cordis plugin. It supplies:
 1. the `clawdsh` Agent preset (`preset.yml`, `agent.cordis.yml`, and `souls/assistant.md`), displayed as `ClawDSH 模式`;
 2. the `clawdsh` profile template (`profile/`), which composes dsh base and Web bundles with ClawDSH Host plugins;
 3. the nested ClawDSH browser shell and `@clawdsh/dsh-product-runtime`, with the capability overview, editable Settings control plane, and current-Session semantic Activity;
-4. the development installation source consumed by `tools/link-clawdsh.sh`.
+4. the development installation source consumed by `tools/link-clawdsh.sh`;
+5. the nested public-distribution source for `@clawdsh/dsh-bundle`, `@clawdsh/cli`, and fail-closed release verification.
 
 The OpenClaw Gateway is an external communication-plane provider inside this product. It does not define the product, profile, or Agent preset identity.
 
@@ -27,6 +28,33 @@ pnpm dsh --profile clawdsh
 New Web Sessions default to the `clawdsh` preset shown as `ClawDSH 模式`. The restricted channel preset is installed as `clawdsh-messaging-safe`. A model credential is needed only when a conversation makes a model request; the Web Host itself starts without external credentials.
 
 The product shell has its own lockfile because it stays outside the root workspace and Client aggregate. Install that nested workspace before building it. The development installer requires `product-shell/runtime/lib/index.mjs` and `product-shell/runtime/web/index.html` to exist and fails with the exact build command when either artifact is absent. It links the nested runtime as `@clawdsh/dsh-product-runtime`, warns when it finds legacy `openclaw` profile or preset assets, and leaves them untouched. It creates no compatibility alias and does not delete, move, rewrite, or adopt user data. Review any legacy `agent-presets.default` override before removing an old preset that saved Sessions may still reference.
+
+## Managed installation CLI
+
+`@clawdsh/cli@0.1.0-rc.1` depends exactly on `@clawdsh/dsh-bundle@0.1.0-rc.1` and `@deepseek-ai/dsh@0.1.0-rc.6`.
+
+After the publication conditions pass, the npm entry point is:
+
+```bash
+npx --yes @clawdsh/cli@0.1.0-rc.1
+```
+
+The installed command set is:
+
+```text
+clawdsh
+clawdsh init
+clawdsh init --reset-preset
+clawdsh start
+clawdsh start --profile <name>
+clawdsh doctor
+clawdsh channel install
+clawdsh channel doctor
+```
+
+With no subcommand, the CLI performs an idempotent managed-profile initialization or upgrade and starts the ClawDSH GUI through its exact dsh dependency. `start` passes through `--host`, `--port`, and `--trusted-host`; a named custom profile is launched without adoption or mutation. Installation builds a complete staging candidate, verifies the bundle order `@deepseek-ai/dsh-base → @deepseek-ai/dsh-web-app → @clawdsh/dsh-bundle`, and atomically publishes the managed profile, presets, and runtime assets with a `.clawdsh.json` manifest. It preserves Settings, Credentials, Memory, Skills, OpenClaw state, and custom profile patches. An unmarked or modified preset blocks silent replacement; `--reset-preset` creates a timestamped, integrity-recorded backup before restoring the managed copy. An unmarked profile with the same name is never adopted, and legacy `openclaw` assets produce warnings without deletion.
+
+Channel acquisition is separate from `init`. `clawdsh channel install` requires the running Node executable to satisfy the locked Gateway engine, accepts only the checked production track, downloads the exact OpenClaw artifact, verifies SHA-512 and every archive member, assembles the checked runtime with lifecycle scripts disabled, and creates a credential-free fail-closed configuration only when none exists. Existing OpenClaw configuration and state remain untouched, and canary stays audit-only. `clawdsh channel doctor` verifies managed identities and delegates the complete fail-closed configuration check to the installed Provider without selecting, returning, or printing platform credentials. The ordinary product install therefore remains small and starts with Gateway disabled even when no OpenClaw artifact exists.
 
 ## Communication plane
 
@@ -85,9 +113,15 @@ The profile suppresses the native `dsh web:` readiness line and mounts `@clawdsh
 
 The assembly does not register a new Client Slot and does not modify `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source. Activity adds no upstream Session event type, Raw Trajectory remains in Harness Advanced, and `dsh --profile web` remains a pure Harness entry point. The [Activity specification](../../../docs/specs/feature-activity.md) owns its storage, privacy, and degradation behavior.
 
-## Managed-preset limitation
+## Managed presets
 
-The presets currently live in dsh's user preset root because the launcher exposes no installation-owned ClawDSH preset root. The ClawDSH product Settings page does not offer preset deletion, but Harness Advanced still treats them as user presets. The public-distribution CLI owns the managed manifest, integrity checks, backup-before-reset, and `clawdsh doctor`; until then, rerunning the development installer restores checked-in preset files.
+The launcher exposes no installation-owned ClawDSH preset root, so both presets live in dsh's user preset root. The ClawDSH product Settings page does not offer preset deletion, but Harness Advanced still treats them as user presets. The CLI's managed manifest, integrity checks, backup-before-reset, and `clawdsh doctor` distinguish installed assets from ordinary user presets. The development installer remains a source-tree convenience and restores checked-in preset files without taking ownership of user data.
+
+## Public packaging
+
+The public candidate contains the exact [13-package release set](../README.md#public-release-set) at `0.1.0-rc.1`. `@clawdsh/dsh-bundle` carries the profile patch, primary preset, Control Runtime, built `/clawdsh/` assets, Channel locks and bridge notices, and exact dependencies on the ten runtime feature packages plus the restricted preset. Real tarball verification rejects `workspace:`, `file:`, symlinks, undeclared assets, private registry URLs, unexpected packages, and any dependency version outside the fixed release graph.
+
+The release workflow targets only public npm and the `next` tag. A dry run packs and audits all 13 tarballs, publishes them in dependency order to a temporary loopback registry, and performs a clean installation in an isolated dsh home. The registry state remains `bootstrap-required`: npm trust and staged publishing both require an existing package, but none of the thirteen names exists. A separately authorized interactive 2FA bootstrap must create the package objects before all thirteen trust records can be bound to `clawdsh-publish.yml`, environment `npm`, and `npm publish`. OIDC readiness additionally requires the GitHub `npm` environment to admit only branch `clawdsh` and the workflow's exact `refs/heads/clawdsh` check to pass. This implementation does not choose or publish bootstrap artifacts, configure trust, change repository visibility, or publish the candidate; [ADR-0009](../../../docs/adr/0009-public-npm-distribution.md) owns the complete conditions.
 
 ## Verification boundary
 

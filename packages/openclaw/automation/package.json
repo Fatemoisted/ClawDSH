@@ -1,7 +1,7 @@
 {
   "name": "@clawdsh/dsh-automation",
   "description": "ClawDSH automation row: OpenClaw-cron-style scheduled agent turns (croner + per-rule durable sessions) on the dsh agent turn bridge",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -23,7 +23,6 @@
       "types": "./lib/types/invariant.d.ts",
       "default": "./lib/invariant.js"
     },
-    "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
   "files": [

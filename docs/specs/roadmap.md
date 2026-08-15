@@ -65,7 +65,9 @@ The legacy channel packages remain separately available under `ctx.legacyChannel
 
 ### 4.3 Public distribution
 
-`tools/link-clawdsh.sh` is the development installer. It installs only `clawdsh` identities, warns about legacy `openclaw` profile and preset assets, and leaves them untouched. The public distribution work owns an idempotent CLI, exact dsh and ClawDSH bundle versions, a managed manifest, `clawdsh doctor`, preset backup and repair, clean-home smoke, and public npm provenance.
+`tools/link-clawdsh.sh` remains the development installer. The public distribution source provides `@clawdsh/dsh-bundle` and `@clawdsh/cli`, an idempotent managed manifest, `clawdsh doctor`, backup-before-preset-reset, an explicit production-only Channel installer, exact tarball audits, and isolated clean-install smoke. The fixed release set contains exactly [13 packages](../../packages/openclaw/README.md#public-release-set) at `0.1.0-rc.1`; the CLI pins `@deepseek-ai/dsh@0.1.0-rc.6`.
+
+The release workflow targets public npm `next` through OIDC trusted publishing with provenance and never accepts an arbitrary registry or long-lived npm token for a routine release. The current state is `bootstrap-required`, not `OIDC-ready`: all thirteen package names are absent, while npm trust and staged publishing require an existing package. A separately authorized interactive 2FA bootstrap must create the package objects before every trust record can be bound to `clawdsh-publish.yml`, environment `npm`, and `npm publish`. The GitHub `npm` environment must then admit only branch `clawdsh`, and release readiness requires the canonical ref `refs/heads/clawdsh`. This preparation performs none of those external writes.
 
 ## 5. Work sequence
 
@@ -86,9 +88,11 @@ The legacy channel packages remain separately available under `ctx.legacyChannel
 
 ### Distribution sequence
 
-1. Package the profile, presets, Control Runtime, GUI assets, and exact feature dependencies in the ClawDSH bundle.
-2. Publish the CLI and owned packages as `0.1.0-rc.1` to the public npm `next` tag only after scope ownership, public-source provenance, and exact dsh compatibility pass.
-3. Prove clean installation, second-run idempotency, user-change preservation, tarball integrity, and absence of private registry, workspace, file, or symlink references.
+1. ✅ Package the profile, presets, Control Runtime, GUI assets, locked Channel assets, and exact feature dependencies in the ClawDSH bundle.
+2. ✅ Provide the managed CLI, production-only Channel installer, exact 13-package packer, tarball verifier, temporary-registry smoke, and public npm OIDC/provenance workflow.
+3. Select and separately authorize a one-time bootstrap archive and version, then create all thirteen package objects through an interactive 2FA publication; staged publishing cannot create a brand-new package, and bootstrap must not silently consume the intended OIDC candidate version.
+4. Configure and verify all thirteen npm trusted-publisher records for `clawdsh-publish.yml`, environment `npm`, and `npm publish`, and restrict that GitHub environment to branch `clawdsh`.
+5. Publish the approved candidate to public npm `next` from `refs/heads/clawdsh` only after public-source provenance, exact dsh compatibility, and release authorization pass.
 
 ## 6. Success criteria
 
@@ -113,4 +117,7 @@ The legacy channel packages remain separately available under `ctx.legacyChannel
 - [ ] Add durable non-image attachments and outbound staging before advertising those media paths.
 - [ ] Add an ignorable Session append mechanism before persisting redundant `channel/*` events.
 - [ ] Remove legacy channel packages only after all replacement conditions pass.
-- [ ] Complete public npm ownership, provenance, exact-version compatibility, and clean-install smoke before publishing.
+- [x] Prepare the exact 13-package bundle, managed CLI, tarball verification, isolated install smoke, and OIDC/provenance workflow without publishing.
+- [ ] Obtain explicit authorization for the one-time interactive 2FA bootstrap, including its exact archives and version, and create all thirteen package objects without treating staged publishing as an initial-creation path.
+- [ ] Configure and verify all thirteen npm trust records plus the `npm` environment branch rule for `clawdsh`; until then the workflow is not `OIDC-ready`.
+- [ ] Confirm scope ownership, public-repository approval, canonical `refs/heads/clawdsh`, and exact-version compatibility before an OIDC publication.

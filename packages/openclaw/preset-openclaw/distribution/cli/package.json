@@ -1,0 +1,43 @@
+{
+  "name": "@clawdsh/cli",
+  "description": "Install, verify, and launch the local ClawDSH product",
+  "version": "0.1.0-rc.1",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fatemoisted/ClawDSH.git",
+    "directory": "packages/openclaw/preset-openclaw/distribution/cli"
+  },
+  "type": "module",
+  "bin": {
+    "clawdsh": "lib/bin.mjs"
+  },
+  "exports": {
+    ".": "./lib/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "lib/**"
+  ],
+  "scripts": {
+    "build": "node --check lib/bin.mjs && node --check lib/index.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@clawdsh/dsh-bundle": "workspace:0.1.0-rc.1",
+    "@deepseek-ai/dsh": "0.1.0-rc.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.0"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  }
+}
