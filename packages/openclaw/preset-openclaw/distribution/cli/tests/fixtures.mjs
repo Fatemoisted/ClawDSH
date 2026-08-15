@@ -140,11 +140,13 @@ export async function verifyFailClosedConfig(path, bridgeRoot, stateDir) {
     || providers.clawdsh?.agentRuntime?.id !== 'clawdsh'
     || !Array.isArray(providers.clawdsh?.models) || providers.clawdsh.models.length !== 1
     || providers.clawdsh.models[0]?.id !== 'local'
+    || !Array.isArray(providers.clawdsh.models[0]?.input) || providers.clawdsh.models[0].input.join() !== 'text'
     || defaults?.workspace !== resolve(stateDir, 'workspace')
     || defaults?.model?.primary !== 'clawdsh/local'
     || !Array.isArray(defaults?.model?.fallbacks) || defaults.model.fallbacks.length !== 0
     || defaults?.elevatedDefault !== 'off'
     || config.gateway?.mode !== 'local' || config.gateway?.bind !== 'loopback'
+    || config.session?.dmScope !== 'per-account-channel-peer'
     || commands?.bash !== false || commands?.config !== false || commands?.mcp !== false
     || commands?.plugins !== false || commands?.debug !== false || commands?.restart !== false
     || commands?.nativeSkills !== false || commands?.text !== true || commands?.useAccessGroups !== true

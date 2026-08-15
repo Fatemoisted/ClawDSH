@@ -66,7 +66,7 @@ Profile 始终按以下顺序挂载完整 communication seam：
 
 同一个始终挂载的通信组包含按包过滤的 invariant registry，以及 Service Definition、Agent 和 Provider 的 invariant companion。因此，启用后的部署会校验恢复的 Channel 来源信息和每个 seam 角色拥有的运行时关系。
 
-Channel Protocol 始终提供 Service Definition，Agent Bridge 始终注册自身 network-inert Driver。OpenClaw Gateway 保持 mounted，其经过校验的 `enabled` setting 默认为 false，因此不执行 artifact check、socket binding、process launch 或 Provider registration。旧进程内 Telegram 与 Feishu package 不在 active profile 中，external extension selection 默认为空。OpenClaw 仍是 platform credential 的唯一 owner；本 profile 不读取或复制这些凭证。绝不能让 legacy adapter 与 OpenClaw 通信平面连接同一 platform account。
+Channel Protocol 始终提供 Service Definition，Agent Bridge 始终注册自身 network-inert Driver。OpenClaw Gateway 保持 mounted，其经过校验的 `enabled` setting 默认为 false，因此不执行 artifact check、socket binding、process launch 或 Provider registration。ClawDSH 不交付直连 platform adapter 实现；Telegram、飞书、Discord 及其他平台只能经这条 OpenClaw 通信平面运行。External extension selection 默认为空，安装器从 `channels: {}` 开始。OpenClaw 仍是 platform credential 的唯一 owner；本 profile 不读取或复制这些凭证。
 
 Provider 配置、artifact check、admission default 与 runtime limitation 见 [channel-openclaw README](../channel-openclaw/README.md)。受检支持 catalog 采用保守语义：存在于 OpenClaw catalog 不表示渠道 installable、certified 或 enabled。[ADR-0008](../../../docs/adr/0008-openclaw-channel-plane.md)拥有架构与替换条件。
 
@@ -127,4 +127,4 @@ Launcher 没有 installation-owned ClawDSH preset root，因此两个 preset 都
 
 ## 验证边界
 
-锁定 production host、local IPC handshake、Provider 与 Driver ledger、fail-closed model route、extension-integrity check 与 keyless protocol test 建立当前 channel foundation。真实 Telegram、Feishu 或其他平台认证仍需专用账号、当前凭证与已记录 live-smoke evidence。在这些证据存在前，profile 保持每个 channel 关闭，support catalog 不把任何渠道提升为 `certified` 或 `enabled`。
+锁定 production host、local IPC handshake、Provider 与 Driver ledger、fail-closed model route、extension-integrity check 与 keyless protocol test 建立当前 channel foundation。Telegram 已 bundled 在锁定 host 中；飞书与 Discord 有已 cataloged 的精确 repository-official artifact，但交付的 `extensions: []` assembly 不包含它们。真实平台认证仍需完整 installability 证据、专用账号、当前凭证，以及针对这条 canonical 路径记录的 live-smoke evidence。Support catalog 当前把所有渠道都保持在 `cataloged`，profile 也没有启用任何渠道。

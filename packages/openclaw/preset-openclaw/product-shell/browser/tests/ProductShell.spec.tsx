@@ -81,6 +81,11 @@ describe('ClawDSH product shell', () => {
     expect(screen.getByRole('link', { name: 'ClawDSH 设置' }).getAttribute('href')).toBe('/clawdsh/settings')
     expect(screen.getByRole('link', { name: 'ClawDSH 活动' }).getAttribute('href')).toBe('/clawdsh/activity')
     expect(screen.getByRole('link', { name: 'Harness 高级' }).getAttribute('href')).toBe('/')
+    for (const label of ['对话', 'ClawDSH 设置', 'ClawDSH 活动', 'Harness 高级']) {
+      const link = screen.getByRole('link', { name: label })
+      expect(link.getAttribute('aria-label')).toBe(label)
+      expect(link.getAttribute('title')).toBe(label)
+    }
   })
 
   it('keeps the native conversation mounted while product pages change', async () => {

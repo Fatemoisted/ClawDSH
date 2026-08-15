@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 import { inspectNpmTarball } from '../lib/archive.mjs'
@@ -55,7 +55,10 @@ test('explicit Channel install verifies and publishes production assets idempote
     })
     assert.equal(acquireCalls.length, 1)
     assert.equal(runtimeCalls.length, 1)
-    assert.equal(JSON.parse(readFileSync(join(fixture.home, 'clawdsh/channel/openclaw/state/openclaw.json'))).channels instanceof Object, true)
+    const config = JSON.parse(readFileSync(join(fixture.home, 'clawdsh/channel/openclaw/state/openclaw.json')))
+    assert.equal(config.channels instanceof Object, true)
+    assert.equal(config.session.dmScope, 'per-account-channel-peer')
+    assert.deepEqual(config.models.providers.clawdsh.models[0].input, ['text'])
     await manager.doctor()
     const markerBefore = readFileSync(join(fixture.home, '.clawdsh.json'))
     await manager.install()
@@ -126,6 +129,70 @@ test('Channel install repairs marked damage and validates a preserved config bef
     } finally {
       rmSync(other.root, { recursive: true, force: true })
     }
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('Channel install atomically upgrades the prior managed config without changing Channel credentials', async () => {
+  const fixture = setup()
+  try {
+    const acquireCalls = []
+    const runtimeCalls = []
+    const manager = createChannelManager({
+      home: fixture.home,
+      channelRoot: join(fixture.bundleRoot, 'channel'),
+      acquire: copyArtifact(fixture.channelFixture.artifact, acquireCalls),
+      runtimeRunner: fakeRuntimeRunner(fixture.channelFixture, runtimeCalls),
+    })
+    await manager.install()
+    const configPath = join(fixture.home, 'clawdsh/channel/openclaw/state/openclaw.json')
+    const legacy = JSON.parse(readFileSync(configPath, 'utf8'))
+    legacy.models.providers.clawdsh.models[0].input = ['text', 'image']
+    delete legacy.session
+    legacy.channels.telegram = {
+      enabled: false,
+      botToken: 'preserved-channel-credential-canary-9917',
+    }
+    const expected = structuredClone(legacy)
+    expected.models.providers.clawdsh.models[0].input = ['text']
+    expected.session = { dmScope: 'per-account-channel-peer' }
+    writeFileSync(configPath, `${JSON.stringify(legacy, null, 2)}\n`)
+
+    await manager.install()
+
+    assert.deepEqual(JSON.parse(readFileSync(configPath, 'utf8')), expected)
+    assert.equal(acquireCalls.length, 2)
+    assert.equal(runtimeCalls.length, 2)
+    await manager.doctor()
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test('Channel config upgrade leaves the live file untouched when strict verification still fails', async () => {
+  const fixture = setup()
+  try {
+    const manager = createChannelManager({
+      home: fixture.home,
+      channelRoot: join(fixture.bundleRoot, 'channel'),
+      acquire: copyArtifact(fixture.channelFixture.artifact, []),
+      runtimeRunner: fakeRuntimeRunner(fixture.channelFixture, []),
+    })
+    await manager.install()
+    const stateDir = join(fixture.home, 'clawdsh/channel/openclaw/state')
+    const configPath = join(stateDir, 'openclaw.json')
+    const legacy = JSON.parse(readFileSync(configPath, 'utf8'))
+    legacy.models.providers.clawdsh.models[0].input = ['text', 'image']
+    delete legacy.session
+    legacy.agents.defaults.model.fallbacks = ['must-remain-invalid']
+    const before = `${JSON.stringify(legacy, null, 2)}\n`
+    writeFileSync(configPath, before)
+
+    await assert.rejects(manager.install(), /rejected the fail-closed config policy/)
+
+    assert.equal(readFileSync(configPath, 'utf8'), before)
+    assert.equal(readdirSync(stateDir).some(name => name.startsWith('.openclaw-upgrade-')), false)
   } finally {
     rmSync(fixture.root, { recursive: true, force: true })
   }

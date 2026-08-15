@@ -5,6 +5,16 @@ import {
   type ChannelTurnEnvelopeV1,
 } from '@clawdsh/dsh-channel'
 
+/** Side-effect-free terminal-result fixture. */
+export const SAFE_TURN_EFFECTS = {
+  hadPotentialSideEffects: false,
+  replaySafe: true,
+  didSendViaMessagingTool: false,
+  messagingToolSentTexts: [],
+  messagingToolSentMediaUrls: [],
+  messagingToolSentTargets: [],
+} as const
+
 /** Produce one strict, admitted text turn with deterministic identities. */
 export function turn(overrides: Record<string, unknown> = {}): ChannelTurnEnvelopeV1 {
   const base = {

@@ -76,6 +76,8 @@ Every channel-created Agent receives one route-bound `message` tool with generic
 
 The tool strictly validates the result variant and exact action id before exposing JSON to the model. Resolve results must also preserve input count and order. A query result cannot masquerade as mutation success, and a delivery receipt cannot masquerade as a directory or resolution result.
 
+Each terminal turn result derives replay evidence from the exact owning turn's durable tool-call and tool-result events. Directory and resolution calls remain replay-safe; every mutation and every unclassified tool call is treated as a potential side effect. `didSendViaMessagingTool` is true for confirmed, accepted, retrying, or ambiguous `message.send` outcomes, and fails closed to true when a valid send has no classifiable result. It remains false for an explicit pre-dispatch `dead-letter` receipt or an obvious argument-validation failure. Sent texts, media URLs, and targets are stronger committed evidence and are populated only from a validated `confirmed` receipt.
+
 ## Model Experience
 
 ### Admitted channel input

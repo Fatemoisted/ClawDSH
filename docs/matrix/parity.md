@@ -2,7 +2,7 @@
 
 English | [中文](parity.zh.md)
 
-> This matrix is ClawDSH's status authority. Each OpenClaw-derived domain or ClawDSH-native product domain has one classification and current status here. Exact OpenClaw channel artifacts and roster metadata remain in `tools/openclaw-channel-host/*.json`; this page projects their approved meaning.
+> This matrix is ClawDSH's status authority. Each OpenClaw-derived domain or ClawDSH-native product domain has one classification and current status here. Exact OpenClaw channel artifacts and roster metadata remain in `tools/openclaw-channel-host/*.json`; this page projects their approved meaning. The [Harness context and reuse map](../specs/context-map.md) is the one-read guide to existing dsh seams and the upstream source that can be skipped.
 
 ## Classification
 
@@ -63,16 +63,16 @@ The stable public chat catalog contains 27 entries: **1 core + 2 bundled + 21 re
 |---|---:|---|---|
 | Core + bundled + repository-official | 24 | **cataloged** | Exact stable host source and per-entry provenance are locked; per-channel assembly and certification are incomplete |
 | External | 3 | **cataloged** | WeChat, Yuanbao, and Zalo ClawBot have exact package identities; external review and the same assembly and certification requirements still apply |
-| Legacy Telegram adapter | 1 | **installable** | Local package exists; no current credentialed live smoke establishes certification or enablement |
-| Legacy Feishu adapter | 1 | **installable** | Local package exists; historical smoke does not establish certification or enablement for the current release |
 
 Catalog provenance is not a runtime support claim. A verified npm integrity does not make a channel installable until its compatible locked host and bridge composition assemble. The canary catalog contains 31 entries but remains cataloged audit input only.
+
+The canonical runtime has one implementation path: `ctx.channels → channel-agent → channel-openclaw`. The production host records Telegram as bundled and records exact `@openclaw/feishu@2026.7.1` and `@openclaw/discord@2026.7.1` repository-official artifacts. The shipped profile nevertheless sets the Provider to `enabled: false` and `extensions: []`, while the installer creates `channels: {}`. `support.production.json` therefore keeps all three at `cataloged`, with no installability, certification, or enablement evidence. Telegram can be admitted from the locked bundled host; Feishu and Discord additionally require matching exact extension locks. Admission validation is a safety gate, not proof that a platform is installed, connected, certified, or enabled. ClawDSH ships no second direct-platform adapter implementation.
 
 ## China-focused platform projection
 
 | Platform | Approved OpenClaw provenance | Current support state | Limit |
 |---|---|---|---|
-| Feishu / Lark | production repository-official extension | **cataloged** through sidecar; legacy package **installable** | neither path is certified or enabled |
+| Feishu / Lark | production repository-official extension | **cataloged** | exact artifact is recorded, but the shipped extension list is empty and no installability, certification, or enablement evidence exists |
 | QQ Bot | production repository-official extension | **cataloged** | not one of the three production external plugins |
 | WeChat | production external `@tencent-weixin/openclaw-weixin@2.4.6` | **cataloged** | external review and certification remain incomplete |
 | Yuanbao | production external `openclaw-plugin-yuanbao@2.15.0` | **cataloged** | external review and certification remain incomplete |

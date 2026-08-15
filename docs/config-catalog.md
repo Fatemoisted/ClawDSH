@@ -81,7 +81,7 @@ export interface EverySchedule {
 }
 ```
 
-Source: [`packages/openclaw/automation/src/index.ts:93`](../packages/openclaw/automation/src/index.ts)
+Source: [`packages/openclaw/automation/src/index.ts:94`](../packages/openclaw/automation/src/index.ts)
 
 <a id="clawdshdsh-channel-agent"></a>
 
@@ -107,7 +107,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/openclaw/channel-agent/src/index.ts:85`](../packages/openclaw/channel-agent/src/index.ts)
+Source: [`packages/openclaw/channel-agent/src/index.ts:105`](../packages/openclaw/channel-agent/src/index.ts)
 
 <a id="clawdshdsh-channel-openclaw"></a>
 
@@ -277,7 +277,7 @@ Source: [`packages/openclaw/memory/src/index.ts:66`](../packages/openclaw/memory
 
 ## `@clawdsh/dsh-skills-hub`
 
-Requires: `skills` · `settings`
+Requires: `skills` · `settings` · `subprocess`
 
 ```ts config-catalog
 /** Plugin config: which OpenClaw-style roots to scan and whether to evaluate `metadata.clawdbot` gating. */

@@ -19,8 +19,9 @@ import {
   ledgerKey,
   resetRequestDigest,
   sessionIdFor,
+  UNKNOWN_TURN_EFFECTS,
 } from '../src/storage.ts'
-import { turn } from './fixtures.ts'
+import { SAFE_TURN_EFFECTS, turn } from './fixtures.ts'
 
 const NOW = 1_776_000_000_000
 
@@ -176,9 +177,24 @@ describe('channel-agent durable schemas', () => {
       turnId: envelope.turnId,
       runId: envelope.runId,
       replayId: 'replay-1',
+      effects: SAFE_TURN_EFFECTS,
       status: 'silent',
       sessionId: 'channel:one',
     }
+    const legacyResult: Record<string, unknown> = { ...result }
+    delete legacyResult.effects
+    expect(channelLedgerRecordSchema.parse({
+      ...accepted,
+      phase: 'completed',
+      sessionId: 'channel:one',
+      result: legacyResult,
+    }).result?.effects).toEqual(UNKNOWN_TURN_EFFECTS)
+    expect(() => channelLedgerRecordSchema.parse({
+      ...accepted,
+      phase: 'completed',
+      sessionId: 'channel:one',
+      result: { ...result, effects: { hadPotentialSideEffects: true } },
+    })).toThrow(/effects/)
     expect(() => channelLedgerRecordSchema.parse({ ...accepted, result })).toThrow(/forbidden/)
     expect(() => channelLedgerRecordSchema.parse({
       ...accepted,
@@ -216,14 +232,16 @@ describe('channel-agent durable schemas', () => {
       attempt: 1,
       status: 'confirmed',
     })
-    expect(channelLedgerRecordSchema.parse({
+    const legacyDelivered = channelLedgerRecordSchema.parse({
       ...accepted,
       phase: 'delivered',
       sessionId: 'channel:one',
-      result,
+      result: legacyResult,
       delivery: turnReceipt,
       updatedAt: NOW + 1,
-    }).phase).toBe('delivered')
+    })
+    expect(legacyDelivered.phase).toBe('delivered')
+    expect(legacyDelivered.result?.effects).toEqual(UNKNOWN_TURN_EFFECTS)
     expect(() => channelLedgerRecordSchema.parse({
       ...accepted,
       phase: 'delivered',
@@ -293,6 +311,58 @@ describe('channel-agent durable schemas', () => {
       ...accepted,
       delivery: turnReceipt,
     })).toThrow(/does not match ledger phase/)
+  })
+
+  it('normalizes legacy effects across every terminal result and delivery phase', () => {
+    const envelope = turn()
+    const sessionId = 'channel:one'
+    const resultBase = {
+      protocolVersion: 1,
+      turnId: envelope.turnId,
+      runId: envelope.runId,
+      sessionId,
+    }
+    const results = [
+      { ...resultBase, replayId: 'legacy-completed', status: 'completed', text: 'done', media: [] },
+      { ...resultBase, replayId: 'legacy-silent', status: 'silent' },
+      { ...resultBase, replayId: 'legacy-cancelled', status: 'cancelled', reason: 'cancelled' },
+      {
+        ...resultBase,
+        replayId: 'legacy-failed',
+        status: 'failed',
+        error: { code: 'LEGACY_FAILURE', message: 'legacy failure', retryable: false },
+      },
+    ]
+    const receipt = (status: 'confirmed' | 'ambiguous' | 'dead-letter') => ({
+      protocolVersion: 1,
+      deliveryId: `delivery-${status}`,
+      subject: { kind: 'turn', turnId: envelope.turnId, runId: envelope.runId },
+      attempt: 1,
+      status,
+      ...(status === 'confirmed' ? {} : {
+        error: { code: 'LEGACY_DELIVERY', message: 'legacy delivery outcome', retryable: false },
+      }),
+    })
+    const phases = [
+      { phase: 'completed' },
+      { phase: 'delivered', delivery: receipt('confirmed') },
+      { phase: 'ambiguous', delivery: receipt('ambiguous') },
+      { phase: 'dead-letter', delivery: receipt('dead-letter') },
+    ]
+    for (const result of results) {
+      for (const phase of phases) {
+        const parsed = channelLedgerRecordSchema.parse({
+          envelopeDigest: digestJson(envelope),
+          envelope,
+          ...phase,
+          sessionId,
+          result,
+          createdAt: NOW,
+          updatedAt: NOW,
+        })
+        expect(parsed.result?.effects).toEqual(UNKNOWN_TURN_EFFECTS)
+      }
+    }
   })
 })
 

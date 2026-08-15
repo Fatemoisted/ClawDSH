@@ -16,6 +16,7 @@ import {
   providerContext,
   removeProviderRoot,
   resetRequest,
+  SAFE_TURN_EFFECTS,
   sendAction,
   turn,
   type ProviderMedia,
@@ -112,6 +113,7 @@ describe('authenticated local Provider lifecycle', () => {
         turnId: 'turn-1',
         runId: 'run-1',
         replayId: 'replay-drained',
+        effects: SAFE_TURN_EFFECTS,
         status: 'silent',
         sessionId: 'channel-session-1',
       }
@@ -200,7 +202,7 @@ describe('authenticated local Provider lifecycle', () => {
 
   it('surfaces an owned peer drain failure after releasing the durable ledger', async () => {
     const app = await setup()
-    const rejectedDrain = Promise.reject('owned peer drain failed')
+    const rejectedDrain = Promise.reject(new Error('owned peer drain failed'))
     Reflect.set(app.provider, 'peer', { close: () => rejectedDrain })
 
     await expect(app.provider.dispose()).rejects.toThrow(/owned peer drain failed/)
@@ -230,6 +232,7 @@ describe('authenticated local Provider lifecycle', () => {
       readonly turnId: string
       readonly runId: string
       readonly replayId: string
+      readonly effects: typeof SAFE_TURN_EFFECTS
       readonly status: string
       readonly sessionId: string
       readonly text: string
@@ -252,6 +255,7 @@ describe('authenticated local Provider lifecycle', () => {
         turnId: 'turn-1',
         runId: 'run-1',
         replayId: 'replay-after-disconnect',
+        effects: SAFE_TURN_EFFECTS,
         status: 'completed',
         sessionId: 'channel-session-1',
         text: 'completed after transport loss',
@@ -651,6 +655,7 @@ describe('bridge-to-DSH request routing', () => {
         turnId: 'turn-1',
         runId: 'run-1',
         replayId: 'replay-1',
+        effects: SAFE_TURN_EFFECTS,
         status: 'silent',
         sessionId: 'channel-session-1',
       }

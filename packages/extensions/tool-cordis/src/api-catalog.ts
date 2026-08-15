@@ -3114,6 +3114,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ChannelMessageReferenceV1 {\n    readonly messageId: ChannelMessageId;\n    readonly senderId?: ChannelSenderId;\n}',
   },
   {
+    name: 'ChannelMessagingToolSendV1',
+    declaration: 'export interface ChannelMessagingToolSendV1 {\n    readonly tool: \'message\';\n    readonly provider: ChannelId;\n    readonly accountId: ChannelAccountId;\n    readonly to: ChannelConversationId;\n    readonly threadId?: ChannelThreadId;\n    readonly text?: string;\n    readonly mediaUrls?: readonly string[];\n}',
+  },
+  {
     name: 'ChannelPollActionV1',
     declaration: 'export interface ChannelPollActionV1 extends ChannelActionBaseV1 {\n    readonly kind: \'poll\';\n    readonly question: string;\n    readonly options: readonly string[];\n    readonly multiple: boolean;\n}',
   },
@@ -3242,6 +3246,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ChannelTurnCompletedV1 extends ChannelTurnResultBaseV1 {\n    readonly status: \'completed\';\n    readonly sessionId: SessionId;\n    readonly text: string;\n    readonly media: readonly ChannelStagedMediaV1[];\n    readonly usage?: TokenUsage;\n}',
   },
   {
+    name: 'ChannelTurnEffectsV1',
+    declaration: 'export interface ChannelTurnEffectsV1 {\n    readonly hadPotentialSideEffects: boolean;\n    readonly replaySafe: boolean;\n    readonly didSendViaMessagingTool: boolean;\n    readonly messagingToolSentTexts: readonly string[];\n    readonly messagingToolSentMediaUrls: readonly string[];\n    readonly messagingToolSentTargets: readonly ChannelMessagingToolSendV1[];\n}',
+  },
+  {
     name: 'ChannelTurnEnvelopeV1',
     declaration: 'export interface ChannelTurnEnvelopeV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly idempotencyKey: ChannelIdempotencyKey;\n    readonly turnId: ChannelTurnId;\n    readonly runId: ChannelRunId;\n    readonly route: ChannelRouteV1;\n    readonly sender: ChannelPrincipalV1;\n    readonly wasMentioned?: boolean;\n    readonly messageId: ChannelMessageId;\n    readonly replyTo?: ChannelMessageReferenceV1;\n    readonly text: string;\n    readonly media: readonly ChannelStagedMediaV1[];\n    readonly trace?: ChannelTraceV1;\n}',
   },
@@ -3267,7 +3275,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ChannelTurnResultBaseV1',
-    declaration: 'export interface ChannelTurnResultBaseV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly turnId: ChannelTurnId;\n    readonly runId: ChannelRunId;\n    readonly replayId: ChannelReplayId;\n}',
+    declaration: 'export interface ChannelTurnResultBaseV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly turnId: ChannelTurnId;\n    readonly runId: ChannelRunId;\n    readonly replayId: ChannelReplayId;\n    readonly effects: ChannelTurnEffectsV1;\n}',
   },
   {
     name: 'ChannelTurnResultV1',

@@ -50,7 +50,7 @@ function installActivity(ctx: Context, write: (input: PromptActivityInput) => Pr
 function emitRequestHeader(ctx: Context, scope: ScopeKey, sessionId: string, system: string, seq: number): void {
   const session = { id: sessionId }
   const event = { type: 'request/header', seq, data: { header: { system }, reason: 'initial' } }
-  const emit = ctx.emit as unknown as (
+  const emit = ctx.emit.bind(ctx) as unknown as (
     target: object,
     name: 'session/event',
     subject: typeof session,
@@ -308,7 +308,7 @@ describe('the soul row', () => {
     // guard remains as defense for direct apply() calls.
     await expect(createScope(ctx, key).ctx.plugin(Soul, { text: 'x', mode: 'overwrite' as 'append' }))
       .rejects.toThrow(/\$\.mode expected/)
-    expect(() => Soul.apply(createScope(ctx, key).ctx, { text: 'x', mode: 'overwrite' as 'append' }))
+    expect(() => { Soul.apply(createScope(ctx, key).ctx, { text: 'x', mode: 'overwrite' as 'append' }) })
       .toThrow(/unknown mode/)
   })
 

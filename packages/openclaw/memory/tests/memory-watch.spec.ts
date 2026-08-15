@@ -16,7 +16,7 @@ import { installMemoryWatch } from '../src/watch.ts'
 const CONFIG = { enabled: true, stabilityThresholdMs: 20, pollIntervalMs: 10 } as const
 
 let dir: string
-let disposeWatch: (() => void) | undefined
+let disposeWatch: (() => Promise<void>) | undefined
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'dsh-memory-watch-'))
@@ -24,8 +24,8 @@ beforeEach(() => {
   disposeWatch = undefined
 })
 
-afterEach(() => {
-  disposeWatch?.()
+afterEach(async () => {
+  await disposeWatch?.()
   rmSync(dir, { recursive: true, force: true })
 })
 

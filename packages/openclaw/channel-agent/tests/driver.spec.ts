@@ -14,6 +14,7 @@ import {
   channelSessionCloseV1Schema,
   channelSessionResetV1Schema,
   channelTurnCancelV1Schema,
+  type ChannelActionResultV1,
   type ChannelActionV1,
   type ChannelProviderV1,
   type ChannelTurnEnvelopeV1,
@@ -47,9 +48,10 @@ import {
   generationKey,
   ledgerKey,
   sessionIdFor,
+  UNKNOWN_TURN_EFFECTS,
   type ChannelLedgerRecord,
 } from '../src/storage.ts'
-import { report, turn } from './fixtures.ts'
+import { report, SAFE_TURN_EFFECTS, turn } from './fixtures.ts'
 
 type ScriptEntry = readonly StreamChunk[] | 'hang' | 'fail'
 
@@ -197,6 +199,7 @@ async function harness(
     pool?: MemoryMediaPool
     seed?: (domain: Domain<typeof channelAgentDomainSpec>) => Promise<void>
     mountAgent?: boolean
+    dispatchAction?: (action: ChannelActionV1) => Promise<ChannelActionResultV1>
   } = {},
 ): Promise<Harness> {
   const base = options.root ?? await mkdtemp(join(tmpdir(), 'dsh-channel-agent-'))
@@ -266,7 +269,7 @@ async function harness(
     id: ChannelProviderId('test-provider'),
     async action(action) {
       actions.push(action)
-      return confirmed(action)
+      return await (options.dispatchAction?.(action) ?? Promise.resolve(confirmed(action)))
     },
     async health() {
       return {
@@ -364,6 +367,46 @@ describe('channel Agent turn execution', () => {
     })
   })
 
+  it('replays a legacy V2 terminal ledger row with fail-closed effect metadata', async () => {
+    const inbound = turn()
+    const sessionId = sessionIdFor(inbound.route)
+    const now = Date.now()
+    const pool = new MemoryMediaPool()
+    pool.versions.set('clawdsh_channel_agent', 2)
+    pool.media.set('clawdsh_channel_agent', {
+      global: null,
+      tables: new Map([
+        ['ledger', new Map([[ledgerKey(inbound), {
+          envelopeDigest: digestJson(inbound),
+          envelope: inbound,
+          phase: 'completed',
+          sessionId,
+          result: {
+            protocolVersion: 1,
+            turnId: inbound.turnId,
+            runId: inbound.runId,
+            replayId: 'legacy-replay',
+            status: 'completed',
+            sessionId,
+            text: 'legacy answer',
+            media: [],
+          },
+          createdAt: now,
+          updatedAt: now,
+        }]])],
+      ]),
+    })
+    const app = await harness([], { pool })
+    const replay = await app.ctx.channels.runTurn(inbound, execution())
+    expect(replay).toMatchObject({
+      status: 'completed',
+      text: 'legacy answer',
+      effects: UNKNOWN_TURN_EFFECTS,
+    })
+    expect(app.adapter.requests).toEqual([])
+    expect(app.actions).toEqual([])
+  })
+
   it('projects optional provenance, reasoning progress, complete usage, and tolerates a failing progress sink', async () => {
     const app = await harness([reasoningResponse('think', 'reply'), textWithoutUsage('plain')])
     const notifications: ChannelTurnNotificationV1[] = []
@@ -454,7 +497,24 @@ describe('channel Agent turn execution', () => {
     ])
     const notifications: ChannelTurnNotificationV1[] = []
     const result = await app.ctx.channels.runTurn(turn(), execution(notifications))
-    expect(result).toMatchObject({ status: 'completed', text: 'done' })
+    expect(result).toMatchObject({
+      status: 'completed',
+      text: 'done',
+      effects: {
+        hadPotentialSideEffects: true,
+        replaySafe: false,
+        didSendViaMessagingTool: true,
+        messagingToolSentTexts: ['tool reply'],
+        messagingToolSentMediaUrls: [],
+        messagingToolSentTargets: [{
+          tool: 'message',
+          provider: 'telegram',
+          accountId: 'account-1',
+          to: 'conversation-1',
+          text: 'tool reply',
+        }],
+      },
+    })
     const toolResult = result.status === 'completed'
       ? app.ctx.agents.get(result.sessionId)?.session.events.find(event => event.type === 'tool/result')
       : undefined
@@ -464,6 +524,95 @@ describe('channel Agent turn execution', () => {
       expect.objectContaining({ kind: 'tool', phase: 'started', name: 'message', toolCallId: 'tool-call-1' }),
       expect.objectContaining({ kind: 'tool', phase: 'finished', name: 'message', toolCallId: 'tool-call-1' }),
     ])
+    expect(await app.ctx.channels.runTurn(turn(), execution())).toEqual(result)
+    expect(app.actions).toHaveLength(1)
+  })
+
+  it('distinguishes read-only message queries from uncertain mutation outcomes', async () => {
+    const directory = await harness([
+      toolCallResponse('message', { action: 'directory.self' }),
+      textResponse('directory done'),
+    ], {
+      dispatchAction: action => Promise.resolve({
+        protocolVersion: 1,
+        actionId: action.actionId,
+        kind: 'directory',
+        entries: [],
+      }),
+    })
+    const directoryResult = await directory.ctx.channels.runTurn(turn(), execution())
+    expect(directoryResult.effects).toEqual(SAFE_TURN_EFFECTS)
+
+    const ambiguous = await harness([
+      toolCallResponse('message', { action: 'send', text: 'maybe sent' }),
+      textResponse('ambiguous done'),
+    ], {
+      dispatchAction: action => Promise.resolve(channelActionDeliveryReceiptV1Schema.parse({
+        protocolVersion: 1,
+        deliveryId: ChannelDeliveryId(`delivery-${action.actionId}`),
+        subject: { kind: 'action', actionId: action.actionId },
+        attempt: 1,
+        status: 'ambiguous',
+        error: { code: 'ACK_LOST', message: 'platform acknowledgement was lost', retryable: false },
+      })),
+    })
+    const ambiguousResult = await ambiguous.ctx.channels.runTurn(turn(), execution())
+    expect(ambiguousResult.effects).toEqual({
+      hadPotentialSideEffects: true,
+      replaySafe: false,
+      didSendViaMessagingTool: true,
+      messagingToolSentTexts: [],
+      messagingToolSentMediaUrls: [],
+      messagingToolSentTargets: [],
+    })
+
+    const deadLetter = await harness([
+      toolCallResponse('message', { action: 'send', text: 'rejected before dispatch' }),
+      textResponse('dead letter handled'),
+    ], {
+      dispatchAction: action => Promise.resolve(channelActionDeliveryReceiptV1Schema.parse({
+        protocolVersion: 1,
+        deliveryId: ChannelDeliveryId(`delivery-${action.actionId}`),
+        subject: { kind: 'action', actionId: action.actionId },
+        attempt: 1,
+        status: 'dead-letter',
+        error: { code: 'PRE_DISPATCH', message: 'provider rejected the request', retryable: false },
+      })),
+    })
+    const deadLetterResult = await deadLetter.ctx.channels.runTurn(turn(), execution())
+    expect(deadLetterResult.effects).toEqual({
+      hadPotentialSideEffects: true,
+      replaySafe: false,
+      didSendViaMessagingTool: false,
+      messagingToolSentTexts: [],
+      messagingToolSentMediaUrls: [],
+      messagingToolSentTargets: [],
+    })
+
+    const rejected = await harness([
+      toolCallResponse('message', { action: 'send', text: 'not confirmed' }),
+      textResponse('failure handled'),
+    ], {
+      dispatchAction: () => Promise.reject(new Error('provider failed')),
+    })
+    const rejectedResult = await rejected.ctx.channels.runTurn(turn(), execution())
+    expect(rejectedResult.effects).toMatchObject({
+      hadPotentialSideEffects: true,
+      replaySafe: false,
+      didSendViaMessagingTool: true,
+    })
+
+    const invalidArguments = await harness([
+      toolCallResponse('message', { action: 'send' }),
+      textResponse('validation handled'),
+    ])
+    const invalidResult = await invalidArguments.ctx.channels.runTurn(turn(), execution())
+    expect(invalidResult.effects).toMatchObject({
+      hadPotentialSideEffects: true,
+      replaySafe: false,
+      didSendViaMessagingTool: false,
+    })
+    expect(invalidArguments.actions).toEqual([])
   })
 
   it('attaches equal concurrent retries, rejects conflicting reuse, and cancels only an exact run', async () => {
@@ -1558,6 +1707,35 @@ describe('channel admission and media failures', () => {
 
     await expect(ChannelAgent.ChannelAgentDriver.create(app.ctx, driverConfig(app, 0)))
       .rejects.toThrow(/shutdownGraceMs must be a positive safe integer/)
+  })
+
+  it('closes the opened storage domain when startup recovery persistence fails', async () => {
+    const recoveryFailure = new Error('recovery write failed')
+    const close = vi.fn(async () => {})
+    const ledger = {
+      entries: () => [[
+        'running',
+        { phase: 'running', updatedAt: 1 },
+      ]] as const,
+      put: vi.fn(async () => { throw recoveryFailure }),
+    }
+    const domain = {
+      table: vi.fn(() => ledger),
+      close,
+    }
+    const ctx = {
+      storageDomain: { open: vi.fn(async () => domain) },
+    }
+
+    await expect(ChannelAgent.ChannelAgentDriver.create(ctx as never, {
+      ownerPreset: 'owner',
+      safePreset: 'safe',
+      cwd: '/tmp/workspace',
+      stagingRoot: '/tmp/staging',
+      maxMediaBytes: 1,
+      shutdownGraceMs: 100,
+    })).rejects.toBe(recoveryFailure)
+    expect(close).toHaveBeenCalledTimes(1)
   })
 
   it('shares one successful teardown promise, cancels active work, and closes storage after quiescence', async () => {

@@ -55,12 +55,42 @@ export interface Config {
   maxConcurrentTexts?: number
 }
 
+function isHttpBaseURL(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'https:' || url.protocol === 'http:')
+      && url.username.length === 0
+      && url.password.length === 0
+      && url.search.length === 0
+      && url.hash.length === 0
+  } catch {
+    return false
+  }
+}
+
+const HTTP_BASE_URL_PATTERN = /^https?:\/\/[^/?#@\s]+(?:\/[^?#\s]*)?$/u
+const MODEL_PATTERN = /^\S(?:.*\S)?$/u
+
+function resolveEndpoint(config: Config): { baseURL: string; model: string } {
+  const configuredBaseURL: unknown = Reflect.get(config, 'baseURL')
+  const baseURL = configuredBaseURL ?? ARK_DEFAULT_BASE_URL
+  if (typeof baseURL !== 'string' || baseURL.trim() !== baseURL || !isHttpBaseURL(baseURL)) {
+    throw new TypeError('embeddings-ark: baseURL must be an HTTP(S) URL without credentials, query, or fragment')
+  }
+  const configuredModel: unknown = Reflect.get(config, 'model')
+  const model = configuredModel ?? ARK_DEFAULT_MODEL
+  if (typeof model !== 'string' || model.trim() !== model || model.length === 0) {
+    throw new TypeError('embeddings-ark: model must be a non-empty string without surrounding whitespace')
+  }
+  return { baseURL: baseURL.replace(/\/+$/u, ''), model }
+}
+
 export const Config: z<Config> = z.object({
   // Declared here rather than only at the use site: a configuration surface
   // renders the resolved section, so a default the schema does not carry reads
   // there as no value at all.
-  baseURL: z.string().default(ARK_DEFAULT_BASE_URL),
-  model: z.string().default(ARK_DEFAULT_MODEL),
+  baseURL: z.string().min(1).pattern(HTTP_BASE_URL_PATTERN).default(ARK_DEFAULT_BASE_URL),
+  model: z.string().min(1).pattern(MODEL_PATTERN).default(ARK_DEFAULT_MODEL),
   timeoutMs: z.number().step(1).min(1).max(MAX_TIMER_DELAY_MS).default(ARK_DEFAULT_TIMEOUT_MS),
   maxConcurrentTexts: z.number().step(1).min(1).max(MAX_TIMER_DELAY_MS).default(ARK_DEFAULT_MAX_CONCURRENT_TEXTS),
 })
@@ -94,15 +124,22 @@ export class ArkEmbeddings extends Embeddings {
     const runtimeConfig = settings?.register(ARK_SETTINGS_NAMESPACE, Config, {
       base: config,
       applies: 'restart',
+      validate: (value: Config) => { resolveEndpoint(value) },
     }).get() ?? Config(config)
-    this.baseURL = runtimeConfig.baseURL ?? ARK_DEFAULT_BASE_URL
-    this.model = runtimeConfig.model ?? ARK_DEFAULT_MODEL
+    const endpoint = resolveEndpoint(runtimeConfig)
+    this.baseURL = endpoint.baseURL
+    this.model = endpoint.model
     this.timeoutMs = runtimeConfig.timeoutMs ?? ARK_DEFAULT_TIMEOUT_MS
     this.maxConcurrentTexts = runtimeConfig.maxConcurrentTexts ?? ARK_DEFAULT_MAX_CONCURRENT_TEXTS
   }
 
   override async embed(texts: readonly string[], signal?: AbortSignal): Promise<EmbeddingVector[]> {
     if (texts.length === 0) return []
+    for (let index = 0; index < texts.length; index += 1) {
+      if (typeof texts[index] !== 'string') {
+        throw new TypeError(`@clawdsh/dsh-embeddings-ark: texts[${index}] must be a string`)
+      }
+    }
     const apiKey = await this.resolveApiKey()
     if (apiKey === undefined) {
       throw new Error(
@@ -123,8 +160,8 @@ export class ArkEmbeddings extends Embeddings {
         const index = next
         next += 1
         if (index >= texts.length) return
-        const text = texts[index]
-        if (text === undefined) return
+        // The dense runtime validation above makes this indexed access safe.
+        const text = texts[index] as string
         results[index] = await this.embedOne(text, apiKey, signal)
       }
     })
@@ -198,9 +235,9 @@ function parseResponse(payload: unknown): EmbeddingVector {
   if (typeof payload !== 'object' || payload === null || !('data' in payload)) {
     throw new Error('@clawdsh/dsh-embeddings-ark: malformed embedding response (no data field)')
   }
-  const data = (payload as { data: unknown }).data
+  const data = payload.data
   if (typeof data !== 'object' || data === null || !('embedding' in data)
-    || !Array.isArray((data as { embedding: unknown }).embedding)) {
+    || !Array.isArray(data.embedding)) {
     throw new Error('@clawdsh/dsh-embeddings-ark: malformed embedding response (no data.embedding vector)')
   }
   const embedding = (data as { embedding: unknown[] }).embedding

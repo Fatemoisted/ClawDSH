@@ -53,7 +53,7 @@ describe('installMemoryWatch', () => {
     const ctx = new Context()
     const dispose = await installMemoryWatch(ctx, '/root', { ...CONFIG, enabled: false }, () => {})
     expect(harness.watchers).toHaveLength(0)
-    dispose()
+    await dispose()
   })
 
   it('opens a watcher on the root with the memory-file options', async () => {
@@ -69,7 +69,7 @@ describe('installMemoryWatch', () => {
       atomic: true,
       awaitWriteFinish: { stabilityThreshold: 20, pollInterval: 10 },
     })
-    dispose()
+    await dispose()
   })
 
   it('reports memory files and ignores non-memory and out-of-root paths', async () => {
@@ -90,20 +90,20 @@ describe('installMemoryWatch', () => {
     watcher.emitter.emit('change', '/elsewhere/MEMORY.md')
 
     expect(seen).toEqual(['MEMORY.md', 'memory/2026-08-14.md', 'memory/new.md', 'memory/old.md'])
-    dispose()
+    await dispose()
   })
 
   it('closes the watcher on dispose and tolerates a failing close', async () => {
     const ctx = new Context()
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
     harness.closeErrors = 1
     const dispose = await installMemoryWatch(ctx, '/root', CONFIG, () => {})
     const watcher = harness.watchers[0]
     if (watcher === undefined) throw new Error('expected a watcher')
 
-    dispose()
+    await dispose()
     expect(watcher.closeCalls).toBe(1)
-    // The rejected close must be contained, not an unhandled rejection.
-    await vi.waitFor(() => { expect(watcher.closeCalls).toBe(1) })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('failed to close watcher'))
   })
 
   it('warns on a watcher error event and stays usable', async () => {
@@ -119,6 +119,6 @@ describe('installMemoryWatch', () => {
     // The watcher keeps serving events after a reported error.
     watcher.emitter.emit('change', '/root/MEMORY.md')
     expect(seen).toEqual(['MEMORY.md'])
-    dispose()
+    await dispose()
   })
 })

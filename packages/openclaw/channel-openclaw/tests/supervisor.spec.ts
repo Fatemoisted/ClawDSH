@@ -451,6 +451,20 @@ describe('managed Gateway supervision', () => {
     await expect(OpenClawSupervisor.start(contextWith([]).ctx, {
       ...linked.config, configPath: join(link, 'config.json'),
     })).rejects.toThrow(/symbolic link/)
+
+    const linkedConfig = await fixture()
+    const outsideConfig = join(linkedConfig.root, 'outside.json')
+    await writeFile(outsideConfig, '{}')
+    await rm(linkedConfig.config.configPath)
+    await symlink(outsideConfig, linkedConfig.config.configPath)
+    await expect(OpenClawSupervisor.start(contextWith([]).ctx, linkedConfig.config))
+      .rejects.toThrow(/ordinary file/)
+
+    const directoryConfig = await fixture()
+    await rm(directoryConfig.config.configPath)
+    await mkdir(directoryConfig.config.configPath)
+    await expect(OpenClawSupervisor.start(contextWith([]).ctx, directoryConfig.config))
+      .rejects.toThrow(/ordinary file/)
   })
 
   it('enforces the locked Node engine and ordinary OpenClaw entrypoint', async () => {

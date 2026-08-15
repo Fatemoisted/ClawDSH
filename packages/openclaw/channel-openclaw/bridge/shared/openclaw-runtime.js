@@ -27,6 +27,19 @@ const CAPABILITIES = Object.freeze({
   notifications: NOTIFICATIONS,
   extensions: Object.freeze([]),
 })
+const SAFE_TURN_EFFECTS = Object.freeze({
+  hadPotentialSideEffects: false,
+  replaySafe: true,
+  didSendViaMessagingTool: false,
+  messagingToolSentTexts: Object.freeze([]),
+  messagingToolSentMediaUrls: Object.freeze([]),
+  messagingToolSentTargets: Object.freeze([]),
+})
+const UNKNOWN_TURN_EFFECTS = Object.freeze({
+  ...SAFE_TURN_EFFECTS,
+  hadPotentialSideEffects: true,
+  replaySafe: false,
+})
 const PUBLIC_BRIDGE_FAILURE = '[ClawDSH bridge CHANNEL_BRIDGE_FAILED] The authenticated local ClawDSH communication bridge is unavailable.'
 const PROCESS_SHARED_BRIDGES = Symbol.for('clawdsh.channel-openclaw.process-shared-bridges.v1')
 
@@ -97,7 +110,7 @@ export function createSyntheticProvider() {
             name: 'ClawDSH local agent',
             api: 'openai-responses',
             reasoning: true,
-            input: ['text', 'image'],
+            input: ['text'],
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
             contextWindow: 200000,
             maxTokens: 32768,
@@ -144,7 +157,7 @@ export function createOpenClawBridge(api, options) {
   return {
     harness,
     failAttempt: async (params, error) => {
-      const result = await failedAttempt(params, undefined, error, options.transcript)
+      const result = await failedAttempt(params, undefined, error, options.transcript, SAFE_TURN_EFFECTS)
       return options.generation === 'v2' ? { ...result, terminal: { kind: 'ok' } } : result
     },
     get handshake() { return ensureResources().environment.handshake },
@@ -250,7 +263,7 @@ export function createProcessSharedOpenClawBridge(api, options) {
 }
 
 async function failAttemptFor(params, error, options) {
-  const result = await failedAttempt(params, undefined, error, options.transcript)
+  const result = await failedAttempt(params, undefined, error, options.transcript, SAFE_TURN_EFFECTS)
   return options.generation === 'v2' ? { ...result, terminal: { kind: 'ok' } } : result
 }
 
@@ -378,7 +391,9 @@ async function runAttemptFailClosed(context) {
       ? { ...result, terminal: result.aborted ? { kind: 'aborted', source: 'external' } : { kind: 'ok' } }
       : result
   } catch (error) {
-    const result = await failedAttempt(context.params, undefined, error, context.options.transcript)
+    const result = await failedAttempt(
+      context.params, undefined, error, context.options.transcript, UNKNOWN_TURN_EFFECTS,
+    )
     return context.options.generation === 'v2' ? { ...result, terminal: { kind: 'ok' } } : result
   }
 }
@@ -450,7 +465,7 @@ async function runAttempt(context) {
     const staged = await inboundMedia(params, options, media)
     envelope = validateTurnEnvelope({ ...envelopeBase, media: staged })
   } catch (error) {
-    return await failedAttempt(params, envelopeBase, error, options.transcript)
+    return await failedAttempt(params, envelopeBase, error, options.transcript, SAFE_TURN_EFFECTS)
   }
 
   const progress = { turnId, nextSequence: 0, params }
@@ -469,6 +484,7 @@ async function runAttempt(context) {
     })
   }
   params.abortSignal?.addEventListener('abort', abort, { once: true })
+  let lastKnownEffects = UNKNOWN_TURN_EFFECTS
   try {
     options.assertActive?.(params)
     const raw = await client.request('turn.run', envelope, {
@@ -477,10 +493,11 @@ async function runAttempt(context) {
     })
     const result = validateTurnResult(raw)
     if (result.turnId !== turnId || result.runId !== runId) throw new Error('ClawDSH turn result identity does not match its request')
+    lastKnownEffects = result.effects
     options.assertActive?.(params)
     return await attemptFromTurnResult(params, envelope, result, media, options.transcript)
   } catch (error) {
-    if (params.abortSignal?.aborted) return abortedAttempt(params)
+    if (params.abortSignal?.aborted) return abortedAttempt(params, lastKnownEffects)
     if (error instanceof RpcMethodError && error.code === -32002) {
       cancellation = client.request('turn.cancel', {
         protocolVersion: 1,
@@ -493,7 +510,7 @@ async function runAttempt(context) {
         // The attempt's finally block awaits this same promise and turns failure into a visible bridge result.
       })
     }
-    return await failedAttempt(params, envelope, error, options.transcript)
+    return await failedAttempt(params, envelope, error, options.transcript, lastKnownEffects)
   } finally {
     params.abortSignal?.removeEventListener('abort', abort)
     liveRuns.delete(runId)
@@ -762,8 +779,7 @@ async function dispatchAction(api, hostConfig, media, action, gatewayInstanceId,
     if (action.kind === 'poll') {
       if (typeof adapter.sendPoll !== 'function') throw new RpcMethodError(-32601, `channel ${action.target.channel} does not support polls`)
       signal.throwIfAborted()
-      dispatched = true
-      result = await adapter.sendPoll({
+      const pendingPoll = adapter.sendPoll({
         cfg: hostConfig,
         to,
         poll: {
@@ -774,6 +790,8 @@ async function dispatchAction(api, hostConfig, media, action, gatewayInstanceId,
         accountId: action.target.account,
         threadId: action.target.thread,
       })
+      dispatched = true
+      result = await pendingPoll
     } else {
       result = await dispatchSend(hostConfig, media, adapter, action, to, signal, () => { dispatched = true })
     }
@@ -793,7 +811,7 @@ async function dispatchAction(api, hostConfig, media, action, gatewayInstanceId,
       deliveryId,
       subject: { kind: 'action', actionId: action.actionId },
       attempt: 1,
-      status: dispatched || action.kind === 'poll' ? 'ambiguous' : 'dead-letter',
+      status: dispatched ? 'ambiguous' : 'dead-letter',
       error: {
         code: dispatched ? 'OPENCLAW_DELIVERY_AMBIGUOUS' : 'OPENCLAW_DELIVERY_FAILED',
         message: dispatched
@@ -885,9 +903,11 @@ async function inboundMedia(params, options, media) {
 }
 
 async function attemptFromTurnResult(params, envelope, result, media, transcript) {
-  if (result.status === 'cancelled') return abortedAttempt(params)
+  if (result.status === 'cancelled') return abortedAttempt(params, result.effects)
   if (result.status === 'failed') {
-    return await failedAttempt(params, envelope, new Error(`${result.error.code}: ${result.error.message}`), transcript)
+    return await failedAttempt(
+      params, envelope, new Error(`${result.error.code}: ${result.error.message}`), transcript, result.effects,
+    )
   }
   let text = result.status === 'silent' ? SILENT_MARKER : result.text
   let verified = []
@@ -917,10 +937,11 @@ async function attemptFromTurnResult(params, envelope, result, media, transcript
     assistantOwned,
     usage: result.usage,
     media: verified,
+    effects: result.effects,
   })
 }
 
-async function failedAttempt(params, envelope, _error, transcript) {
+async function failedAttempt(params, envelope, _error, transcript, effects) {
   const assistant = assistantMessage(params, PUBLIC_BRIDGE_FAILURE)
   const user = envelope?.route === undefined ? undefined : userMessage(params, envelope)
   let assistantOwned = false
@@ -938,12 +959,12 @@ async function failedAttempt(params, envelope, _error, transcript) {
       // OpenClaw remains transcript owner when the optional bridge mirror fails.
     }
   }
-  return baseAttemptResult(params, { assistant, user, assistantOwned, media: [] })
+  return baseAttemptResult(params, { assistant, user, assistantOwned, media: [], effects })
 }
 
-function abortedAttempt(params) {
+function abortedAttempt(params, effects) {
   return {
-    ...baseAttemptFields(params),
+    ...baseAttemptFields(params, effects),
     aborted: true,
     externalAbort: true,
     messagesSnapshot: [],
@@ -957,7 +978,7 @@ function abortedAttempt(params) {
 function baseAttemptResult(params, input) {
   const mediaPaths = input.media.map(item => item.absolutePath)
   return {
-    ...baseAttemptFields(params),
+    ...baseAttemptFields(params, input.effects),
     aborted: false,
     externalAbort: false,
     ...(input.assistantOwned ? { assistantTranscriptOwned: true } : {}),
@@ -974,7 +995,7 @@ function baseAttemptResult(params, input) {
   }
 }
 
-function baseAttemptFields(params) {
+function baseAttemptFields(params, effects) {
   return {
     timedOut: false,
     idleTimedOut: false,
@@ -983,12 +1004,18 @@ function baseAttemptFields(params) {
     promptErrorSource: null,
     sessionIdUsed: params.sessionId,
     sessionFileUsed: params.sessionFile,
-    didSendViaMessagingTool: false,
-    messagingToolSentTexts: [],
-    messagingToolSentMediaUrls: [],
-    messagingToolSentTargets: [],
+    didSendViaMessagingTool: effects.didSendViaMessagingTool,
+    messagingToolSentTexts: [...effects.messagingToolSentTexts],
+    messagingToolSentMediaUrls: [...effects.messagingToolSentMediaUrls],
+    messagingToolSentTargets: effects.messagingToolSentTargets.map(target => ({
+      ...target,
+      ...(target.mediaUrls === undefined ? {} : { mediaUrls: [...target.mediaUrls] }),
+    })),
     cloudCodeAssistFormatError: false,
-    replayMetadata: { hadPotentialSideEffects: false, replaySafe: true },
+    replayMetadata: {
+      hadPotentialSideEffects: effects.hadPotentialSideEffects,
+      replaySafe: effects.replaySafe,
+    },
     itemLifecycle: { startedCount: 0, completedCount: 0, activeCount: 0 },
   }
 }
@@ -1055,13 +1082,21 @@ async function projectProgress(params, notification) {
 }
 
 function localHealth(handshake, status) {
+  if (status !== 'ready') return baseHealth(handshake, status, [], [])
+  return baseHealth(handshake, status, [], [{
+    code: 'OPENCLAW_ACCOUNT_STATUS_UNAVAILABLE',
+    message: 'OpenClaw limits channel account status to trusted official plugins; this local bridge reports transport readiness only.',
+  }])
+}
+
+function baseHealth(handshake, status, accounts, diagnostics) {
   return validateHealth({
     protocolVersion: 1,
     status,
     checkedAt: new Date().toISOString(),
     handshake,
-    accounts: [],
-    diagnostics: [],
+    accounts,
+    diagnostics,
   })
 }
 

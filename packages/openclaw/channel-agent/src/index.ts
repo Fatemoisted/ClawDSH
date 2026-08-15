@@ -19,6 +19,7 @@ import {
   type ChannelSessionResetV1,
   type ChannelTurnCancelV1,
   type ChannelTurnEnvelopeV1,
+  type ChannelTurnEffectsV1,
   type ChannelTurnExecutionV1,
   type ChannelTurnNotificationV1,
   type ChannelTurnResultV1,
@@ -34,6 +35,7 @@ import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { Domain, KvTable } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { ChannelMessageSource } from './events.ts'
+import { messageSendReceiptStatus } from './effects.ts'
 import { importStagedImages } from './media.ts'
 import { registerMessageTool } from './message-tool.ts'
 import {
@@ -45,12 +47,30 @@ import {
   ledgerKey,
   resetRequestDigest,
   sessionIdFor,
+  UNKNOWN_TURN_EFFECTS,
   type ChannelGenerationRecord,
   type ChannelLedgerRecord,
   type ChannelSessionBindingRecord,
 } from './storage.ts'
 
 const PUBLIC_DEPENDENCY_FAILURE_MESSAGE = 'The DeepSeek Harness Agent turn failed before a safe result was committed.'
+
+const SAFE_TURN_EFFECTS: ChannelTurnEffectsV1 = Object.freeze({
+  hadPotentialSideEffects: false,
+  replaySafe: true,
+  didSendViaMessagingTool: false,
+  messagingToolSentTexts: Object.freeze([]),
+  messagingToolSentMediaUrls: Object.freeze([]),
+  messagingToolSentTargets: Object.freeze([]),
+})
+
+const READ_ONLY_MESSAGE_ACTIONS = new Set([
+  'directory.self',
+  'directory.list-peers',
+  'directory.list-groups',
+  'directory.list-group-members',
+  'resolve',
+])
 
 /** Installer-managed preset for OpenClaw-classified owner direct messages. */
 export const MANAGED_OWNER_PRESET = 'clawdsh'
@@ -217,14 +237,23 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       throw new Error('channel-agent: shutdownGraceMs must be a positive safe integer')
     }
     const domain = await ctx.storageDomain.open(channelAgentDomainSpec)
-    const driver = new ChannelAgentDriver(ctx, config, domain)
-    const now = Date.now()
-    for (const [key, record] of driver.ledger.entries()) {
-      if (record.phase === 'running') {
-        await driver.ledger.put(key, { ...record, phase: 'needs-recovery', updatedAt: now })
+    try {
+      const driver = new ChannelAgentDriver(ctx, config, domain)
+      const now = Date.now()
+      for (const [key, record] of driver.ledger.entries()) {
+        if (record.phase === 'running') {
+          await driver.ledger.put(key, { ...record, phase: 'needs-recovery', updatedAt: now })
+        }
       }
+      return driver
+    } catch (error) {
+      try {
+        await domain.close()
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], 'channel-agent: startup recovery failed and storage cleanup was incomplete')
+      }
+      throw error
     }
-    return driver
   }
 
   /** Stop owned Agents and close the durable domain. */
@@ -500,7 +529,14 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
         recoveryRecord = { ...existing, phase: 'needs-recovery', updatedAt: Date.now() }
         await this.ledger.put(key, recoveryRecord)
       }
-      return this.failed(turn, 'CHANNEL_TURN_NEEDS_RECOVERY', 'A prior Agent run may have produced side effects; operator reconciliation is required.', false, recoveryRecord.sessionId)
+      return this.failed(
+        turn,
+        'CHANNEL_TURN_NEEDS_RECOVERY',
+        'A prior Agent run may have produced side effects; operator reconciliation is required.',
+        false,
+        UNKNOWN_TURN_EFFECTS,
+        recoveryRecord.sessionId,
+      )
     }
     const now = Date.now()
     const acceptedRecord: ChannelLedgerRecord = existing
@@ -528,6 +564,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
     let notificationSequence = 1
     const nextSequence = (): number => notificationSequence++
     let agentMayHaveStarted = false
+    let userMessageId: string | undefined
     let sessionId: SessionId | undefined
     let acquiredHandle: AgentHandle | undefined
     try {
@@ -598,6 +635,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
           ...refs.map(attachment => ({ type: 'image' as const, attachment })),
         ]
         const message = createUserMessage({ content, source })
+        userMessageId = message.id
         this.assertAvailable()
         this.assertCurrentGeneration(turn.route, epoch)
         execution.signal.throwIfAborted()
@@ -634,7 +672,17 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
         }
         return result
       }
-      const failure = this.failed(turn, 'CHANNEL_TURN_FAILED', publicTurnFailureMessage(error), !agentMayHaveStarted, sessionId)
+      const effects = agentMayHaveStarted
+        ? recoverableEffects(turn.route, acquiredHandle?.agent, userMessageId)
+        : SAFE_TURN_EFFECTS
+      const failure = this.failed(
+        turn,
+        'CHANNEL_TURN_FAILED',
+        publicTurnFailureMessage(error),
+        !agentMayHaveStarted,
+        effects,
+        sessionId,
+      )
       if (agentMayHaveStarted) {
         /* v8 ignore next -- Agent work can start only after sessionId is bound and the running row is durable. */
         if (sessionId === undefined) throw new Error('channel-agent: running turn lost its durable Session identity')
@@ -940,6 +988,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
     code: string,
     message: string,
     retryable: boolean,
+    effects: ChannelTurnEffectsV1,
     sessionId?: SessionId,
   ): ChannelTurnResultV1 {
     return {
@@ -947,6 +996,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       turnId: turn.turnId,
       runId: turn.runId,
       replayId: replayIdFor(turn),
+      effects,
       status: 'failed',
       ...(sessionId === undefined ? {} : { sessionId }),
       error: { code, message, retryable },
@@ -964,6 +1014,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       turnId: turn.turnId,
       runId: turn.runId,
       replayId: replayIdFor(turn),
+      effects: SAFE_TURN_EFFECTS,
       status: 'cancelled',
       sessionId,
       reason: `The channel turn was cancelled before Agent execution (${reason}).`,
@@ -1001,18 +1052,9 @@ function sameRoute(left: ChannelRouteV1, right: ChannelRouteV1): boolean {
 
 /** Derive one final result from the exact user message's owning turn. */
 function resultFor(turn: ChannelTurnEnvelopeV1, agent: Agent, userMessageId: string): ChannelTurnResultV1 {
-  let owningTurn: number | undefined
-  let openTurn: number | undefined
-  for (const event of agent.session.events) {
-    if (event.type === 'turn/start') openTurn = event.data.turn
-    if (event.type === 'user/message' && event.data.id === userMessageId) {
-      owningTurn = openTurn
-      break
-    }
-  }
+  const events = eventsForUserMessage(agent, userMessageId)
   /* v8 ignore next -- whenIdle follows the followup wake; an accepted exact message either enters a turn or the Agent rejects earlier. */
-  if (owningTurn === undefined) throw new Error('channel-agent: exact channel message never entered an Agent turn')
-  const events = agent.session.events.filter(event => eventBelongsToTurn(event, owningTurn))
+  if (events === undefined) throw new Error('channel-agent: exact channel message never entered an Agent turn')
   const end = events.findLast(event => event.type === 'turn/end')
   /* v8 ignore next -- Agent quiescence closes every entered turn before whenIdle resolves. */
   if (end?.type !== 'turn/end') throw new Error('channel-agent: Agent reached idle without a terminal turn record')
@@ -1022,6 +1064,7 @@ function resultFor(turn: ChannelTurnEnvelopeV1, agent: Agent, userMessageId: str
     runId: turn.runId,
     replayId: replayIdFor(turn),
     sessionId: agent.session.id,
+    effects: effectsForTurn(turn.route, events),
   }
   if (end.data.reason.kind === 'aborted') {
     return { ...base, status: 'cancelled', reason: 'The channel turn was cancelled.' }
@@ -1057,6 +1100,98 @@ function resultFor(turn: ChannelTurnEnvelopeV1, agent: Agent, userMessageId: str
   return { ...base, status: 'completed', text, media: [], ...(usage === undefined ? {} : { usage }) }
 }
 
+/** Select events from the exact Agent turn that claimed one channel user message. */
+function eventsForUserMessage(agent: Agent, userMessageId: string): SessionEvent[] | undefined {
+  let owningTurn: number | undefined
+  let openTurn: number | undefined
+  for (const event of agent.session.events) {
+    if (event.type === 'turn/start') openTurn = event.data.turn
+    if (event.type === 'user/message' && event.data.id === userMessageId) {
+      owningTurn = openTurn
+      break
+    }
+  }
+  if (owningTurn === undefined) return undefined
+  return agent.session.events.filter(event => eventBelongsToTurn(event, owningTurn))
+}
+
+/** Recover side-effect evidence after a post-Agent bridge failure, failing closed while a turn is open. */
+function recoverableEffects(
+  route: ChannelRouteV1,
+  agent: Agent | undefined,
+  userMessageId: string | undefined,
+): ChannelTurnEffectsV1 {
+  if (agent === undefined || userMessageId === undefined) return UNKNOWN_TURN_EFFECTS
+  const events = eventsForUserMessage(agent, userMessageId)
+  if (events === undefined) return UNKNOWN_TURN_EFFECTS
+  const effects = effectsForTurn(route, events)
+  if (events.some(event => event.type === 'turn/end')) return effects
+  return {
+    ...effects,
+    hadPotentialSideEffects: true,
+    replaySafe: false,
+  }
+}
+
+/** Derive replay policy and confirmed message-send evidence from one owning Agent turn. */
+function effectsForTurn(route: ChannelRouteV1, events: readonly SessionEvent[]): ChannelTurnEffectsV1 {
+  const results = new Map<string, ToolResultEvent>()
+  for (const event of events) {
+    if (event.type === 'tool/result') results.set(event.data.message.source.callId, event)
+  }
+  let hadPotentialSideEffects = false
+  let didSendViaMessagingTool = false
+  const messagingToolSentTexts: string[] = []
+  const messagingToolSentTargets: ChannelTurnEffectsV1['messagingToolSentTargets'][number][] = []
+  for (const event of events) {
+    if (event.type !== 'tool/call') continue
+    if (event.data.name !== 'message') {
+      hadPotentialSideEffects = true
+      continue
+    }
+    const args = messageToolArguments(event.data.arguments)
+    const action = args?.action
+    if (typeof action === 'string' && READ_ONLY_MESSAGE_ACTIONS.has(action)) continue
+    hadPotentialSideEffects = true
+    if (action !== 'send') continue
+    if (typeof args?.text !== 'string' || args.text.length === 0) continue
+    const result = results.get(event.data.callId)
+    const receiptStatus = result === undefined ? undefined : messageSendReceiptStatus(result)
+    if (receiptStatus === 'dead-letter') continue
+    didSendViaMessagingTool = true
+    if (receiptStatus !== 'confirmed') continue
+    messagingToolSentTexts.push(args.text)
+    messagingToolSentTargets.push({
+      tool: 'message',
+      provider: route.channel,
+      accountId: route.account,
+      to: route.conversation,
+      ...(route.thread === undefined ? {} : { threadId: route.thread }),
+      text: args.text,
+    })
+  }
+  return {
+    hadPotentialSideEffects,
+    replaySafe: !hadPotentialSideEffects,
+    didSendViaMessagingTool,
+    messagingToolSentTexts,
+    messagingToolSentMediaUrls: [],
+    messagingToolSentTargets,
+  }
+}
+
+/** Parse only the fields needed to classify one raw `message` tool request. */
+function messageToolArguments(value: string): { readonly action?: unknown; readonly text?: unknown } | undefined {
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : undefined
+  } catch (_invalidToolArguments) {
+    return undefined
+  }
+}
+
 /** Whether a core event carries the named turn directly. */
 function eventBelongsToTurn(event: SessionEvent, turn: number): boolean {
   if (event.type === 'turn/start' || event.type === 'turn/end'
@@ -1077,6 +1212,7 @@ function observedToolName(toolNames: ReadonlyMap<string, string>, callId: string
 }
 
 type AssistantMessageEvent = Extract<SessionEvent, { type: 'assistant/message' }>
+type ToolResultEvent = Extract<SessionEvent, { type: 'tool/result' }>
 
 /** Sum disjoint token counters from all assistant messages in one turn. */
 function aggregateUsage(events: readonly AssistantMessageEvent[]): TokenUsage | undefined {

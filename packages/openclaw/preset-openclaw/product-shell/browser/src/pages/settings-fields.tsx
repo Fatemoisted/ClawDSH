@@ -59,6 +59,15 @@ function readonlyValue(value: unknown): ReactNode {
   return <code>{String(value)}</code>
 }
 
+function hasNativeControl(node: SchemaNode | undefined): boolean {
+  if (node === undefined) return false
+  return enumValues(node) !== undefined
+    || node.type === 'boolean'
+    || node.type === 'number'
+    || node.type === 'string'
+    || (node.type === 'array' && node.inner?.type === 'string')
+}
+
 function editableControl(
   id: string,
   node: SchemaNode,
@@ -156,10 +165,19 @@ export function SettingsFields({
         const value = getPath(draft, field.path)
         const update = (next: unknown): void => { onChange(setPath(draft, field.path, next)) }
         const special = renderSpecial?.(field, value, update)
+        const nativeControl = special === undefined && field.editable && hasNativeControl(node)
+        const labelId = `${id}-label`
         return (
-          <div className={css.settingField} key={key} data-setting-path={key}>
+          <div
+            className={css.settingField}
+            key={key}
+            data-setting-path={key}
+            {...nativeControl ? {} : { role: 'group', 'aria-labelledby': labelId }}
+          >
             <div className={css.fieldCopy}>
-              <label htmlFor={id}>{field.label}</label>
+              {nativeControl
+                ? <label className={css.fieldLabel} htmlFor={id}>{field.label}</label>
+                : <span className={css.fieldLabel} id={labelId}>{field.label}</span>}
               {field.editable ? null : <span className={css.managed}>安装器管理</span>}
               {field.description === undefined ? null : <p>{field.description}</p>}
             </div>

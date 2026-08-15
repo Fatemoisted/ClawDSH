@@ -9,6 +9,19 @@
 
 ```mermaid
 flowchart LR
+  pkg_activity["activity"]
+  svc_clawdshActivity["ctx.clawdshActivity<br/>Privacy-limited semantic Activity"]
+  pkg_channel_agent["channel-agent"]
+  pkg_memory["memory"]
+  pkg_soul["soul"]
+  pkg_channel_openclaw["channel-openclaw"]
+  svc_clawdshOpenClawControl["ctx.clawdshOpenClawControl<br/>Managed OpenClaw control seam"]
+  svc_clawdshSoulSettings["ctx.clawdshSoulSettings<br/>Session-scoped Soul settings"]
+  pkg_channel["channel"]
+  svc_channels["ctx.channels<br/>Canonical channel plane"]
+  pkg_embeddings["embeddings"]
+  svc_embeddings["ctx.embeddings<br/>Text embedding seam"]
+  pkg_embeddings_ark["embeddings-ark"]
   pkg_attachment["attachment"]
   svc_attachments["ctx.attachments<br/>Durable binary attachment storage"]
   pkg_attachment_local["attachment-local"]
@@ -196,6 +209,7 @@ flowchart LR
   svc_dynamicCordisRunner["ctx.dynamicCordisRunner<br/>Dynamic Cordis package host runner"]
   svc_cordisInspect["ctx.cordisInspect<br/>Dynamic Cordis inspect registry"]
   pkg_acp --> svc_approval
+  pkg_activity --> svc_clawdshActivity
   pkg_agent --> svc_agents
   pkg_agent_default_model --> svc_agentDefaultModel
   pkg_agent_loop --> svc_agentLoop
@@ -207,6 +221,10 @@ flowchart LR
   pkg_attachment_local --> svc_attachments
   pkg_bash_local --> svc_shell
   pkg_bash_sandbox --> svc_shell
+  pkg_channel --> svc_channels
+  pkg_channel_agent --> svc_channels
+  pkg_channel_openclaw --> svc_channels
+  pkg_channel_openclaw --> svc_clawdshOpenClawControl
   pkg_code_runtime --> svc_codeRuntime
   pkg_code_runtime_worker --> svc_codeRuntime
   pkg_commands --> svc_commands
@@ -221,6 +239,8 @@ flowchart LR
   pkg_directory_picker_browse --> svc_directoryPicker
   pkg_directory_picker_native --> svc_directoryPicker
   pkg_e2b --> svc_e2b
+  pkg_embeddings --> svc_embeddings
+  pkg_embeddings_ark --> svc_embeddings
   pkg_fs --> svc_fs
   pkg_fs_e2b --> svc_fs
   pkg_fs_local --> svc_fs
@@ -264,6 +284,7 @@ flowchart LR
   pkg_skill --> svc_skills
   pkg_skill_badge --> svc_skills
   pkg_skill_filesystem --> svc_skills
+  pkg_soul --> svc_clawdshSoulSettings
   pkg_spill --> svc_spillStore
   pkg_spill_local --> svc_spillStore
   pkg_storage --> svc_storage
@@ -307,6 +328,10 @@ flowchart LR
   svc_approval --> pkg_tools
   svc_attachments --> pkg_host_runtime
   svc_attachments --> pkg_llm_pi_ai
+  svc_channels --> pkg_channel_agent
+  svc_clawdshActivity --> pkg_channel_agent
+  svc_clawdshActivity --> pkg_memory
+  svc_clawdshActivity --> pkg_soul
   svc_clientModules --> pkg_hmr
   svc_codeRuntime --> pkg_tools
   svc_compaction --> pkg_compaction_basic
@@ -318,6 +343,7 @@ flowchart LR
   svc_dynamicCordisRunner --> pkg_tool_cordis
   svc_e2b --> pkg_fs_e2b
   svc_e2b --> pkg_subprocess_e2b
+  svc_embeddings --> pkg_memory
   svc_fs --> pkg_tool_fs
   svc_invariants --> pkg_agent
   svc_invariants --> pkg_agent_loop
@@ -413,6 +439,11 @@ flowchart LR
 
 | ctx 键 | 角色 | 所属包 | 实现 | 直接消费方 | 配套插件 | 说明 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `ctx.clawdshActivity` | `core` | `activity` | - | `channel-agent`, `memory`, `soul` | - | 从标准 Session 历史及有界伴随数据中投影产品语义，不复制消息正文、凭据、平台身份或原始诊断信息。 |
+| `ctx.clawdshOpenClawControl` | `core` | `channel-openclaw` | - | - | - | 暴露不含机密的生命周期状态，并在持久化前通过受管身份与部署预检来校验目标设置。 |
+| `ctx.clawdshSoulSettings` | `core` | `soul` | - | - | - | 解析 Soul 提示词组合所使用的重启作用域基础设置与可选逐会话模式，而不创建第二套设置运行时。 |
+| `ctx.channels` | `seam` | `channel` | `channel-openclaw`, `channel-agent` | `channel-agent` | - | 锁定的 OpenClaw 提供方负责平台通信；Harness-first 驱动负责准入、Agent 与 Session 执行、工具及持久结果投影。 |
+| `ctx.embeddings` | `seam` | `embeddings` | `embeddings-ark` | `memory` | - | 单一提供方将有序文本批次映射到一个可比较的向量空间；memory 负责分块、索引、排序和面向模型的检索。 |
 | `ctx.attachments` | `seam` | [`attachment`](../packages/attachment/attachment) | [`attachment-local`](../packages/attachment/attachment-local) | `host-runtime`, [`llm-pi-ai`](../packages/llm/llm-pi-ai) | - | 宿主会在会话事件之前提交已接受的图片；提供方适配器将已授权的持久引用解析为提供方原生内容。 |
 | `ctx.llm` | `seam` | [`llm`](../packages/llm/llm) | [`llm-deepseek`](../packages/llm/llm-deepseek), [`llm-pi-ai`](../packages/llm/llm-pi-ai), [`llm-replay`](../packages/test-support/llm-replay) | [`agent-loop`](../packages/core/agent-loop), [`compaction-basic`](../packages/compaction/compaction-basic) | - | 适配器注册提供方实现；agent loop（智能体循环）与压缩功能调用提供方无关的流服务。 |
 | `ctx.tokenMeter` | `core` | [`token-meter`](../packages/llm/token-meter) | - | [`compaction-basic`](../packages/compaction/compaction-basic) | - | 拥有按会话隔离的回放折叠区；压力消费方共享不可变且带修订版本的测量结果。 |

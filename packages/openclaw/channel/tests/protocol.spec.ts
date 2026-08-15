@@ -80,6 +80,7 @@ describe('channel protocol valid payloads', () => {
         turnId: 'turn-1',
         runId: 'run-1',
         replayId: 'replay-2',
+        effects: RAW_RESULT.effects,
         status: 'silent',
         sessionId: 'channel-session-1',
       },
@@ -88,6 +89,7 @@ describe('channel protocol valid payloads', () => {
         turnId: 'turn-1',
         runId: 'run-1',
         replayId: 'replay-3',
+        effects: RAW_RESULT.effects,
         status: 'cancelled',
         reason: 'user stopped the run',
       },
@@ -96,6 +98,7 @@ describe('channel protocol valid payloads', () => {
         turnId: 'turn-1',
         runId: 'run-1',
         replayId: 'replay-4',
+        effects: RAW_RESULT.effects,
         status: 'failed',
         sessionId: 'channel-session-1',
         error: FAILURE,
@@ -326,6 +329,69 @@ describe('channel protocol rejection', () => {
       text: '',
       media: [],
     }).success).toBe(false)
+  })
+
+  it('requires internally consistent durable turn side-effect evidence', () => {
+    const legacy = { ...RAW_RESULT } as Record<string, unknown>
+    delete legacy.effects
+    expect(channelTurnResultV1Schema.safeParse(legacy).success).toBe(false)
+    expect(channelTurnResultV1Schema.safeParse({ ...RAW_RESULT, effects: null }).success).toBe(false)
+    expect(channelTurnResultV1Schema.safeParse({
+      ...RAW_RESULT,
+      effects: { ...RAW_RESULT.effects, replaySafe: false },
+    }).success).toBe(false)
+    expect(channelTurnResultV1Schema.safeParse({
+      ...RAW_RESULT,
+      effects: { ...RAW_RESULT.effects, didSendViaMessagingTool: true },
+    }).success).toBe(false)
+    expect(channelTurnResultV1Schema.safeParse({
+      ...RAW_RESULT,
+      effects: {
+        ...RAW_RESULT.effects,
+        hadPotentialSideEffects: true,
+        replaySafe: false,
+        didSendViaMessagingTool: true,
+      },
+    }).success).toBe(true)
+    expect(channelTurnResultV1Schema.safeParse({
+      ...RAW_RESULT,
+      effects: {
+        hadPotentialSideEffects: true,
+        replaySafe: false,
+        didSendViaMessagingTool: false,
+        messagingToolSentTexts: ['sent'],
+        messagingToolSentMediaUrls: [],
+        messagingToolSentTargets: [{
+          tool: 'message', provider: 'telegram', accountId: 'primary', to: 'chat-1', text: 'sent',
+        }],
+      },
+    }).success).toBe(false)
+    expect(channelTurnResultV1Schema.safeParse({
+      ...RAW_RESULT,
+      effects: {
+        hadPotentialSideEffects: true,
+        replaySafe: false,
+        didSendViaMessagingTool: true,
+        messagingToolSentTexts: ['different'],
+        messagingToolSentMediaUrls: [],
+        messagingToolSentTargets: [{
+          tool: 'message', provider: 'telegram', accountId: 'primary', to: 'chat-1', text: 'sent',
+        }],
+      },
+    }).success).toBe(false)
+    expect(channelTurnResultV1Schema.safeParse({
+      ...RAW_RESULT,
+      effects: {
+        hadPotentialSideEffects: true,
+        replaySafe: false,
+        didSendViaMessagingTool: true,
+        messagingToolSentTexts: ['sent'],
+        messagingToolSentMediaUrls: [],
+        messagingToolSentTargets: [{
+          tool: 'message', provider: 'telegram', accountId: 'primary', to: 'chat-1', text: 'sent',
+        }],
+      },
+    }).success).toBe(true)
   })
 
   it('rejects stale reset generations and malformed controls', () => {
