@@ -34,6 +34,6 @@ Deferred in the note (documented in channel-core README): `shouldBypassMention` 
 
 - The channel-core README's "ack scope is always-on" and "`deriveMentionPatterns` has no consumer" limitations are removed; the control-command bypass and remove-after-reply remain as the sole ack-scope deferred items.
 - Feishu's `react: false` Known Limitation is removed; `capabilities.react: true` is now the adapter template alongside Telegram.
-- The openclaw preset's channel-core row carries `ackReactionScope: group-mentions` + `requireMention: true` explicitly.
+- The `clawdsh` preset's channel-core row carries `ackReactionScope: group-mentions` + `requireMention: true` explicitly.
 - The `wasMentioned` field-presence contract is written into `ChannelMessage` JSDoc; any future adapter must honor it (omit → fail open).
 - Tests: `presentation.spec` (table-driven `shouldAckReaction` + `''` disables), `channel-core.spec` (ack gating across scopes), and adapter specs (`detectBotMention`, Feishu mention mapping and `react` payload).

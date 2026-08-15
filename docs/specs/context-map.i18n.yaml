@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/specs/context-map.md
-context-map.md: ff95e83e7284f19119ffd77965be10f66ba64605
-context-map.zh.md: e9463d67bfd0bc2fe4993cab995c517e9bb8bb85
+context-map.md: 57d22a8aa93461d056e650dcbd28ae2d7d996aef
+context-map.zh.md: 1c14b1d2e5803610a280248d1080791f58d55610

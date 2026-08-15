@@ -12,7 +12,7 @@ English | [中文](context-map.zh.md)
 |---|---|
 | `packages/openclaw/` | the only rewriteable code domain — 12 packages below |
 | `docs/adr/`, `docs/specs/`, `docs/matrix/`, `docs/standards/`, `docs/journal/`, `docs/upstream-proposal/` | ClawDSH decisions, specs, matrix, standards, journal, upstream proposals |
-| `tools/` | ClawDSH scripts + e2e drivers (`ark-e2e.ts`, `link-openclaw.sh`, `sync-upstream.sh`) |
+| `tools/` | ClawDSH scripts + e2e drivers (`ark-e2e.ts`, `link-clawdsh.sh`, `sync-upstream.sh`) |
 | `.github/workflows/clawdsh-*` | ClawDSH CI (`clawdsh-publish.yml`, `clawdsh-smoke.yml`) |
 
 ### The 12 packages
@@ -29,7 +29,7 @@ English | [中文](context-map.zh.md)
 | `embeddings-ark/` | provider | `ctx.embeddings` | Volcano Ark provider (`doubao-embedding-vision`) |
 | `skills-hub/` | provider | `skills` | ClawHub-compatible skill directory |
 | `automation/` | function plugin | `agents`, `sessions`, `agentDefaultModel` | croner scheduled agent turns (`automation/run`) |
-| `preset-openclaw/` | preset/profile | — | agent preset + example soul + `profile/cordis.patch.yml` |
+| `preset-openclaw/` | preset/profile | — | internal source for the `clawdsh` profile and `clawdsh` agent preset (`ClawDSH 模式`) |
 | `_template/` | skeleton | — | copy-me template for a new plugin |
 
 ## 2. Upstream surface — read only, summarized in §3
@@ -56,7 +56,9 @@ A capability is a **seam** with three roles: a Service Definition (the interface
 
 ### Composition: profile / patch / bundle
 
-`dsh --profile <name>` stacks layers in order: the profile's bundles → the profile's `cordis.patch.yml` → the home-level patch → `--patch` overlays. A patch targets a row by id and replaces its whole config, or inserts a new row. ClawDSH's `preset-openclaw/profile/cordis.patch.yml` is the composition that wires the six runtime features together.
+`dsh --profile <name>` stacks layers in order: the profile's bundles → the profile's `cordis.patch.yml` → the home-level patch → `--patch` overlays. A patch targets a row by id and replaces its whole config, or inserts a new row. `tools/link-clawdsh.sh` installs the internal `preset-openclaw/profile/cordis.patch.yml` source as the `clawdsh` profile and installs its `clawdsh` preset under the dsh user root.
+
+The clean-install profile keeps Feishu, Telegram, and Automation disabled, so the Web Host can start without their credentials. Those defaults use Loader `disabled` rows only until the Settings control-plane increment moves optional behavior behind mounted plugins' `enabled` settings. Legacy `openclaw` profile and preset directories are warning-only inputs and remain untouched; the public-distribution CLI owns the managed manifest and `clawdsh doctor` repair flow.
 
 ### The invariant: model-visible ⟺ logged
 

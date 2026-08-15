@@ -48,7 +48,7 @@ dsh 侧映射：
 
 ## 影响
 
-- skills-hub 挂 host 面，openclaw preset 默认启用：纯增量目录合并，目录不存在即空列表、无凭证、无安装执行——存量 OpenClaw 用户的 `~/.clawdbot/skills` 开箱即用。
+- skills-hub 挂 host 面，在 `clawdsh` preset 中默认启用：纯增量目录合并，目录不存在即空列表、无凭证、无安装执行——存量 OpenClaw 用户的 `~/.clawdbot/skills` 开箱即用。
 - rank 选择是契约：300（workspace）/ 350（extra）/ 450（managed）落在 dsh 原生项目（100–200）与用户（400–500）槽位之间；同 rank 平手按 provider 注册序裁决，故 skill-filesystem 赢 300 平手。
 - gating 尽力而为（PATH 探测，不起子进程）；对齐规格将其记为限制而非保证。
 - 安装执行与未来可能的 ClawHub 远程注册表回到本 Note 重新论证，而非默认补结构。

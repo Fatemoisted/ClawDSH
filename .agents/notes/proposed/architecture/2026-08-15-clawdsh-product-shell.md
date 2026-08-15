@@ -36,7 +36,7 @@ The shell consumes the public boot manifest, static browser module table, loadin
 
 This is an application assembly, not a reusable Client contribution. It does not register a new Slot, add a `dsh.client` package, enter the shipped occupant catalog, or modify `api-proxy`, Agent Loop, generated files, or upstream source. It also does not use runtime package injection or scanner exceptions to imitate a catalog entry. The proposed [dynamic package runtime](2026-08-08-cordis-web-dynamic-packages.md) has a different trust and lifecycle model and is not a dependency of this shell.
 
-The physical `preset-openclaw` directory remains temporarily because the repository's current hierarchy gate recognizes that assembly path. Product copy, installed profile and preset ids, default selection, and commands use ClawDSH identity; the directory name is not exposed as a compatibility promise.
+The physical `preset-openclaw` directory remains temporarily because the repository's current hierarchy gate recognizes that assembly path. Product copy, installed profile and preset ids, default selection, commands, safe clean-install defaults, and legacy handling follow the [ClawDSH identity decision](../../implemented/feature/2026-08-15-clawdsh-identity-and-safe-defaults.md); the directory name is not exposed as a compatibility promise.
 
 ### Settings and activity
 

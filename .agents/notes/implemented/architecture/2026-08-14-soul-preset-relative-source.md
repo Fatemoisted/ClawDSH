@@ -36,6 +36,6 @@ Bundle patch layers provide rows to the root tree, so a relative `source` from a
 
 ## Consequences
 
-- Presets can ship `source: ./souls/assistant.md` and the soul travels with the preset (the openclaw preset now does exactly this).
+- Presets can ship `source: ./souls/assistant.md` and the soul travels with the preset (the `clawdsh` preset does exactly this).
 - Relative-path semantics now match relative module specifiers under the Loader — one anchor rule instead of a plugin-specific cwd rule.
 - The bundle-patch-layer caveat is a documented limitation, not a regression: before this change, those rows resolved against cwd, which was no better.

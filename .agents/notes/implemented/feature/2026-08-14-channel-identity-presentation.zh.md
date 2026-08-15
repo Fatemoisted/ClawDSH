@@ -17,7 +17,7 @@ Status: implemented
 - `resolveMessagePrefix`：`[name]` 或空；
 - `deriveMentionPatterns`：`\b@?<名字各段以 \s+ 连接>\b` 大小写不敏感 + 原始 emoji 字面量模式，含 OpenClaw 的 `→\b` 归一化；`stripMentions` 去除匹配。
 
-接线：`ChannelRegistry` 增 `static Config`（`identity` / `responsePrefix` / `ackReaction`）；`driveTurn` 给提取回复加前缀、回合前 fire-and-forget 触发 ack；`ChannelMessage.messageId` + `ChannelCapabilities.react` + 可选 `ChannelAdapter.react(message, emoji)` 把 ack 送到适配器。Telegram 经 grammY `setMessageReaction` 实现 `react` 并捕获入站 `message_id`；飞书捕获 `message_id` 但声明 `react: false`（其 `im.message.reaction.create` 的 node-sdk 表面在本 workspace 未验证——Known Limitation 指名 REST 路径）。openclaw preset 的 channel-core 行带 `responsePrefix: auto` + `ackReaction: '👀'` 与注释身份示例。`agent.cordis.yml` 不动：身份呈现不是 prompt 内容。
+接线：`ChannelRegistry` 增 `static Config`（`identity` / `responsePrefix` / `ackReaction`）；`driveTurn` 给提取回复加前缀、回合前 fire-and-forget 触发 ack；`ChannelMessage.messageId` + `ChannelCapabilities.react` + 可选 `ChannelAdapter.react(message, emoji)` 把 ack 送到适配器。Telegram 经 grammY `setMessageReaction` 实现 `react` 并捕获入站 `message_id`；飞书捕获 `message_id` 但声明 `react: false`（其 `im.message.reaction.create` 的 node-sdk 表面在本 workspace 未验证——Known Limitation 指名 REST 路径）。`clawdsh` preset 的 channel-core 行带 `responsePrefix: auto` + `ackReaction: '👀'` 与注释身份示例。`agent.cordis.yml` 不动：身份呈现不是 prompt 内容。
 
 ## 考虑过的替代方案
 
@@ -34,4 +34,4 @@ Status: implemented
 - 矩阵 soul 行的 `(IDENTITY, Deferred)` 移除；`feature-soul.md` 的映射行指向本 Note；
 - `deriveMentionPatterns` 随契约测试出但无请求内消费者（未来 owner：ack scope 门控与适配器提及检测）——按 current-owner 规则在 PR 描述标注；
 - 适配器能力 `react` 成为 `ChannelAdapter` 契约的一部分；新适配器必须声明（飞书的 `false` 即模板）；
-- openclaw preset 新增身份呈现块；部署改名字/emoji 无需触碰 prompt。
+- `clawdsh` preset 带身份呈现块；部署改名字/emoji 无需触碰 prompt。

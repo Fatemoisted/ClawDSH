@@ -42,14 +42,14 @@ Only these three are brand-editable. `packages/AGENTS.md` and `examples/AGENTS.m
 
 | Location | Content |
 |---|---|
-| `packages/openclaw/` | the only rewriteable code domain — `preset-openclaw/`, `channel-core/`, `channel-telegram/`, `channel-feishu/`, `channel-wechat/` (decision record), `soul/`, `memory/`, `embeddings/`, `embeddings-ark/`, `skills-hub/`, `automation/`, `_template/` |
+| `packages/openclaw/` | the only rewriteable code domain — `preset-openclaw/` is the internal source of the `clawdsh` profile and preset; the remaining entries are `channel-core/`, `channel-telegram/`, `channel-feishu/`, `channel-wechat/` (decision record), `soul/`, `memory/`, `embeddings/`, `embeddings-ark/`, `skills-hub/`, `automation/`, `_template/` |
 | `docs/adr/` | 0001–0005 (project foundation, channel seam, embeddings seam, npm publishing, clawd federation) |
 | `docs/specs/` | `roadmap.md` + `feature-soul` / `feature-channel-core` / `feature-memory` / `feature-skills-hub` / `feature-automation` |
 | `docs/matrix/parity.md` | single source of truth for feature alignment |
 | `docs/standards/` | `naming`, `plugin-contract`, `pr-policy`, `upstream-sync` |
 | `docs/journal/2026-08-14.md` | exhaustive development log |
 | `docs/upstream-proposal/ctx-channels.md` | the `ctx.channels` seam proposal to upstream |
-| `tools/` | `ark-e2e.ts`, `link-openclaw.sh`, `sync-upstream.sh` |
+| `tools/` | `ark-e2e.ts`, `link-clawdsh.sh`, `sync-upstream.sh`; the installer warns about legacy `openclaw` assets and preserves them |
 | `.github/workflows/clawdsh-publish.yml`, `clawdsh-smoke.yml` | ClawDSH CI |
 
 ## (c) ClawDSH content embedded in an upstream file

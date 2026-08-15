@@ -40,7 +40,7 @@
 每个包必须提供：
 
 - **契约测试**：对自己实现的 seam 接口跑通最小行为面（挂载 → 行为 → 卸载回卷）；
-- **profile 冒烟**：`pnpm dsh --profile openclaw --dump-config` 能解析出该包的挂载行；
+- **profile 冒烟**：运行 `tools/link-clawdsh.sh` 后，`pnpm dsh --profile clawdsh --dump-config` 能解析出该包的挂载行；干净安装检查必须保持飞书、Telegram 与 Automation 关闭；
 - 渠道类插件：一次入站 → 一次出站的端到端会话测试（可 mock 渠道 API）。
 
 ## 7. 公开面变更

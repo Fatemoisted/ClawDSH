@@ -1,9 +1,9 @@
-# ClawDSH「openclaw」agent preset —— 完整对齐 dsh 的 standard 预设（编码 agent 全套工具），
+# ClawDSH「clawdsh」agent preset —— 完整对齐 dsh 的 standard 预设（编码 agent 全套工具），
 # 仅把 standard 的 `persona` 行（@deepseek-ai/dsh-persona 的 "coding agent" 文本）替换为
 # 我们的 `soul` 行（@clawdsh/dsh-soul，从 souls/assistant.md 加载人格）。
 #
 # 阶段 4（GUI 接线）：web bundle 把模型可见工具挪进 preset，本文件补齐完整工具集，
-# 让 GUI 下的 OpenClaw 助手拥有 soul 人格 + memory + skills + shell/fs/web 等完整能力。
+# 让 GUI 下的 ClawDSH 助手拥有 soul 人格 + memory + skills + shell/fs/web 等完整能力。
 #
 # 服务行必须置于带 `isolate` realm 的 group 内（否则发布到 root realm，进程全局、跨 preset
 # 冲突，dsh-agent-presets 挂载时会拒绝）。下方 planning/compaction/delegation 三个组照抄

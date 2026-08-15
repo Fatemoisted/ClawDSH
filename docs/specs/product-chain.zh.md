@@ -23,7 +23,7 @@
 | memory（+embeddings +embeddings-ark） | `memory/`、`embeddings/`、`embeddings-ark/` | `ctx.fs` + `ctx.tools` + `ctx.get('embeddings')`（ADR-0003） | ✅（一处 ⚠️） |
 | skills-hub | `skills-hub/` | `ctx.skills` | ✅（roster ❌） |
 | automation | `automation/` | `ctx.agents` + `ctx.sessions` | ✅（roster ❌ ×2） |
-| preset-openclaw wiring | `preset-openclaw/` | profile/patch + agent preset | ✅ |
+| ClawDSH 组装接线 | `preset-openclaw/` | `clawdsh` profile/patch + `clawdsh` agent preset | ✅ |
 
 ## channel-core
 
@@ -131,15 +131,17 @@
 
 | 环节 | 内容 |
 |---|---|
-| 形态 | 三份交付：agent preset（`preset.yml`「OpenClaw 形态」order 3 + `agent.cordis.yml`）、示例 soul（`souls/assistant.md`）、profile 模板（`profile/cordis.patch.yml`） |
-| 层叠 | `profile/package.json` `bundles: ['@deepseek-ai/dsh-base']`；soul 走 agent preset（非 profile）挂载 |
-| profile patch | `system-prompt` persona → `channel-core`（identity/`responsePrefix: auto`/`ackReaction: '👀'`/`ackReactionScope: group-mentions`/`requireMention: true`）→ `channel-telegram`（`disabled: true`）→ `channel-feishu`（env 凭证）→ `memory`（`root: dshHomePath('memory')`）→ `embeddings-ark` → `skills-hub` → `automation`（`disabled: true`） |
-| 凭证 | Feishu 走 env、ARK 走 `ARK_API_KEY` env——一律不落盘 |
+| 形态 | `clawdsh` agent preset（`preset.yml` 显示名 `ClawDSH 模式` + `agent.cordis.yml`）、示例 soul（`souls/assistant.md`）与 `clawdsh` profile 模板（`profile/cordis.patch.yml`） |
+| 层叠 | `profile/package.json` 先组合 `@deepseek-ai/dsh-base`，再组合 `@deepseek-ai/dsh-web-app`；soul 通过 agent preset 而非 profile 挂载 |
+| profile patch | `system-prompt` persona → `channel-core` → `channel-telegram`（`disabled: true`）→ `channel-feishu`（`disabled: true`，env 凭据引用）→ `memory` → `embeddings-ark` → `skills-hub` → `automation`（`disabled: true`）→ `agent-presets.default: clawdsh` |
+| 凭证 | 关闭的渠道可以缺少凭据；飞书启用后使用 env 引用，Ark 按需解析 `ARK_API_KEY`——profile 中不提交任何值 |
 
 - ✅ 接线完整：profile patch 覆盖全部六个运行时 feature，soul 由 agent preset 覆盖。
 - ✅ 层次分离正确：soul 是 agent-preset 关注点，channels/memory/skills/automation 是 profile-patch 关注点。
-- ✅ `automation` 以 `disabled: true` 交付（opt-in），与其「disabled 起步」契约一致。
-- ✅ 凭证处理：Feishu 走 env、ARK 走 `ARK_API_KEY` env——一律不落盘。
+- ✅ 飞书、Telegram 与 Automation 均以 `disabled: true` 交付，因此干净安装的 Web Host 无需这些功能的凭据即可启动。
+- ✅ 这些可选功能暂时使用 Loader `disabled`；能力 Settings 增量会保持其业务插件挂载，并将控制迁移到经过校验的 `enabled` 设置。
+- ✅ `tools/link-clawdsh.sh` 只安装 `clawdsh` id，检测到旧 `openclaw` 资产时警告并保留，不创建兼容别名。
+- ✅ 托管 manifest、完整性修复与 `clawdsh doctor` 属于公共发行 CLI，而不是本 profile 源码。
 
 ## 文档-代码不一致台账
 

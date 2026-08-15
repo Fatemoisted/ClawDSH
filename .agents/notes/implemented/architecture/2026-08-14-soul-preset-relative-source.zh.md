@@ -36,6 +36,6 @@ bundle patch 层提供的行落在根树上，其相对 `source` 解析到 profi
 
 ## 影响
 
-- preset 可以写 `source: ./souls/assistant.md`，灵魂随 preset 走（openclaw preset 现已如此）；
+- preset 可以写 `source: ./souls/assistant.md`，灵魂随 preset 走（`clawdsh` preset 正是如此）；
 - 相对路径语义与 Loader 下相对模块说明符一致——一条锚点规则取代插件私有 cwd 规则；
 - bundle patch 层的注记是文档化限制而非回归：改动前那些行同样按 cwd 解析，并不更好。

@@ -48,8 +48,8 @@ soul:
 2. ✅ **Hot-plug**: prompt restores to default after fiber dispose (test: `restores the default prompt when its fiber unloads`); two scoped personas don't interfere (`gives two scopes independent souls`);
 3. ✅ **No upstream source change**: only adds `packages/openclaw/soul` + build registration (tsconfig paths/reference, ADR-0001 exemption); full `pnpm typecheck` green;
 4. ✅ **Logging invariant**: soul text is a prompt section, participating in assembly enters the session event stream (guaranteed by the upstream session mechanism, "model-visible means logged");
-5. ✅ **Profile layering**: `--profile openclaw --dump-config` resolves dsh-base + dsh-headless + our persona override (smoke passed).
-6. ⏳ **Real agent mounts preset** under `--profile openclaw`: belongs to Phase 2 (preset wiring for the headless form), see preset-openclaw/README.md.
+5. ✅ **Profile layering**: `--profile clawdsh --dump-config` resolves `dsh-base` + `dsh-web-app` + the ClawDSH profile patch.
+6. ✅ **Real agent mounts preset**: `--profile clawdsh` defaults new Sessions to the `clawdsh` preset displayed as `ClawDSH 模式`; see the [assembly README](../../packages/openclaw/preset-openclaw/README.md).
 7. ✅ **Identity mapping documented (Phase 2 deep-read finalization)**: the complete mapping from OpenClaw's four-layer identity to dsh seams lands consistently in three places (Agent Note `.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping`, this spec, and the parity matrix); soul code zero change.
 8. ✅ **File path resolves against preset directory (Phase 2 wrap-up)**: relative `source` resolves anchored at the mount tree `ctx.baseUrl` (preset → composition directory, profile → profile directory, bare context → cwd fallback); 12 test cases include baseUrl relative resolution and cwd fallback.
 

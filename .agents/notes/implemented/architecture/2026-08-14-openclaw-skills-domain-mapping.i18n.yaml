@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-14-openclaw-skills-domain-mapping.md
-2026-08-14-openclaw-skills-domain-mapping.md: 65230c898c34385958e4683f8484047feefd9f61
-2026-08-14-openclaw-skills-domain-mapping.zh.md: 09274d8f46b630f3fe0d12b5df7be3724fd5e1f3
+2026-08-14-openclaw-skills-domain-mapping.md: a80d4e2252ff4febf3bb4f2af685ab08e0686544
+2026-08-14-openclaw-skills-domain-mapping.zh.md: da8a5b538c039d0159db3229e4bee4cd7e9406e4

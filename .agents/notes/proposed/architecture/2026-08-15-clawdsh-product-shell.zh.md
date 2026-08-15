@@ -36,7 +36,7 @@ ClawDSH profile 启动一个 dsh Host 进程，并暴露两个浏览器应用。
 
 这是应用组装，不是可复用 Client contribution。它不注册新 Slot，不增加 `dsh.client` 包，不进入 shipped occupant catalog，也不修改 `api-proxy`、Agent Loop、生成文件或上游源码。它也不会使用 runtime package injection 或 scanner exception 模仿 catalog entry。proposed 的[动态 package runtime](2026-08-08-cordis-web-dynamic-packages.md)具有不同的信任与生命周期模型，不是本产品壳的依赖。
 
-物理 `preset-openclaw` 目录暂时保留，因为仓库当前层级 gate 识别该组装路径。产品文案、安装后的 profile 与 preset id、默认选择和命令都使用 ClawDSH 身份；该目录名不作为兼容承诺暴露。
+物理 `preset-openclaw` 目录暂时保留，因为仓库当前层级 gate 识别该组装路径。产品文案、安装后的 profile 与 preset id、默认选择、命令、安全的干净安装默认值与旧资产处理遵循 [ClawDSH 身份决策](../../implemented/feature/2026-08-15-clawdsh-identity-and-safe-defaults.md)；该目录名不作为兼容承诺暴露。
 
 ### Settings 与 Activity
 

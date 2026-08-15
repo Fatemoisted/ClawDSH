@@ -14,9 +14,11 @@ English | [中文](feature-automation.zh.md)
 - OpenClaw-isomorphic run semantics: at-least-once (`started` record before the turn), in-flight dedup, no automatic retries, missed occurrences skipped;
 - The session log is the run log: `automation/run` records around each logged turn, no separate artifact.
 
+The clean-install `clawdsh` profile keeps the Automation Loader row disabled, so no scheduled work starts without explicit opt-in. This is an assembly-level transition, not an `enabled` field in the package Config. The capability Settings increment keeps the plugin mounted and introduces the business-level switch used by ClawDSH Settings.
+
 ## Non-goals
 
-- No channel delivery (`deliver`) and no main-session summary (`System:` lines) — no main-session wiring exists in the openclaw profile yet;
+- No channel delivery (`deliver`) and no main-session summary (`System:` lines) — no main-session wiring exists in the `clawdsh` profile yet;
 - No runtime-editable rules (job store + `cron.add/remove/…` tools and CLI) — config-declared rules need no storage seam;
 - No event-triggered rules (file-change watchers etc.);
 - No `ctx.schedule` reuse: its 300s `every` floor, session-local delivery, live-root-only attach, and tools-only creation API cannot express this feature category (evidence in the decision record).

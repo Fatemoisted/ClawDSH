@@ -8,9 +8,11 @@
 
 ## 当前基线
 
-`pnpm dsh --profile openclaw` 当前把原生 `dsh-web-app` bundle 与 OpenClaw agent preset 组合起来。浏览器在 `http://127.0.0.1:3080` 启动，新 Session 默认使用「OpenClaw 形态」preset，GUI 对话能够获得 Soul、Memory、Skills 与标准 agent 工具。该基线已经实现，并会保持可用，直至身份和产品壳迁移替换其用户可见名称与入口。
+`pnpm dsh --profile clawdsh` 把原生 `dsh-web-app` bundle 与 `clawdsh` agent preset 组合起来。浏览器在 `http://127.0.0.1:3080` 启动，新 Session 默认使用显示为 `ClawDSH 模式` 的 preset，GUI 对话能够获得 Soul、Memory、Skills 与标准 agent 工具。干净安装默认关闭飞书、Telegram 与 Automation，因此 Web Host 无需这些功能的凭据即可启动。
 
 该基线有意不包含 ClawDSH 自有浏览器代码，因此它的 Settings 与 Trajectory 呈现 Harness 信息模型，而不是完整的 ClawDSH 产品模型。
+
+开发安装脚本为 `tools/link-clawdsh.sh`。它检测到旧 `openclaw` profile 与 preset 目录时只给出警告，不删除、不移动，也不创建别名。产品级安装状态、托管 manifest 与 `clawdsh doctor` 属于公共发行 CLI。
 
 ## 目标
 
@@ -32,7 +34,7 @@
 - `http://127.0.0.1:<port>/clawdsh/` 是默认 ClawDSH 产品入口。
 - `/` 保留未修改的 dsh Web 应用，并以「Harness 高级」链接。
 - `dsh --profile web` 启动不含 ClawDSH Host 能力集的纯净 Harness 进程。
-- ClawDSH profile 最终使用 `clawdsh` id，新 Session 默认使用 `clawdsh` agent preset，并显示为 `ClawDSH 模式`。
+- ClawDSH profile 使用 `clawdsh` id，新 Session 默认使用 `clawdsh` agent preset，并显示为 `ClawDSH 模式`。
 - 在运行中的 ClawDSH profile 内选择其他 agent preset，只会改变该 Session 的 Agent 组装。它不会卸载进程级 ClawDSH 插件，也不会被描述成切换到纯净 Harness。
 
 ## 导航
@@ -61,9 +63,13 @@ Settings 视图把每项 ClawDSH 功能作为具有稳定 namespace 的产品能
 
 配置字段由每项能力在服务端拥有的 Config schema 描述。用户设置覆盖 profile base，reset 移除 user layer，带 revision 的写入防止旧浏览器状态覆盖新值。视图区分 desired revision 与 runtime revision，并报告是否需要重启。
 
+在 Settings 控制面交付前，飞书、Telegram 与 Automation 使用 Loader `disabled` 配置项建立上述干净安装默认值。Settings 控制面增量会保持其业务插件挂载，并把运行控制迁移到经过校验的 `enabled` 字段；产品 UI 不暴露任意 Loader mutation。
+
 秘密值留在 dsh credentials provider 中。浏览器可以知道 allowlist 内的 credential reference 是否已配置，但 Host 绝不返回秘密值。秘密只在 write-only input draft 与其发出的 `credentials.set` 请求中短暂存在，请求完成后即清空，也不会保留在 Settings state，或持久化到日志、Session 文件与 Activity 记录。关闭的可选能力可以缺少凭据；启用能力时，要在最早能够判断的位置验证其必需 reference。
 
 Channel Core 始终是必需的内部能力；Embeddings 等实现依赖显示在所属产品能力之下，而不是作为无关的顶层开关。Advanced 视图保留只读 Loader inventory；产品 UI 不暴露不受限制的插件 mutation。
+
+托管的 `clawdsh` preset 暂时位于 dsh 用户 preset 根目录。ClawDSH Settings 不提供删除操作，但未修改的 Harness preset 管理器仍将它归类为用户资产，因而可以删除。公共发行的 `clawdsh doctor` 会校验并修复该托管资产；产品壳不宣称上游用户 preset 操作不可用。
 
 ## ClawDSH 活动
 

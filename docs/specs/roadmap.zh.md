@@ -25,7 +25,7 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 ### 阶段 0 · 可行性 Spike ✅（2026-08-14 完成）
 
 - 产出：功能对齐矩阵 v1；`@clawdsh/dsh-soul` 插件（replace/append 双模式 + 灵魂文件加载）。
-- 退出标准**全部达成**：soul 能替换/叠加 agent 系统提示词（契约测试 10/10）、热插拔（卸载即回卷）、未改上游一行源码（仅构建注册豁免，见 ADR-0001 决策 4）；全量 typecheck 绿；`--profile openclaw --dump-config` 冒烟通过。
+- 退出标准**全部达成**：soul 能替换/叠加 agent 系统提示词（契约测试 10/10）、热插拔（卸载即回卷）、未改上游一行源码（仅构建注册豁免，见 ADR-0001 决策 4）；全量 typecheck 绿；`--profile clawdsh --dump-config` 覆盖当前 profile 身份。
 - **结论：接缝假设成立，项目继续。** 验证细节见 docs/specs/feature-soul.md 的验收标准节。
 
 ### 阶段 1 · 基线选型 + 矩阵定稿 ✅（2026-08-14 完成）
@@ -36,7 +36,7 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 ### 阶段 2 · 核心骨架（垂直切片）✅（2026-08-14 完成）
 
 - `channel-core`（新 seam，按 ADR-0002 设计）+ `channel-telegram`（第一个渠道）+ **`channel-feishu`（发起人第一优先，ADR-0002 seam 验证备选渠道）** + `soul` + `memory` + `preset-openclaw`。
-- 退出标准：`pnpm dsh --profile openclaw` 启动，Telegram 消息进 → 人格化 agent 跑 → 回复出；`ctx.channels` 契约同时通过 Telegram 与飞书两个适配器的验证（飞书出处：OpenClaw `extensions/feishu`，v2026.2.12）。
+- 退出标准：`pnpm dsh --profile clawdsh` 启动，Telegram 消息进 → 人格化 agent 跑 → 回复出；`ctx.channels` 契约同时通过 Telegram 与飞书两个适配器的验证（飞书出处：OpenClaw `extensions/feishu`，v2026.2.12）。
 - **状态（2026-08-14）**：核心交付完成并收口——渠道 seam + 双适配器（飞书真实 e2e 全链路验证；Telegram 凭证阻塞）、soul 深读定稿（replace/append 即最终形态，相对 `source` 按 `ctx.baseUrl` 解析）、memory 三包 + `ctx.embeddings` seam（ADR-0003）+ 真实 ARK e2e（tools/ark-e2e.ts）、preset 常驻化且 embeddings-ark 已启用、双语 26 对完成。见 docs/journal/2026-08-14.md。
 
 ### 阶段 3 · 渠道铺开 + 自动化 ✅（2026-08-14 完成）
@@ -44,13 +44,13 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 - 每个渠道一个包（WhatsApp/Email/Web Chat…），互不阻塞；`automation`（schedule 桥接）、`skills-hub`（ClawHub provider）。
 - **渠道范围原则**：只做 OpenClaw 上游有出处的渠道（见 docs/matrix/parity.md「国内平台」节）——微信系/钉钉/QQ 上游无对应，不实现。
 - 联邦节点（clawd）走 `ctx.subagents` transport，作为独立里程碑评估。
-- **状态（2026-08-14）**：`skills-hub` 与 `automation` 已交付（automation 默认 disabled、croner 走 `ctx.agents`/`ctx.sessions`）；ack-reaction 渠道身份呈现、memory 宿主 watcher、npm 发布（ADR-0004）、clawd 联邦（ADR-0005，仅评估）均已收口。其余渠道与联邦实现仍暂缓。见 docs/journal/2026-08-14.md。
+- **状态（2026-08-14）**：`skills-hub` 与 `automation` 已交付（automation 默认 disabled、croner 走 `ctx.agents`/`ctx.sessions`）；ack-reaction 渠道身份呈现、memory 宿主 watcher、npm 发布（ADR-0004）、clawd 联邦（ADR-0005，仅评估）均已收口。当前干净安装的 profile 也默认关闭飞书与 Telegram，使三个可选外部行为都能在无凭据时启动。其余渠道与联邦实现仍暂缓。见 docs/journal/2026-08-14.md。
 
 ### 阶段 4 · 用户生态（进行中）
 
 - 插件开发模板 + 契约文档公开；接入 dsh 的 `dsh-plugin` 发现机制。
-- 仅 preset 的 dsh Web GUI 基线已经可用。[ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 定义了待实现的 ClawDSH 产品壳、能力 Settings、语义 Activity 与 Harness 高级入口，且不修改上游 GUI。
-- 可安装发行物与老 OpenClaw 用户迁移指南（Session/Skill 导入）仍是阶段 4 交付项。
+- 仅 preset 的 dsh Web GUI 基线使用 `clawdsh` profile 与 `clawdsh` preset，并显示为 `ClawDSH 模式`。[ADR-0007](../adr/0007-clawdsh-local-gui-product.md) 定义了待实现的 ClawDSH 产品壳、能力 Settings、语义 Activity 与 Harness 高级入口，且不修改上游 GUI。
+- `tools/link-clawdsh.sh` 是开发安装脚本，检测到旧 `openclaw` 资产时只警告并保留。托管安装 manifest、`clawdsh doctor`、公共发行物与迁移指南仍是阶段 4 的发行交付项。
 
 ### 贯穿全程
 

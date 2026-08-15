@@ -1,15 +1,23 @@
 # ClawDSH 冒烟工作流（本仓库自有；上游 CI 文件一律不动）
-# 阶段 0 只做安装+typecheck；阶段 2 起追加 profile 冒烟与契约测试。
+# ClawDSH 自有代码、profile 与真实浏览器入口的独立门禁。
 name: clawdsh-smoke
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [clawdsh]
+    paths:
+      - '.github/workflows/clawdsh-smoke.yml'
+      - 'packages/openclaw/**'
+      - 'tools/**'
   push:
     branches: [clawdsh]
 
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@v4
 
@@ -27,3 +35,20 @@ jobs:
 
       - name: Typecheck
         run: pnpm run typecheck
+
+      - name: Build
+        run: pnpm run build
+
+      - name: ClawDSH identity contracts
+        run: pnpm exec vitest run --config packages/openclaw/preset-openclaw/gui-tests/vitest.gui.config.ts packages/openclaw/preset-openclaw/gui-tests/identity.spec.ts
+
+      - name: ClawDSH browser typecheck
+        run: pnpm exec tsc -p packages/openclaw/preset-openclaw/gui-tests/tsconfig.real-profile.json
+
+      - name: Install Chromium
+        run: pnpm --filter @deepseek-ai/dsh-web-frontend exec playwright install --with-deps chromium
+
+      - name: ClawDSH real-profile browser snapshot
+        env:
+          DSH_SNAPSHOT: replay
+        run: pnpm exec vitest run --config packages/openclaw/preset-openclaw/gui-tests/vitest.gui.config.ts packages/openclaw/preset-openclaw/gui-tests/real-profile.e2e.ts

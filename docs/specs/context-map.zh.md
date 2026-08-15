@@ -12,7 +12,7 @@
 |---|---|
 | `packages/openclaw/` | 唯一可重写的代码域——下面 12 个包 |
 | `docs/adr/`、`docs/specs/`、`docs/matrix/`、`docs/standards/`、`docs/journal/`、`docs/upstream-proposal/` | ClawDSH 的决策、规格、矩阵、规范、日志、上游提案 |
-| `tools/` | ClawDSH 脚本 + e2e 驱动（`ark-e2e.ts`、`link-openclaw.sh`、`sync-upstream.sh`） |
+| `tools/` | ClawDSH 脚本 + e2e 驱动（`ark-e2e.ts`、`link-clawdsh.sh`、`sync-upstream.sh`） |
 | `.github/workflows/clawdsh-*` | ClawDSH CI（`clawdsh-publish.yml`、`clawdsh-smoke.yml`） |
 
 ### 12 个包
@@ -29,7 +29,7 @@
 | `embeddings-ark/` | provider | `ctx.embeddings` | 火山方舟 provider（`doubao-embedding-vision`） |
 | `skills-hub/` | provider | `skills` | ClawHub 兼容技能目录 |
 | `automation/` | 函数插件 | `agents`、`sessions`、`agentDefaultModel` | croner 定时 agent 回合（`automation/run`） |
-| `preset-openclaw/` | preset/profile | — | agent preset + 示例 soul + `profile/cordis.patch.yml` |
+| `preset-openclaw/` | preset/profile | — | `clawdsh` profile 与显示为 `ClawDSH 模式` 的 `clawdsh` agent preset 内部源码 |
 | `_template/` | 骨架 | — | 复制即用的新插件模板 |
 
 ## 2. 上游面 — 只读，已在 §3 浓缩
@@ -56,7 +56,9 @@
 
 ### 组装：profile / patch / bundle
 
-`dsh --profile <name>` 按序堆叠各层：profile 的 bundles → profile 的 `cordis.patch.yml` → home 级 patch → `--patch` 覆盖。patch 按 id 定位一行并整体替换其 config，或插入新行。ClawDSH 的 `preset-openclaw/profile/cordis.patch.yml` 就是把这六个运行时 feature 接到一起的那份组装。
+`dsh --profile <name>` 按序堆叠各层：profile 的 bundles → profile 的 `cordis.patch.yml` → home 级 patch → `--patch` 覆盖。patch 按 id 定位一行并整体替换其 config，或插入新行。`tools/link-clawdsh.sh` 将内部的 `preset-openclaw/profile/cordis.patch.yml` 源安装为 `clawdsh` profile，并把其中的 `clawdsh` preset 安装到 dsh 用户根目录。
+
+干净安装的 profile 默认关闭飞书、Telegram 与 Automation，因此 Web Host 无需这些功能的凭据即可启动。这些默认值只在 Settings 控制面增量将可选行为迁移到已挂载插件的 `enabled` 设置前使用 Loader `disabled` 配置项。旧 `openclaw` profile 与 preset 目录仅触发警告并保持原状；托管 manifest 与 `clawdsh doctor` 修复流程由公共发行 CLI 负责。
 
 ### 不变量：模型可见 ⟺ 已记录
 
