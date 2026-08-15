@@ -45,7 +45,7 @@ Why not the dsh seams:
 
 **Port the OpenClaw job store + CRUD tools + CLI.** Rejected for this batch: config-declared rules need no new storage seam and no mutable store; a runtime-mutable store with agent-facing CRUD tools is a later surface, revisitable when a consumer needs runtime-editable rules.
 
-**Use `runMaintenance` + `followup` (the schedule package's pattern) for firing.** Partially reused: the fire path uses the same `followup → whenIdle → sessions.flush` idiom channel-core and headless prove, but `runMaintenance` is schedule-internal (agent-owned); automation drives its own agents directly.
+**Use `runMaintenance` + `followup` (the schedule package's pattern) for firing.** Partially reused: the fire path uses the same `followup → whenIdle → sessions.flush` idiom channel-agent and headless prove, but `runMaintenance` is schedule-internal (agent-owned); automation drives its own agents directly.
 
 ## Consequences
 

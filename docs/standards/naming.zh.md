@@ -8,7 +8,7 @@
 |---|---|---|
 | 项目名 | ClawDSH（CLI 前缀候选 `clawdsh` / 与 dsh 并列） | — |
 | 自有包名 | `@clawdsh/dsh-<kebab-case>`，与上游 `@deepseek-ai/dsh-*` 同构 | `@clawdsh/dsh-soul` |
-| 渠道包 | `channel-<platform>` | `channel-telegram` |
+| 渠道包 | `channel-<role>` | `channel-openclaw` |
 | 包内目录 | 跟上游包惯例（`src/`、`lib/` 构建产物、README 必带四段模板） | — |
 | 服务 key | `ctx.<camelCase>`，新 seam 必须 ADR 命名 | `ctx.channels` |
 | 事件名 | 跟 dsh 约定（域/动词，如 `channel/inbound`） | 见 ADR-0002 细化 |
@@ -23,6 +23,6 @@
 
 ## Git
 
-- **Commit**：Conventional Commits，作用域用包名：`feat(soul): 初始人格 provider`、`docs(adr): 新增渠道 seam 决策`、`fix(channel-core): 入站路由重试`；尾部署名惯例保留上游的 `Co-Authored-By` 形式（AI 辅助提交需注明）。
+- **Commit**：Conventional Commits，作用域用包名：`feat(soul): 初始人格 provider`、`docs(adr): 新增渠道 seam 决策`、`fix(channel-agent): 入站路由重试`；尾部署名惯例保留上游的 `Co-Authored-By` 形式（AI 辅助提交需注明）。
 - **分支**：`master` = 上游镜像（只 fast-forward）；`clawdsh` = 开发主干；特性分支 `feat/<kebab>` 从 `clawdsh` 切出，合并回 `clawdsh` 后删除。
 - **上游同步产生的提交**（rebase 上游）不混入功能 commit，rebase 保持线性历史。

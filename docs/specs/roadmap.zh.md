@@ -61,7 +61,7 @@
 
 基础由 `@clawdsh/dsh-channel`、`@clawdsh/dsh-channel-agent`、`@clawdsh/dsh-channel-openclaw` 与 `tools/openclaw-channel-host` 组成。Profile 始终挂载三个 runtime package；Channel Protocol 与 Agent Bridge 保持可用，OpenClaw Gateway 业务 setting 则默认关闭。没有渠道 certified 或 enabled；逐渠道 assembly、自有 keyless snapshot evidence、当前 live smoke、Windows endpoint authorization 与剩余 media support 尚未完成。
 
-旧渠道 package 在 `ctx.legacyChannels` 下单独保留，用于替换验证。它们不得与 OpenClaw 通信平面连接同一 platform account，并且只能在替换条件通过后删除。
+渠道执行只使用 `ctx.channels → channel-agent → channel-openclaw`。迁移清单仍可读取旧直连 adapter 配置名称，但 ClawDSH 不加载这些 package，也不在 OpenClaw 之外拥有 platform transport。
 
 ### 4.3 公共发行
 
@@ -116,7 +116,7 @@
 - [ ] 在 Windows channel support 推进前增加 Windows named-pipe ACL enforcement。
 - [ ] 在宣传对应 media path 前增加 durable non-image attachment 与 outbound staging。
 - [ ] 在持久化冗余 `channel/*` event 前增加 ignorable Session append mechanism。
-- [ ] 只有全部替换条件通过后才能删除 legacy channel package。
+- [x] 删除直连 channel package，让 runtime 只保留一条渠道执行路径。
 - [x] 在不发布的前提下准备精确 13 包 bundle、managed CLI、tarball 验证、隔离安装 smoke 与 OIDC/provenance workflow。
 - [ ] 获取一次性交互式 2FA bootstrap 的明确授权，包括精确 archive 与版本，并创建全部 13 个 package object；不得把 staged publishing 当作首次创建路径。
 - [ ] 配置并校验全部 13 条 npm trust 记录和只允许 `clawdsh` 的 `npm` environment branch rule；完成前 workflow 不是 `OIDC-ready`。

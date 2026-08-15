@@ -21,7 +21,7 @@
 - 允许 OpenClaw sidecar 选择独立模型或绕过 ClawDSH fallback。
 - 把目录存在、包可安装、包测试或历史 live smoke 当作发布认证。
 - 在精确生产组合完成认证前默认启用任何渠道。
-- 在 ADR-0008 的替换条件通过前删除 `channel-core`、`channel-telegram` 或 `channel-feishu`。
+- 在 canonical bridge 旁重新引入直连平台 adapter 或第二套 channel runtime。
 
 ## 运行时装配
 
@@ -88,11 +88,11 @@ Canary 锁定 source commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`；其 31 
 
 唯一有效的推进是 `cataloged → installable → certified → enabled`，定义见 ADR-0008。批准目录建立 catalog 来源；校验稳定 artifact 且通过兼容 host 装配后可建立 installability。External 包还要求许可证、平台条款和安全审查全部通过。认证还要求精确发布装配、安全检查、投递行为、无密钥装配 transcript，以及需要凭证的平台 live smoke。启用还要求交付 profile 的明确选择。
 
-当前实现证据只建立 `cataloged`。交付 profile 始终挂载 sidecar 组合及其 invariant companion，同时保持 Gateway setting 关闭；它不启动 legacy adapter，另行保留的 legacy 包也不构成 sidecar 证据。自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，贯穿锁定 Gateway、stable bridge 与 DSH Agent，并在 Linux x64 CI 中运行；经评审的 Darwin arm64 assembly 也已在本地通过。当前没有运行带凭证的 Telegram 或 Feishu transport smoke。最终投递、聚合账号健康、stable 入站媒体、Windows ACL 与 external 治理门禁仍未完成。在 downstream-event seam 不可用期间，resume coverage 还必须证明只持久化已知 Session event name。
+当前实现证据只建立 `cataloged`。交付 profile 始终挂载 sidecar 组合及其 invariant companion，同时保持 Gateway setting 关闭。自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，贯穿锁定 Gateway、stable bridge 与 DSH Agent，并在 Linux x64 CI 中运行；经评审的 Darwin arm64 assembly 也已在本地通过。当前没有运行带凭证的 Telegram 或 Feishu transport smoke。最终投递、聚合账号健康、stable 入站媒体、Windows ACL 与 external 治理门禁仍未完成。在 downstream-event seam 不可用期间，resume coverage 还必须证明只持久化已知 Session event name。
 
-## 替换门禁
+## 认证门禁
 
-只有生产 lock 满足以下全部条件，才能删除旧适配器：
+Production channel 只有在生产 lock 满足以下全部条件后才能超越 `cataloged`：
 
 1. 锁定可复现的 managed host 与 bridge artifact，交付 profile 装配 Service Definition、Provider 与 Driver，且无 OpenClaw 模型 fallback。
 2. 契约、完整性、认证、幂等、reset/close、action、delivery、crash recovery、attachment、persistence 与 resume 测试通过，且不使用 downstream `channel/*` Session event。

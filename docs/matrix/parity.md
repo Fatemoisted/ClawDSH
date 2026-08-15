@@ -43,7 +43,6 @@ The production channel plane is locked to OpenClaw `v2026.7.1-2`, commit `0790d9
 | Channel Service Definition | current Gateway integration | owned `ctx.channels` | New seam | `channel` | V1 implemented |
 | Channel Agent Driver | dsh Session and Agent lifecycle | `ctx.channels`, Agents, Sessions, attachments | Plugin | `channel-agent` | foundation implemented; certification incomplete |
 | OpenClaw communication Provider | locked Gateway and plugins | `ctx.channels`, subprocess, storage | Plugin | `channel-openclaw` | foundation implemented; disabled by default |
-| Legacy in-process channel path | ADR-0002 experiment | `ctx.legacyChannels` | Deferred removal | `channel-core`, `channel-telegram`, `channel-feishu` | retained until the ADR-0008 replacement conditions pass |
 | Approval / security policy | later OpenClaw security reference | approvals and guards | Reuse/config | — | directly usable |
 | Federation node | outside early baseline | `ctx.subagents` transport | Plugin | `clawd-federation` | ADR-0005 evaluation only; implementation deferred |
 | Smart home | outside selected scope | no accepted seam | Deferred | — | requires a reviewed source and capability design |

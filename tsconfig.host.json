@@ -275,9 +275,6 @@
     { "path": "./packages/preset/persona" },
     // ClawDSH: 自有插件域（packages/openclaw/*）的新包在此注册 host 聚合。
     { "path": "./packages/openclaw/soul" },
-    { "path": "./packages/openclaw/channel-core" },
-    { "path": "./packages/openclaw/channel-telegram" },
-    { "path": "./packages/openclaw/channel-feishu" },
     { "path": "./packages/openclaw/channel" },
     { "path": "./packages/openclaw/channel-agent" },
     { "path": "./packages/openclaw/channel-openclaw" },

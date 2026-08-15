@@ -17,7 +17,6 @@
 |---|---|---|---|
 | ClawDSH 本地 GUI | `preset-openclaw`、`activity` | 公开 dsh Web 组装、Session history、可选 Activity service | ✅ 产品壳、可写 Settings 与语义 Activity |
 | 当前渠道平面 | `channel`、`channel-agent`、`channel-openclaw` | 自有 `ctx.channels` V1 | ✅ 基础；⚠️ 没有 certified 或 enabled 渠道 |
-| 旧渠道路径 | `channel-core`、`channel-telegram`、`channel-feishu` | `ctx.legacyChannels` | ✅ 保留 compatibility；⚠️ 没有当前认证 |
 | Persona | `soul` | `ctx.systemPrompt` | ✅ 已实现 |
 | Memory | `memory`、`embeddings`、`embeddings-ark` | filesystem、tools、system prompt、自有 embeddings seam | ✅ 已实现 |
 | Skills | `skills-hub` | `ctx.skills` | ✅ 已实现 |
@@ -85,16 +84,13 @@ Inbound image 被限制在 canonical staging root，校验 symlink、size、medi
 | Windows IPC authorization | unsupported 且 fail-closed，直到存在 named-pipe ACL enforcement |
 | Plugin Session event | 禁用 `channel/*` 名称，因为 downstream append 不能将其标记为 ignorable |
 | Keyless assembled transcript | 缺失，因为 upstream snapshot lane 不发现自有 package |
-| Telegram / Feishu live traffic | 没有当前认证证据；sidecar 与 legacy path 都未 enabled |
+| Telegram / Feishu live traffic | 没有当前认证证据；canonical sidecar route 处于 disabled 状态 |
 
-## 旧渠道路径
+## 单一渠道执行路径
 
-`channel-core` 在 `ctx.legacyChannels` 下注册进程内 text adapter；Telegram 使用 grammY polling，Feishu 使用 Lark long connection。Identity prefix、mention handling 与 acknowledgement reaction 属于该 legacy path。
+ClawDSH 不交付 `channel-core`、`channel-telegram`、`channel-feishu` 或 `ctx.legacyChannels` runtime。每个平台 route 都使用 `ctx.channels → channel-agent → channel-openclaw`；平台 SDK、identity、admission、reaction、media 与 delivery behavior 均由 OpenClaw 拥有。
 
-- ✅ Package 为替换验证保留，其历史 test 描述原有 behavior。
-- ⚠️ 该约定没有精确 OpenClaw host identity、durable route/idempotency/delivery ledger、media path 或 native action negotiation。
-- ⚠️ 历史 transport work 不满足当前发布认证要求。Telegram 与 Feishu 至多是 installable。
-- ⏳ 只有 sidecar 装配完成、自有 keyless snapshot 存在且新 Telegram 与 Feishu certification 通过后，才能一起删除三个包。Agent Note 只能随该删除一同归档。
+只读迁移清单会识别旧 package 与 credential name，但不加载 adapter，也不复制 secret value。发行校验继续把这些 package name 放在 denylist 中，阻止它们重新进入公共 bundle。历史直连 adapter test 与 live traffic 不能认证 canonical sidecar。
 
 ## Persona、Memory、Skills 与 Automation
 
@@ -135,7 +131,7 @@ Inbound image 被限制在 canonical staging root，校验 symlink、size、medi
 
 | 环节 | Owner 与行为 |
 |---|---|
-| 包集合 | 精确 [13 包 allowlist](../../packages/openclaw/README.md#public-release-set) 使用 `0.1.0-rc.1`；legacy channel 与 nested product runtime 被排除 |
+| 包集合 | 精确 [13 包 allowlist](../../packages/openclaw/README.md#public-release-set) 使用 `0.1.0-rc.1`；已移除的直连 adapter name 进入 denylist，nested product runtime 被排除 |
 | Bundle | `@clawdsh/dsh-bundle` 包含 profile patch、presets、Control Runtime、GUI asset、锁定 Channel asset 与精确 feature dependency |
 | 托管安装 | `@clawdsh/cli` 固定 bundle `0.1.0-rc.1` 与 dsh `0.1.0-rc.6`，原子安装、记录 `.clawdsh.json`、保留用户数据、带备份修复，并通过自身 dsh binary 启动 |
 | Channel 安装 | 显式且仅限 production 的命令校验锁定 SHA-512 archive 与 checked runtime，保留既有 OpenClaw 配置和 state，并且只在配置不存在时创建不含凭证且 fail-closed 的配置；普通初始化不获取 OpenClaw |
@@ -151,6 +147,5 @@ Inbound image 被限制在 canonical staging root，校验 symlink、size、medi
 3. 在启用对应 media path 前增加 durable non-image attachment 与 outbound staging。
 4. 启用任何路径前运行新的 Telegram 与 Feishu certification。
 5. 持久化 namespaced `channel/*` Session event 前获得 ignorable append mechanism。
-6. 只有每项替换条件通过后才能删除 legacy adapter 并归档其 Note。
-7. 选择并另行授权 bootstrap archive 与版本，再通过交互式 2FA 创建全部 13 个 package object；本仓库不执行该 bootstrap。
-8. 在 OIDC 发布前校验全部 13 条 npm trust 记录、branch-restricted `npm` environment、canonical `refs/heads/clawdsh`、公共仓库批准与精确 dsh compatibility。
+6. 选择并另行授权 bootstrap archive 与版本，再通过交互式 2FA 创建全部 13 个 package object；本仓库不执行该 bootstrap。
+7. 在 OIDC 发布前校验全部 13 条 npm trust 记录、branch-restricted `npm` environment、canonical `refs/heads/clawdsh`、公共仓库批准与精确 dsh compatibility。

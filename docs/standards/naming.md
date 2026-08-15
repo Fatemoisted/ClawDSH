@@ -8,7 +8,7 @@ English | [中文](naming.zh.md)
 |---|---|---|
 | Project name | ClawDSH (CLI prefix candidate `clawdsh` / alongside dsh) | — |
 | Own package name | `@clawdsh/dsh-<kebab-case>`, isomorphic to upstream `@deepseek-ai/dsh-*` | `@clawdsh/dsh-soul` |
-| Channel package | `channel-<platform>` | `channel-telegram` |
+| Channel package | `channel-<role>` | `channel-openclaw` |
 | In-package layout | Follow upstream package conventions (`src/`, `lib/` build output, README always carries the four-section template) | — |
 | Service key | `ctx.<camelCase>`; a new seam must be named by ADR | `ctx.channels` |
 | Event name | Follow dsh conventions (domain/verb, e.g. `channel/inbound`) | See ADR-0002 for detail |
@@ -23,6 +23,6 @@ English | [中文](naming.zh.md)
 
 ## Git
 
-- **Commit**: Conventional Commits, scope is the package name: `feat(soul): initial persona provider`, `docs(adr): add channel seam decision`, `fix(channel-core): inbound routing retry`; the trailer signing convention keeps the upstream `Co-Authored-By` form (AI-assisted commits must note it).
+- **Commit**: Conventional Commits, scope is the package name: `feat(soul): initial persona provider`, `docs(adr): add channel seam decision`, `fix(channel-agent): inbound routing retry`; the trailer signing convention keeps the upstream `Co-Authored-By` form (AI-assisted commits must note it).
 - **Branch**: `master` = upstream mirror (fast-forward only); `clawdsh` = development trunk; feature branches `feat/<kebab>` branch from `clawdsh` and are deleted after merging back into `clawdsh`.
 - **Commits from upstream sync** (rebasing upstream) are not mixed into feature commits; the rebase keeps a linear history.

@@ -67,7 +67,7 @@ Evidence expires when the host commit, channel artifact integrity, bridge protoc
 
 The shipped profile always mounts the sidecar composition and its three invariant companions, while the Gateway remains explicitly disabled by default. Keyless evidence now covers policy-complete Telegram and Feishu configuration against the locked schema and the assembled Gateway-to-Agent path, but there is no complete per-Channel configuration/capability/delivery evidence or credentialed live evidence; Windows endpoint authorization is missing; stable AgentHarness V1 cannot supply safely staged inbound media; non-image dsh attachments and outbound media remain incomplete; the locked host exposes neither correlated final-answer delivery reports nor a public aggregate account-health seam; downstream namespaced Session events must remain disabled; every external governance review remains pending; and this change ran no fresh Telegram or Feishu live smoke. These are explicit blockers: all production sidecar entries remain `cataloged`, and no sidecar Channel is installable, certified, or enabled in the current support catalog.
 
-The legacy `channel-telegram` and `channel-feishu` packages remain until ADR-0008's replacement conditions pass. Their historical tests cannot be reused as sidecar certification because the host, execution path, admission owner, and delivery ledger differ.
+ClawDSH ships no direct Telegram or Feishu adapter package. Their old names remain only in the read-only migration inventory and release denylist; historical direct-adapter evidence cannot certify the sidecar because the host, execution path, admission owner, and delivery ledger differ.
 
 ## Rollback and incidents
 

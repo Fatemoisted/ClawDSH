@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-15-clawdsh-identity-and-safe-defaults.md
-2026-08-15-clawdsh-identity-and-safe-defaults.md: b37ae0683fbcbe5e47b78c96f43e984f819d9359
-2026-08-15-clawdsh-identity-and-safe-defaults.zh.md: 6d16ca51c259ef5755cc2d17e6ce59715e0f0837
+2026-08-15-clawdsh-identity-and-safe-defaults.md: 03484a806ff7f82366ad4866f5ce13ebaade949c
+2026-08-15-clawdsh-identity-and-safe-defaults.zh.md: 5fc1feca4ce313900f912f4497b9e044d513aaeb

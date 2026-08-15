@@ -7,7 +7,7 @@
 **OpenClaw 对应**：Cron（`v2026.1.5` `src/cron/`）：`cron`/`at`/`every` 三种调度（经 OpenClaw 锁定的 croner 库）、每 job 一个专属会话、`[cron:<jobId> <name>] <message>` 帧、单 re-arming timer 对准最早触发点。
 
 **接缝**（全部既有，无新增）：
-- `ctx.agents` / `ctx.sessions` / `ctx.agentDefaultModel`（声明 inject）：每规则一个持久 agent，跨重启 resume-or-create（`ctx.agents.resume` 失败且无产物时回退 `create`），回合驱动用已验证的 `followup → whenIdle → sessions.flush` 惯用法（channel-core / headless）；
+- `ctx.agents` / `ctx.sessions` / `ctx.agentDefaultModel`（声明 inject）：每规则一个持久 agent，跨重启 resume-or-create（`ctx.agents.resume` 失败且无产物时回退 `create`），回合驱动用已验证的 `followup → whenIdle → sessions.flush` 惯用法（channel-agent / headless）；
 - `ctx.get('sessionPersistence')`（可选读取）：会话产物；无持久服务时每进程重新开始；
 - 会话日志即 run log：`automation/run` 记录（`started`/`ok`/`error` + `scheduledAt`）环绕每个已记录回合——无独立 run-log 产物。
 

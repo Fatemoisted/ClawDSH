@@ -1,6 +1,7 @@
 # Agent Note: Channel identity presentation in channel-core
 
 Status: implemented
+Archived: 2026-08-16
 
 English | [中文](2026-08-14-channel-identity-presentation.zh.md)
 

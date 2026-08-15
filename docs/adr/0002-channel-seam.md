@@ -20,16 +20,16 @@ The seam required model-visible channel text to enter the Session log and kept p
 
 ## Superseding decision
 
-ADR-0008 replaces this architecture with a locked OpenClaw Gateway sidecar and a provider-neutral V1 `ctx.channels` Service Definition. OpenClaw owns the communication plane; `@clawdsh/dsh-channel-openclaw` is the authenticated Provider and `@clawdsh/dsh-channel-agent` is the durable Agent-plane Driver. The legacy registry remains under `ctx.legacyChannels`; a deployment must never connect both paths to the same platform account.
+ADR-0008 replaces this architecture with a locked OpenClaw Gateway sidecar and a provider-neutral V1 `ctx.channels` Service Definition. OpenClaw owns the communication plane; `@clawdsh/dsh-channel-openclaw` is the authenticated Provider and `@clawdsh/dsh-channel-agent` is the durable Agent-plane Driver. This is the only runtime channel path.
 
-`channel-core`, `channel-telegram`, and `channel-feishu` remain legacy compatibility packages until ADR-0008's replacement conditions pass. Their package tests and historical transport work show only what that older path did. Neither adapter is `certified` or `enabled` without current credentialed evidence.
+The repository contains no `ctx.legacyChannels` compatibility registry and no `channel-core`, `channel-telegram`, or `channel-feishu` package. A read-only migration inventory still recognizes the old configuration names, and release verification deny-lists the old package names; neither mechanism loads a second runtime implementation.
 
 ## Consequences
 
 - This ADR remains the historical record for the Phase 2 adapter experiment; it is not current implementation guidance.
 - New channel work targets the Gateway sidecar, bridge protocol, and locked catalogs in ADR-0008 rather than adding another native adapter.
-- The legacy identity-presentation and acknowledgement-reaction Agent Notes remain valid only for the legacy path until that code is deleted; they do not define sidecar behavior.
-- Removing the legacy packages requires an assembled production sidecar, an owned keyless snapshot path, and fresh Telegram and Feishu live certification.
+- The legacy identity-presentation and acknowledgement-reaction Agent Notes describe the removed experiment; they do not define sidecar behavior.
+- A future direct platform adapter would require a new decision and must not recreate `ctx.legacyChannels` alongside the canonical runtime.
 
 ## Alternatives considered
 

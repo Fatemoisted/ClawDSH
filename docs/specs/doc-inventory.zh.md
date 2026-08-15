@@ -34,7 +34,7 @@
 
 | 位置 | 当前内容 |
 |---|---|
-| `packages/openclaw/` | 功能包、当前渠道 seam、保留的旧渠道包、受限 preset、产品组装、嵌套非 workspace GUI/runtime 与 distribution build，以及包模板 |
+| `packages/openclaw/` | 功能包、canonical channel seam、受限 preset、产品组装、嵌套非 workspace GUI/runtime 与 distribution build，以及包模板 |
 | `docs/adr/` | ClawDSH 决策；ADR-0007 拥有 GUI 产品形态，ADR-0008 取代 ADR-0002 成为渠道架构，ADR-0009 拥有公共发行 |
 | `docs/specs/` | roadmap、context map、inventory、product chain、GUI spec、当前 feature spec 与旧渠道 reference |
 | `docs/matrix/parity.md` | 产品与渠道支持投影；精确渠道 artifact 仍在机器 catalog |
@@ -101,13 +101,13 @@ Bundle 与 CLI 是已准备但未发布的候选版本。13 个 package name 均
 | Promotion、certification 与 rollback | `openclaw-channel-sync` standard |
 | 用户可见支持状态 | parity matrix |
 | Runtime protocol 与 ledger | `channel`、`channel-agent` 与 `channel-openclaw` |
-| Legacy adapter behavior | ADR-0002、`feature-channel-core`、legacy package 与其 active Agent Note |
+| 历史直连 adapter behavior | ADR-0002 与历史 `feature-channel-core` reference |
 
 OpenClaw source archive 与 npm tarball 是外部输入，不是仓库自有 source tree。不要把完整 host 复制到 `packages/openclaw/`。Production bridge 可以分发许可证允许的最小 derived code 与 notice；lock verifier 仍是外部 host 权威。
 
 ## 7. 过渡状态
 
-- `channel-core`、`channel-telegram` 与 `channel-feishu` 自有但 legacy。它们保留到 ADR-0008 替换条件通过；不得提前归档其 Agent Note。
+- 不交付直连 adapter package 或 `ctx.legacyChannels` runtime。旧名称只保留在只读迁移清单、发行 denylist 与历史文档中。
 - `channel-wechat` 是历史排除记录，其可用性说明已被 production external WeChat catalog 取代。它不是 runtime package 或当前状态权威。
 - Production sidecar 未 certified 或 enabled。文档不得把 catalog 或 package evidence 转换为 live support claim。
 - Canary 有批准的 source archive，但没有锁定 built artifact，只作为 audit input。

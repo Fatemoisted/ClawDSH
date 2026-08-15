@@ -53,7 +53,7 @@ ADR-0009 取代决策 5、相关私有 registry 影响和公共 npm 备选项。
 | 10 | `docs/specs/roadmap.md:36` | 补阶段 2 标题 ✅（与阶段 0/1 对齐） | 章程外观一致性 | 可延后 |
 | 11 | `docs/adr/0001-project-foundation.md` 决策 3 | 把 `docs/upstream-proposal/` 补进物理隔离清单（决策 4） | 与 CLAUDE.md 品牌段对齐 | 可延后 |
 | 12 | `AGENTS.md` 品牌段 | 把 `.agents/notes/`（仅追加自有笔记）补进自有内容清单（决策 4） | 批准事实存在的笔记面 | 可延后 |
-| 13 | `docs/specs/` | 为 `channel-telegram` / `channel-feishu` / `embeddings` / `embeddings-ark` 补 feature spec（现归在 `feature-channel-core` / `feature-memory` 下） | 每插件 spec 完整性 | 可延后 |
+| 13 | `docs/specs/` | 为 `embeddings` / `embeddings-ark` 补独立 feature spec（当前归在 `feature-memory` 下）；canonical channel behavior 继续由 `feature-channel-plane-bridge` 负责 | 不恢复直连 adapter 的逐 plugin spec 完整性 | 可延后 |
 
 ## Alternatives
 

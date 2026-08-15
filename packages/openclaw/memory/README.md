@@ -90,7 +90,7 @@ Tool results land mid-transcript, like any tool output; no system-prompt prefix 
 
 #### What the model sees
 
-When the measured context crosses `contextWindow − reserveTokensFloor − softThresholdTokens`, one plugin-sourced message carrying `source: {kind: 'plugin', plugin: 'memory-flush'}` queues once per compaction cycle (channel reply extraction skips plugin-sourced turns), verbatim:
+When the measured context crosses `contextWindow − reserveTokensFloor − softThresholdTokens`, one plugin-sourced message carrying `source: {kind: 'plugin', plugin: 'memory-flush'}` queues once per compaction cycle. Channel delivery stays bound to the exact admitted message's owning turn, so a later flush turn cannot replace its result. The queued prompt is, verbatim:
 
 ##### Flush prompt
 

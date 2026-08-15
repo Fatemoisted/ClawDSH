@@ -7,7 +7,7 @@ English | [中文](README.zh.md)
 **OpenClaw counterpart**: Cron (`v2026.1.5` `src/cron/`): `cron`/`at`/`every` schedules via the croner library OpenClaw pins, one dedicated session per job, `[cron:<jobId> <name>] <message>` framing, a single re-arming timer for the earliest occurrence.
 
 **Seam** (all pre-existing, none added):
-- `ctx.agents` / `ctx.sessions` / `ctx.agentDefaultModel` (declared injects): one durable agent per rule, resume-or-create across restarts (`ctx.agents.resume` fallback to `create` when no artifact exists), turns driven with the proven `followup → whenIdle → sessions.flush` idiom (channel-core / headless);
+- `ctx.agents` / `ctx.sessions` / `ctx.agentDefaultModel` (declared injects): one durable agent per rule, resume-or-create across restarts (`ctx.agents.resume` fallback to `create` when no artifact exists), turns driven with the proven `followup → whenIdle → sessions.flush` idiom (channel-agent / headless);
 - `ctx.get('sessionPersistence')` (optional read): session artifacts; without a persistence service rules start fresh per process;
 - The session log is the run log: `automation/run` records (`started`/`ok`/`error` + `scheduledAt`) bookend each logged turn — no separate run-log artifact.
 

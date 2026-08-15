@@ -43,7 +43,6 @@ Production 渠道平面锁定 OpenClaw `v2026.7.1-2`、commit `0790d9f593ad30c94
 | Channel Service Definition | current Gateway integration | 自有 `ctx.channels` | New seam | `channel` | V1 已实现 |
 | Channel Agent Driver | dsh Session 与 Agent lifecycle | `ctx.channels`、Agents、Sessions、attachments | Plugin | `channel-agent` | 基础已实现；认证未完成 |
 | OpenClaw 通信 Provider | 锁定 Gateway 与 plugins | `ctx.channels`、subprocess、storage | Plugin | `channel-openclaw` | 基础已实现；默认关闭 |
-| 旧进程内渠道路径 | ADR-0002 实验 | `ctx.legacyChannels` | Deferred removal | `channel-core`、`channel-telegram`、`channel-feishu` | 保留到 ADR-0008 替换条件通过 |
 | Approval / security policy | later OpenClaw security reference | approvals 与 guards | Reuse/config | — | 可直接使用 |
 | Federation node | outside early baseline | `ctx.subagents` transport | Plugin | `clawd-federation` | 仅 ADR-0005 评估；实现推迟 |
 | Smart home | outside selected scope | 无已接受 seam | Deferred | — | 需要经审查的来源与能力设计 |

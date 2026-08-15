@@ -17,7 +17,6 @@ English | [中文](product-chain.zh.md)
 |---|---|---|---|
 | ClawDSH local GUI | `preset-openclaw`, `activity` | public dsh Web assembly, Session history, optional Activity service | ✅ product shell, writable Settings, and semantic Activity |
 | Current channel plane | `channel`, `channel-agent`, `channel-openclaw` | owned `ctx.channels` V1 | ✅ foundation; ⚠️ no certified or enabled channel |
-| Legacy channel path | `channel-core`, `channel-telegram`, `channel-feishu` | `ctx.legacyChannels` | ✅ retained compatibility; ⚠️ no current certification |
 | Persona | `soul` | `ctx.systemPrompt` | ✅ implemented |
 | Memory | `memory`, `embeddings`, `embeddings-ark` | filesystem, tools, system prompt, owned embeddings seam | ✅ implemented |
 | Skills | `skills-hub` | `ctx.skills` | ✅ implemented |
@@ -85,16 +84,13 @@ Inbound images are confined to a canonical staging root, checked for symlinks, s
 | Windows IPC authorization | unsupported and fail-closed until named-pipe ACL enforcement exists |
 | Plugin Session events | `channel/*` names disabled because downstream append cannot mark them ignorable |
 | Keyless assembled transcript | missing because the upstream snapshot lane does not discover owned packages |
-| Telegram / Feishu live traffic | no current certification evidence; neither sidecar nor legacy path is enabled |
+| Telegram / Feishu live traffic | no current certification evidence; the canonical sidecar routes are disabled |
 
-## Legacy channel path
+## Single channel execution path
 
-`channel-core` registers in-process text adapters under `ctx.legacyChannels`; Telegram uses grammY polling and Feishu uses the Lark long connection. Identity prefix, mention handling, and acknowledgement reactions belong to this legacy path.
+ClawDSH ships no `channel-core`, `channel-telegram`, `channel-feishu`, or `ctx.legacyChannels` runtime. Every platform route uses `ctx.channels → channel-agent → channel-openclaw`; OpenClaw owns the platform SDK, identity, admission, reactions, media, and delivery behavior.
 
-- ✅ Packages remain available for replacement verification, and their historical tests describe their behavior.
-- ⚠️ The contract has no exact OpenClaw host identity, durable route/idempotency/delivery ledgers, media path, or native action negotiation.
-- ⚠️ Historical transport work does not satisfy the current release's certification requirements. Telegram and Feishu are at most installable.
-- ⏳ Delete the three packages together only after the sidecar assembles, an owned keyless snapshot exists, and fresh Telegram and Feishu certification passes. Archive their Agent Notes only with that removal.
+The read-only migration inventory recognizes old package and credential names without loading adapters or copying secret values. Release verification keeps those package names on a denylist so they cannot re-enter the public bundle. Historical direct-adapter tests and live traffic do not certify the canonical sidecar.
 
 ## Persona, Memory, Skills, and Automation
 
@@ -135,7 +131,7 @@ Inbound images are confined to a canonical staging root, checked for symlinks, s
 
 | Link | Owner and behavior |
 |---|---|
-| Package set | the exact [13-package allowlist](../../packages/openclaw/README.md#public-release-set) uses `0.1.0-rc.1`; legacy channels and the nested product runtime are excluded |
+| Package set | the exact [13-package allowlist](../../packages/openclaw/README.md#public-release-set) uses `0.1.0-rc.1`; removed direct-adapter names are denylisted, and the nested product runtime is excluded |
 | Bundle | `@clawdsh/dsh-bundle` contains the profile patch, presets, Control Runtime, GUI assets, locked Channel assets, and exact feature dependencies |
 | Managed install | `@clawdsh/cli` pins bundle `0.1.0-rc.1` and dsh `0.1.0-rc.6`, installs atomically, records `.clawdsh.json`, preserves user data, repairs with backup, and launches through its own dsh binary |
 | Channel install | an explicit production-only command verifies the locked SHA-512 archive and checked runtime, preserves existing OpenClaw configuration and state, and creates a credential-free fail-closed configuration only when none exists; ordinary initialization does not acquire OpenClaw |
@@ -151,6 +147,5 @@ Inbound images are confined to a canonical staging root, checked for symlinks, s
 3. Add durable non-image attachments and outbound staging before enabling those media paths.
 4. Run fresh Telegram and Feishu certification before enabling either route.
 5. Obtain an ignorable append mechanism before persisting namespaced `channel/*` Session events.
-6. Remove legacy adapters and archive their Notes only after every replacement condition passes.
-7. Select and separately authorize the bootstrap archives and version, then create all thirteen package objects through interactive 2FA; this repository does not execute that bootstrap.
-8. Verify all thirteen npm trust records, the branch-restricted `npm` environment, canonical `refs/heads/clawdsh`, public-repository approval, and exact dsh compatibility before OIDC publication.
+6. Select and separately authorize the bootstrap archives and version, then create all thirteen package objects through interactive 2FA; this repository does not execute that bootstrap.
+7. Verify all thirteen npm trust records, the branch-restricted `npm` environment, canonical `refs/heads/clawdsh`, public-repository approval, and exact dsh compatibility before OIDC publication.

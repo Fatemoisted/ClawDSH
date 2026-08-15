@@ -34,7 +34,7 @@ Upstream means `deepseek-ai/deepseek-harness` through the `upstream` remote. Dir
 
 | Location | Current content |
 |---|---|
-| `packages/openclaw/` | feature packages, the current channel seam, retained legacy channel packages, restricted preset, product assembly, nested non-workspace GUI/runtime and distribution builds, and package template |
+| `packages/openclaw/` | feature packages, the canonical channel seam, restricted preset, product assembly, nested non-workspace GUI/runtime and distribution builds, and package template |
 | `docs/adr/` | ClawDSH decisions; ADR-0007 owns the GUI product posture, ADR-0008 supersedes ADR-0002 for channel architecture, and ADR-0009 owns public distribution |
 | `docs/specs/` | roadmap, context map, inventory, product chain, GUI spec, current feature specs, and legacy channel reference |
 | `docs/matrix/parity.md` | product and channel support projection; exact channel artifacts remain in machine catalogs |
@@ -101,13 +101,13 @@ The bundle and CLI are prepared release candidates, not published packages. All 
 | Promotion, certification, and rollback | `openclaw-channel-sync` standard |
 | User-visible support state | parity matrix |
 | Runtime protocol and ledgers | `channel`, `channel-agent`, and `channel-openclaw` |
-| Legacy adapter behavior | ADR-0002, `feature-channel-core`, legacy packages, and their active Agent Notes |
+| Historical direct-adapter behavior | ADR-0002 and the historical `feature-channel-core` reference |
 
 OpenClaw source archives and npm tarballs are external inputs, not repository-owned source trees. Do not copy the full host under `packages/openclaw/`. The production bridge may distribute the minimum derived code and notices its license permits; the lock verifier remains authoritative for the external host.
 
 ## 7. Transitional state
 
-- `channel-core`, `channel-telegram`, and `channel-feishu` are owned but legacy. They remain until the ADR-0008 replacement conditions pass; do not archive their Agent Notes earlier.
+- No direct-adapter package or `ctx.legacyChannels` runtime is shipped. Old names remain only in the read-only migration inventory, release denylist, and historical documentation.
 - `channel-wechat` is a historical exclusion record whose availability statement is superseded by the production external WeChat catalog. It is not a runtime package or current status authority.
 - The production sidecar is not certified or enabled. Documentation must not convert catalog or package evidence into a live support claim.
 - Canary has an approved source archive but no locked built artifact and remains audit input only.

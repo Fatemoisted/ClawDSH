@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/upstream-proposal/ctx-channels.md
-ctx-channels.md: 76e8811d4a2d1bcaa3419639a5cbcdee2e4b1d86
-ctx-channels.zh.md: a71e3870da7b5ca59ddd00033cc73cd6cb15c169
+ctx-channels.md: 329b8860edaeacf5cf3cfb1941f27c8a61a95923
+ctx-channels.zh.md: e5794ecec1d8cfed0a5cb859e7bd1f51c6191bf0

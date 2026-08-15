@@ -7,8 +7,9 @@
  * prompt asks the model to write durable memories to `memory/YYYY-MM-DD.md`
  * (the convention the recall section already teaches) and to answer
  * `NO_REPLY` when there is nothing to store. The turn is an ordinary logged
- * turn with a plugin source, so "model-visible means logged" holds; channel
- * delivery filters plugin-sourced turns in `extractReply`.
+ * turn with a plugin source, so "model-visible means logged" holds. Channel
+ * delivery remains bound to the exact admitted message's owning turn, so a
+ * later flush turn cannot replace its result.
  *
  * The guard fires once per compaction cycle: the newest `compaction/end` seq
  * in the session log is the durable cycle marker, and a flush re-arms only
@@ -26,7 +27,7 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-compaction'
 import type {} from '@deepseek-ai/dsh-token-meter'
 
-/** Plugin source label of flush turns, checked by the pre-step pending-clear and channel reply filtering. */
+/** Plugin source label of flush turns, checked by the pending-clear and log observer. */
 export const FLUSH_PLUGIN_SOURCE = 'memory-flush'
 /** Default context reserve kept below the window for the flush (OpenClaw `reserveTokensFloor`). */
 export const DEFAULT_FLUSH_RESERVE_TOKENS_FLOOR = 20_000

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/standards/naming.md
-naming.md: 4a6149fb12aff1ee09f5fdac52f870b668e0400b
-naming.zh.md: 874ffed084dd638b7b5a1f1ea6b44ba5ee936ddd
+naming.md: 35358c18cc3412c85860606391e9afffd3d01b87
+naming.zh.md: 0c8059243f1fff4d971cc13e6561b6ffeededd94

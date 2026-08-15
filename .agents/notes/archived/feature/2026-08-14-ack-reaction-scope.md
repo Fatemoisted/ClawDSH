@@ -1,6 +1,7 @@
 # Agent Note: Ack-reaction scope gating and per-channel mention detection
 
 Status: implemented
+Archived: 2026-08-16
 
 English | [中文](2026-08-14-ack-reaction-scope.zh.md)
 

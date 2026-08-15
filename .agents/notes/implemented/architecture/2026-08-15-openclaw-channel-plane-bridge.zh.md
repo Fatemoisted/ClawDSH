@@ -48,7 +48,7 @@ Gateway 只有在认证和持久 route-transition 恢复都完成后才进入 re
 
 支持只按 `cataloged → installable → certified → enabled` 推进。Cataloged 记录来源；installable 证明精确锁定装配以及逐 Channel 配置、capability probe 与无密钥 contract 证据；certified 还证明当前发布的装配、安全与投递行为、无密钥装配 transcript 和所需真实平台流量；enabled 是明确激活的交付 profile 决策。实现基础不会跳过这些门禁。
 
-当前 sidecar 没有任何单独 Channel 达到 installable、certified 或 enabled。Production profile 始终挂载完整 seam 及其 invariant companion，同时保持 Gateway setting 关闭，并且不启动 legacy adapter。显式 TypeScript source mapping 使三个 companion specifier 在干净 checkout 中都保持 source plane 解析，public bundle 则精确锁定 `@deepseek-ai/dsh-invariants@0.1.0-rc.6`。自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，贯穿锁定 Gateway 与真实 DSH Agent，并在 Linux x64 CI 中运行；经评审的 Darwin arm64 assembly 也已通过。当前没有运行带凭证的 Telegram 或 Feishu live 流量。稳定版 V1 不能投影安全 staging 的入站媒体；锁定 host 既没有关联最终回答的 delivery hook，也没有聚合账号 health；external 审查仍待完成；persistence 与 resume evidence 还必须证明上述 known-event degradation。在 live smoke 与其余替换条件通过前，旧包以不冲突的 Service namespace 另行保留；它们的历史测试不能认证新 host 或执行路径。
+当前 sidecar 没有任何单独 Channel 达到 installable、certified 或 enabled。Production profile 始终挂载完整 seam 及其 invariant companion，同时保持 Gateway setting 关闭。显式 TypeScript source mapping 使三个 companion specifier 在干净 checkout 中都保持 source plane 解析，public bundle 则精确锁定 `@deepseek-ai/dsh-invariants@0.1.0-rc.6`。自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，贯穿锁定 Gateway 与真实 DSH Agent，并在 Linux x64 CI 中运行；经评审的 Darwin arm64 assembly 也已通过。当前没有运行带凭证的 Telegram 或 Feishu live 流量。稳定版 V1 不能投影安全 staging 的入站媒体；锁定 host 既没有关联最终回答的 delivery hook，也没有聚合账号 health；external 审查仍待完成；persistence 与 resume evidence 还必须证明上述 known-event degradation。已取代的 direct-adapter package 与 `ctx.legacyChannels` registry 均不存在；迁移 inventory 与发布 denylist 只识别其名称，不加载第二套 runtime。
 
 ## 曾考虑的替代方案
 

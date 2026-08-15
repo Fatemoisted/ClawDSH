@@ -14,7 +14,7 @@ Status: implemented
 
 安装后的 profile id、agent preset id 与默认 preset 统一为 `clawdsh`；preset 标签为 `ClawDSH 模式`；本地开发刷新入口为 `tools/link-clawdsh.sh`。物理源码目录保留 `packages/openclaw/preset-openclaw/`，因为仓库检查识别该路径。目录名属于内部实现，不定义产品文案、安装 id 或兼容别名。只有功能来源、上游字面路径等需要来源说明时，OpenClaw 才继续作为上游名称出现。
 
-profile 保持 `channel-core` 挂载，但把飞书、Telegram 与 Automation Loader entry 标为 disabled。因此干净 home 无需飞书、Telegram、Ark 或 automation 凭据即可启动 Web 应用，也不会产生外部渠道或定时运行副作用。启用带凭据的适配器仍是显式配置动作；适配器挂载后继续执行既有的 fail-loud 凭据校验。
+profile 挂载 canonical `channel → channel-agent → channel-openclaw` seam，同时保持 OpenClaw Gateway 与 Automation disabled。因此干净 home 无需平台、Ark 或 automation 凭据即可启动 Web 应用，也不会产生外部渠道或定时运行副作用。启用锁定 Gateway 仍是显式配置动作，任何平台 route 启动前都会执行 fail-closed 准入校验。
 
 `tools/link-clawdsh.sh` 在安装新资产前检查旧 `$DSH_HOME/profiles/openclaw/` 与 `$DSH_HOME/.agent-presets/openclaw/` 路径。任一路径存在时，它打印迁移说明，并让两者保持原样。ClawDSH 不安装 `openclaw` 别名，脚本也绝不自动删除、移动、改写或接管旧目录。只要已保存 Session 仍引用旧 id，用户就保留旧 preset。
 

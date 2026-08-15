@@ -23,9 +23,6 @@
 | `channel/` | Service Definition | Cordis lifecycle | 当前 `ctx.channels` V1 协议；一个 Provider 与一个 Driver |
 | `channel-agent/` | Consumer / Driver | channels、Agents、Sessions、presets、attachments、storage、tools | 持久 route binding、幂等、Agent turn、logging、media import、route-scoped `message` tool |
 | `channel-openclaw/` | Service Provider | channels、subprocess、storage | 锁定 OpenClaw supervision、认证 IPC、health、actions、delivery ledger |
-| `channel-core/` | legacy Service | Agents、Sessions、default model | `ctx.legacyChannels` 下已取代的进程内 registry；为替换验证保留 |
-| `channel-telegram/` | legacy adapter | legacy channel service | Telegram polling adapter；没有当前认证 |
-| `channel-feishu/` | legacy adapter | legacy channel service | Feishu long-connection adapter；没有当前认证 |
 | `channel-wechat/` | 历史决策记录 | — | 不可执行记录；可用性说明已被锁定 catalog 取代 |
 | `soul/` | function plugin | system prompt | replace 或 append persona section |
 | `memory/` | function plugin | tools、system prompt、filesystem、optional embeddings | memory tools、recall section、indexing、flush |
@@ -38,7 +35,7 @@
 | `preset-clawdsh-messaging-safe/` | preset carrier | soul | 以 `clawdsh-messaging-safe` 安装的受限渠道 preset |
 | `_template/` | skeleton | — | 新自有 plugin 的起点 |
 
-物理目录名 `preset-openclaw/` 仅因既有仓库检查对该路径提供窄例外而保留。安装 id 与产品文案使用 `clawdsh`。旧渠道服务与当前服务可以作为包共存，但部署不得让两条路径连接同一平台账号。
+物理目录名 `preset-openclaw/` 仅因既有仓库检查对该路径提供窄例外而保留。安装 id 与产品文案使用 `clawdsh`。渠道执行只有一条路径：`ctx.channels → channel-agent → channel-openclaw`。仓库保留只读迁移清单识别旧配置名称，但不交付任何直连平台 adapter。
 
 ## 2. 上游只读范围
 
@@ -85,8 +82,8 @@ Clean-install profile 始终挂载 `channel → channel-agent → channel-opencl
 | `ctx.systemPrompt` | dsh | soul、memory | 有序 prompt section |
 | `ctx.tools` | dsh | memory、channel-agent | tool registry 与 route-scoped `message` tool |
 | `ctx.fs` | dsh | memory | policy-controlled filesystem access |
-| `ctx.sessions` | dsh | channel-agent、legacy channel-core、automation、Activity | append-only event、projection 与 durable flush |
-| `ctx.agents` | dsh | channel-agent、legacy channel-core、automation | 创建、恢复并驱动 Agent Session |
+| `ctx.sessions` | dsh | channel-agent、automation、Activity | append-only event、projection 与 durable flush |
+| `ctx.agents` | dsh | channel-agent、automation | 创建、恢复并驱动 Agent Session |
 | `ctx.attachments` | dsh | channel-agent | durable image；尚无 general-file seam |
 | `ctx.storageDomain` | dsh | channel-agent、channel-openclaw | durable route、execution 与 delivery ledger |
 | `ctx.subprocess` | dsh | channel-openclaw | supervised Gateway lifecycle |
@@ -113,7 +110,7 @@ Clean-install profile 始终挂载 `channel → channel-agent → channel-opencl
 | 所需 OpenClaw AgentHarness host semantics | [OpenClaw proposal](../upstream-proposal/openclaw-agent-harness-channel-seams.md) |
 | 所需 downstream Session-event support | [dsh proposal](../upstream-proposal/session-plugin-events.md) |
 
-ADR-0002、`feature-channel-core` 与 `channel-wechat` 解释 legacy path；它们不是当前 channel availability guidance。
+[ADR-0002](../adr/0002-channel-seam.md)、[旧 adapter 规格](feature-channel-core.md)与 `channel-wechat` 保留历史决策；它们不是当前 channel availability guidance。
 
 ## 5. 阅读策略
 
@@ -126,4 +123,4 @@ ADR-0002、`feature-channel-core` 与 `channel-wechat` 解释 legacy path；它�
 | OpenClaw release 更新 | machine lock/catalog、release artifact、精确 compatibility input | 解析批准 commit 后的 floating `main` |
 | 新 dsh seam | 对应 upstream Service Definition 与 complete-seam rule | 无关 package |
 | dsh rebase | `docs/standards/upstream-sync.md` | ad hoc 编辑 upstream package |
-| Legacy channel 删除 | ADR-0008 替换条件与 legacy Agent Note | 在代码删除前归档 note |
+| 旧配置迁移 | ADR-0002 与 `tools/openclaw-channel-migration.ts` | 新增另一套直连平台 adapter |

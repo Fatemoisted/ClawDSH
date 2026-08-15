@@ -61,7 +61,7 @@ The `clawdsh` profile composes the stock dsh Web application with the owned nest
 
 The foundation comprises `@clawdsh/dsh-channel`, `@clawdsh/dsh-channel-agent`, `@clawdsh/dsh-channel-openclaw`, and `tools/openclaw-channel-host`. The profile always mounts the three runtime packages; Channel Protocol and Agent Bridge remain available while the OpenClaw Gateway business setting defaults to disabled. No channel is certified or enabled; per-channel assembly, owned keyless snapshot evidence, current live smoke, Windows endpoint authorization, and remaining media support are incomplete.
 
-The legacy channel packages remain separately available under `ctx.legacyChannels` for replacement verification. They must not connect to the same platform accounts as the OpenClaw communication plane and are removed only after the replacement conditions pass.
+Channel execution uses only `ctx.channels → channel-agent → channel-openclaw`. Old direct-adapter configuration names remain readable through the migration inventory, but ClawDSH does not load those packages or own platform transports outside OpenClaw.
 
 ### 4.3 Public distribution
 
@@ -116,7 +116,7 @@ The release workflow targets public npm `next` through OIDC trusted publishing w
 - [ ] Add Windows named-pipe ACL enforcement before Windows channel support advances.
 - [ ] Add durable non-image attachments and outbound staging before advertising those media paths.
 - [ ] Add an ignorable Session append mechanism before persisting redundant `channel/*` events.
-- [ ] Remove legacy channel packages only after all replacement conditions pass.
+- [x] Remove the direct channel packages so the runtime has one channel execution path.
 - [x] Prepare the exact 13-package bundle, managed CLI, tarball verification, isolated install smoke, and OIDC/provenance workflow without publishing.
 - [ ] Obtain explicit authorization for the one-time interactive 2FA bootstrap, including its exact archives and version, and create all thirteen package objects without treating staged publishing as an initial-creation path.
 - [ ] Configure and verify all thirteen npm trust records plus the `npm` environment branch rule for `clawdsh`; until then the workflow is not `OIDC-ready`.

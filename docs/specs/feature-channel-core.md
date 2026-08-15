@@ -1,17 +1,17 @@
-# Feature specification: legacy channel-core adapter path
+# Historical feature reference: removed channel-core adapter path
 
 English | [中文](feature-channel-core.zh.md)
 
-- **Status**: implemented legacy compatibility path; superseded for new development
-- **Implementation package**: `packages/openclaw/channel-core` (`@clawdsh/dsh-channel-core`)
+- **Status**: removed; historical reference only
+- **Removed packages**: `channel-core`, `channel-telegram`, and `channel-feishu`
 - **Decision history**: [ADR-0002](../adr/0002-channel-seam.md)
 - **Current replacement**: [OpenClaw channel-plane bridge](feature-channel-plane-bridge.md) / [ADR-0008](../adr/0008-openclaw-channel-plane.md)
 
 ## Purpose
 
-`channel-core` was the Phase 2 feasibility implementation of an in-process `ctx.channels` registry. It proved that Telegram and Feishu adapters could share Session routing and Agent turn logic without modifying upstream dsh. It is retained temporarily so existing local configurations are not deleted before the sidecar replacement has equivalent evidence.
+`channel-core` was the Phase 2 feasibility implementation of an in-process `ctx.channels` registry. It proved that Telegram and Feishu adapters could share Session routing and Agent turn logic without modifying upstream dsh. The runtime implementation is absent; existing local configurations can be inventoried without copying secret values through `tools/openclaw-channel-migration.ts`.
 
-This package is no longer the owner of the current channel architecture. New consumers use `@clawdsh/dsh-channel`; new platform integrations belong to the locked OpenClaw Gateway rather than new ClawDSH adapter packages.
+The current architecture uses `@clawdsh/dsh-channel`; platform integrations belong to the locked OpenClaw Gateway rather than ClawDSH adapter packages.
 
 ## Legacy contract
 
@@ -21,17 +21,18 @@ This package is no longer the owner of the current channel architecture. New con
 - Identity presentation, mention stripping, response prefix, and acknowledgement reaction were resolved within the old adapter path.
 - The contract had no durable route binding, host identity, idempotency ledger, delivery receipt, capability negotiation, rich action, or attachment semantics.
 
-## Compatibility rules
+## Current boundary
 
-- The legacy service registers as `ctx.legacyChannels`. Do not connect it and the current `ctx.channels` path to the same platform account.
-- Do not add another adapter or widen `ChannelMessage`. Required channel coverage belongs to the sidecar catalog and V1 bridge.
-- Keep credentials in environment-backed adapter configuration while the legacy path remains installed.
-- Keep the legacy identity-presentation and acknowledgement-reaction Agent Notes with the code until removal; do not project their behavior onto the sidecar.
+- No package registers `ctx.legacyChannels`; `ctx.channels → channel-agent → channel-openclaw` is the only runtime path.
+- Do not add another direct adapter or revive the old `ChannelMessage`. Required channel coverage belongs to the sidecar catalog and V1 bridge.
+- The migration inventory reports names only; it neither loads an adapter nor copies credential values.
+- Release verification deny-lists the removed package names so they cannot enter the public bundle.
+- Legacy identity-presentation and acknowledgement-reaction Agent Notes describe historical behavior and do not define the sidecar.
 
 ## Verification status
 
-The package and adapter contract tests remain historical implementation evidence. Earlier Telegram and Feishu development established that the minimal contract could be mounted; it did not establish current release certification. Both legacy adapters are at most `installable`, not `certified` or `enabled`, under ADR-0008's state model without current credentialed evidence.
+The removed package and adapter contract tests are historical implementation evidence. Earlier Telegram and Feishu development established that the minimal contract could be mounted; it does not establish current release certification. Removed adapters have no support state, and their evidence cannot certify the canonical sidecar.
 
-## Removal gate
+## Removal result
 
-Delete `channel-core`, `channel-telegram`, and `channel-feishu` together only after the production OpenClaw sidecar is reproducibly assembled, its owned keyless Gateway-to-Agent snapshot is running, and fresh Telegram and Feishu certification covers inbound admission, Agent execution, outbound delivery, duplicates, reconnect, and failure paths. Archive the legacy Agent Notes only in that removal change.
+The three direct-adapter packages and `ctx.legacyChannels` were removed together. Remaining package-name references are limited to migration, release rejection, and historical documentation; they do not provide runtime compatibility.

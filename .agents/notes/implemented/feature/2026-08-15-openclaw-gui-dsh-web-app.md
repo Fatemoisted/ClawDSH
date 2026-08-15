@@ -6,7 +6,7 @@ English | [中文](2026-08-15-openclaw-gui-dsh-web-app.zh.md)
 
 ## Problem
 
-OpenClaw has two usage modes: a local CLI and a Gateway that bridges to messaging apps (Feishu etc.). ClawDSH already ships the channel frontend through `ctx.channels`; the "GUI" mode had no home. DeepSeek Harness ships a full browser GUI (`@deepseek-ai/dsh-web-app`), and because it drives turns through the same `ctx.agents` / `ctx.sessions` / agent-loop seams that `channel-core` uses, the GUI can front OpenClaw's features with no upstream change — it is a composition problem, not a code problem.
+OpenClaw has two usage modes: a local CLI and a Gateway that bridges to messaging apps (Feishu etc.). ClawDSH already ships the channel frontend through `ctx.channels`; the "GUI" mode had no home. DeepSeek Harness ships a full browser GUI (`@deepseek-ai/dsh-web-app`), and because it drives turns through the same `ctx.agents` / `ctx.sessions` / agent-loop seams used by `channel-agent`, the GUI can front OpenClaw's features with no upstream change — it is a composition problem, not a code problem.
 
 ## Decision
 
@@ -20,7 +20,7 @@ The physical `preset-openclaw` assembly composes the web bundle and ships the fu
 ## Consequences
 
 - `pnpm dsh --profile clawdsh` serves `http://127.0.0.1:3080`; a GUI conversation surfaces the same soul persona, `clawdsh:memory-recall` section, `memory_search`/`memory_get` tools, and skills catalog as the channel path does, plus the full standard toolset.
-- The Web server starts independently of optional external integrations. Feishu, Telegram, and Automation are disabled in a clean install; enabling their Loader entries preserves their existing behavior and validation.
+- The Web server starts independently of optional external integrations. The OpenClaw Gateway and Automation are disabled in a clean install; enabling the locked Gateway preserves its fail-closed admission and configuration validation.
 - `mode: append` is kept for `soul`; if the web-runtime's "coding agent" section leaks into the assembled prompt, switch `soul` to `mode: replace` (a complete persona suppresses both the host default and the web-runtime section).
 
 ## Alternatives considered

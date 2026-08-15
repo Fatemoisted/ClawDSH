@@ -20,16 +20,16 @@ ClawDSH 最初需要证明：消息输入可以选择 dsh Session、进入 appen
 
 ## 取代决定
 
-ADR-0008 用锁定的 OpenClaw Gateway sidecar 与 provider-neutral V1 `ctx.channels` Service Definition 取代该架构。OpenClaw 拥有通信平面；`@clawdsh/dsh-channel-openclaw` 是已认证 Provider，`@clawdsh/dsh-channel-agent` 是持久 Agent 平面 Driver。旧 registry 保留在 `ctx.legacyChannels` 下；部署绝不能让两条路径连接同一平台账号。
+ADR-0008 用锁定的 OpenClaw Gateway sidecar 与 provider-neutral V1 `ctx.channels` Service Definition 取代该架构。OpenClaw 拥有通信平面；`@clawdsh/dsh-channel-openclaw` 是已认证 Provider，`@clawdsh/dsh-channel-agent` 是持久 Agent 平面 Driver。这是唯一的 runtime channel path。
 
-`channel-core`、`channel-telegram` 与 `channel-feishu` 作为 legacy compatibility package 保留到 ADR-0008 替换条件通过。它们的软件包测试与历史传输工作只表明旧路径曾有何行为。没有当前带凭证证据时，两个 adapter 都不是 `certified` 或 `enabled`。
+仓库不包含 `ctx.legacyChannels` compatibility registry，也不包含 `channel-core`、`channel-telegram` 或 `channel-feishu` package。只读迁移清单仍会识别旧配置名称，发行校验也会 deny-list 旧 package name；两者都不会加载第二套 runtime implementation。
 
 ## 影响
 
 - 本 ADR 保留为阶段 2 adapter 实验的历史记录，不是当前实现指南。
 - 新渠道工作面向 ADR-0008 的 Gateway sidecar、bridge protocol 与锁定 catalog，不再增加原生 adapter。
-- 旧 identity-presentation 与 acknowledgement-reaction Agent Note 只在该代码删除前对 legacy path 有效；它们不定义 sidecar 行为。
-- 删除 legacy package 要求装配好的 production sidecar、自有无密钥 snapshot path，以及新的 Telegram 与 Feishu live certification。
+- 旧 identity-presentation 与 acknowledgement-reaction Agent Note 描述已移除的实验；它们不定义 sidecar 行为。
+- 未来的直连平台 adapter 需要新的决策，且不得在 canonical runtime 旁重新创建 `ctx.legacyChannels`。
 
 ## 曾考虑的替代方案
 

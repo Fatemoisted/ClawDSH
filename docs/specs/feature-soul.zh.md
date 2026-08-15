@@ -30,7 +30,7 @@
 
 ### 阶段 2 深读定稿：OpenClaw identity 映射
 
-OpenClaw identity 由四层组成（gateway 无装配代码，全部在 `src/agents/`）：硬编码首行 → `deployment:persona`（order 0）；`SOUL.md` → soul `append`（order 10）；「灵魂即完整提示」→ `replace`=complete 段；`AGENTS.md` → preset soul 文本承载；`TOOLS.md` → 工具指引带（100–199，各工具包自带）；`IDENTITY.md`（name/emoji）→ 渠道呈现非 prompt，经 channel-core `identity`/`responsePrefix`/`ackReaction` 配置（阶段 3 ✅，见 [Agent Note](../../.agents/notes/implemented/feature/2026-08-14-channel-identity-presentation.md)）；`USER.md` → preset persona/soul 文本；每次运行的场景段 → `PromptContext`；`system-prompt-report` → `request/header.header.system` 日志链路。完整映射表与「为何不补」论证见 [Agent Note](../../.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping.md)。
+OpenClaw identity 由四层组成（gateway 无装配代码，全部在 `src/agents/`）：硬编码首行 → `deployment:persona`（order 0）；`SOUL.md` → soul `append`（order 10）；「灵魂即完整提示」→ `replace`=complete 段；`AGENTS.md` → preset soul 文本承载；`TOOLS.md` → 工具指引带（100–199，各工具包自带）；`IDENTITY.md`（name/emoji）→ 由锁定 OpenClaw Gateway 及其 channel plugin 拥有的非 prompt 渠道呈现（[ADR-0008](../adr/0008-openclaw-channel-plane.md)）；`USER.md` → preset persona/soul 文本；每次运行的场景段 → `PromptContext`；`system-prompt-report` → `request/header.header.system` 日志链路。完整映射表与「为何不补」论证见 [Agent Note](../../.agents/notes/implemented/architecture/2026-08-14-openclaw-identity-mapping.md)。
 
 ## 配置面（草案）
 

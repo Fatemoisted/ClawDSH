@@ -55,9 +55,9 @@ Channel support claims use only `cataloged → installable → certified → ena
 
 Each state implies every state to its left. The production catalog is 24 core, bundled, or repository-official entries plus 3 external entries; the external entries are WeChat, Yuanbao, and Zalo ClawBot. QQ Bot is repository-official in the production lock. No channel is certified or enabled by this ADR.
 
-### 4. Keep the legacy adapters until replacement gates pass
+### 4. Keep one channel execution path
 
-`channel-core`, `channel-telegram`, and `channel-feishu` remain legacy in-process compatibility adapters. Their earlier package and contract tests remain useful implementation history but do not certify a current deployment. They may be removed only after the sidecar composition is assembled, the required keyless snapshot path exists, and equivalent Telegram and Feishu live smokes pass on the production lock. This ADR supersedes ADR-0002 as the current architecture; it does not erase the legacy code or its Agent Notes before that gate.
+The only runtime path is `ctx.channels → channel-agent → channel-openclaw`. ClawDSH ships no direct Telegram or Feishu adapter, no `ctx.legacyChannels` alias, and no second owner for platform credentials or transport lifecycle. The migration inventory may recognize old configuration names without loading them; the release denylist prevents the removed package names from entering the public bundle.
 
 ## Known gaps
 
@@ -66,7 +66,7 @@ Each state implies every state to its left. The production catalog is 24 core, b
 - **Attachments**: inbound staged images are path-, symlink-, size-, media-type-, and SHA-256-verified before entering the dsh attachment store. Audio, video, and generic files lack a durable non-image attachment seam. Outbound media lacks a dsh staging writer and fails explicitly.
 - **Plugin Session events**: the current safe path uses the known `user/message` source plus durable sidecar ledgers. Persisting the declared `channel/*` events would make resume fail closed because downstream code cannot mark them ignorable; those event names remain disabled pending an upstream append seam.
 - **Assembled evidence**: an owned keyless smoke validates safe Telegram and Feishu configuration against the real stable schema and traverses the locked Gateway, stable bridge, and DSH Agent on Linux x64. It deliberately stops before final platform delivery because the locked host has no correlatable public hook.
-- **Live certification**: this change did not run credentialed Telegram or Feishu traffic. Neither legacy adapter nor sidecar channel may be labeled certified or enabled.
+- **Live certification**: this change did not run credentialed Telegram or Feishu traffic. No sidecar channel may be labeled certified or enabled.
 
 ## Consequences
 

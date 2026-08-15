@@ -55,9 +55,9 @@ Ready 要求已认证 handshake 与持久 route 恢复全部完成。临时 tran
 
 每个状态都蕴含其左侧全部状态。生产目录是 24 个 core、bundled 或 repo-official 条目加 3 个 external 条目；external 是 WeChat、Yuanbao 和 Zalo ClawBot。QQ Bot 在生产 lock 中是 repo-official。本 ADR 不把任何渠道声明为 certified 或 enabled。
 
-### 4. 在替换门禁通过前保留旧适配器
+### 4. 只保留一条渠道执行路径
 
-`channel-core`、`channel-telegram` 与 `channel-feishu` 仍是进程内 legacy compatibility adapter。它们早期的软件包与契约测试仍有实现历史价值，但不能认证当前部署。只有 sidecar 装配完成、所需无密钥 snapshot 路径存在，并且生产 lock 上等价的 Telegram 与 Feishu live smoke 通过后，才能删除它们。本 ADR 取代 ADR-0002 成为当前架构，但不会在该门禁前抹除 legacy 代码及其 Agent Notes。
+唯一 runtime path 是 `ctx.channels → channel-agent → channel-openclaw`。ClawDSH 不交付直连 Telegram 或飞书 adapter，不提供 `ctx.legacyChannels` alias，也不设置第二个平台 credential 或 transport lifecycle owner。迁移清单可以识别旧配置名称，但不会加载它们；发行 denylist 阻止已移除的 package name 进入公共 bundle。
 
 ## 已知缺口
 
@@ -66,7 +66,7 @@ Ready 要求已认证 handshake 与持久 route 恢复全部完成。临时 tran
 - **附件**：入站暂存图片在进入 dsh attachment store 前校验路径、符号链接、大小、media type 与 SHA-256。音频、视频和通用文件缺少持久的非图片 attachment seam。出站媒体缺少 dsh staging writer，并明确失败。
 - **Plugin Session event**：当前安全路径使用已知 `user/message` source 与持久 sidecar ledger。持久化已声明的 `channel/*` event 会使 resume fail closed，因为 downstream code 不能把它们标记为 ignorable；这些 event name 在上游 append seam 出现前保持禁用。
 - **装配证据**：自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，并在 Linux x64 上贯穿锁定 Gateway、stable bridge 与 DSH Agent。测试有意终止于最终平台投递之前，因为锁定 host 没有可关联的公共 hook。
-- **真实认证**：本次变更没有运行带凭证的 Telegram 或 Feishu 流量。旧适配器和 sidecar 渠道都不得标记为 certified 或 enabled。
+- **真实认证**：本次变更没有运行带凭证的 Telegram 或 Feishu 流量。任何 sidecar 渠道都不得标记为 certified 或 enabled。
 
 ## 影响
 

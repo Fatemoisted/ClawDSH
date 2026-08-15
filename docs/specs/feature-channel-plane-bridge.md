@@ -21,7 +21,7 @@ English | [中文](feature-channel-plane-bridge.zh.md)
 - Allowing the OpenClaw sidecar to choose an independent model or fall back around ClawDSH.
 - Treating catalog presence, package installation, package tests, or a historical live smoke as release certification.
 - Enabling any channel by default before its exact production composition is certified.
-- Removing `channel-core`, `channel-telegram`, or `channel-feishu` before the replacement conditions in ADR-0008 pass.
+- Reintroducing a direct platform adapter or a second channel runtime alongside the canonical bridge.
 
 ## Runtime composition
 
@@ -88,11 +88,11 @@ Canary is locked to source commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`; it
 
 The only valid progression is `cataloged → installable → certified → enabled`, with the definitions in ADR-0008. The approved catalogs establish catalog provenance; verified stable artifacts can establish installability when their compatible host assembly passes. External packages additionally require approved license, platform-terms, and security reviews. Certification additionally requires the exact release composition, security checks, delivery behavior, a keyless assembled transcript, and platform live smoke where credentials are required. Enabled additionally requires an explicit shipped profile choice.
 
-Current implementation evidence establishes only `cataloged`. The shipped profile always mounts the sidecar composition and its invariant companions while the Gateway setting remains disabled; it starts no legacy adapter, and the separately retained legacy packages are not sidecar evidence. An owned keyless smoke validates safe Telegram and Feishu configuration against the real stable schema, traverses the locked Gateway, stable bridge, and DSH Agent, and runs in Linux x64 CI; the reviewed Darwin arm64 assembly has also passed it locally. No credentialed Telegram or Feishu transport smoke has run. The final-delivery, aggregate-account-health, stable inbound-media, Windows ACL, and external-governance gates remain open. Resume coverage must also prove that only known Session event names are persisted while the downstream-event seam remains unavailable.
+Current implementation evidence establishes only `cataloged`. The shipped profile always mounts the sidecar composition and its invariant companions while the Gateway setting remains disabled. An owned keyless smoke validates safe Telegram and Feishu configuration against the real stable schema, traverses the locked Gateway, stable bridge, and DSH Agent, and runs in Linux x64 CI; the reviewed Darwin arm64 assembly has also passed it locally. No credentialed Telegram or Feishu transport smoke has run. The final-delivery, aggregate-account-health, stable inbound-media, Windows ACL, and external-governance gates remain open. Resume coverage must also prove that only known Session event names are persisted while the downstream-event seam remains unavailable.
 
-## Replacement gate
+## Certification gate
 
-The legacy adapters can be deleted only after all of the following are true for the production lock:
+A production channel can advance beyond `cataloged` only after all of the following are true for the production lock:
 
 1. A reproducible managed host and bridge artifact are locked and the shipped profile assembles the Service Definition, Provider, and Driver without an OpenClaw model fallback.
 2. Contract, integrity, authentication, idempotency, reset/close, action, delivery, crash-recovery, attachment, persistence, and resume tests pass without downstream `channel/*` Session events.

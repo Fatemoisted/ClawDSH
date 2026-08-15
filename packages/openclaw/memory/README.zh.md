@@ -90,7 +90,7 @@ Tool results land mid-transcript, like any tool output; no system-prompt prefix 
 
 #### What the model sees
 
-实测上下文越过 `contextWindow − reserveTokensFloor − softThresholdTokens` 时，一条携带 `source: {kind: 'plugin', plugin: 'memory-flush'}` 的 plugin 源消息按压缩周期入队一次（渠道回复提取跳过 plugin 源回合），原文如下：
+实测上下文越过 `contextWindow − reserveTokensFloor − softThresholdTokens` 时，一条携带 `source: {kind: 'plugin', plugin: 'memory-flush'}` 的 plugin 源消息按压缩周期入队一次。渠道投递始终绑定到已准入消息所属的精确回合，因此后续 flush 回合不能替换其结果。入队 prompt 原文如下：
 
 ##### Flush prompt
 

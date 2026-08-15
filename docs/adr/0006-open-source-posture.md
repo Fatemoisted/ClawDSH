@@ -53,7 +53,7 @@ This ADR commits the repository to a formally publishable open-source posture an
 | 10 | `docs/specs/roadmap.md:36` | add Phase 2 header ✅ (align with Phase 0/1) | charter cosmetic consistency | 可延后 |
 | 11 | `docs/adr/0001-project-foundation.md` decision 3 | add `docs/upstream-proposal/` to the physical-isolation list (decision 4) | reconcile with CLAUDE.md brand section | 可延后 |
 | 12 | `AGENTS.md` brand section | add `.agents/notes/` (append-only own notes) to the own-content list (decision 4) | ratify the de-facto note surface | 可延后 |
-| 13 | `docs/specs/` | add feature specs for `channel-telegram` / `channel-feishu` / `embeddings` / `embeddings-ark` (currently grouped under `feature-channel-core` / `feature-memory`) | per-plugin spec completeness | 可延后 |
+| 13 | `docs/specs/` | add dedicated `embeddings` / `embeddings-ark` feature specs (currently grouped under `feature-memory`); canonical channel behavior remains owned by `feature-channel-plane-bridge` | per-plugin spec completeness without reviving direct adapters | 可延后 |
 
 ## Alternatives
 

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/adr/0002-channel-seam.md
-0002-channel-seam.md: 72636fedb52604bae3923889e7e4b60a6b8c1307
-0002-channel-seam.zh.md: 8d1bca1d10edbfcc038213f619cde25d5c6d456f
+0002-channel-seam.md: ef455d5935fe6c47429966b341a05b543dec2e98
+0002-channel-seam.zh.md: 9ef77db6dbfe5c7239678724645e91224c0ec2c8

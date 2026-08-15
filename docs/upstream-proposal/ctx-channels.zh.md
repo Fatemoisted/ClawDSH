@@ -27,7 +27,7 @@ Service 在两个角色之间 dispatch，并在所需角色缺失或重复时失
 
 当前 Provider 是 `@clawdsh/dsh-channel-openclaw`，它认证并校验锁定的本地 OpenClaw Gateway。当前 Driver 是 `@clawdsh/dsh-channel-agent`，它拥有持久 route/session binding、幂等、Agent 执行、模型可见日志与 attachment import。当前行为与限制见 `docs/specs/feature-channel-plane-bridge.zh.md`。
 
-`@clawdsh/dsh-channel-core` 在 `ctx.legacyChannels` 下实现已被取代的进程内 adapter 契约。部署不得让两条路径连接同一平台账号。Legacy package 只保留到 ADR-0008 替换条件通过。
+ClawDSH 只交付 `ctx.channels → channel-agent → channel-openclaw` runtime path。它没有 `ctx.legacyChannels` alias 或直连平台 adapter package；旧名称只保留在只读迁移清单与发行 denylist 中。
 
 ## 所需上游 Session-event seam
 

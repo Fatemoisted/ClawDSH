@@ -45,7 +45,7 @@ dsh 侧映射：
 
 **移植 OpenClaw 的 job store + CRUD 工具 + CLI。** 本批次否决：Config 声明的规则不需要新存储 seam 也不需要可变 store；带 agent 面 CRUD 工具的运行时可变 store 是后续表面，待有消费者需要运行时编辑规则时再评估。
 
-**用 schedule 包的 `runMaintenance` + `followup` 模式触发。** 部分复用：触发路径用同样的 `followup → whenIdle → sessions.flush` 惯用法（channel-core 与 headless 已验证），但 `runMaintenance` 是 schedule 内部机制（agent 所有）；automation 直接驱动自己的 agent。
+**用 schedule 包的 `runMaintenance` + `followup` 模式触发。** 部分复用：触发路径用同样的 `followup → whenIdle → sessions.flush` 惯用法（channel-agent 与 headless 已验证），但 `runMaintenance` 是 schedule 内部机制（agent 所有）；automation 直接驱动自己的 agent。
 
 ## 影响
 

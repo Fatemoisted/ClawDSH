@@ -35,7 +35,6 @@ pnpm workspace 与 tsdown 构建都以 `packages/*/*` 为通配符，且 tsdown 
 | `channel/` | provider-neutral Channel Service Definition | Gateway channel protocol | 自有 `ctx.channels`（ADR-0008） | **V1 已实现** |
 | `channel-agent/` | durable Agent-plane Driver | Gateway-to-Agent execution | `ctx.channels`、Agents、Sessions、attachments | **基础已实现；认证未完成** |
 | `channel-openclaw/` | 锁定 OpenClaw communication Provider | Gateway 与 channel plugin catalog | `ctx.channels`、subprocess、storage | **基础已实现；默认关闭** |
-| `channel-core/`、`channel-telegram/`、`channel-feishu/` | private legacy 进程内 channel path | 较早的 native adapter | `ctx.legacyChannels` | **只保留到 ADR-0008 替换门槛通过** |
 | `channel-wechat/` | 历史未实现骨架 | — | — | 排除；可用性由锁定 OpenClaw catalog 决定 |
 | `soul/` | 人格 / Soul | Soul 系统 | system-prompt 装配 | **已实现** |
 | `memory/` | Markdown 事实源与语义召回 | Memory | `ctx.fs`、`ctx.tools`、system prompt、`ctx.embeddings` | **已实现** |
@@ -45,10 +44,10 @@ pnpm workspace 与 tsdown 构建都以 `packages/*/*` 为通配符，且 tsdown 
 | `automation/` | 定时 Agent turn | Cron / Automation | `ctx.agents`、`ctx.sessions` | **已实现；默认关闭** |
 | `activity/` | 限制隐私的语义 Activity | ClawDSH-native observability | standard Session history 加可选 `ctx.clawdshActivity` sidecar | **已实现；产品 profile 中必需** |
 
-干净安装的 `clawdsh` profile 始终挂载各能力，让 Settings 与 health 持续可用。OpenClaw Gateway 与 Automation 的业务级 `enabled` 默认是 `false`；启动 Web Host 不需要 OpenClaw artifact、platform credential 或 model key。OpenClaw 拥有全部 platform adapter 与 credential，legacy package 则保持 private，且不进入 active profile。
+干净安装的 `clawdsh` profile 始终挂载各能力，让 Settings 与 health 持续可用。OpenClaw Gateway 与 Automation 的业务级 `enabled` 默认是 `false`；启动 Web Host 不需要 OpenClaw artifact、platform credential 或 model key。OpenClaw 拥有全部 platform adapter 与 credential。ClawDSH 不交付直连 Telegram 或飞书 adapter，也不提供 `ctx.legacyChannels` runtime。
 
 ## 公共发行集合
 
-公共发行 allowlist 是以下 13 个 `0.1.0-rc.1` 包：`@clawdsh/dsh-soul`、`@clawdsh/dsh-embeddings`、`@clawdsh/dsh-embeddings-ark`、`@clawdsh/dsh-memory`、`@clawdsh/dsh-skills-hub`、`@clawdsh/dsh-automation`、`@clawdsh/dsh-channel`、`@clawdsh/dsh-channel-agent`、`@clawdsh/dsh-channel-openclaw`、`@clawdsh/dsh-activity`、`@clawdsh/dsh-preset-messaging-safe`、`@clawdsh/dsh-bundle` 与 `@clawdsh/cli`。机器可读顺序位于 [`release-contract.mjs`](preset-openclaw/distribution/release-tools/release-contract.mjs)；三个 legacy channel package 与 nested product runtime 都不是公共包。
+公共发行 allowlist 是以下 13 个 `0.1.0-rc.1` 包：`@clawdsh/dsh-soul`、`@clawdsh/dsh-embeddings`、`@clawdsh/dsh-embeddings-ark`、`@clawdsh/dsh-memory`、`@clawdsh/dsh-skills-hub`、`@clawdsh/dsh-automation`、`@clawdsh/dsh-channel`、`@clawdsh/dsh-channel-agent`、`@clawdsh/dsh-channel-openclaw`、`@clawdsh/dsh-activity`、`@clawdsh/dsh-preset-messaging-safe`、`@clawdsh/dsh-bundle` 与 `@clawdsh/cli`。机器可读顺序位于 [`release-contract.mjs`](preset-openclaw/distribution/release-tools/release-contract.mjs)；其中的 denylist 拒绝已移除的直连 adapter package name，nested product runtime 也不是公共包。
 
 发行工具构建真实 tarball，把自有 `workspace:` 关系转换为精确 `0.1.0-rc.1` 依赖，拒绝本地协议、symlink、未声明文件与私有 registry URL，并通过临时 registry 与隔离 dsh home 验证这些包。当前 registry 状态是 `bootstrap-required`，而不是 `OIDC-ready`：13 个 package name 均不存在，因此必须先由用户另行授权交互式 2FA 发布来创建它们，才能逐包配置 npm trust；staged publishing 不能创建全新 package。创建后，每条 trust 记录必须匹配 `clawdsh-publish.yml`、GitHub environment `npm` 与 `npm publish`；该 environment 必须只允许 `clawdsh` branch，release readiness 则要求 `refs/heads/clawdsh`。[ADR-0009](../../docs/adr/0009-public-npm-distribution.md)拥有 bootstrap 与发布条件。本仓库不执行 bootstrap、不改变仓库可见性、不配置 trust，也不发布候选版本。

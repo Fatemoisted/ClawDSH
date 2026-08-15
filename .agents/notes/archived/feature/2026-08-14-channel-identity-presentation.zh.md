@@ -1,6 +1,7 @@
 # Agent Note: 渠道身份呈现落在 channel-core
 
 Status: implemented
+Archived: 2026-08-16
 
 [English](2026-08-14-channel-identity-presentation.md) | 中文
 

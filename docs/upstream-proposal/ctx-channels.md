@@ -27,7 +27,7 @@ An admitted turn names the Gateway lineage, OpenClaw session key, reset generati
 
 The current Provider is `@clawdsh/dsh-channel-openclaw`, which authenticates and verifies a locked local OpenClaw Gateway. The current Driver is `@clawdsh/dsh-channel-agent`, which owns durable route/session binding, idempotency, Agent execution, model-visible logging, and attachment import. Their current behavior and limitations are specified in `docs/specs/feature-channel-plane-bridge.md`.
 
-`@clawdsh/dsh-channel-core` implements the superseded in-process adapter contract under `ctx.legacyChannels`. A deployment must not connect both paths to the same platform account. The legacy package remains only until ADR-0008's replacement conditions pass.
+ClawDSH ships only the `ctx.channels → channel-agent → channel-openclaw` runtime path. It has no `ctx.legacyChannels` alias or direct platform-adapter package; the old names survive only in a read-only migration inventory and release denylist.
 
 ## Required upstream Session-event seam
 

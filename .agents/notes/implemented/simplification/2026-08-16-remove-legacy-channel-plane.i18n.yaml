@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-08-16-remove-legacy-channel-plane.md
+2026-08-16-remove-legacy-channel-plane.md: 4c483862a65b3ff9a6c451dbfd36ec35e6b22745
+2026-08-16-remove-legacy-channel-plane.zh.md: cbe8a65d0a33f3d8c05351f5c1e5fffa04a3b467

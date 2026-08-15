@@ -6,7 +6,7 @@
  * occurrence the rule's dedicated durable agent session (`automation:<id>`,
  * resumed across restarts) runs one ordinary turn: the framed message is
  * queued with a plugin source, the turn is driven to quiescence with the same
- * `followup → whenIdle → sessions.flush` idiom channel-core and headless
+ * `followup → whenIdle → sessions.flush` idiom used by channel-agent and headless
  * prove, and `automation/run` records bookend the turn in the session log —
  * the log itself is the run log.
  *

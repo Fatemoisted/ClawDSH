@@ -23,9 +23,6 @@ English | [中文](context-map.zh.md)
 | `channel/` | Service Definition | Cordis lifecycle | current `ctx.channels` V1 protocol; one Provider and one Driver |
 | `channel-agent/` | Consumer / Driver | channels, Agents, Sessions, presets, attachments, storage, tools | durable route binding, idempotency, Agent turns, logging, media import, route-scoped `message` tool |
 | `channel-openclaw/` | Service Provider | channels, subprocess, storage | locked OpenClaw supervision, authenticated IPC, health, actions, delivery ledger |
-| `channel-core/` | legacy Service | Agents, Sessions, default model | superseded in-process registry under `ctx.legacyChannels`; retained for replacement verification |
-| `channel-telegram/` | legacy adapter | legacy channel service | Telegram polling adapter; no current certification |
-| `channel-feishu/` | legacy adapter | legacy channel service | Feishu long-connection adapter; no current certification |
 | `channel-wechat/` | historical decision record | — | non-executable record superseded as availability guidance by the locked catalog |
 | `soul/` | function plugin | system prompt | replace or append persona sections |
 | `memory/` | function plugin | tools, system prompt, filesystem, optional embeddings | memory tools, recall section, indexing, flush |
@@ -38,7 +35,7 @@ English | [中文](context-map.zh.md)
 | `preset-clawdsh-messaging-safe/` | preset carrier | soul | restricted channel preset installed as `clawdsh-messaging-safe` |
 | `_template/` | skeleton | — | starting point for a new owned plugin |
 
-The physical `preset-openclaw/` name remains only because an existing repository check grants that path a narrow exception. Installed ids and product copy use `clawdsh`. The legacy and current channel services can coexist as packages, but a deployment must not connect both paths to the same platform account.
+The physical `preset-openclaw/` name remains only because an existing repository check grants that path a narrow exception. Installed ids and product copy use `clawdsh`. Channel execution has one path: `ctx.channels → channel-agent → channel-openclaw`. The repository keeps a read-only migration inventory for old configuration names but ships no direct platform adapter.
 
 ## 2. Upstream read-only surface
 
@@ -85,8 +82,8 @@ Anything reaching a model request must be reconstructable from the Session log. 
 | `ctx.systemPrompt` | dsh | soul, memory | ordered prompt sections |
 | `ctx.tools` | dsh | memory, channel-agent | tool registry and route-scoped `message` tool |
 | `ctx.fs` | dsh | memory | policy-controlled filesystem access |
-| `ctx.sessions` | dsh | channel-agent, legacy channel-core, automation, Activity | append-only events, projection, and durable flush |
-| `ctx.agents` | dsh | channel-agent, legacy channel-core, automation | create, resume, and drive Agent Sessions |
+| `ctx.sessions` | dsh | channel-agent, automation, Activity | append-only events, projection, and durable flush |
+| `ctx.agents` | dsh | channel-agent, automation | create, resume, and drive Agent Sessions |
 | `ctx.attachments` | dsh | channel-agent | durable images; no general-file seam yet |
 | `ctx.storageDomain` | dsh | channel-agent, channel-openclaw | durable route, execution, and delivery ledgers |
 | `ctx.subprocess` | dsh | channel-openclaw | supervised Gateway lifecycle |
@@ -113,7 +110,7 @@ The upstream service catalog remains authoritative for the complete dsh seam lis
 | Required OpenClaw AgentHarness host semantics | [OpenClaw proposal](../upstream-proposal/openclaw-agent-harness-channel-seams.md) |
 | Required downstream Session-event support | [dsh proposal](../upstream-proposal/session-plugin-events.md) |
 
-ADR-0002, `feature-channel-core`, and `channel-wechat` explain the legacy path; they are not current channel-availability guidance.
+[ADR-0002](../adr/0002-channel-seam.md), the [legacy adapter specification](feature-channel-core.md), and `channel-wechat` preserve historical decisions; they are not current channel-availability guidance.
 
 ## 5. Reading strategy
 
@@ -126,4 +123,4 @@ ADR-0002, `feature-channel-core`, and `channel-wechat` explain the legacy path; 
 | OpenClaw release update | machine locks/catalogs, release artifact, exact compatibility inputs | floating `main` after resolving the approved commit |
 | New dsh seam | the corresponding upstream Service Definition and complete-seam rules | unrelated packages |
 | dsh rebase | `docs/standards/upstream-sync.md` | ad hoc edits to upstream packages |
-| Legacy channel removal | ADR-0008 replacement conditions and legacy Agent Notes | archiving notes before code removal |
+| Legacy configuration migration | ADR-0002 and `tools/openclaw-channel-migration.ts` | adding another direct platform adapter |

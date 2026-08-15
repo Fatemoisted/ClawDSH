@@ -379,6 +379,197 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'channels',
+    summary: 'Bidirectional channel runtime.',
+    description: 'Bidirectional channel runtime. A single provider owns platform communication, while a single driver owns Agent execution. Registrations unwind with their contributing Cordis fibers.',
+    methods: [
+      {
+        signature: 'registerProvider(provider: ChannelProviderV1): () => void',
+        description: 'Register the communication-plane provider.',
+        parameters: [{ name: 'provider', description: 'Platform action and health implementation with a non-blank id.' }],
+        returns: 'A disposer that releases the single provider slot.',
+        throws: ['{ChannelError} `CHANNEL_INVALID_PROVIDER` for a blank id or `CHANNEL_DUPLICATE_PROVIDER` while another provider is active.'],
+      },
+      {
+        signature: 'registerDriver(driver: ChannelDriverV1): () => void',
+        description: 'Register the Agent-plane driver.',
+        parameters: [{ name: 'driver', description: 'Turn and session-control implementation.' }],
+        returns: 'A disposer that releases the single driver slot.',
+        throws: ['{ChannelError} `CHANNEL_DUPLICATE_DRIVER` while another driver is active.'],
+      },
+      {
+        signature: 'runTurn(turn: ChannelTurnEnvelopeV1, execution: ChannelTurnExecutionV1): Promise<ChannelTurnResultV1>',
+        description: 'Dispatch one admitted inbound turn to the active Agent-plane driver.',
+        parameters: [{ name: 'turn', description: 'Validated turn envelope.' }, { name: 'execution', description: 'Explicit run cancellation and progress publication.' }],
+        returns: 'The driver\'s terminal replayable result.',
+        throws: ['{ChannelError} `CHANNEL_NO_DRIVER` when no driver is active.'],
+      },
+      {
+        signature: 'cancel(request: ChannelTurnCancelV1, signal?: AbortSignal): Promise<void>',
+        description: 'Cancel one exact live channel run.',
+        parameters: [{ name: 'request', description: 'Turn/run identity and caller intent.' }, { name: 'signal', description: 'Optional cancellation of the control request.' }],
+        returns: 'Completion after the driver accepts cancellation.',
+        throws: ['{ChannelError} `CHANNEL_NO_DRIVER` when no driver is active.'],
+      },
+      {
+        signature: 'reset(request: ChannelSessionResetV1, signal?: AbortSignal): Promise<ChannelSessionResetResultV1>',
+        description: 'Retire one channel session generation and accept its successor.',
+        parameters: [{ name: 'request', description: 'Current route and strictly newer generation.' }, { name: 'signal', description: 'Optional cancellation of the control request.' }],
+        returns: 'The accepted successor route and retired session identity, when present.',
+        throws: ['{ChannelError} `CHANNEL_NO_DRIVER` when no driver is active.'],
+      },
+      {
+        signature: 'close(request: ChannelSessionCloseV1, signal?: AbortSignal): Promise<void>',
+        description: 'Drain and release one channel session generation.',
+        parameters: [{ name: 'request', description: 'Route and close cause.' }, { name: 'signal', description: 'Optional cancellation of the control request.' }],
+        returns: 'Completion after the driver closes the route.',
+        throws: ['{ChannelError} `CHANNEL_NO_DRIVER` when no driver is active.'],
+      },
+      {
+        signature: 'reportDelivery(report: ChannelDeliveryReportV1, signal?: AbortSignal): Promise<void>',
+        description: 'Project a provider-committed final-turn delivery receipt into the Agent plane.',
+        parameters: [{ name: 'report', description: 'Negotiated delivery-report extension payload.' }, { name: 'signal', description: 'Optional cancellation of the projection request.' }],
+        returns: 'Completion after the active driver records the receipt.',
+        throws: ['{ChannelError} `CHANNEL_NO_DRIVER` when no driver is active or `CHANNEL_DELIVERY_REPORT_UNSUPPORTED` when it did not register the optional extension.'],
+      },
+      {
+        signature: 'action(action: ChannelActionV1, signal?: AbortSignal): Promise<ChannelActionResultV1>',
+        description: 'Execute one native platform action through the active provider.',
+        parameters: [{ name: 'action', description: 'Capability-checked outbound operation.' }, { name: 'signal', description: 'Optional cancellation forwarded to the provider.' }],
+        returns: 'The provider\'s durable delivery state.',
+        throws: ['{ChannelError} `CHANNEL_NO_PROVIDER` when no provider is active.'],
+      },
+      {
+        signature: 'health(signal?: AbortSignal): Promise<ChannelHealthV1>',
+        description: 'Read current provider, Gateway, and account health.',
+        parameters: [{ name: 'signal', description: 'Optional cancellation forwarded to an active probe.' }],
+        returns: 'A sanitized provider health snapshot.',
+        throws: ['{ChannelError} `CHANNEL_NO_PROVIDER` when no provider is active.'],
+      },
+    ],
+  },
+  {
+    key: 'clawdshActivity',
+    summary: 'Typed semantic Activity sink and safe sidecar reader.',
+    description: 'Typed semantic Activity sink and safe sidecar reader.',
+    methods: [
+      {
+        signature: 'promptContribution(input: PromptContributionActivity): Promise<ClawdshActivityWriteResult>',
+        description: 'Record a ClawDSH prompt section proven to have entered a request header.',
+        parameters: [{ name: 'input', description: 'Section identity, append/replace mode, byte-independent character count, digest, and Session sequence.' }],
+        returns: 'sanitized best-effort append outcome.',
+      },
+      {
+        signature: 'memorySearch(input: MemoryActivity): Promise<ClawdshActivityWriteResult>',
+        description: 'Record one Memory search lifecycle state without query or result content.',
+        parameters: [{ name: 'input', description: 'Session sequence and sanitized lifecycle state.' }],
+        returns: 'sanitized best-effort append outcome.',
+      },
+      {
+        signature: 'memoryRead(input: MemoryActivity): Promise<ClawdshActivityWriteResult>',
+        description: 'Record one Memory read lifecycle state without a path or returned content.',
+        parameters: [{ name: 'input', description: 'Session sequence and sanitized lifecycle state.' }],
+        returns: 'sanitized best-effort append outcome.',
+      },
+      {
+        signature: 'memoryFlush(input: MemoryActivity): Promise<ClawdshActivityWriteResult>',
+        description: 'Record one Memory flush lifecycle state without prompt or reply content.',
+        parameters: [{ name: 'input', description: 'Session sequence and sanitized lifecycle state.' }],
+        returns: 'sanitized best-effort append outcome.',
+      },
+      {
+        signature: 'channelReceived(input: ChannelReceivedActivity): Promise<ClawdshActivityWriteResult>',
+        description: 'Record one admitted inbound channel message without platform identities or text.',
+        parameters: [{ name: 'input', description: 'Adapter, direct/group class, mention fact, and Session sequence.' }],
+        returns: 'sanitized best-effort append outcome.',
+      },
+      {
+        signature: 'channelDelivery(input: ChannelDeliveryActivity): Promise<ClawdshActivityWriteResult>',
+        description: 'Record one newly committed delivery state without delivery or platform identities.',
+        parameters: [{ name: 'input', description: 'Adapter, conversation class, mention fact, Session sequence, and sanitized state; omit state for an ambiguous receipt.' }],
+        returns: 'sanitized best-effort append outcome.',
+      },
+      {
+        signature: 'skillCatalog(input: SkillCatalogActivity): Promise<ClawdshActivityWriteResult>',
+        description: 'Record a skill catalog projection without catalog entries or provider locations.',
+        parameters: [{ name: 'input', description: 'Visible entry count and source Session sequence.' }],
+        returns: 'sanitized best-effort append outcome.',
+      },
+      {
+        signature: 'skillLoaded(input: SkillLoadedActivity): Promise<ClawdshActivityWriteResult>',
+        description: 'Record a selected skill identity without skill text or provider location.',
+        parameters: [{ name: 'input', description: 'Skill identity and source Session sequence.' }],
+        returns: 'sanitized best-effort append outcome.',
+      },
+      {
+        signature: 'skillInvoked(input: SkillInvokedActivity): Promise<ClawdshActivityWriteResult>',
+        description: 'Record a skill invocation lifecycle state without arguments, output, or errors.',
+        parameters: [{ name: 'input', description: 'Skill identity, source Session sequence, and sanitized lifecycle state.' }],
+        returns: 'sanitized best-effort append outcome.',
+      },
+      {
+        signature: 'automationRun(input: AutomationRunActivity): Promise<ClawdshActivityWriteResult>',
+        description: 'Record one automation run state without prompt, model output, or error text.',
+        parameters: [{ name: 'input', description: 'Rule identity, schedule time, source Session sequence, and sanitized lifecycle state.' }],
+        returns: 'sanitized best-effort append outcome.',
+      },
+      {
+        signature: 'list(request: ClawdshActivityReadRequest): Promise<ClawdshActivityReadResult>',
+        description: 'Read bounded package-owned sidecars without exposing physical paths or filesystem diagnostics.',
+        parameters: [{ name: 'request', description: 'Session and optional fixed producer subset.' }],
+        returns: 'canonical records with sanitized availability/degradation state.',
+      },
+      {
+        signature: 'async page( request: ClawdshActivityPageRequest, history: ClawdshActivityHistorySources = {}, ): Promise<ClawdshActivityPage>',
+        description: 'Merge standard Session history with sidecars and return one cursor-paginated semantic page.',
+        parameters: [{ name: 'request', description: 'Session, category filter, ordering, limit, and optional continuation.' }, { name: 'history', description: 'Live events or persisted inspection supplied by the trusted Host caller.' }],
+        returns: 'a stable page with sanitized source availability and warnings.',
+      },
+    ],
+  },
+  {
+    key: 'clawdshOpenClawControl',
+    summary: 'Always-mounted validation and status seam for the local ClawDSH control plane.',
+    description: 'Always-mounted validation and status seam for the local ClawDSH control plane.',
+    methods: [
+      {
+        signature: 'snapshot(): OpenClawControlStatus',
+        description: 'Return applied enablement and lifecycle state without platform account or credential data.',
+        parameters: [],
+        returns: 'Sanitized runtime state.',
+      },
+      {
+        signature: 'async validateDesired(desired: Config): Promise<void>',
+        description: 'Validate desired user-owned settings while preserving managed deployment identities.',
+        parameters: [{ name: 'desired', description: 'Complete desired plugin configuration produced by the settings resolver.' }],
+        returns: 'Completion after every managed file and fail-closed configuration check passes.',
+      },
+      {
+        signature: 'markActive(): void',
+        description: 'Record successful Gateway and Provider startup.',
+        parameters: [],
+      },
+      {
+        signature: 'markFailed(): void',
+        description: 'Record an unexpected post-handshake Gateway exit without exposing process diagnostics.',
+        parameters: [],
+      },
+    ],
+  },
+  {
+    key: 'clawdshSoulSettings',
+    summary: 'Host-owned Soul settings registration.',
+    description: 'Host-owned Soul settings registration. Agent-scope Soul rows query it once at mount, so a committed change affects only subsequently mounted sessions.',
+    methods: [
+      {
+        signature: 'forSession(entry: Config): Config',
+        description: 'Resolve one new agent scope from its preset entry plus the current user layer.',
+        parameters: [{ name: 'entry', description: 'Soul entry from the agent preset being mounted.' }],
+        returns: 'the immutable-at-session-mount Soul settings snapshot.',
+      },
+    ],
+  },
+  {
     key: 'clientModules',
     summary: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index tap.',
     description: 'The web plugin table service: incremental `dsh.client` scan + wire composition + bundle route + index tap. Construction runs the activation scan synchronously — a malformed declaration or missing bundle among the already-loaded entries aggregates into one loud throw (FAILED fiber; the boot activation audit reports it).',
@@ -559,6 +750,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
         returns: 'the created sandbox after the configured cwd exists.',
         throws: ['when E2B rejects creation or the service is disposing.'],
+      },
+    ],
+  },
+  {
+    key: 'embeddings',
+    summary: 'Abstract text-embedding service.',
+    description: 'Abstract text-embedding service. Subclass, implement embed, and load the subclass as a plugin — it registers as `ctx.embeddings` (one implementation per context; loading a second throws, cordis\' standard duplicate-service behavior).\n\nSemantics every implementation must honor:\n\n- embed returns exactly one vector per input text, in input order, and all vectors of one call share one dimension. Providers may additionally promise dimension stability across calls; the Ark provider does and fails loudly on drift.\n- Every vector is a non-empty list of finite numbers.\n- Any failure — missing credential, network error, malformed or partial response — rejects the whole call; implementations never return partial results.\n- The `signal` cancels the call where the backend can honor it (network round-trips); cooperative tool timeouts pass their deadline through it.',
+    methods: [
+      {
+        signature: 'abstract embed(texts: readonly string[], signal?: AbortSignal): Promise<EmbeddingVector[]>',
+        description: 'Embed each input text into one dense vector in the provider\'s embedding space.',
+        parameters: [{ name: 'texts', description: 'the texts to embed; empty input embeds to an empty result.' }, { name: 'signal', description: 'optional cancellation signal for the underlying request.' }],
+        returns: 'one {@link EmbeddingVector} per input text, in input order.',
       },
     ],
   },
@@ -2714,6 +2918,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
   },
   {
+    name: 'AutomationRunActivity',
+    declaration: 'export interface AutomationRunActivity {\n    readonly sessionId: SessionId;\n    readonly ruleId: string;\n    readonly scheduledAt: string;\n    readonly status: \'started\' | \'succeeded\' | \'failed\';\n    readonly seq: number;\n}',
+  },
+  {
     name: 'BackendRegistry',
     declaration: 'export class BackendRegistry {\n    register(name: string, backend: StorageBackend): () => void;\n    get(name: string): StorageBackend;\n    names(): string[];\n}',
   },
@@ -2736,6 +2944,414 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CancelOptions',
     declaration: 'export interface CancelOptions {\n    keepInbox?: boolean | undefined;\n}',
+  },
+  {
+    name: 'ChannelAccountHealthV1',
+    declaration: 'export interface ChannelAccountHealthV1 {\n    readonly channel: ChannelId;\n    readonly account: ChannelAccountId;\n    readonly status: \'disabled\' | \'connecting\' | \'ready\' | \'degraded\' | \'failed\';\n    readonly actions: readonly ChannelActionKindV1[];\n    readonly error?: ChannelFailureV1;\n}',
+  },
+  {
+    name: 'ChannelAccountId',
+    declaration: 'export type ChannelAccountId = Branded<\'ChannelAccountId\'>;',
+  },
+  {
+    name: 'ChannelActionBaseV1',
+    declaration: 'export interface ChannelActionBaseV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly actionId: ChannelActionId;\n    readonly target: ChannelActionTargetV1;\n}',
+  },
+  {
+    name: 'ChannelActionDeliveryReceiptV1',
+    declaration: 'export type ChannelActionDeliveryReceiptV1 = ChannelDeliveryReceiptV1 & {\n    readonly subject: {\n        readonly kind: \'action\';\n        readonly actionId: ChannelActionId;\n    };\n};',
+  },
+  {
+    name: 'ChannelActionId',
+    declaration: 'export type ChannelActionId = Branded<\'ChannelActionId\'>;',
+  },
+  {
+    name: 'ChannelActionKindV1',
+    declaration: 'export type ChannelActionKindV1 = \'send\' | \'edit\' | \'delete\' | \'react\' | \'poll\' | \'typing\' | \'directory.self\' | \'directory.list-peers\' | \'directory.list-groups\' | \'directory.list-group-members\' | \'resolve\';',
+  },
+  {
+    name: 'ChannelActionResultV1',
+    declaration: 'export type ChannelActionResultV1 = ChannelActionDeliveryReceiptV1 | ChannelDirectoryResultV1 | ChannelResolveResultV1;',
+  },
+  {
+    name: 'ChannelActionTargetV1',
+    declaration: 'export interface ChannelActionTargetV1 {\n    readonly gatewayInstanceId: GatewayInstanceId;\n    readonly channel: ChannelId;\n    readonly account: ChannelAccountId;\n    readonly conversation: ChannelConversationId;\n    readonly thread?: ChannelThreadId;\n}',
+  },
+  {
+    name: 'ChannelActionV1',
+    declaration: 'export type ChannelActionV1 = ChannelSendActionV1 | ChannelEditActionV1 | ChannelDeleteActionV1 | ChannelReactActionV1 | ChannelPollActionV1 | ChannelTypingActionV1 | ChannelDirectorySelfActionV1 | ChannelDirectoryListPeersActionV1 | ChannelDirectoryListGroupsActionV1 | ChannelDirectoryListGroupMembersActionV1 | ChannelResolveActionV1;',
+  },
+  {
+    name: 'ChannelBridgeCapabilitiesV1',
+    declaration: 'export interface ChannelBridgeCapabilitiesV1 {\n    readonly actions: readonly ChannelActionKindV1[];\n    readonly notifications: readonly ChannelTurnNotificationKindV1[];\n    readonly extensions: readonly ChannelProtocolExtensionV1[];\n}',
+  },
+  {
+    name: 'ChannelBridgeHandshakeV1',
+    declaration: 'export interface ChannelBridgeHandshakeV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly gatewayInstanceId: GatewayInstanceId;\n    readonly openclaw: OpenClawHostIdentityV1;\n    readonly agentHarness: \'v1\' | \'v2\';\n    readonly capabilities: ChannelBridgeCapabilitiesV1;\n    readonly startupNonce: ChannelStartupNonce;\n}',
+  },
+  {
+    name: 'ChannelConversationId',
+    declaration: 'export type ChannelConversationId = Branded<\'ChannelConversationId\'>;',
+  },
+  {
+    name: 'ChannelDeleteActionV1',
+    declaration: 'export interface ChannelDeleteActionV1 extends ChannelActionBaseV1 {\n    readonly kind: \'delete\';\n    readonly messageId: ChannelMessageId;\n}',
+  },
+  {
+    name: 'ChannelDeliveryAcceptedV1',
+    declaration: 'export interface ChannelDeliveryAcceptedV1 extends ChannelDeliveryReceiptBaseV1 {\n    readonly status: \'accepted\';\n}',
+  },
+  {
+    name: 'ChannelDeliveryActivity',
+    declaration: 'export interface ChannelDeliveryActivity extends ChannelReceivedActivity {\n    readonly status?: \'started\' | \'failed\' | \'sent\';\n}',
+  },
+  {
+    name: 'ChannelDeliveryAmbiguousV1',
+    declaration: 'export interface ChannelDeliveryAmbiguousV1 extends ChannelDeliveryReceiptBaseV1 {\n    readonly status: \'ambiguous\';\n    readonly error: ChannelFailureV1;\n}',
+  },
+  {
+    name: 'ChannelDeliveryConfirmedV1',
+    declaration: 'export interface ChannelDeliveryConfirmedV1 extends ChannelDeliveryReceiptBaseV1 {\n    readonly status: \'confirmed\';\n}',
+  },
+  {
+    name: 'ChannelDeliveryDeadLetterV1',
+    declaration: 'export interface ChannelDeliveryDeadLetterV1 extends ChannelDeliveryReceiptBaseV1 {\n    readonly status: \'dead-letter\';\n    readonly error: ChannelFailureV1;\n}',
+  },
+  {
+    name: 'ChannelDeliveryId',
+    declaration: 'export type ChannelDeliveryId = Branded<\'ChannelDeliveryId\'>;',
+  },
+  {
+    name: 'ChannelDeliveryReceiptBaseV1',
+    declaration: 'export interface ChannelDeliveryReceiptBaseV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly deliveryId: ChannelDeliveryId;\n    readonly subject: ChannelDeliverySubjectV1;\n    readonly attempt: number;\n    readonly platformMessageId?: ChannelMessageId;\n}',
+  },
+  {
+    name: 'ChannelDeliveryReceiptV1',
+    declaration: 'export type ChannelDeliveryReceiptV1 = ChannelDeliveryAcceptedV1 | ChannelDeliveryConfirmedV1 | ChannelDeliveryRetryingV1 | ChannelDeliveryAmbiguousV1 | ChannelDeliveryDeadLetterV1;',
+  },
+  {
+    name: 'ChannelDeliveryReportV1',
+    declaration: 'export interface ChannelDeliveryReportV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly extension: \'delivery.report\';\n    readonly receipt: ChannelDeliveryReceiptV1;\n}',
+  },
+  {
+    name: 'ChannelDeliveryRetryingV1',
+    declaration: 'export interface ChannelDeliveryRetryingV1 extends ChannelDeliveryReceiptBaseV1 {\n    readonly status: \'retrying\';\n    readonly nextAttemptAt: string;\n    readonly error: ChannelFailureV1;\n}',
+  },
+  {
+    name: 'ChannelDeliverySubjectV1',
+    declaration: 'export type ChannelDeliverySubjectV1 = {\n    readonly kind: \'action\';\n    readonly actionId: ChannelActionId;\n} | {\n    readonly kind: \'turn\';\n    readonly turnId: ChannelTurnId;\n    readonly runId: ChannelRunId;\n};',
+  },
+  {
+    name: 'ChannelDiagnosticV1',
+    declaration: 'export interface ChannelDiagnosticV1 {\n    readonly code: string;\n    readonly message: string;\n}',
+  },
+  {
+    name: 'ChannelDirectoryEntryId',
+    declaration: 'export type ChannelDirectoryEntryId = Branded<\'ChannelDirectoryEntryId\'>;',
+  },
+  {
+    name: 'ChannelDirectoryEntryV1',
+    declaration: 'export interface ChannelDirectoryEntryV1 {\n    readonly kind: \'user\' | \'group\' | \'channel\';\n    readonly id: ChannelDirectoryEntryId;\n    readonly name?: string;\n    readonly handle?: string;\n    readonly rank?: number;\n}',
+  },
+  {
+    name: 'ChannelDirectoryListGroupMembersActionV1',
+    declaration: 'export interface ChannelDirectoryListGroupMembersActionV1 extends ChannelActionBaseV1 {\n    readonly kind: \'directory.list-group-members\';\n    readonly groupId: ChannelDirectoryEntryId;\n    readonly limit?: number;\n}',
+  },
+  {
+    name: 'ChannelDirectoryListGroupsActionV1',
+    declaration: 'export interface ChannelDirectoryListGroupsActionV1 extends ChannelActionBaseV1 {\n    readonly kind: \'directory.list-groups\';\n    readonly query?: string;\n    readonly limit?: number;\n    readonly source: \'cached\' | \'live\';\n}',
+  },
+  {
+    name: 'ChannelDirectoryListPeersActionV1',
+    declaration: 'export interface ChannelDirectoryListPeersActionV1 extends ChannelActionBaseV1 {\n    readonly kind: \'directory.list-peers\';\n    readonly query?: string;\n    readonly limit?: number;\n    readonly source: \'cached\' | \'live\';\n}',
+  },
+  {
+    name: 'ChannelDirectoryResultV1',
+    declaration: 'export interface ChannelDirectoryResultV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly actionId: ChannelActionId;\n    readonly kind: \'directory\';\n    readonly entries: readonly ChannelDirectoryEntryV1[];\n}',
+  },
+  {
+    name: 'ChannelDirectorySelfActionV1',
+    declaration: 'export interface ChannelDirectorySelfActionV1 extends ChannelActionBaseV1 {\n    readonly kind: \'directory.self\';\n}',
+  },
+  {
+    name: 'ChannelDriverV1',
+    declaration: 'export interface ChannelDriverV1 {\n    runTurn(turn: ChannelTurnEnvelopeV1, execution: ChannelTurnExecutionV1): Promise<ChannelTurnResultV1>;\n    cancel(request: ChannelTurnCancelV1, signal?: AbortSignal): Promise<void>;\n    reset(request: ChannelSessionResetV1, signal?: AbortSignal): Promise<ChannelSessionResetResultV1>;\n    close(request: ChannelSessionCloseV1, signal?: AbortSignal): Promise<void>;\n    reportDelivery?(report: ChannelDeliveryReportV1, signal?: AbortSignal): Promise<void>;\n}',
+  },
+  {
+    name: 'ChannelEditActionV1',
+    declaration: 'export interface ChannelEditActionV1 extends ChannelActionBaseV1 {\n    readonly kind: \'edit\';\n    readonly messageId: ChannelMessageId;\n    readonly text: string;\n    readonly media: readonly ChannelStagedMediaV1[];\n}',
+  },
+  {
+    name: 'ChannelFailureV1',
+    declaration: 'export interface ChannelFailureV1 {\n    readonly code: string;\n    readonly message: string;\n    readonly retryable: boolean;\n}',
+  },
+  {
+    name: 'ChannelHealthV1',
+    declaration: 'export interface ChannelHealthV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly status: \'starting\' | \'ready\' | \'degraded\' | \'stopping\' | \'stopped\' | \'failed\';\n    readonly checkedAt: string;\n    readonly handshake?: ChannelBridgeHandshakeV1;\n    readonly accounts: readonly ChannelAccountHealthV1[];\n    readonly diagnostics: readonly ChannelDiagnosticV1[];\n}',
+  },
+  {
+    name: 'ChannelId',
+    declaration: 'export type ChannelId = Branded<\'ChannelId\'>;',
+  },
+  {
+    name: 'ChannelIdempotencyKey',
+    declaration: 'export type ChannelIdempotencyKey = Branded<\'ChannelIdempotencyKey\'>;',
+  },
+  {
+    name: 'ChannelMediaId',
+    declaration: 'export type ChannelMediaId = Branded<\'ChannelMediaId\'>;',
+  },
+  {
+    name: 'ChannelMediaSha256',
+    declaration: 'export type ChannelMediaSha256 = Branded<\'ChannelMediaSha256\'>;',
+  },
+  {
+    name: 'ChannelMessageId',
+    declaration: 'export type ChannelMessageId = Branded<\'ChannelMessageId\'>;',
+  },
+  {
+    name: 'ChannelMessageReferenceV1',
+    declaration: 'export interface ChannelMessageReferenceV1 {\n    readonly messageId: ChannelMessageId;\n    readonly senderId?: ChannelSenderId;\n}',
+  },
+  {
+    name: 'ChannelPollActionV1',
+    declaration: 'export interface ChannelPollActionV1 extends ChannelActionBaseV1 {\n    readonly kind: \'poll\';\n    readonly question: string;\n    readonly options: readonly string[];\n    readonly multiple: boolean;\n}',
+  },
+  {
+    name: 'ChannelPrincipalV1',
+    declaration: 'export interface ChannelPrincipalV1 {\n    readonly senderId: ChannelSenderId;\n    readonly displayName?: string;\n    readonly trust: \'owner\' | \'paired\' | \'allowlisted\' | \'admitted\' | \'group-allowlisted\';\n}',
+  },
+  {
+    name: 'ChannelProtocolExtensionV1',
+    declaration: 'export type ChannelProtocolExtensionV1 = \'delivery.report\';',
+  },
+  {
+    name: 'ChannelProtocolVersionV1',
+    declaration: 'export type ChannelProtocolVersionV1 = 1;',
+  },
+  {
+    name: 'ChannelProviderId',
+    declaration: 'export type ChannelProviderId = Branded<\'ChannelProviderId\'>;',
+  },
+  {
+    name: 'ChannelProviderV1',
+    declaration: 'export interface ChannelProviderV1 {\n    readonly id: ChannelProviderId;\n    action(action: ChannelActionV1, signal?: AbortSignal): Promise<ChannelActionResultV1>;\n    health(signal?: AbortSignal): Promise<ChannelHealthV1>;\n}',
+  },
+  {
+    name: 'ChannelReactActionV1',
+    declaration: 'export interface ChannelReactActionV1 extends ChannelActionBaseV1 {\n    readonly kind: \'react\';\n    readonly messageId: ChannelMessageId;\n    readonly reaction: string;\n    readonly operation: \'add\' | \'remove\';\n}',
+  },
+  {
+    name: 'ChannelReasoningDeltaNotificationV1',
+    declaration: 'export interface ChannelReasoningDeltaNotificationV1 {\n    readonly kind: \'reasoning.delta\';\n    readonly turnId: ChannelTurnId;\n    readonly runId: ChannelRunId;\n    readonly sequence: number;\n    readonly text: string;\n}',
+  },
+  {
+    name: 'ChannelReceivedActivity',
+    declaration: 'export interface ChannelReceivedActivity {\n    readonly sessionId: SessionId;\n    readonly adapter: string;\n    readonly conversation: \'direct\' | \'group\';\n    readonly mention: boolean | null;\n    readonly seq: number;\n}',
+  },
+  {
+    name: 'ChannelReplayId',
+    declaration: 'export type ChannelReplayId = Branded<\'ChannelReplayId\'>;',
+  },
+  {
+    name: 'ChannelResolveActionV1',
+    declaration: 'export interface ChannelResolveActionV1 extends ChannelActionBaseV1 {\n    readonly kind: \'resolve\';\n    readonly resolveKind: \'user\' | \'group\';\n    readonly inputs: readonly string[];\n}',
+  },
+  {
+    name: 'ChannelResolveMatchV1',
+    declaration: 'export type ChannelResolveMatchV1 = {\n    readonly input: string;\n    readonly resolved: false;\n    readonly note?: string;\n} | {\n    readonly input: string;\n    readonly resolved: true;\n    readonly id: ChannelDirectoryEntryId;\n    readonly name?: string;\n    readonly note?: string;\n};',
+  },
+  {
+    name: 'ChannelResolveResultV1',
+    declaration: 'export interface ChannelResolveResultV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly actionId: ChannelActionId;\n    readonly kind: \'resolve\';\n    readonly results: readonly ChannelResolveMatchV1[];\n}',
+  },
+  {
+    name: 'ChannelRouteV1',
+    declaration: 'export interface ChannelRouteV1 {\n    readonly gatewayInstanceId: GatewayInstanceId;\n    readonly openclawSessionKey: OpenClawSessionKey;\n    readonly generation: number;\n    readonly channel: ChannelId;\n    readonly account: ChannelAccountId;\n    readonly conversation: ChannelConversationId;\n    readonly thread?: ChannelThreadId;\n    readonly kind: \'direct\' | \'group\';\n}',
+  },
+  {
+    name: 'ChannelRunId',
+    declaration: 'export type ChannelRunId = Branded<\'ChannelRunId\'>;',
+  },
+  {
+    name: 'ChannelSendActionV1',
+    declaration: 'export interface ChannelSendActionV1 extends ChannelActionBaseV1 {\n    readonly kind: \'send\';\n    readonly text: string;\n    readonly media: readonly ChannelStagedMediaV1[];\n    readonly replyTo?: ChannelMessageId;\n}',
+  },
+  {
+    name: 'ChannelSenderId',
+    declaration: 'export type ChannelSenderId = Branded<\'ChannelSenderId\'>;',
+  },
+  {
+    name: 'ChannelSessionCloseV1',
+    declaration: 'export interface ChannelSessionCloseV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly route: ChannelRouteV1;\n    readonly reason: \'gateway\' | \'account-disabled\' | \'shutdown\';\n}',
+  },
+  {
+    name: 'ChannelSessionResetResultV1',
+    declaration: 'export interface ChannelSessionResetResultV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly route: ChannelRouteV1;\n    readonly previousSessionId?: SessionId;\n}',
+  },
+  {
+    name: 'ChannelSessionResetV1',
+    declaration: 'export interface ChannelSessionResetV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly route: ChannelRouteV1;\n    readonly nextGeneration: number;\n    readonly reason: \'new\' | \'reset\';\n}',
+  },
+  {
+    name: 'ChannelStagedMediaV1',
+    declaration: 'export interface ChannelStagedMediaV1 {\n    readonly mediaId: ChannelMediaId;\n    readonly ordinal: number;\n    readonly kind: \'image\' | \'audio\' | \'video\' | \'file\';\n    readonly mediaType: string;\n    readonly bytes: number;\n    readonly sha256: ChannelMediaSha256;\n    readonly relativePath: string;\n    readonly name?: string;\n}',
+  },
+  {
+    name: 'ChannelStartupNonce',
+    declaration: 'export type ChannelStartupNonce = Branded<\'ChannelStartupNonce\'>;',
+  },
+  {
+    name: 'ChannelStatusNotificationV1',
+    declaration: 'export interface ChannelStatusNotificationV1 {\n    readonly kind: \'status\';\n    readonly turnId: ChannelTurnId;\n    readonly runId: ChannelRunId;\n    readonly sequence: number;\n    readonly status: \'accepted\' | \'running\' | \'waiting-tool\' | \'finalizing\';\n}',
+  },
+  {
+    name: 'ChannelTextDeltaNotificationV1',
+    declaration: 'export interface ChannelTextDeltaNotificationV1 {\n    readonly kind: \'text.delta\';\n    readonly turnId: ChannelTurnId;\n    readonly runId: ChannelRunId;\n    readonly sequence: number;\n    readonly text: string;\n}',
+  },
+  {
+    name: 'ChannelThreadId',
+    declaration: 'export type ChannelThreadId = Branded<\'ChannelThreadId\'>;',
+  },
+  {
+    name: 'ChannelToolCallId',
+    declaration: 'export type ChannelToolCallId = Branded<\'ChannelToolCallId\'>;',
+  },
+  {
+    name: 'ChannelToolNotificationV1',
+    declaration: 'export interface ChannelToolNotificationV1 {\n    readonly kind: \'tool\';\n    readonly turnId: ChannelTurnId;\n    readonly runId: ChannelRunId;\n    readonly sequence: number;\n    readonly toolCallId: ChannelToolCallId;\n    readonly name: string;\n    readonly phase: \'started\' | \'finished\';\n    readonly summary?: string;\n}',
+  },
+  {
+    name: 'ChannelTraceId',
+    declaration: 'export type ChannelTraceId = Branded<\'ChannelTraceId\'>;',
+  },
+  {
+    name: 'ChannelTraceV1',
+    declaration: 'export interface ChannelTraceV1 {\n    readonly traceId: ChannelTraceId;\n    readonly parentTraceId?: ChannelTraceId;\n}',
+  },
+  {
+    name: 'ChannelTurnCancelledV1',
+    declaration: 'export interface ChannelTurnCancelledV1 extends ChannelTurnResultBaseV1 {\n    readonly status: \'cancelled\';\n    readonly sessionId?: SessionId;\n    readonly reason: string;\n}',
+  },
+  {
+    name: 'ChannelTurnCancelV1',
+    declaration: 'export interface ChannelTurnCancelV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly turnId: ChannelTurnId;\n    readonly runId: ChannelRunId;\n    readonly reason: \'user\' | \'timeout\' | \'gateway-shutdown\';\n}',
+  },
+  {
+    name: 'ChannelTurnCompletedV1',
+    declaration: 'export interface ChannelTurnCompletedV1 extends ChannelTurnResultBaseV1 {\n    readonly status: \'completed\';\n    readonly sessionId: SessionId;\n    readonly text: string;\n    readonly media: readonly ChannelStagedMediaV1[];\n    readonly usage?: TokenUsage;\n}',
+  },
+  {
+    name: 'ChannelTurnEnvelopeV1',
+    declaration: 'export interface ChannelTurnEnvelopeV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly idempotencyKey: ChannelIdempotencyKey;\n    readonly turnId: ChannelTurnId;\n    readonly runId: ChannelRunId;\n    readonly route: ChannelRouteV1;\n    readonly sender: ChannelPrincipalV1;\n    readonly wasMentioned?: boolean;\n    readonly messageId: ChannelMessageId;\n    readonly replyTo?: ChannelMessageReferenceV1;\n    readonly text: string;\n    readonly media: readonly ChannelStagedMediaV1[];\n    readonly trace?: ChannelTraceV1;\n}',
+  },
+  {
+    name: 'ChannelTurnExecutionV1',
+    declaration: 'export interface ChannelTurnExecutionV1 {\n    readonly signal: AbortSignal;\n    notify(notification: ChannelTurnNotificationV1): void;\n}',
+  },
+  {
+    name: 'ChannelTurnFailedV1',
+    declaration: 'export interface ChannelTurnFailedV1 extends ChannelTurnResultBaseV1 {\n    readonly status: \'failed\';\n    readonly sessionId?: SessionId;\n    readonly error: ChannelFailureV1;\n}',
+  },
+  {
+    name: 'ChannelTurnId',
+    declaration: 'export type ChannelTurnId = Branded<\'ChannelTurnId\'>;',
+  },
+  {
+    name: 'ChannelTurnNotificationKindV1',
+    declaration: 'export type ChannelTurnNotificationKindV1 = \'text.delta\' | \'reasoning.delta\' | \'tool\' | \'status\';',
+  },
+  {
+    name: 'ChannelTurnNotificationV1',
+    declaration: 'export type ChannelTurnNotificationV1 = ChannelTextDeltaNotificationV1 | ChannelReasoningDeltaNotificationV1 | ChannelToolNotificationV1 | ChannelStatusNotificationV1;',
+  },
+  {
+    name: 'ChannelTurnResultBaseV1',
+    declaration: 'export interface ChannelTurnResultBaseV1 {\n    readonly protocolVersion: ChannelProtocolVersionV1;\n    readonly turnId: ChannelTurnId;\n    readonly runId: ChannelRunId;\n    readonly replayId: ChannelReplayId;\n}',
+  },
+  {
+    name: 'ChannelTurnResultV1',
+    declaration: 'export type ChannelTurnResultV1 = ChannelTurnCompletedV1 | ChannelTurnSilentV1 | ChannelTurnCancelledV1 | ChannelTurnFailedV1;',
+  },
+  {
+    name: 'ChannelTurnSilentV1',
+    declaration: 'export interface ChannelTurnSilentV1 extends ChannelTurnResultBaseV1 {\n    readonly status: \'silent\';\n    readonly sessionId: SessionId;\n    readonly usage?: TokenUsage;\n}',
+  },
+  {
+    name: 'ChannelTypingActionV1',
+    declaration: 'export interface ChannelTypingActionV1 extends ChannelActionBaseV1 {\n    readonly kind: \'typing\';\n    readonly active: boolean;\n}',
+  },
+  {
+    name: 'ClawdshActivityAvailability',
+    declaration: 'export type ClawdshActivityAvailability = \'available\' | \'missing\' | \'unavailable\';',
+  },
+  {
+    name: 'ClawdshActivityCategory',
+    declaration: 'export type ClawdshActivityCategory = \'prompt\' | \'memory\' | \'channel\' | \'skill\' | \'automation\';',
+  },
+  {
+    name: 'ClawdshActivityHistoryAvailability',
+    declaration: 'export type ClawdshActivityHistoryAvailability = \'live\' | \'inspect\' | \'unavailable\';',
+  },
+  {
+    name: 'ClawdshActivityHistorySources',
+    declaration: 'export interface ClawdshActivityHistorySources {\n    readonly live?: readonly SessionEvent[];\n    readonly inspect?: readonly SessionEvent[];\n}',
+  },
+  {
+    name: 'ClawdshActivityKind',
+    declaration: 'export type ClawdshActivityKind = \'prompt.contribution\' | \'memory.search\' | \'memory.read\' | \'memory.flush\' | \'channel.received\' | \'channel.delivery\' | \'skill.catalog\' | \'skill.loaded\' | \'skill.invoked\' | \'automation.run\';',
+  },
+  {
+    name: 'ClawdshActivityMetadata',
+    declaration: 'export type ClawdshActivityMetadata = Record<string, string | number | boolean | null>;',
+  },
+  {
+    name: 'ClawdshActivityOrder',
+    declaration: 'export type ClawdshActivityOrder = \'asc\' | \'desc\';',
+  },
+  {
+    name: 'ClawdshActivityPage',
+    declaration: 'export interface ClawdshActivityPage {\n    readonly records: readonly ClawdshActivityRecord[];\n    readonly nextCursor?: string;\n    readonly availability: ClawdshActivityPageAvailability;\n    readonly degraded: boolean;\n    readonly warnings: readonly ClawdshActivityWarning[];\n}',
+  },
+  {
+    name: 'ClawdshActivityPageAvailability',
+    declaration: 'export interface ClawdshActivityPageAvailability {\n    readonly history: ClawdshActivityHistoryAvailability;\n    readonly sidecar: ClawdshActivityAvailability;\n}',
+  },
+  {
+    name: 'ClawdshActivityPageRequest',
+    declaration: 'export interface ClawdshActivityPageRequest {\n    readonly sessionId: SessionId;\n    readonly categories?: readonly ClawdshActivityCategory[];\n    readonly order?: ClawdshActivityOrder;\n    readonly limit?: number;\n    readonly cursor?: string;\n}',
+  },
+  {
+    name: 'ClawdshActivityProducer',
+    declaration: 'export type ClawdshActivityProducer = \'soul\' | \'memory\' | \'channels\' | \'skills\' | \'automation\';',
+  },
+  {
+    name: 'ClawdshActivityReadRequest',
+    declaration: 'export interface ClawdshActivityReadRequest {\n    readonly sessionId: SessionId;\n    readonly producers?: readonly ClawdshActivityProducer[];\n}',
+  },
+  {
+    name: 'ClawdshActivityReadResult',
+    declaration: 'export interface ClawdshActivityReadResult {\n    readonly records: readonly ClawdshActivityRecord[];\n    readonly availability: ClawdshActivityAvailability;\n    readonly degraded: boolean;\n    readonly warning?: \'activity-data-incomplete\';\n}',
+  },
+  {
+    name: 'ClawdshActivityRecord',
+    declaration: 'export interface ClawdshActivityRecord {\n    readonly version: 1;\n    readonly id: string;\n    readonly timestamp: string;\n    readonly sessionId: string;\n    readonly category: ClawdshActivityCategory;\n    readonly kind: ClawdshActivityKind;\n    readonly status?: ClawdshActivityStatus;\n    readonly summary: string;\n    readonly metadata: ClawdshActivityMetadata;\n}',
+  },
+  {
+    name: 'ClawdshActivityStatus',
+    declaration: 'export type ClawdshActivityStatus = \'started\' | \'succeeded\' | \'failed\' | \'sent\';',
+  },
+  {
+    name: 'ClawdshActivityWarning',
+    declaration: 'export type ClawdshActivityWarning = \'activity-data-incomplete\' | \'activity-history-unavailable\' | \'activity-sidecar-missing\';',
+  },
+  {
+    name: 'ClawdshActivityWriteResult',
+    declaration: 'export interface ClawdshActivityWriteResult {\n    readonly written: boolean;\n    readonly degraded: boolean;\n}',
+  },
+  {
+    name: 'ClawdshPromptSection',
+    declaration: 'export type ClawdshPromptSection = \'persona\' | \'clawdsh:soul\' | \'clawdsh:memory-recall\';',
   },
   {
     name: 'ClientResponse',
@@ -3026,6 +3642,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EditGoalRequest {\n    readonly objective?: string;\n    readonly maxGoalRounds?: number;\n}',
   },
   {
+    name: 'EmbeddingVector',
+    declaration: 'export type EmbeddingVector = number[];',
+  },
+  {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
   },
@@ -3088,6 +3708,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FsWriteOutcome',
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
+  },
+  {
+    name: 'GatewayInstanceId',
+    declaration: 'export type GatewayInstanceId = Branded<\'GatewayInstanceId\'>;',
   },
   {
     name: 'GenerateOptions',
@@ -3362,6 +3986,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ManualCompactAgentContext extends CompactionAgentContext {\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n}',
   },
   {
+    name: 'MemoryActivity',
+    declaration: 'export interface MemoryActivity {\n    readonly sessionId: SessionId;\n    readonly status: \'started\' | \'succeeded\' | \'failed\';\n    readonly seq: number;\n}',
+  },
+  {
     name: 'Message',
     declaration: 'export interface Message {\n    readonly id: MessageId;\n    readonly role: \'system\' | \'user\' | \'assistant\';\n    readonly content: ContentBlock[];\n    readonly source: MessageSource;\n}',
   },
@@ -3474,6 +4102,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface OneShotSubagentDescriptorData extends SubagentDescriptorBase {\n    readonly mode: \'one-shot\';\n    readonly label?: string;\n}',
   },
   {
+    name: 'OpenClawArtifactSha512',
+    declaration: 'export type OpenClawArtifactSha512 = Branded<\'OpenClawArtifactSha512\'>;',
+  },
+  {
+    name: 'OpenClawCommitSha',
+    declaration: 'export type OpenClawCommitSha = Branded<\'OpenClawCommitSha\'>;',
+  },
+  {
+    name: 'OpenClawControlStatus',
+    declaration: 'export interface OpenClawControlStatus {\n    readonly enabled: boolean;\n    readonly state: \'disabled\' | \'starting\' | \'active\' | \'failed\';\n}',
+  },
+  {
+    name: 'OpenClawHostIdentityV1',
+    declaration: 'export interface OpenClawHostIdentityV1 {\n    readonly tag: string;\n    readonly commitSha: OpenClawCommitSha;\n    readonly artifactSha512: OpenClawArtifactSha512;\n    readonly nodeEngine: string;\n}',
+  },
+  {
+    name: 'OpenClawSessionKey',
+    declaration: 'export type OpenClawSessionKey = Branded<\'OpenClawSessionKey\'>;',
+  },
+  {
     name: 'PermissionSelect',
     declaration: 'export interface PermissionSelect {\n    options: PresetOption[];\n    currentValue: string;\n}',
   },
@@ -3540,6 +4188,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PromptContext',
     declaration: 'export interface PromptContext {\n    readonly name: string;\n    readonly order: number;\n    readonly text: string | ((context: AssembleContext) => string);\n}',
+  },
+  {
+    name: 'PromptContributionActivity',
+    declaration: 'export interface PromptContributionActivity {\n    readonly sessionId: SessionId;\n    readonly producer: \'soul\' | \'memory\';\n    readonly section: ClawdshPromptSection;\n    readonly mode: \'append\' | \'replace\';\n    readonly characters: number;\n    readonly sha256: string;\n    readonly seq: number;\n}',
   },
   {
     name: 'PromptSection',
@@ -4014,6 +4666,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SkillCandidate extends SkillSummary {\n    readonly rank: number;\n    readonly locator: unknown;\n    readonly path?: string;\n    readonly metadata?: Readonly<Record<string, unknown>>;\n}',
   },
   {
+    name: 'SkillCatalogActivity',
+    declaration: 'export interface SkillCatalogActivity {\n    readonly sessionId: SessionId;\n    readonly count: number;\n    readonly seq: number;\n}',
+  },
+  {
     name: 'SkillCatalogSnapshot',
     declaration: 'export interface SkillCatalogSnapshot {\n    readonly skills: SkillSummary[];\n    readonly complete: boolean;\n}',
   },
@@ -4024,6 +4680,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SkillInvocationPolicy',
     declaration: 'export interface SkillInvocationPolicy {\n    readonly modelInvocable: boolean;\n    readonly userInvocable: boolean;\n}',
+  },
+  {
+    name: 'SkillInvokedActivity',
+    declaration: 'export interface SkillInvokedActivity extends SkillLoadedActivity {\n    readonly status: \'started\' | \'succeeded\' | \'failed\';\n}',
+  },
+  {
+    name: 'SkillLoadedActivity',
+    declaration: 'export interface SkillLoadedActivity {\n    readonly sessionId: SessionId;\n    readonly skill: string;\n    readonly seq: number;\n}',
   },
   {
     name: 'SkillLookupOptions',

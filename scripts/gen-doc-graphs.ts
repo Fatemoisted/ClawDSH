@@ -97,6 +97,46 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'clawdshActivity',
+    pkg: 'activity',
+    title: 'Privacy-limited semantic Activity',
+    mode: 'core',
+    consumers: ['channel-agent', 'memory', 'soul'],
+    note: 'Projects product semantics from standard Session history and bounded sidecars without copying message bodies, credentials, platform identities, or raw diagnostics.',
+  },
+  {
+    key: 'clawdshOpenClawControl',
+    pkg: 'channel-openclaw',
+    title: 'Managed OpenClaw control seam',
+    mode: 'core',
+    note: 'Exposes secret-free lifecycle state and validates desired Settings with managed-identity and deployment preflight checks before persistence.',
+  },
+  {
+    key: 'clawdshSoulSettings',
+    pkg: 'soul',
+    title: 'Session-scoped Soul settings',
+    mode: 'core',
+    note: 'Resolves the restart-scoped base and optional per-session mode used by Soul prompt composition without creating a second settings runtime.',
+  },
+  {
+    key: 'channels',
+    pkg: 'channel',
+    title: 'Canonical channel plane',
+    mode: 'seam',
+    implementations: ['channel-openclaw', 'channel-agent'],
+    consumers: ['channel-agent'],
+    note: 'The locked OpenClaw provider owns platform communication; the Harness-first driver owns admission, Agent and Session execution, tools, and durable result projection.',
+  },
+  {
+    key: 'embeddings',
+    pkg: 'embeddings',
+    title: 'Text embedding seam',
+    mode: 'seam',
+    implementations: ['embeddings-ark'],
+    consumers: ['memory'],
+    note: 'One provider maps ordered text batches into one comparable vector space; memory owns chunking, indexing, ranking, and model-facing retrieval.',
+  },
+  {
     key: 'attachments',
     pkg: 'attachment',
     title: 'Durable binary attachment storage',

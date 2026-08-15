@@ -1,6 +1,7 @@
 # Agent Note: ack 表情 scope 门控与各渠道提及检测
 
 Status: implemented
+Archived: 2026-08-16
 
 [English](2026-08-14-ack-reaction-scope.md) | 中文
 

@@ -17,7 +17,7 @@ memory 规格的非目标里写着「no pre-compaction memory flush turn (Phase 
 - `agent/turn-stopping` 在模型无欠响应且 inbox 无 next-step 工作时触发（`agent.ts:295-298`）；`agent.followup` 入队一个普通回合，同一 driver 继续执行（`agent.ts:299-324`）——无死锁、无第二 agent、同一份 transcript。
 - 阈值读 `ctx.get('tokenMeter').measure(session).totalTokens` 与 `ctx.get('llm').resolveModelInfo(provider, model).context.contextWindow`（从 `session.requestHeader()?.config` 路由，compaction-basic 的模式），配置 `flush.{reserveTokensFloor=20000, softThresholdTokens=4000, prompt, enabled}` 经 z 校验。
 - 每周期一次：`WeakMap<Agent, {throughSeq, pending}>`；`throughSeq` 是入队时最新 `compaction/end` 的 seq（持久的既有标记——无需新会话事件）；更新的压缩重新激活资格。压缩后的场景由阈值检查自然挡住（压缩把 `totalTokens` 缩到 flush 阈值以下）。
-- NO_REPLY：默认 prompt 要求该应答；观察器在 info 级记录。投递抑制走 channel-core 的 `extractReply` 插件回合过滤——claim 消息为 plugin 源的回合绝不顶替渠道回复（顺带为渠道会话上的 schedule 通知兜底）。
+- NO_REPLY：默认 prompt 要求该应答，观察器在 info 级记录。Canonical 渠道投递绑定到已准入 `user/message` 所属的精确回合，因此后续 plugin 源 flush 回合不能替换该结果。
 - 失败绝不阻塞主回合：flush 回合是独立回合，其错误由 driver 遏制。
 
 **与 OpenClaw 的成文降质**（Known Limitations）：flush 在回合**之间**运行，因此 flush 完成前入队的入站会先跑；且 flush 回合自身的 pre-step 可能先触发压力压缩，flush 从压缩后的摘要写记忆。dsh 默认压缩阈值（0.8 × window）低于 flush 阈值（window − 24000），常见流程是压缩 → 从摘要 flush；想要 OpenClaw 顺序的部署把压缩 `thresholdRatio` 调到 flush 阈值之上。跳过清单（heartbeat/CLI/sandbox-ro）映射为挂载面 opt-in：不挂 memory 行的 profile 永不 flush。
@@ -38,5 +38,5 @@ memory 规格的非目标里写着「no pre-compaction memory flush turn (Phase 
 
 - memory 规格的非目标条目移除；flush 进入 memory 行的验收标准。
 - `feature-memory.md` 与 memory README 记录 flush 配置、模型可见 prompt 与上述两条降质；矩阵 memory 行保持单一 implemented 行。
-- channel-core 的 `extractReply` 现过滤 plugin 源回合——渠道回复提取路径的行为变更，由「driveTurn 期间入队 plugin 源 followup」的 channel-core 测试覆盖。
+- Canonical 渠道 Driver 从已准入消息所属的精确回合解析输出；plugin 源维护回合保持为独立日志回合，不能替换该输出。
 - 若上游 dsh 将来提供预压缩回合钩子（或单回合压缩豁免），本 Note 的降质清单即升级检查表。

@@ -56,7 +56,7 @@ Loader composition state and channel-support evidence are separate concepts:
 
 The disabled state of the managed communication-plane parent is authoritative for Channels even though Cordis keeps the group carrier itself active and omits its disabled children. Soul is reported active only when the default `clawdsh` preset contains the exact enabled managed Soul row and its standing composition mounts successfully.
 
-Channels contain three components: Channel Protocol (`@clawdsh/dsh-channel`), Agent Bridge (`@clawdsh/dsh-channel-agent`), and OpenClaw Gateway Provider (`@clawdsh/dsh-channel-openclaw`). Feishu, Telegram, and the other locked production entries appear beneath the Gateway as catalog items with `cataloged` support; they are not standalone dsh plugin cards. Legacy `channel-core`, `channel-feishu`, and `channel-telegram` entries may appear in the raw Loader inventory but do not affect product health.
+Channels contain three components: Channel Protocol (`@clawdsh/dsh-channel`), Agent Bridge (`@clawdsh/dsh-channel-agent`), and OpenClaw Gateway Provider (`@clawdsh/dsh-channel-openclaw`). Feishu, Telegram, and the other locked production entries appear beneath the Gateway as catalog items with `cataloged` support; they are not standalone dsh plugin cards. The raw Loader inventory contains no direct platform-adapter entry.
 
 Package provenance follows one fixed mapping: `@clawdsh/*` is ClawDSH, `@deepseek-ai/*` and `cordis:*` are Platform, and every other source is Community.
 

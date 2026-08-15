@@ -9,15 +9,33 @@ This file is GENERATED from source (`scripts/gen-config-catalog.ts`) and verifie
 
 A `Requires:` line lists the service keys the plugin `inject`s: its `cordis.yml` tree must also load providers for those services. Scope is the harness tier (`packages/`); the vendored cordis plugins a config tree may also load (`hmr`, the console logger, …) are pinned upstream source ([vendoring policy](../vendor/README.md)) and not catalogued here.
 
+<a id="clawdshdsh-activity"></a>
+
+## `@clawdsh/dsh-activity`
+
+Requires: `settings`
+
+```ts config-catalog
+/** Managed Activity configuration. */
+export interface Config {
+  /** Activity is a required product capability and cannot be disabled. */
+  readonly enabled?: true
+}
+```
+
+Source: [`packages/openclaw/activity/src/index.ts:51`](../packages/openclaw/activity/src/index.ts)
+
 <a id="clawdshdsh-automation"></a>
 
 ## `@clawdsh/dsh-automation`
 
-Requires: `agents` · `sessions` · `agentDefaultModel`
+Requires: `agents` · `sessions` · `agentDefaultModel` · `settings`
 
 ```ts config-catalog
 /** Plugin config: the declared rule set. cordis.yml is the durable store — no separate storage seam. */
 export interface Config {
+  /** Whether any automation runtime, timer, or durable session may start. */
+  enabled?: boolean
   /** Scheduled rules; each gets its own durable agent session. */
   rules?: AutomationRule[]
 }
@@ -63,13 +81,13 @@ export interface EverySchedule {
 }
 ```
 
-Source: [`packages/openclaw/automation/src/index.ts:89`](../packages/openclaw/automation/src/index.ts)
+Source: [`packages/openclaw/automation/src/index.ts:93`](../packages/openclaw/automation/src/index.ts)
 
 <a id="clawdshdsh-channel-agent"></a>
 
 ## `@clawdsh/dsh-channel-agent`
 
-Requires: `channels` · `agents` · `sessions` · `sessionPersistence` · `agentDefaultModel` · `agentPresets` · `attachments` · `storageDomain` · `tools`
+Requires: `channels` · `agents` · `sessions` · `sessionPersistence` · `agentDefaultModel` · `agentPresets` · `attachments` · `storageDomain` · `tools` · `settings`
 
 ```ts config-catalog
 /** Deployment decisions for channel-created Agents and media intake. */
@@ -89,77 +107,19 @@ export interface Config {
 }
 ```
 
-Source: [`packages/openclaw/channel-agent/src/index.ts:74`](../packages/openclaw/channel-agent/src/index.ts)
-
-<a id="clawdshdsh-channel-core"></a>
-
-## `@clawdsh/dsh-channel-core`
-
-Requires: `agents` · `sessions` · `agentDefaultModel`
-
-```ts config-catalog
-/** Channel registry config: identity presentation (never prompt content). */
-export interface Config {
-  /** Identity the presentation resolves against. */
-  identity?: IdentityConfig
-  /** Outbound prefix; `'auto'` renders `[name]`. */
-  responsePrefix?: string
-  /** Ack emoji; falls back to `identity.emoji`, then `👀`; an explicit empty string disables acks. */
-  ackReaction?: string
-  /** Where the ack applies; defaults to `group-mentions` (groups, mentioned only). */
-  ackReactionScope?: AckReactionScope
-  /** Whether group chats demand a mention before acks; defaults to true. */
-  requireMention?: boolean
-}
-
-/** Identity config: presentation only, never injected into the prompt. */
-export interface IdentityConfig {
-  /** Display name rendered as `[name]` and matched in mention patterns. */
-  name?: string
-  /** OpenClaw's theme slot; accepted for config parity and reserved — nothing reads it yet. */
-  theme?: string
-  /** Emoji used as the ack reaction fallback and a literal mention pattern. */
-  emoji?: string
-}
-
-/** Where the ack emoji reaction applies (OpenClaw's `messages.ackReactionScope`). */
-export type AckReactionScope = 'all' | 'direct' | 'group-all' | 'group-mentions'
-```
-
-Source: [`packages/openclaw/channel-core/src/index.ts:113`](../packages/openclaw/channel-core/src/index.ts)
-
-<a id="clawdshdsh-channel-feishu"></a>
-
-## `@clawdsh/dsh-channel-feishu`
-
-Requires: `legacyChannels`
-
-```ts config-catalog
-/** Plugin config: app identity plus which Open Platform region to dial. */
-export interface Config {
-  /** Feishu app ID (from the developer console); must not be committed. */
-  appId: string
-  /** Feishu app secret; must not be committed. */
-  appSecret: string
-  /** Open Platform region; `feishu` (default) or `lark`. */
-  domain?: FeishuDomain
-}
-
-/** Feishu API domain: mainland Feishu or international Lark. */
-export type FeishuDomain = 'feishu' | 'lark'
-```
-
-Source: [`packages/openclaw/channel-feishu/src/index.ts:39`](../packages/openclaw/channel-feishu/src/index.ts)
+Source: [`packages/openclaw/channel-agent/src/index.ts:85`](../packages/openclaw/channel-agent/src/index.ts)
 
 <a id="clawdshdsh-channel-openclaw"></a>
 
 ## `@clawdsh/dsh-channel-openclaw`
 
-Requires: `channels` · `storageDomain` · `subprocess`
+Requires: `channels` · `storageDomain` · `subprocess` · `settings`
 
 ```ts config-catalog
 /** Fully explicit managed-Gateway configuration. */
 export interface Config extends Omit<OpenClawSupervisorConfig, 'extensions'> {
+  /** Whether the managed Gateway may preflight, bind IPC, or start a process. */
+  readonly enabled: boolean
   /** Mutable schema output consumed as immutable extension locks by the Supervisor. */
   readonly extensions: OpenClawExtensionLock[]
 }
@@ -237,39 +197,17 @@ export interface ChannelIpcConfig {
 export type OpenClawTrack = 'production' | 'canary'
 ```
 
-Source: [`packages/openclaw/channel-openclaw/src/index.ts:28`](../packages/openclaw/channel-openclaw/src/index.ts)
-
-<a id="clawdshdsh-channel-telegram"></a>
-
-## `@clawdsh/dsh-channel-telegram`
-
-Requires: `legacyChannels`
-
-```ts config-catalog
-/** Plugin config: the bot token plus long-polling tuning. */
-export interface Config {
-  /** Bot token from `@BotFather`; must not be committed. */
-  botToken: string
-  /** When `false`, the adapter is send-only and does not poll for inbound messages. */
-  polling?: boolean
-  /** Long-poll hold timeout in seconds (Telegram clamps to 1–60). */
-  timeout?: number
-}
-```
-
-Source: [`packages/openclaw/channel-telegram/src/index.ts:31`](../packages/openclaw/channel-telegram/src/index.ts)
+Source: [`packages/openclaw/channel-openclaw/src/index.ts:49`](../packages/openclaw/channel-openclaw/src/index.ts)
 
 <a id="clawdshdsh-embeddings-ark"></a>
 
 ## `@clawdsh/dsh-embeddings-ark`
 
+Requires: `settings`
+
 ```ts config-catalog
 /** Plugin config (all optional — `static Config` supplies the defaults). */
 export interface Config {
-  /** Literal Ark API key; prefer {@link apiKeyEnv} so no secret enters configuration files. */
-  apiKey?: string
-  /** Credential reference resolved per embed; defaults to `ARK_API_KEY`. */
-  apiKeyEnv?: string
   /** Endpoint base; `/embeddings/multimodal` is appended. */
   baseURL?: string
   /** Embedding model name. Defaults to {@link ARK_DEFAULT_MODEL}. */
@@ -281,17 +219,19 @@ export interface Config {
 }
 ```
 
-Source: [`packages/openclaw/embeddings-ark/src/index.ts:44`](../packages/openclaw/embeddings-ark/src/index.ts)
+Source: [`packages/openclaw/embeddings-ark/src/index.ts:47`](../packages/openclaw/embeddings-ark/src/index.ts)
 
 <a id="clawdshdsh-memory"></a>
 
 ## `@clawdsh/dsh-memory`
 
-Requires: `tools` · `systemPrompt` · `fs`
+Requires: `tools` · `systemPrompt` · `fs` · `settings`
 
 ```ts config-catalog
 /** Plugin config; `root` is required — the memory directory a deployment owns. */
 export interface Config {
+  /** Whether Memory registers prompt guidance, tools, file watching, and flush hooks. */
+  enabled?: boolean
   /** Memory root directory (absolute or resolved against `process.cwd()`). Required, fail-loud. */
   root: string
   /** Character budget per index chunk. Defaults to 1600. */
@@ -331,17 +271,19 @@ export interface FlushConfig {
 }
 ```
 
-Source: [`packages/openclaw/memory/src/index.ts:59`](../packages/openclaw/memory/src/index.ts)
+Source: [`packages/openclaw/memory/src/index.ts:66`](../packages/openclaw/memory/src/index.ts)
 
 <a id="clawdshdsh-skills-hub"></a>
 
 ## `@clawdsh/dsh-skills-hub`
 
-Requires: `skills`
+Requires: `skills` · `settings`
 
 ```ts config-catalog
 /** Plugin config: which OpenClaw-style roots to scan and whether to evaluate `metadata.clawdbot` gating. */
 export interface Config {
+  /** Whether this row registers the ClawHub provider. */
+  enabled?: boolean
   /**
    * Fixed workspace skills directory. Empty (default) scans `<cwd>/skills`
    * per lookup instead, mirroring OpenClaw's `<workspaceDir>/skills`.
@@ -356,17 +298,19 @@ export interface Config {
 }
 ```
 
-Source: [`packages/openclaw/skills-hub/src/index.ts:55`](../packages/openclaw/skills-hub/src/index.ts)
+Source: [`packages/openclaw/skills-hub/src/index.ts:59`](../packages/openclaw/skills-hub/src/index.ts)
 
 <a id="clawdshdsh-soul"></a>
 
 ## `@clawdsh/dsh-soul`
 
-Requires: `systemPrompt`
+Requires: `systemPrompt` · `clawdshSoulSettings`
 
 ```ts config-catalog
 /** Plugin config: where the soul text comes from and how it lands. */
 export interface Config {
+  /** Whether new agent scopes receive a Soul prompt contribution. */
+  enabled?: boolean
   /**
    * Path to a soul file (markdown). Wins over `text`. A relative path resolves
    * against the mount tree's `ctx.baseUrl` — the preset composition directory
@@ -385,7 +329,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/openclaw/soul/src/index.ts:45`](../packages/openclaw/soul/src/index.ts)
+Source: [`packages/openclaw/soul/src/index.ts:58`](../packages/openclaw/soul/src/index.ts)
 
 <a id="deepseek-aidsh-acp"></a>
 
