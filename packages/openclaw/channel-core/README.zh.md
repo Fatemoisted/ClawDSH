@@ -8,7 +8,7 @@
 
 **接缝**：**新增** `ctx.channels`（设计见 docs/adr/0002-channel-seam.md）。上游 dsh 没有消息渠道概念，这是本项目的核心增量；按 ADR-0002，它是 ClawDSH 长期自有 seam，并非临时上游 patch。
 
-**规格**：docs/adr/0002-channel-seam.md · **状态**：implemented
+**规格**：[ADR-0002](../../../docs/adr/0002-channel-seam.md) · [ADR-0007](../../../docs/adr/0007-deferred-channel-images-and-address-continuity.md) · **状态**：implemented
 
 ## 使用
 
@@ -34,6 +34,9 @@
 - 入站消息先走 dsh 的 session 机制（append-only log），再进 agent loop——"model-visible means logged" 不变式自然继承；
 - 平台会话/话题确定性映射到不泄露原始平台 id 的 `channel:v1:<sha256>` session id；路由直接复用 Harness 的 `sessionPersistence` 与 `agents.resume/create`，daemon 重启后继续同一段历史；
 - 当前地址契约把 `conversationId` 与可选 `threadId` 分开。为兼容旧 source，只发送 `threadId` 的 legacy adapter 会被视为一个 conversation，出站时同一值也会回填到 `threadId`；新 adapter 必须使用结构化双字段；
+- 可选的 `sessionConversationId` 只影响持久 session 与 FIFO key 的派生；出站投递仍使用 provider 的真实 `conversationId`。这样 adapter 能在平台侧 chat id 迁移前后保持同一份持久身份，同时不会把回复发往已退役的 id；
+- 可选的 `images` 只携带 provider 自有的文件元数据，并且仅作为短暂路由输入：provider file id、URL 与字节都不会进入持久 session log。通过群聊 mention 准入后，channel-core 通过 Harness `ctx.llm` 解析准确的所选模型；只有支持图片的路由才会在该聊天 FIFO 内调用 adapter 的 `materializeImages`。该钩子返回持久 Harness `ImageAttachmentRef`，因此被接受的 user event 只包含附件引用，不包含 provider 数据；
+- 未声明图片输入的模型路由不会 materialize 或下载图片。非空 caption 会继续成为文本轮次，并附加一段明确说明图片已省略的模型可见上下文；纯图片消息只收到固定 transport 提示，不创建模型轮次。导入失败同样只返回固定提示，不会追加不完整的 user event；
 - Agent 组合交给 Harness 的 `agentPresets.resolve/mount`；所选 preset 写进 session header，恢复时继续使用。channel-core 不重新实现 Soul、工具、Memory 或模型配置；
 - 并发首条消息走 single-flight，每个会话/话题维持一条 FIFO turn chain；adapter dispose 会排空 provider middleware，registry dispose 会先排空已准入回合再释放 Agent；空闲 live handle 由 Harness timer 回收，持久会话仍可恢复；
 - 每个渠道插件（telegram/whatsapp/…）只实现适配器，不碰路由逻辑；
@@ -42,24 +45,24 @@
 
 ## Model Experience
 
-### Inbound message text
+### 入站文本与图片
 
 #### What the model sees
 
-路由先执行群聊 mention 策略，按需移除呈现层 mention，再把接受的 `channel/inbound` 文本通过 `followup(createUserMessage({ text }))` 写入该会话/话题的 session；回复从同一 session 的 `assistant/message` 文本块读取。
+路由先执行群聊 mention 策略，按需移除呈现层 mention，再把接受的文本作为 user message 写入该会话/话题的 session。在支持图片的模型路由上，成功 materialize 的图片会以持久 Harness image block 加入同一条 user message。文本模型路由会保留 caption，并明确告诉模型图片已省略；纯图片消息不会到达模型。回复从同一 session 的 `assistant/message` 文本块读取。
 
 #### Token effect
 
-入站文本为对应 conversation/topic session 增加 prompt token，并保留在该 session 的历史中直至压缩。
+入站文本以及暴露给图片模型的附件元数据会进入对应 conversation/topic 的历史并保留至压缩。纯图片与导入失败的固定 transport 提示不是模型输入，不消耗模型 token。
 
 #### KV Cache effect
 
-Append-only；每个入站回合只向可复用请求前缀追加一条 user message，不使既有 cache 条目失效。
+Append-only；每个被接受的文本/图片回合只向可复用请求前缀追加一条 user message，不修改既有条目。
 
 ## Known Limitations and Deferred Work
 
-- **带凭证 e2e**：无密钥测试已覆盖路由、重启恢复、preset 挂载、并发、mention 门控与 ack 范围；飞书/Telegram 的线上权限仍需部署凭证验证。
-- **富渠道载荷**：当前 seam 仍以文本为主。provider 可把富文本压平，但二进制附件、引用、卡片以及写入 Harness `ctx.attachments` 尚未进入 `ChannelMessage` 契约。
+- **带凭证 e2e**：无密钥测试已覆盖路由、重启恢复、preset 挂载、并发、群聊 mention 策略、ack 范围、模型模态检查与图片 materialize 顺序。带凭证部署已跑通飞书文本路径与 Telegram 私聊/群聊文本/caption 路径，包括确定性重启恢复、中断回合恢复与同一聊天 FIFO。Telegram 图片字节导入已通过无密钥测试，但尚未完成真实客户端/模型验证。各 provider 的真实覆盖边界仍由对应适配器 README 记录。
+- **富渠道载荷**：规范化 seam 已支持文本，以及可由 adapter materialize 成 Harness attachment 的短暂 raster-image source。引用、卡片、音频、视频、文件和 provider 特有富文本仍不在规范化输入契约内。
 - **旧持久会话**：运行时仍兼容 thread-only 消息形态，但迁移前落盘会话使用随机 id，且日志里没有持久的平台地址映射；这些 artifact 无法自动关联到新的确定性 id，仍可单独读取。
 - **单 daemon 写者**：FIFO/single-flight 只在进程内成立；多个 daemon 共用同一 bot 与持久化根时还需要外部 owner/lease。
 - **无持久 provider outbox**：adapter/SDK 重试会覆盖瞬时发送失败，最终失败也会 reject 并记录；但重试后仍失败的回复不会进入一份可独立重放的持久 outbox。

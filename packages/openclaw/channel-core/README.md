@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 **Seam**: **new** `ctx.channels` (design in docs/adr/0002-channel-seam.md). Upstream dsh has no message-channel concept; this is the project's core increment. Per ADR-0002 it is a long-lived ClawDSH seam, not a temporary upstream patch.
 
-**Specification**: docs/adr/0002-channel-seam.md · **Status**: implemented
+**Specifications**: [ADR-0002](../../../docs/adr/0002-channel-seam.md) · [ADR-0007](../../../docs/adr/0007-deferred-channel-images-and-address-continuity.md) · **Status**: implemented
 
 ## Usage
 
@@ -34,6 +34,9 @@ English | [中文](README.zh.md)
 - Inbound messages first go through dsh's session mechanism (append-only log), then enter the agent loop — the "model-visible means logged" invariant is inherited naturally;
 - A provider conversation/topic maps to a deterministic opaque `channel:v1:<sha256>` session id. The router uses Harness `sessionPersistence` plus `agents.resume/create`, so the same channel history resumes after a daemon restart;
 - The current address contract separates `conversationId` from optional `threadId`. For source compatibility, a legacy adapter that sends only `threadId` is treated as one conversation and receives the same value back in the outbound `threadId`; new adapters must use the structured two-field shape;
+- Optional `sessionConversationId` affects only durable session and FIFO-key derivation; outbound delivery keeps the provider's actual `conversationId`. This lets an adapter preserve one durable identity across a provider-side chat-id migration without sending replies to the retired id;
+- Optional `images` carry provider-owned file metadata only. They are ephemeral routing input: provider file ids, URLs, and bytes never enter the durable session log. After group-mention admission, channel-core resolves the exact selected model through Harness `ctx.llm`; only an image-capable route may invoke the adapter's `materializeImages` hook inside that chat's FIFO. The hook returns durable Harness `ImageAttachmentRef`s, so the accepted user event contains attachment references rather than provider data;
+- A route that does not declare image input never materializes or downloads an image. A non-empty caption continues as a text turn with an explicit model-visible omission note; an image-only message receives a fixed transport notice and creates no model turn. Import failure likewise returns a fixed notice without appending a partial user event;
 - Agent composition is delegated to Harness `agentPresets.resolve/mount`. The selected preset is recorded in the session header and reused on resume; channel-core does not reimplement Soul, tools, memory, or model setup;
 - Concurrent first messages are single-flighted and every conversation/topic has one FIFO turn chain. Adapter disposal drains provider middleware, registry disposal drains admitted turns before releasing Agents, and idle live handles are released through the Harness timer while the durable session remains resumable;
 - Each channel plugin (telegram/whatsapp/…) implements only the adapter and does not touch routing logic;
@@ -42,24 +45,24 @@ English | [中文](README.zh.md)
 
 ## Model Experience
 
-### Inbound message text
+### Inbound message text and images
 
 #### What the model sees
 
-The router validates group mention policy, removes the configured presentation mention when applicable, and turns the accepted `channel/inbound` text into a user message (`followup(createUserMessage({ text }))`) in the conversation/topic session. The agent's reply is read from that same session's `assistant/message` text blocks.
+The router validates group mention policy, removes the configured presentation mention when applicable, and appends the accepted text as a user message in the conversation/topic session. On an image-capable model route, successfully materialized images are appended in the same user message as durable Harness image blocks. On a text-only route, a caption remains model input with an explicit statement that the image was omitted; an image-only message never reaches the model. The agent's reply is read from that same session's `assistant/message` text blocks.
 
 #### Token effect
 
-Inbound text contributes prompt tokens to the per-conversation/topic session and stays in that session's history until compaction.
+Inbound text and the attachment metadata exposed to an image-capable model contribute to the per-conversation/topic history until compaction. The fixed image-only and import-failure transport notices are not model input and consume no model tokens.
 
 #### KV Cache effect
 
-Append-only; each inbound turn appends a user message to the reusable request prefix and does not invalidate prior cache entries.
+Append-only; every accepted text/image turn appends one user message to the reusable request prefix and does not mutate prior entries.
 
 ## Known Limitations and Deferred Work
 
-- **credentialed e2e**: keyless tests cover routing, persistence restart, preset mounting, concurrency, mention gating, and ack scopes; live Feishu/Telegram permissions still require deployment credentials.
-- **rich channel payloads**: the normalized seam remains text-first. Providers can flatten rich text, but binary attachments, quotes, cards, and Harness `ctx.attachments` ingestion are not yet part of `ChannelMessage`.
+- **credentialed e2e**: keyless tests cover routing, persistence restart, preset mounting, concurrency, group-mention policy, ack scopes, model-modality checks, and image materialization ordering. Credentialed deployments have closed the Feishu text path and the Telegram direct/group text/caption paths, including deterministic restart recovery, interrupted-turn recovery, and same-chat FIFO. Telegram image-byte import is keyless-tested but has not yet passed a real-client/model run. Provider-specific live-coverage boundaries remain in the adapter READMEs.
+- **rich channel payloads**: the normalized seam supports text plus ephemeral raster-image sources that adapters can materialize into Harness attachments. Quotes, cards, audio, video, files, and provider-specific rich text remain outside the normalized input contract.
 - **legacy persisted sessions**: the thread-only message shape is supported at runtime, but pre-migration persisted sessions used random ids and contain no durable platform-address mapping. Those artifacts cannot be auto-associated with the new deterministic ids and remain separately readable.
 - **one daemon writer**: FIFO/single-flight is process-local; running multiple daemons against the same bot and persistence root needs an external ownership/lease layer.
 - **no durable provider outbox**: adapter/SDK retries cover transient sends and final failures reject and log, but a reply that still fails after those retries is not stored in a separately replayable outbox.

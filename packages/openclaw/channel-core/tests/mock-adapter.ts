@@ -1,4 +1,10 @@
-import type { GenerateOptions, LlmModelReasoningInfo, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
+import type {
+  GenerateOptions,
+  LlmModelReasoningInfo,
+  LlmResolvedModelInfo,
+  ModelModality,
+  StreamChunk,
+} from '@deepseek-ai/dsh-llm'
 import { LlmAdapter } from '@deepseek-ai/dsh-llm'
 
 /** Helpers to write scripted responses tersely. */
@@ -27,6 +33,7 @@ export class MockAdapter extends LlmAdapter {
     private script: (StreamChunk[] | ((options: GenerateOptions) => StreamChunk[]) | 'hang' | 'hang-slow')[],
     private readonly reasoning?: LlmModelReasoningInfo,
     private readonly defaultMaxTokens?: number,
+    private readonly inputModalities?: readonly ModelModality[],
   ) {
     super()
   }
@@ -41,6 +48,7 @@ export class MockAdapter extends LlmAdapter {
       name: model,
       ...this.reasoning === undefined ? {} : { reasoning: this.reasoning },
       ...this.defaultMaxTokens === undefined ? {} : { defaultMaxTokens: this.defaultMaxTokens },
+      ...this.inputModalities === undefined ? {} : { inputModalities: this.inputModalities },
     })
   }
 

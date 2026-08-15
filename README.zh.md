@@ -21,7 +21,7 @@ export DEEPSEEK_API_KEY=sk_xxx
 pnpm dsh --profile openclaw
 ```
 
-安装后的 `openclaw` profile 是飞书渠道常驻 daemon，不是 Web UI 或一次性 headless runner。它使用 `$DSH_HOME`，默认值为 `~/.dsh`；`tools/link-openclaw.sh` 与 `pnpm dsh` 必须使用同一个 `DSH_HOME`。默认 profile 已安装但禁用了 Telegram、Discord 与 automation。链接脚本是发布前的开发路径，每次运行都会用当前 checkout 刷新已安装的 profile。
+安装后的 `openclaw` profile 是飞书渠道常驻 daemon，不是 Web UI 或一次性 headless runner。它使用 `$DSH_HOME`，默认值为 `~/.dsh`；`tools/link-openclaw.sh` 与 `pnpm dsh` 必须使用同一个 `DSH_HOME`。默认 profile 已安装但禁用了 Telegram、Discord 与 automation。链接脚本是发布前的开发路径，每次运行都会用当前 checkout 刷新已安装的 profile。如需在不向仓库写入 token 的前提下启用并验证 Telegram，请按 [Telegram 带凭证 e2e 实操手册](docs/cookbook/telegram-e2e.md)操作。
 
 以下无密钥检查先验证 profile 组装且不连接飞书，再运行 ClawDSH 包测试：
 
@@ -32,6 +32,12 @@ pnpm run test:openclaw
 ```
 
 `--dump-config` 只证明组合能够解析；平台权限、凭证和网络连通性仍需部署后的端到端检查。
+
+## Telegram 真实客户端结论（2026-08-15）
+
+本轮使用真实 Telegram Bot API 与客户端完成带凭证验证，已通过身份验证、私聊 `/start` 与精确回复、重启后的持久 Memory、群聊 mention/reply 门控、定向命令隔离、Harness `web_search`、离线补收、Unicode-safe 长回复分片、中断回合恢复，以及同一聊天 FIFO 投递。对于当时尚未接入图片导入的受测构建，本轮还实际观察到 caption 转发与无正文媒体忽略行为。
+
+图片 materialization 与文本模型图片处理是在本轮之后加入，目前只有无密钥自动化覆盖，不属于带凭证真实客户端通过项。凭证热切换、chat-id 迁移、forum topic 与 ack reaction 也不在已记录的线上基线内。准确的证据边界见 [Telegram 带凭证 e2e 实操手册](docs/cookbook/telegram-e2e.md)与 [2026-08-15 日志](docs/journal/2026-08-15.md)。
 
 ## Harness 契约优先
 

@@ -37,6 +37,7 @@ External packages that a workspace package resolves at runtime. The tier covers 
 | [`@babel/code-frame`](https://github.com/babel/babel) | MIT |
 | [`@earendil-works/pi-ai`](https://github.com/earendil-works/pi) | MIT |
 | [`@grammyjs/auto-retry`](https://github.com/grammyjs/auto-retry) | MIT |
+| [`@grammyjs/files`](https://github.com/grammyjs/files) | MIT |
 | [`@joplin/turndown-plugin-gfm`](https://github.com/laurent22/joplin-turndown-plugin-gfm) | MIT |
 | [`@jridgewell/gen-mapping`](https://github.com/jridgewell/sourcemaps) | MIT |
 | [`@larksuiteoapi/node-sdk`](https://github.com/larksuite/node-sdk) | MIT |

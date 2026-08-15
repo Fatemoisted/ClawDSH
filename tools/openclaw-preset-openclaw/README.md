@@ -11,15 +11,16 @@ English | [中文](README.zh.md)
 2. **example soul** (`souls/assistant.md`);
 3. **profile template** (`profile/`) — copying it to `$DSH_HOME/profiles/openclaw/` makes it the assembly base of `--profile openclaw` (bundles: `dsh-base`, the resident daemon; no `dsh-headless`, which is the one-shot task runner).
 
-**Spec**: docs/specs/roadmap.md (phase 0/2 deliverables) · **Status**: locally assembled with keyless coverage and a prior Feishu text e2e; npm publication has not been executed
+**Spec**: docs/specs/roadmap.md (phase 0/2 deliverables) · **Status**: locally assembled with keyless coverage plus credentialed Feishu and Telegram text e2e; npm publication has not been executed
 
 ## Verified assembly
 
 - ✅ (phase 0) soul row mount semantics in agent scope — covered by 10 contract tests in `../../packages/openclaw/soul/tests/soul.spec.ts`;
 - ✅ (phase 0) profile parsing and layering — `pnpm dsh --profile openclaw --dump-config` resolves once `DSH_HOME` points at a directory containing this template profile;
-- ✅ channel-row wiring — `profile/cordis.patch.yml` `insert`s `channel-core`, Telegram, Feishu, and Discord; `channel-core` + Feishu are enabled, while Telegram and Discord stay `disabled: true` until explicitly configured;
+- ✅ channel-row wiring — `profile/cordis.patch.yml` `insert`s `channel-core`, Telegram, Feishu, and Discord; `channel-core` + Feishu are enabled, while Telegram and Discord stay `disabled: true` until explicitly configured. The Telegram row names the Harness credential reference `botTokenEnv: TELEGRAM_BOT_TOKEN` without embedding a secret;
 - ✅ (phase 2) Feishu real e2e — official SDK `LarkChannel` WebSocket inbound → `channel-core` durable conversation/topic turn → DeepSeek reply → SDK outbound, user confirmed receipt in Feishu;
-- ✅ (phase 2 catch-up) memory-row wiring — `profile/cordis.patch.yml` `insert`s `memory` (root defaults to `dshHomePath('memory')`) + `embeddings-ark` (**enabled**: missing ARK_API_KEY is invisible at boot, only fails loud on a `memory_search` call; key in root `.env` or `$DSH_HOME/.env`);
+- ✅ (phase 2) Telegram real e2e — Bot API authentication, direct/group text routing, native replies, memory and session recovery, web search, captions, offline catch-up, Unicode-safe splitting, interrupted recovery, and same-chat FIFO have run through a credentialed deployment; forum topics remain keyless-only coverage;
+- ✅ (phase 2 catch-up) memory-row wiring — `profile/cordis.patch.yml` `insert`s `memory` (root defaults to `dshHomePath('memory')`) + `embeddings-ark` with the explicit Harness credential reference `apiKeyEnv: ARK_API_KEY` (**enabled**: a missing credential is invisible at boot and fails loud only on `memory_search`);
 - ✅ (phase 2 wrap-up) soul file path resolved relative to the preset directory — relative `source` resolves against the mounted tree's `ctx.baseUrl`; `agent.cordis.yml` now uses `source: ./souls/assistant.md`;
 - ✅ Harness-native per-channel agents — `channel-core` derives a durable opaque session id, resumes it through `sessionPersistence`, and resolves/mounts the recorded `openclaw` composition through `dsh-agent-presets` on both create and resume;
 - ✅ Feishu/Telegram/Discord channel behavior — channel-core exposes a durable, failure-propagating `ctx.parallel` route and drains admitted turns on shutdown; structured mentions, native replies/topics/threads, acknowledgement reactions, Unicode-safe provider-sized chunks, SDK-owned transport retry, and process-restart session continuity are covered by keyless contract tests;
@@ -33,6 +34,7 @@ English | [中文](README.zh.md)
 
 - The default profile is a resident Feishu daemon. It does not start the Web UI or mount the OpenClaw preset into the headless one-shot runner.
 - `tools/link-openclaw.sh` refreshes the installed profile and creates symlinks bound to the current checkout; use the same `DSH_HOME` when linking and running.
+- Telegram remains disabled in the template. Use the repository-external overlay in the [Telegram credentialed-e2e cookbook](../../docs/cookbook/telegram-e2e.md) only to opt in; the template's `botTokenEnv` is resolved through Harness credentials, with the launch environment as fallback, and matching managed-credential updates hot-rotate the adapter. The link script can refresh the installed profile without overwriting that opt-in or storing a token.
 - Provider-specific credential, lifecycle, and deployed-E2E limits are maintained by the [Telegram](../../packages/openclaw/channel-telegram/README.md), [Discord](../../packages/openclaw/channel-discord/README.md#known-limitations-and-deferred-work), and [Feishu](../../packages/openclaw/channel-feishu/README.md) package READMEs. Automation remains disabled by default; review its [package limitations](../../packages/openclaw/automation/README.md#known-limitations-and-deferred-work) before enabling rules.
 
 ## Usage (Feishu daemon, local development)
@@ -52,4 +54,4 @@ pnpm dsh --profile openclaw
 
 Once the `@clawdsh/*` packages are published to the private registry (ADR-0004), the symlink step above is optional: install them declaratively with `dsh plugin --profile openclaw add @clawdsh/dsh-<pkg>` (one per package) — the user-facing path. The symlink script remains the pre-publish development path.
 
-Config validation fails loud (with `appId`/`appSecret` required) when `FEISHU_APP_ID` / `FEISHU_APP_SECRET` are unset. After startup, the SDK reports identity/connection failures through the channel log; live platform permissions still need a credentialed deployment check.
+Config validation fails loud (with `appId`/`appSecret` required) when `FEISHU_APP_ID` / `FEISHU_APP_SECRET` are unset. After startup, the SDK reports identity/connection failures through the channel log; changes to platform permissions or WebSocket deployment require another credentialed check.

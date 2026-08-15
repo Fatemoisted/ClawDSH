@@ -2,7 +2,7 @@
 
 English | [中文](ctx-channels.zh.md)
 
-> This document is the internal design record of the `ctx.channels` messaging-channel seam (lives under `docs/upstream-proposal/`, directory name retained, content no longer a pending PR). The contract has been validated locally with `channel-core` + dual-channel adapters (stage 2, see docs/adr/0002-channel-seam.md). The initiator decided on 2026-08-14 to skip the upstream PR and move fast — this seam is kept long-term as ClawDSH's own capability, and this document only records the contract and assembly semantics.
+> This document is the internal design record of the `ctx.channels` messaging-channel seam (lives under `docs/upstream-proposal/`, directory name retained, content no longer a pending PR). The contract has been validated locally with `channel-core` and multiple adapters; [ADR-0002](../adr/0002-channel-seam.md) owns the base seam decision and [ADR-0007](../adr/0007-deferred-channel-images-and-address-continuity.md) owns image/address continuity. The initiator decided on 2026-08-14 to skip the upstream PR and move fast — this seam is kept long-term as ClawDSH's own capability, and this document only records the contract and assembly semantics.
 
 ## Motivation
 
@@ -18,50 +18,70 @@ Without a seam, this "routing + session binding + turn driving + reply delivery"
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
+import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 
-export interface ChannelCapabilities { receive: boolean; send: boolean }
+export interface ChannelCapabilities { receive: boolean; send: boolean; react: boolean }
+
+export interface ChannelImageSource {
+  sourceId: string                 // ephemeral provider file id; never persisted
+  mediaType: ImageMediaType
+  bytes?: number
+  name?: string
+}
 
 export interface ChannelMessage {
-  channel: string                    // 适配器 id，如 'telegram' | 'feishu'
+  channel: string                    // adapter id, e.g. 'telegram' | 'feishu'
   direction: 'in' | 'out'
-  threadId?: string                  // 渠道侧会话线索（群 chat_id / p2p open_chat_id / TG chat.id）
-  sender?: string                    // 发送者身份（open_id / from.id）
+  conversationId?: string           // current provider delivery destination
+  sessionConversationId?: string    // optional stable identity after provider id migration
+  threadId?: string                 // optional topic inside the conversation
+  sender?: string
+  messageId?: string
+  replyToMessageId?: string
+  chatType?: 'direct' | 'group'
+  mention?: { detectable: boolean; botMentioned: boolean }
   text: string
+  images?: readonly ChannelImageSource[]
 }
 
 export interface ChannelAdapter {
   id: string
   capabilities: ChannelCapabilities
-  start(ctx: Context): () => void           // 订阅平台事件，emit 'channel/inbound'；返回 disposer
-  send(msg: ChannelMessage): Promise<void>  // 出站投递
+  start(ctx: Context): () => void | Promise<void>
+  send(msg: ChannelMessage): Promise<void>
+  materializeImages?(msg: ChannelMessage): Promise<readonly ImageAttachmentRef[]>
+  react?(msg: ChannelMessage, emoji: string): Promise<void>
 }
 ```
 
-- Events: `channel/inbound` (inbound, adapter → core), `channel/outbound` (outbound, after core delivers the reply).
+- Events: `channel/inbound` (parallel inbound, adapter → core), `channel/outbound` (outbound, after core delivers the reply).
 - A `ChannelRegistry extends Service` (`ctx.channels`) holds the adapter registry (ids unique, unregistration rolls back) and provides routing.
 
 ## Inbound routing / turn-driving semantics
 
-adapter `start()` receives a platform message → `ctx.emit('channel/inbound', msg)` → `channel-core` listens → routes:
+adapter `start()` receives a platform message → `await ctx.parallel('channel/inbound', msg)` → `channel-core` listens → routes:
 
-1. Locate/create the per-thread agent session by `${channel}\0${threadId ?? ''}` (`ctx.agents.create` for the first message, reused afterward);
-2. `followup(createUserMessage({ text }))` → `await agent.whenIdle()` → `await ctx.sessions.flush(session)`;
-3. Scan `assistant/message` text blocks to retrieve the reply → `adapter.send(outMsg)` + `emit('channel/outbound', outMsg)`.
+1. Normalize the current `conversationId`/optional `threadId`, apply the structured group-mention policy, and derive an opaque deterministic session id from `channel`, `sessionConversationId ?? conversationId`, and `threadId`. A rejected group message cannot trigger an image download;
+2. Resume or create the exact durable session with its recorded Harness agent preset and the current Harness default model selection. A single-flight map owns live handles, while a per-session tail chain serializes admitted turns;
+3. When ephemeral image sources are present, ask Harness `ctx.llm.resolveModelInfo` about that exact selection. A text-only route continues a caption with explicit omitted-image context or returns a fixed image-only transport notice. An image-capable route invokes `adapter.materializeImages` inside the FIFO and accepts only durable Harness attachment references;
+4. Append one user message containing accepted text/image blocks, wait for the agent to become idle, then `ctx.sessions.flush`; and
+5. Scan `assistant/message` text blocks to retrieve the reply → `adapter.send(outMsg)` + `emit('channel/outbound', outMsg)`.
 
-Per-thread inbound turns are serialized via a tail-chain to avoid concurrent interleaving. **Every inbound message and outbound reply goes through the session log** ("model-visible means logged"), covered by `dsh-agent`'s existing invariants.
+The acknowledgement reaction starts after admission and settles alongside the routed turn without blocking the per-session FIFO. Every fact sent to the model is first represented in the session log. Fixed image-only/import-failure transport notices are deliberately not model input and therefore are not session events.
 
 ## Relationship to `ctx.agents` / `ctx.sessions`
 
-- Reuse `ctx.agents.create` to create the session (`agentOptions` taken from `ctx.agentDefaultModel.currentSelection()`), adding no new session lifecycle;
-- Reuse `ctx.sessions.flush` to persist, adding no new persistence semantics;
-- Routing only keeps the "channel thread ↔ dsh session" binding in an in-memory map, a thin assembly layer that does not change `agent-loop`.
+- Reuse `ctx.agentDefaultModel`, `ctx.agentPresets`, and `ctx.agents.create/resume` for exact session composition, adding no new agent lifecycle;
+- Reuse `ctx.sessionPersistence` plus a deterministic opaque id for restart-safe routing, and reuse `ctx.sessions.flush` without adding persistence semantics;
+- Reuse `ctx.llm.resolveModelInfo` for model-owned image capability and Harness attachment references/content blocks for durable model input. A provider adapter may use `ctx.attachments` to validate and save bytes; channel-core does not implement storage;
+- The in-memory map owns only live handles, FIFO tails, and idle eviction. It is not the durable channel/session mapping and does not change `agent-loop`.
 
 ## Why it is a "thin assembly layer"
 
-This seam introduces no channel-feature semantics (attachments/references/rich text/cards all stay out of this layer): `ChannelMessage` carries only `text`, and the remaining channel features are mapped by the adapter itself inside `send`. Routing/session/log/reply-delivery are compositions of dsh's existing capabilities, and `channel-core` only does "assembly + serialization", so the intrusion surface into upstream is minimal, and the cost of adding a channel = one `ChannelAdapter` implementation.
+The seam owns only provider-neutral routing facts plus ephemeral raster-image descriptors. It never stores provider URLs, file ids, or bytes in a session; an adapter translates its platform data and materializes accepted images only after channel-core's group admission and model-modality check. References, cards, audio/video, files, and other provider-specific payloads remain outside the normalized input. Routing, model capability lookup, attachment references, session logging, and reply delivery compose existing Harness capabilities, so adding a channel still costs one `ChannelAdapter` implementation rather than copied agent/session logic.
 
 ## Local validation status
 
 - `channel-core` + `channel-telegram` (grammY long polling) + `channel-feishu` (official Lark SDK WebSocket) + `channel-discord` (discord.js Gateway/REST) implemented;
-- Contract tests (MockAdapter validating the "inbound → real agent turn → reply out" closed loop) + full typecheck + `--dump-config` smoke are all green;
-- Feishu has passed real e2e. Discord keyless protocol/lifecycle coverage is complete; its real Gateway e2e remains pending a rotated token installed through the Harness credential seam.
+- Keyless contract tests cover the "inbound → real agent turn → reply out" loop, deterministic resume, mention/FIFO/lifecycle behavior, stable session identity with a changed delivery id, exact-model image-modality checks, and materialization ordering;
+- Feishu text has passed real e2e. Telegram direct/group text and caption have passed a credentialed real-client run; its later image-byte path is keyless-tested but not live-tested. Discord keyless protocol/lifecycle coverage is complete; its real Gateway e2e remains pending.

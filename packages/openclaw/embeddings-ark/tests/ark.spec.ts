@@ -156,6 +156,16 @@ describe('ark embeddings provider', () => {
     expect(firstFetchInit(fetchMock).headers).toMatchObject({ Authorization: 'Bearer stub-key-MY_CUSTOM_KEY' })
   })
 
+  it('resolves ARK_API_KEY through the credentials seam by default', async () => {
+    const fetchMock = okFetch(responseBody([0.1]))
+    vi.stubGlobal('fetch', fetchMock)
+    const ctx = new Context()
+    await ctx.plugin(StubCredentials)
+    await ctx.plugin(ArkEmbeddings, {})
+    await ctx.embeddings.embed(['a'])
+    expect(firstFetchInit(fetchMock).headers).toMatchObject({ Authorization: 'Bearer stub-key-ARK_API_KEY' })
+  })
+
   it('caps in-flight requests at maxConcurrentTexts and completes the full batch', async () => {
     let openGate: () => void = () => {}
     const gate = new Promise<void>((resolve) => { openGate = resolve })

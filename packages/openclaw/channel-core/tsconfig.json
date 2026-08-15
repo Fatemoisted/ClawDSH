@@ -19,6 +19,9 @@
       "path": "../../core/agent-default-model"
     },
     {
+      "path": "../../attachment/attachment"
+    },
+    {
       "path": "../../preset/agent-presets"
     },
     {

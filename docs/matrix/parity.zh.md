@@ -37,8 +37,8 @@
 | 定时 / 自动化 | `src/cron/` | 自有 unref'd croner timer + `agent.followup`/`whenIdle`/`sessions.flush` 回合桥（`ctx.schedule` 否决：session-local + 300s 下限 + 仅工具面 API） | 插件 | `automation` | **implemented，存在已知限制**（[包详情](../../packages/openclaw/automation/README.md#known-limitations-and-deferred-work)） |
 | 人格（Soul） | `src/agents/system-prompt.ts` 首行 + workspace 六文件（AGENTS/SOUL/TOOLS/IDENTITY/USER/BOOTSTRAP.md） | system-prompt 装配（persona 首行 / soul append / complete 段 / 工具指引带）+ 渠道呈现（IDENTITY ✅） | 插件 | `soul` | **implemented**（阶段 0 ✅ + 阶段 2 深读定稿 ✅） |
 | 记忆（Memory） | 基线无 → 参考 v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`、`memory-tool.ts` | Harness `ctx.fs`/sandbox + tools/system prompt + embeddings | 插件 | `memory` + `embeddings` + `embeddings-ark` | **implemented**（三工具、配置默认、缺失 root 启动、持久 flush 周期 ✅） |
-| **渠道网关（Gateway）** | `src/gateway/` | **无** | **新 seam** | `channel-core` | **implemented**（可等待持久化、确定性恢复/preset/FIFO、legacy thread-only 兼容、`groupMode`/结构化 mention 策略 ✅） |
-| 渠道：Telegram | `src/telegram/` | `ctx.channels` | 插件 | `channel-telegram` | **已实现，仍有集成收尾**（[包详情](../../packages/openclaw/channel-telegram/README.md)） |
+| **渠道网关（Gateway）** | `src/gateway/` | **无** | **新 seam** | `channel-core` | **implemented**（可等待持久化、确定性恢复/preset/FIFO、legacy thread-only 兼容、`groupMode`/结构化 mention 策略、准确模型图片模态检查与持久 Harness attachment 引用 ✅） |
+| 渠道：Telegram | `src/telegram/` | `ctx.channels` | 插件 | `channel-telegram` | **已实现，带凭证的私聊/群聊文本/caption e2e 已验证**（photo/图片 document 导入与文本模型不下载行为已通过无密钥测试，但未线上验证；forum topic 真实覆盖仍推迟；[包详情](../../packages/openclaw/channel-telegram/README.md)） |
 | 渠道：Discord | `src/discord/` | `ctx.channels` | 插件 | `channel-discord` | **implemented**（Harness credentials/timer、私信/服务器/thread 归一化、mention 门控、原生引用/reaction、安全 2000-unit 分片、先排空再销毁的生命周期 ✅；带凭证线上 e2e 待完成） |
 | 渠道：iMessage / Signal / Slack | `src/imessage/` 等 | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
 | 渠道：WhatsApp | 参考 v2026.1.15 `src/whatsapp/` | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |

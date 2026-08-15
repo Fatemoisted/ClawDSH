@@ -1,6 +1,6 @@
 {
   "name": "@clawdsh/dsh-channel-telegram",
-  "description": "ClawDSH Telegram adapter over grammY: normalized long-polling inbound, mentions, topics, native replies, and reactions",
+  "description": "ClawDSH Telegram adapter over grammY: long-polling text/images, mentions, topics, native replies, and reactions",
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
@@ -26,17 +26,27 @@
     "@clawdsh/dsh-channel-core": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/cordis-plugin-timer": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^"
+    "@deepseek-ai/dsh-attachment": "workspace:^",
+    "@deepseek-ai/dsh-credentials": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/dsh-launch-environment": "workspace:^",
+    "@deepseek-ai/dsh-timeout": "workspace:^"
   },
   "dependencies": {
     "@grammyjs/auto-retry": "2.0.2",
+    "@grammyjs/files": "1.2.0",
     "@deepseek-ai/schemastery": "workspace:^",
     "grammy": "^1.45.1"
   },
   "devDependencies": {
     "@clawdsh/dsh-channel-core": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^"
+    "@deepseek-ai/cordis-plugin-timer": "workspace:^",
+    "@deepseek-ai/dsh-attachment": "workspace:^",
+    "@deepseek-ai/dsh-credentials": "workspace:^",
+    "@deepseek-ai/dsh-invariants": "workspace:^",
+    "@deepseek-ai/dsh-launch-environment": "workspace:^",
+    "@deepseek-ai/dsh-timeout": "workspace:^"
   },
   "publishConfig": {
     "access": "public"

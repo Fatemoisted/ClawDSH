@@ -37,6 +37,8 @@
     - id: channel-telegram
       name: '@clawdsh/dsh-channel-telegram'
       disabled: true
+      config:
+        botTokenEnv: TELEGRAM_BOT_TOKEN
 
     - id: channel-discord
       name: '@clawdsh/dsh-channel-discord'
@@ -64,6 +66,8 @@
 
     - id: embeddings-ark
       name: '@clawdsh/dsh-embeddings-ark'
+      config:
+        apiKeyEnv: ARK_API_KEY
 
     # 阶段 3：skills-hub（ClawHub 兼容技能目录 provider，挂 ctx.skills 注册表）。
     # 纯增量目录合并：目录不存在即空列表、无凭证、无安装执行；默认启用。

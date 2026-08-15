@@ -31,8 +31,8 @@
 
 | 自有包 | ClawDSH 职责 | 必需 `inject` 及来源 | 其他复用组件及来源 | 平台组件 |
 |---|---|---|---|---|
-| [`channel-core`](../../packages/openclaw/channel-core/README.md) | 定义 `ctx.channels`；把 provider conversation 路由到持久 agent 会话 | Harness：`agents`、`sessions`、`agentDefaultModel`、`agentPresets`、`sessionPersistence`、`timer` | Harness：Agent 创建/恢复、preset 解析/挂载、模型选择、会话 flush、timeout 工具 | — |
-| [`channel-telegram`](../../packages/openclaw/channel-telegram/README.md) | Telegram 事件和发送/reaction 适配器 | ClawDSH：`channels`；Harness：`timer` | — | grammY、`@grammyjs/auto-retry` |
+| [`channel-core`](../../packages/openclaw/channel-core/README.md) | 定义 `ctx.channels`；把 provider conversation 与已接受图片引用路由到持久 agent 会话 | Harness：`agents`、`sessions`、`llm`、`agentDefaultModel`、`agentPresets`、`sessionPersistence`、`timer` | Harness：Agent 创建/恢复、preset 解析/挂载、准确模型 `resolveModelInfo`、LLM 文本/图片 content block、attachment 引用类型、会话 flush、timeout 工具 | — |
+| [`channel-telegram`](../../packages/openclaw/channel-telegram/README.md) | Telegram 事件、图片 materialize 与发送/reaction 适配器 | ClawDSH：`channels`；Harness：`timer` | Harness：可选 `credentials`、启动环境、`credentials/updated` 与 `ctx.attachments` 限制/校验/保存 | grammY、`@grammyjs/auto-retry`、`@grammyjs/files` |
 | [`channel-discord`](../../packages/openclaw/channel-discord/README.md) | Discord Gateway/REST 适配器 | ClawDSH：`channels`；Harness：`timer` | Harness：可选 `credentials`、启动环境、`credentials/updated` | discord.js |
 | [`channel-feishu`](../../packages/openclaw/channel-feishu/README.md) | 飞书/Lark 归一化消息适配器 | ClawDSH：`channels`；Harness：`timer` | — | 官方 `LarkChannel` |
 | [`soul`](../../packages/openclaw/soul/README.md) | agent 作用域人格段落 | Harness：`systemPrompt` | Harness：作用域归属原语 | Node 文件系统 |

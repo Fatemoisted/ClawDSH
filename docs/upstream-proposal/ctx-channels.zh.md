@@ -2,7 +2,7 @@
 
 [English](ctx-channels.md) | 中文
 
-> 本文是 `ctx.channels` 消息渠道 seam 的内部设计记录（属 `docs/upstream-proposal/`，目录名沿用，内容不再作为待提交 PR）。契约已在本地以 `channel-core` + 双渠道适配器验证（阶段 2，见 docs/adr/0002-channel-seam.md）。发起人 2026-08-14 决定跳过上游 PR、快速推进——本 seam 作为 ClawDSH 自有能力长期保留，本文仅记录契约与装配语义。
+> 本文是 `ctx.channels` 消息渠道 seam 的内部设计记录（属 `docs/upstream-proposal/`，目录名沿用，内容不再作为待提交 PR）。契约已在本地以 `channel-core` 与多个 adapter 验证；[ADR-0002](../adr/0002-channel-seam.md)负责基础 seam 决策，[ADR-0007](../adr/0007-deferred-channel-images-and-address-continuity.md)负责图片/地址连续性。发起人 2026-08-14 决定跳过上游 PR、快速推进——本 seam 作为 ClawDSH 自有能力长期保留，本文仅记录契约与装配语义。
 
 ## 动机
 
@@ -18,50 +18,70 @@ dsh 是编码代理形态：有 `ctx.sessions`、`ctx.tools`、`ctx.llm`、`ctx.
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
+import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 
-export interface ChannelCapabilities { receive: boolean; send: boolean }
+export interface ChannelCapabilities { receive: boolean; send: boolean; react: boolean }
+
+export interface ChannelImageSource {
+  sourceId: string                 // ephemeral provider file id; never persisted
+  mediaType: ImageMediaType
+  bytes?: number
+  name?: string
+}
 
 export interface ChannelMessage {
-  channel: string                    // 适配器 id，如 'telegram' | 'feishu'
+  channel: string                    // adapter id, e.g. 'telegram' | 'feishu'
   direction: 'in' | 'out'
-  threadId?: string                  // 渠道侧会话线索（群 chat_id / p2p open_chat_id / TG chat.id）
-  sender?: string                    // 发送者身份（open_id / from.id）
+  conversationId?: string           // current provider delivery destination
+  sessionConversationId?: string    // optional stable identity after provider id migration
+  threadId?: string                 // optional topic inside the conversation
+  sender?: string
+  messageId?: string
+  replyToMessageId?: string
+  chatType?: 'direct' | 'group'
+  mention?: { detectable: boolean; botMentioned: boolean }
   text: string
+  images?: readonly ChannelImageSource[]
 }
 
 export interface ChannelAdapter {
   id: string
   capabilities: ChannelCapabilities
-  start(ctx: Context): () => void           // 订阅平台事件，emit 'channel/inbound'；返回 disposer
-  send(msg: ChannelMessage): Promise<void>  // 出站投递
+  start(ctx: Context): () => void | Promise<void>
+  send(msg: ChannelMessage): Promise<void>
+  materializeImages?(msg: ChannelMessage): Promise<readonly ImageAttachmentRef[]>
+  react?(msg: ChannelMessage, emoji: string): Promise<void>
 }
 ```
 
-- 事件：`channel/inbound`（入站，adapter → core）、`channel/outbound`（出站，core 投递回复后）。
+- 事件：`channel/inbound`（并行入站，adapter → core）、`channel/outbound`（出站，core 投递回复后）。
 - 一个 `ChannelRegistry extends Service`（`ctx.channels`）持有适配器注册表（id 唯一，注销回卷）并提供路由。
 
 ## 入站路由 / turn 驱动语义
 
-adapter `start()` 收到平台消息 → `ctx.emit('channel/inbound', msg)` → `channel-core` 监听 → 路由：
+adapter `start()` 收到平台消息 → `await ctx.parallel('channel/inbound', msg)` → `channel-core` 监听 → 路由：
 
-1. 按 `${channel}\0${threadId ?? ''}` 定位/创建 per-thread agent 会话（首条 `ctx.agents.create`，之后复用）；
-2. `followup(createUserMessage({ text }))` → `await agent.whenIdle()` → `await ctx.sessions.flush(session)`；
-3. 扫 `assistant/message` 文本块取回复 → `adapter.send(outMsg)` + `emit('channel/outbound', outMsg)`。
+1. 规范化当前 `conversationId`/可选 `threadId`，应用结构化群聊 mention 策略，再从 `channel`、`sessionConversationId ?? conversationId` 与 `threadId` 派生不透明的确定性 session id。被拒绝的群消息不会触发图片下载；
+2. 使用已记录的 Harness agent preset 与当前 Harness 默认模型 selection 恢复或创建准确的持久 session。single-flight map 管理 live handle，每个 session 的 tail chain 串行化已准入 turn；
+3. 存在短暂 image source 时，通过 Harness `ctx.llm.resolveModelInfo` 查询该准确 selection。文本模型路由会给 caption 加明确的图片省略上下文，或向纯图片消息返回固定 transport 提示。图片模型路由会在 FIFO 内调用 `adapter.materializeImages`，并且只接受持久 Harness attachment 引用；
+4. 追加一条包含已接受文本/image block 的 user message，等待 agent idle，再调用 `ctx.sessions.flush`；
+5. 扫 `assistant/message` 文本块取回复 → `adapter.send(outMsg)` + `emit('channel/outbound', outMsg)`。
 
-per-thread 入站 turn 以 tail-chain 串行化，避免并发交错。**一切入站消息与出站回复都经 session log**（"model-visible means logged"），由 `dsh-agent` 既有不变式覆盖。
+Ack reaction 在准入后启动，与路由 turn 一同等待完成，但不阻塞每个 session 的 FIFO。所有发送给模型的事实都先写入 session log。纯图片/导入失败的固定 transport 提示刻意不作为模型输入，因此不是 session event。
 
 ## 与 `ctx.agents` / `ctx.sessions` 的关系
 
-- 复用 `ctx.agents.create` 创建会话（`agentOptions` 取自 `ctx.agentDefaultModel.currentSelection()`），不新增会话生命周期；
-- 复用 `ctx.sessions.flush` 落盘，不新增持久化语义；
-- 路由只是把「渠道线程 ↔ dsh 会话」的绑定关系保存在内存 map，属薄装配层，不改 `agent-loop`。
+- 复用 `ctx.agentDefaultModel`、`ctx.agentPresets` 与 `ctx.agents.create/resume` 完成准确 session 组装，不新增 agent 生命周期；
+- 复用 `ctx.sessionPersistence` 与确定性不透明 id 实现可跨重启路由，并复用 `ctx.sessions.flush`，不新增持久化语义；
+- 复用 `ctx.llm.resolveModelInfo` 获取模型自有的图片能力，并复用 Harness attachment 引用/content block 作为持久模型输入。provider adapter 可通过 `ctx.attachments` 校验并保存字节；channel-core 不实现存储；
+- 内存 map 只管理 live handle、FIFO tail 与空闲回收。它不是持久渠道/session 映射，也不修改 `agent-loop`。
 
 ## 为何是「薄装配层」
 
-本 seam 不引入任何渠道特性语义（附件/引用/富文本/卡片一律不在此层）：`ChannelMessage` 只带 `text`，其余渠道特性由适配器在 `send` 内自行映射。路由/会话/日志/回投是 dsh 既有能力的组合，`channel-core` 只做「装配 + 串行化」，因此对上游侵入面最小，新增一个渠道的成本 = 一个 `ChannelAdapter` 实现。
+本 seam 只负责 provider-neutral 路由事实与短暂 raster-image 描述。它绝不把 provider URL、file id 或字节写入 session；adapter 负责翻译平台数据，并且只在 channel-core 的群聊准入与模型模态检查后 materialize 已接受图片。引用、卡片、音视频、文件与其他 provider 特有载荷仍不在规范化输入内。路由、模型能力查询、attachment 引用、session 日志与回投均组合 Harness 既有能力，因此新增渠道仍只需一个 `ChannelAdapter`，无需复制 agent/session 逻辑。
 
 ## 本地验证状态
 
 - `channel-core` + `channel-telegram`（grammY 长轮询）+ `channel-feishu`（官方 Lark SDK WebSocket）+ `channel-discord`（discord.js Gateway/REST）已实现；
-- 契约测试（MockAdapter 验证「入站 → 真 agent turn → 回复出」闭环）+ 全量 typecheck + `--dump-config` 冒烟全绿；
-- 飞书已通过真实 e2e；Discord 的无密钥协议/生命周期覆盖已完成，真实 Gateway e2e 留待把轮换后的 token 装入 Harness 凭据接缝后收尾。
+- 无密钥契约测试覆盖「入站 → 真 agent turn → 回复出」闭环、确定性恢复、mention/FIFO/生命周期、投递 id 改变时保持稳定 session 身份、准确模型图片模态检查与 materialize 顺序；
+- 飞书文本已通过真实 e2e。Telegram 私聊/群聊文本与 caption 已通过带凭证真实客户端测试；其后新增的图片字节路径已通过无密钥测试，但未线上验证。Discord 的无密钥协议/生命周期覆盖已完成，真实 Gateway e2e 仍待完成。

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/matrix/harness-reuse.md
-harness-reuse.md: 19d1d03929641bd15ab36640a9a707d519df4fcc
-harness-reuse.zh.md: 50442fcfb1ea573f7a034153d6c5fcb153fcc5fa
+harness-reuse.md: 417452a2f49c569f586871043a2db85a9d795b8a
+harness-reuse.zh.md: 2372eaedd68039266d96e625142224307a2ee6be

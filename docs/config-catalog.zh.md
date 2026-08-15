@@ -71,7 +71,7 @@ export interface EverySchedule {
 
 ## `@clawdsh/dsh-channel-core`
 
-需要： `agents` · `sessions` · `agentDefaultModel` · `agentPresets` · `sessionPersistence` · `timer`
+需要： `agents` · `sessions` · `llm` · `agentDefaultModel` · `agentPresets` · `sessionPersistence` · `timer`
 
 ```ts config-catalog
 /** Channel registry config: identity presentation (never prompt content). */
@@ -109,7 +109,7 @@ export interface IdentityConfig {
 }
 ```
 
-来源： [`packages/openclaw/channel-core/src/index.ts:151`](../packages/openclaw/channel-core/src/index.ts)
+来源： [`packages/openclaw/channel-core/src/index.ts:169`](../packages/openclaw/channel-core/src/index.ts)
 
 <a id="clawdshdsh-channel-discord"></a>
 
@@ -163,16 +163,30 @@ export type FeishuDomain = 'feishu' | 'lark'
 ```ts config-catalog
 /** Plugin config: the bot token plus long-polling tuning. */
 export interface Config {
-  /** Bot token from `@BotFather`; must not be committed. */
-  botToken: string
+  /** Literal token for programmatic use; prefer {@link botTokenEnv}. */
+  botToken?: string
+  /** Harness credential reference resolved when opening Telegram. */
+  botTokenEnv?: string
   /** When `false`, the adapter is send-only and does not poll for inbound messages. */
   polling?: boolean
   /** Long-poll hold timeout in seconds (Telegram clamps to 1–60). */
   timeout?: number
+  /** Total deadline in milliseconds for downloading one admitted image. */
+  imageDownloadTimeoutMs?: number
+  /** Persisted current-to-stable chat ids for migrations observed before this process. */
+  chatIdAliases?: TelegramChatIdAlias[]
+}
+
+/** One current-to-stable Telegram chat id mapping kept across a group migration. */
+export interface TelegramChatIdAlias {
+  /** Current Telegram chat id used for provider delivery. */
+  chatId: string
+  /** Stable prior chat id used only to derive the durable Harness session. */
+  sessionChatId: string
 }
 ```
 
-来源： [`packages/openclaw/channel-telegram/src/index.ts:35`](../packages/openclaw/channel-telegram/src/index.ts)
+来源： [`packages/openclaw/channel-telegram/src/index.ts:55`](../packages/openclaw/channel-telegram/src/index.ts)
 
 <a id="clawdshdsh-embeddings-ark"></a>
 
@@ -196,7 +210,7 @@ export interface Config {
 }
 ```
 
-来源： [`packages/openclaw/embeddings-ark/src/index.ts:44`](../packages/openclaw/embeddings-ark/src/index.ts)
+来源： [`packages/openclaw/embeddings-ark/src/index.ts:43`](../packages/openclaw/embeddings-ark/src/index.ts)
 
 <a id="clawdshdsh-memory"></a>
 

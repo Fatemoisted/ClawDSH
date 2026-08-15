@@ -13,7 +13,12 @@ import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import ChannelRegistry, { deriveChannelSessionId, registerChannelAdapter } from '@clawdsh/dsh-channel-core'
+import ChannelRegistry, {
+  deriveChannelSessionId,
+  IMAGE_MODEL_UNSUPPORTED_NOTICE,
+  IMAGE_OMITTED_MODEL_CONTEXT,
+  registerChannelAdapter,
+} from '@clawdsh/dsh-channel-core'
 import type { ChannelAdapter, ChannelMessage, Config } from '@clawdsh/dsh-channel-core'
 import { MockAdapter, textResponse } from './mock-adapter.ts'
 
@@ -215,6 +220,97 @@ describe('the channel-core seam', () => {
     })
 
     expect(sent).toEqual([])
+  })
+
+  it('rejects image-only input before download when the active model is text-only', async () => {
+    const llm = new MockAdapter([])
+    const ctx = await harness(llm)
+    const sent: ChannelMessage[] = []
+    const materializeImages = vi.fn(async () => [])
+    ctx.channels.registerAdapter({
+      ...fakeAdapter(sent),
+      materializeImages,
+    })
+
+    await ctx.parallel('channel/inbound', {
+      channel: 'fake',
+      direction: 'in',
+      conversationId: 'image-only',
+      text: '',
+      images: [{ sourceId: 'provider-file', mediaType: 'image/jpeg' }],
+    })
+
+    expect(materializeImages).not.toHaveBeenCalled()
+    expect(llm.requests).toEqual([])
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.text).toBe(IMAGE_MODEL_UNSUPPORTED_NOTICE)
+  })
+
+  it('keeps a caption turn on text-only models without downloading its image', async () => {
+    const llm = new MockAdapter([textResponse('caption reply')])
+    const ctx = await harness(llm)
+    const sent: ChannelMessage[] = []
+    const materializeImages = vi.fn(async () => [])
+    ctx.channels.registerAdapter({ ...fakeAdapter(sent), materializeImages })
+
+    await ctx.parallel('channel/inbound', {
+      channel: 'fake',
+      direction: 'in',
+      conversationId: 'caption',
+      text: 'describe the attached item',
+      images: [{ sourceId: 'provider-file', mediaType: 'image/jpeg' }],
+    })
+
+    expect(materializeImages).not.toHaveBeenCalled()
+    expect(sent[0]?.text).toBe('caption reply')
+    expect(JSON.stringify(llm.requests[0]?.messages)).toContain(IMAGE_OMITTED_MODEL_CONTEXT)
+  })
+
+  it('materializes admitted images for an image-capable model inside the turn', async () => {
+    const llm = new MockAdapter([textResponse('image reply')], undefined, undefined, ['text', 'image'])
+    const ctx = await harness(llm)
+    const sent: ChannelMessage[] = []
+    const attachment = {
+      attachmentId: 'test-image' as never,
+      mediaType: 'image/jpeg' as const,
+      bytes: 4,
+      width: 1,
+      height: 1,
+    }
+    const materializeImages = vi.fn(async () => [attachment])
+    ctx.channels.registerAdapter({ ...fakeAdapter(sent), materializeImages })
+
+    await ctx.parallel('channel/inbound', {
+      channel: 'fake',
+      direction: 'in',
+      conversationId: 'vision',
+      text: '',
+      images: [{ sourceId: 'provider-file', mediaType: 'image/jpeg' }],
+    })
+
+    expect(materializeImages).toHaveBeenCalledOnce()
+    expect(sent[0]?.text).toBe('image reply')
+    expect(JSON.stringify(llm.requests[0]?.messages)).toContain('test-image')
+  })
+
+  it('does not materialize an unmentioned group image', async () => {
+    const llm = new MockAdapter([])
+    const ctx = await harness(llm)
+    const materializeImages = vi.fn(async () => [])
+    ctx.channels.registerAdapter({ ...fakeAdapter([]), materializeImages })
+
+    await ctx.parallel('channel/inbound', {
+      channel: 'fake',
+      direction: 'in',
+      conversationId: 'quiet-group',
+      chatType: 'group',
+      mention: { detectable: true, botMentioned: false },
+      text: '',
+      images: [{ sourceId: 'provider-file', mediaType: 'image/jpeg' }],
+    })
+
+    expect(materializeImages).not.toHaveBeenCalled()
+    expect(llm.requests).toEqual([])
   })
 
   it('propagates a failed send without poisoning the conversation FIFO', async () => {
@@ -576,6 +672,26 @@ describe('the channel-core seam', () => {
     expect(first).not.toBe(deriveChannelSessionId('telegram', 'secret-chat', 'topic-2'))
     expect(first).not.toBe(deriveChannelSessionId('feishu', 'secret-chat', 'topic-1'))
     expect(first).not.toContain('secret-chat')
+  })
+
+  it('keeps a migrated conversation on its stable session while replying to the current delivery id', async () => {
+    const adapter = new MockAdapter([textResponse('before migration'), textResponse('after migration')])
+    const ctx = await harness(adapter)
+    const sent: ChannelMessage[] = []
+    ctx.channels.registerAdapter(fakeAdapter(sent))
+
+    await ctx.parallel('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 'old-chat', text: 'remember this',
+    })
+    await ctx.parallel('channel/inbound', {
+      channel: 'fake', direction: 'in', conversationId: 'new-chat',
+      sessionConversationId: 'old-chat', text: 'continue here',
+    })
+
+    expect(ctx.agents.list()).toHaveLength(1)
+    expect(ctx.agents.list()[0]?.id).toBe(deriveChannelSessionId('fake', 'old-chat'))
+    expect(JSON.stringify(adapter.requests[1])).toContain('remember this')
+    expect(sent[1]).toMatchObject({ conversationId: 'new-chat', text: 'after migration' })
   })
 
   it('drops unmentioned group traffic and accepts a structured bot mention', async () => {

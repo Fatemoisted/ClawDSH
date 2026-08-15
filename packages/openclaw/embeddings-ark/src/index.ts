@@ -6,10 +6,9 @@
  * `ctx.llm` — dsh's LLM seam has no embedding endpoint.
  *
  * The API key is resolved per `embed` call (never cached): literal
- * `config.apiKey` wins, then the credentials seam (`@deepseek-ai/dsh-credentials`),
- * then the launch environment — the same layering as
- * `@deepseek-ai/dsh-web-search-deepseek`. A call without a resolvable key fails
- * loudly; the provider never silently degrades.
+ * `config.apiKey` wins, then the credentials seam (`@deepseek-ai/dsh-credentials`).
+ * A deployment without that seam falls back to its launch environment. A call
+ * without a resolvable key fails loudly; the provider never silently degrades.
  *
  * @module @clawdsh/dsh-embeddings-ark
  */
@@ -108,7 +107,8 @@ export class ArkEmbeddings extends Embeddings {
     if (apiKey === undefined) {
       throw new Error(
         `@clawdsh/dsh-embeddings-ark: no API key resolved for ${String(this.apiKeyEnv)} ` +
-        '(set config apiKey, or provide the key through the credentials seam / launch environment)',
+        '(store it in Harness credentials such as $DSH_HOME/.credentials.yaml, ' +
+        'or provide it in the launch environment; literal config apiKey is supported but discouraged)',
       )
     }
     // The multimodal endpoint embeds one input array as ONE multimodal item, so
@@ -135,9 +135,9 @@ export class ArkEmbeddings extends Embeddings {
 
   /**
    * Resolve the API key for one operation. Literal config wins; then the
-   * credentials seam; then the launch environment as the ambient credential
-   * plane. Per-operation resolution keeps credential changes effective without
-   * a remount, per the credentials seam contract.
+   * credentials seam, or the launch environment only when that seam is absent.
+   * Per-operation resolution keeps credential changes effective without a
+   * remount, per the credentials seam contract.
    * @returns the resolved key, or `undefined` when no plane carries one.
    */
   private async resolveApiKey(): Promise<string | undefined> {

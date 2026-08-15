@@ -10,10 +10,12 @@ import type { Context } from '@deepseek-ai/cordis'
 import { Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
-import type { AgentHandle } from '@deepseek-ai/dsh-agent'
+import type { AgentHandle, ModelSelection } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import { resolveSessionPreset } from '@deepseek-ai/dsh-agent-presets'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
@@ -33,7 +35,12 @@ import {
 } from './presentation.ts'
 import type { ChannelAdapter, ChannelMessage } from './types.ts'
 
-export type { ChannelAdapter, ChannelCapabilities, ChannelMessage } from './types.ts'
+export type {
+  ChannelAdapter,
+  ChannelCapabilities,
+  ChannelImageSource,
+  ChannelMessage,
+} from './types.ts'
 export {
   AUTO_RESPONSE_PREFIX,
   DEFAULT_ACK_REACTION,
@@ -76,6 +83,8 @@ declare module '@deepseek-ai/cordis' {
 /** Per-thread routing state: the live agent plus its serialized turn chain. */
 interface ThreadEntry {
   handle: AgentHandle
+  /** Exact route installed into this live Agent. */
+  selection: ModelSelection
   /** Tail of the per-thread turn chain; each turn awaits its predecessor. */
   tail: Promise<void>
   /** Last admission/completion time, used by the lifecycle-aware idle sweep. */
@@ -90,10 +99,19 @@ export type GroupMode = 'mention' | 'always'
 /** Default idle lifetime for an in-memory channel Agent (30 minutes). */
 export const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000
 
+/** Stable transport notice for an image sent to a text-only model route. */
+export const IMAGE_MODEL_UNSUPPORTED_NOTICE = 'This conversation is using a text-only model, so I cannot inspect images. Send the relevant text or configure an image-capable model.'
+
+/** Model-facing context appended when a text-only route continues with an image caption. */
+export const IMAGE_OMITTED_MODEL_CONTEXT = '[Attached image omitted because the current model does not declare image input. Do not claim to have inspected it.]'
+
+/** Stable transport notice when provider media cannot pass Harness attachment validation. */
+export const IMAGE_IMPORT_FAILED_NOTICE = 'I could not safely import that image. Please resend a supported PNG, JPEG, WebP, or GIF within the configured size limit.'
+
 /**
  * Derive the opaque durable session id for one platform conversation/topic.
- * Raw platform identifiers never appear in filenames or logs outside the
- * provider event payload itself.
+ * Raw platform identifiers never appear in derived session ids or filenames;
+ * provider adapters may still render an id in an actionable operations warning.
  * @param channel - adapter id.
  * @param conversationId - platform chat or direct-conversation id.
  * @param threadId - optional topic/thread inside the conversation.
@@ -194,7 +212,7 @@ export const Config: z<Config> = z.object({
  * messages into agent turns and returns each reply through its adapter.
  */
 export class ChannelRegistry extends Service {
-  static inject = ['agents', 'sessions', 'agentDefaultModel', 'agentPresets', 'sessionPersistence', 'timer']
+  static inject = ['agents', 'sessions', 'llm', 'agentDefaultModel', 'agentPresets', 'sessionPersistence', 'timer']
   static Config: z<Config> = Config
 
   private readonly adapters = new Map<string, ChannelAdapter>()
@@ -312,7 +330,7 @@ export class ChannelRegistry extends Service {
     const fallbackMention = chatType === 'group' && message.mention === undefined && mention.botMentioned
     const fallbackText = fallbackMention ? stripZeroWidth(message.text) : message.text
     const text = (fallbackMention ? stripMentions(fallbackText, this.mentionPatterns) : fallbackText).trim()
-    if (text === '') return
+    if (text === '' && (message.images === undefined || message.images.length === 0)) return
     const normalized: ChannelMessage = {
       ...message,
       conversationId: address.conversationId,
@@ -326,8 +344,12 @@ export class ChannelRegistry extends Service {
     // turn in the same FIFO. The route still awaits the contained task below,
     // which keeps provider and registry teardown drain-aware.
     const ackTask = this.startAck(normalized, mention)
-    const key = JSON.stringify([message.channel, address.conversationId, address.threadId ?? null])
-    const sessionId = deriveChannelSessionId(message.channel, address.conversationId, address.threadId)
+    const sessionConversationId = message.sessionConversationId === undefined
+      || message.sessionConversationId.length === 0
+      ? address.conversationId
+      : message.sessionConversationId
+    const key = JSON.stringify([message.channel, sessionConversationId, address.threadId ?? null])
+    const sessionId = deriveChannelSessionId(message.channel, sessionConversationId, address.threadId)
     try {
       const entry = await this.getOrCreateThread(key, sessionId)
       const turn = entry.tail
@@ -462,7 +484,7 @@ export class ChannelRegistry extends Service {
     }
     try {
       await handle.agent.whenIdle()
-      return { handle, tail: Promise.resolve(), lastActive: Date.now() }
+      return { handle, selection, tail: Promise.resolve(), lastActive: Date.now() }
     } catch (error) {
       await handle.dispose()
       throw error
@@ -476,9 +498,44 @@ export class ChannelRegistry extends Service {
   ): Promise<void> {
     const { agent } = entry.handle
     const adapter = this.adapters.get(message.channel)
+    let userText = message.text
+    const imageContent: ContentBlock[] = []
+    if (message.images !== undefined && message.images.length > 0) {
+      const model = await this.ctx.llm.resolveModelInfo(entry.selection.provider, entry.selection.model)
+      if (model.inputModalities === undefined || !model.inputModalities.includes('image')) {
+        if (userText === '') {
+          await this.deliverText(adapter, message, legacyThreadOnly, IMAGE_MODEL_UNSUPPORTED_NOTICE)
+          return
+        }
+        userText = `${userText}\n\n${IMAGE_OMITTED_MODEL_CONTEXT}`
+      } else {
+        if (adapter?.materializeImages === undefined) {
+          this.ctx.logger.warn(`channels: adapter "${message.channel}" cannot materialize image sources`)
+          await this.deliverText(adapter, message, legacyThreadOnly, IMAGE_IMPORT_FAILED_NOTICE)
+          return
+        }
+        try {
+          const attachments = await adapter.materializeImages(message)
+          if (attachments.length !== message.images.length) {
+            throw new Error(
+              `adapter "${message.channel}" materialized ${attachments.length} of ${message.images.length} images`,
+            )
+          }
+          imageContent.push(...attachments.map(attachment => ({ type: 'image' as const, attachment })))
+        } catch (error: unknown) {
+          this.ctx.logger.warn(`channels: image import for "${message.channel}" failed: ${describe(error)}`)
+          await this.deliverText(adapter, message, legacyThreadOnly, IMAGE_IMPORT_FAILED_NOTICE)
+          return
+        }
+      }
+    }
+    const content: ContentBlock[] = []
+    if (userText !== '') content.push({ type: 'text', text: userText })
+    content.push(...imageContent)
+    if (content.length === 0) return
     const firstSeq = agent.session.seq
     agent.followup(createUserMessage({
-      content: [{ type: 'text', text: message.text }],
+      content,
       source: { kind: 'user' },
     }))
     await agent.whenIdle()
@@ -488,8 +545,19 @@ export class ChannelRegistry extends Service {
     // text. Provider APIs reject an empty body, so the absence of a reply is a
     // completed no-op rather than an adapter send failure.
     if (text === '') return
-    if (adapter === undefined) return
     const prefix = resolveResponsePrefix(this.presentation)
+    const outboundText = prefix === '' ? text : `${prefix} ${text}`
+    await this.deliverText(adapter, message, legacyThreadOnly, outboundText)
+  }
+
+  /** Deliver one transport-owned text reply without appending it to the Agent session. */
+  private async deliverText(
+    adapter: ChannelAdapter | undefined,
+    message: ChannelMessage,
+    legacyThreadOnly: boolean,
+    text: string,
+  ): Promise<void> {
+    if (adapter === undefined || text === '') return
     const outboundThreadId = message.threadId
       ?? (legacyThreadOnly ? message.conversationId : undefined)
     const outbound: ChannelMessage = {
@@ -500,7 +568,7 @@ export class ChannelRegistry extends Service {
       ...(message.sender === undefined ? {} : { sender: message.sender }),
       ...(message.messageId === undefined ? {} : { replyToMessageId: message.messageId }),
       ...(message.chatType === undefined ? {} : { chatType: message.chatType }),
-      text: text !== '' && prefix !== '' ? `${prefix} ${text}` : text,
+      text,
     }
     await adapter.send(outbound)
     this.ctx.emit('channel/outbound', outbound)

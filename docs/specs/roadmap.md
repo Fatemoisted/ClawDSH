@@ -38,7 +38,7 @@ dsh's Cordis architecture (everything is a plugin: plugins declare dependencies 
 
 - `channel-core` (new seam, per ADR-0002) + `channel-telegram` (first channel) + **`channel-feishu` (initiator's first priority, ADR-0002 seam-verification alternate channel)** + `soul` + `memory` + `tools/openclaw-preset-openclaw`.
 - Exit criteria: `pnpm dsh --profile openclaw` starts, Telegram message in → personalized agent runs → reply out; the `ctx.channels` contract passes verification through both the Telegram and Feishu adapters (Feishu source: OpenClaw `extensions/feishu`, v2026.2.12).
-- **Status (2026-08-14)**: core deliverables shipped and closed out — channel seam + two adapters (Feishu real e2e verified end-to-end; Telegram blocked on credentials), soul deep-read finalized (replace/append is the final form, preset-relative `source` via `ctx.baseUrl`), memory three packages with the `ctx.embeddings` seam (ADR-0003) and a real ARK e2e (tools/ark-e2e.ts), preset daemon-ized with `embeddings-ark` enabled, 26 bilingual doc pairs completed. See docs/journal/2026-08-14.md.
+- **Status (2026-08-15)**: core deliverables shipped and closed out — channel seam + two adapters with credentialed closed loops (Feishu text and Telegram direct/group text/caption; Telegram image import and text-only no-download behavior are keyless-tested but not live-tested, and forum-topic live coverage remains open), soul deep-read finalized (replace/append is the final form, preset-relative `source` via `ctx.baseUrl`), memory three packages with the `ctx.embeddings` seam (ADR-0003) and a real ARK e2e (tools/ark-e2e.ts), preset daemon-ized with `embeddings-ark` enabled, and bilingual documentation paired. See docs/journal/2026-08-15.md.
 
 ### Phase 3 · Channel rollout + automation
 

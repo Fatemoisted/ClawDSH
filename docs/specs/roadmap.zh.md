@@ -38,7 +38,7 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 
 - `channel-core`（新 seam，按 ADR-0002 设计）+ `channel-telegram`（第一个渠道）+ **`channel-feishu`（发起人第一优先，ADR-0002 seam 验证备选渠道）** + `soul` + `memory` + `tools/openclaw-preset-openclaw`。
 - 退出标准：`pnpm dsh --profile openclaw` 启动，Telegram 消息进 → 人格化 agent 跑 → 回复出；`ctx.channels` 契约同时通过 Telegram 与飞书两个适配器的验证（飞书出处：OpenClaw `extensions/feishu`，v2026.2.12）。
-- **状态（2026-08-14）**：核心交付完成并收口——渠道 seam + 双适配器（飞书真实 e2e 全链路验证；Telegram 凭证阻塞）、soul 深读定稿（replace/append 即最终形态，相对 `source` 按 `ctx.baseUrl` 解析）、memory 三包 + `ctx.embeddings` seam（ADR-0003）+ 真实 ARK e2e（tools/ark-e2e.ts）、preset 常驻化且 embeddings-ark 已启用、双语 26 对完成。见 docs/journal/2026-08-14.md。
+- **状态（2026-08-15）**：核心交付完成并收口——渠道 seam + 两个已跑通带凭证闭环的适配器（飞书文本与 Telegram 私聊/群聊文本/caption；Telegram 图片导入与文本模型不下载行为已通过无密钥测试但未线上验证，forum topic 真实覆盖仍待完成）、soul 深读定稿（replace/append 即最终形态，相对 `source` 按 `ctx.baseUrl` 解析）、memory 三包 + `ctx.embeddings` seam（ADR-0003）+ 真实 ARK e2e（tools/ark-e2e.ts）、preset 常驻化且 embeddings-ark 已启用，以及成对的双语文档。见 docs/journal/2026-08-15.md。
 
 ### 阶段 3 · 渠道铺开 + 自动化
 

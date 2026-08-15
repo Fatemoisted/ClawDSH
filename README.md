@@ -21,7 +21,7 @@ export DEEPSEEK_API_KEY=sk_xxx
 pnpm dsh --profile openclaw
 ```
 
-The installed `openclaw` profile is a resident Feishu channel daemon, not the Web UI or a one-shot headless runner. It uses `$DSH_HOME` or `~/.dsh` by default; use the same `DSH_HOME` for both `tools/link-openclaw.sh` and `pnpm dsh`. Telegram, Discord, and automation are installed but disabled in the default profile. The link script is the pre-publication development path and refreshes the installed profile from the current checkout.
+The installed `openclaw` profile is a resident Feishu channel daemon, not the Web UI or a one-shot headless runner. It uses `$DSH_HOME` or `~/.dsh` by default; use the same `DSH_HOME` for both `tools/link-openclaw.sh` and `pnpm dsh`. Telegram, Discord, and automation are installed but disabled in the default profile. The link script is the pre-publication development path and refreshes the installed profile from the current checkout. Follow the [Telegram credentialed-e2e cookbook](docs/cookbook/telegram-e2e.md) to enable and verify Telegram without putting its token in the repository.
 
 This keyless check validates profile composition without connecting to Feishu, then runs the ClawDSH package tests:
 
@@ -32,6 +32,12 @@ pnpm run test:openclaw
 ```
 
 `--dump-config` proves only that the composition resolves. Platform permissions, credentials, and network connectivity still require a deployed end-to-end check.
+
+## Telegram real-client result (2026-08-15)
+
+The credentialed run against the real Telegram Bot API and clients passed authentication, private-chat `/start` and exact replies, durable Memory across restart, group mention/reply gates, addressed-command isolation, Harness `web_search`, offline catch-up, Unicode-safe long-reply splitting, interrupted-turn recovery, and same-chat FIFO delivery. The run also observed caption relay and bodyless-media ignore behavior on the then-tested pre-image-ingestion build.
+
+The image materialization and text-only image paths were added after that run and have keyless automated coverage only; they are not credentialed real-client passes. Credential rotation, chat-id migration, forum topics, and acknowledgement reactions likewise remain outside the recorded live baseline. See the [Telegram credentialed-e2e cookbook](docs/cookbook/telegram-e2e.md) and [2026-08-15 journal](docs/journal/2026-08-15.md) for the exact evidence boundary.
 
 ## Harness contracts first
 
