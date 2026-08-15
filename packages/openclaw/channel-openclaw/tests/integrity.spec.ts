@@ -386,7 +386,7 @@ describe('checked runtime dependency installation', () => {
     const fixture = await runtimeFixture()
     await expect(verifyRuntimeInstallation(fixture.lock, fixture.runtimeRoot, fixture.hostRoot))
       .resolves.toBeUndefined()
-  }, 30_000)
+  })
 
   it('rejects changed dependency bytes and platforms without one exact aggregate lock', async () => {
     const changed = await runtimeFixture()
@@ -427,7 +427,7 @@ describe('checked runtime dependency installation', () => {
       duplicate.runtimeRoot,
       duplicate.hostRoot,
     )).rejects.toThrow(/no unique locked runtime tree/)
-  }, 30_000)
+  })
 
   it('rejects a runtime file symlink that escapes the locked project', async () => {
     const fixture = await runtimeFixture()
@@ -531,7 +531,7 @@ describe('checked runtime dependency installation', () => {
     await writeFile(join(metadata.hostRoot, 'package.json'), JSON.stringify({ name: 'openclaw', version: 'wrong' }))
     await expect(verifyRuntimeInstallation(metadata.lock, metadata.runtimeRoot, metadata.hostRoot))
       .rejects.toThrow(/metadata differs/)
-  }, 30_000)
+  })
 
   it.each([
     'node_modules/a//b',
@@ -812,15 +812,6 @@ describe('fail-closed OpenClaw config', () => {
       ['missing account group policy', (value) => { Reflect.deleteProperty(account(value), 'groupPolicy') }],
       ['open DM policy', (value) => { telegram(value).dmPolicy = 'open' }],
       ['open group policy', (value) => { telegram(value).groupPolicy = 'open' }],
-      ['disabled Feishu mention requirement', (value) => {
-        value.channels.feishu = {
-          enabled: true,
-          configWrites: false,
-          dmPolicy: 'pairing',
-          groupPolicy: 'allowlist',
-          requireMention: false,
-        }
-      }],
       ['disabled mention requirement', (value) => {
         const groups = telegram(value).groups as Record<string, Record<string, unknown>>
         groups['*']!.requireMention = false

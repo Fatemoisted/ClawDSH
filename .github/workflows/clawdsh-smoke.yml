@@ -16,12 +16,11 @@ on:
 permissions:
   contents: read
 
-env:
-  NODE_OPTIONS: --max-old-space-size=4096
-
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@v6
         with:
@@ -72,7 +71,6 @@ jobs:
         run: |
           npx --yes npm@10.9.7 ci --ignore-scripts --prefix packages/openclaw/channel-openclaw/runtime
           pnpm exec vitest run packages/openclaw/channel/tests packages/openclaw/channel-agent/tests packages/openclaw/channel-openclaw/tests packages/openclaw/preset-clawdsh-messaging-safe/tests
-          pnpm exec vitest run packages/openclaw/channel-core/tests packages/openclaw/channel-telegram/tests packages/openclaw/channel-discord/tests packages/openclaw/channel-feishu/tests
           node --test packages/openclaw/channel-openclaw/bridge/test/*.test.mjs
           node packages/openclaw/channel-openclaw/bridge/verify.mjs
           pnpm exec vitest run --config tools/openclaw-channel-host/vitest.config.ts

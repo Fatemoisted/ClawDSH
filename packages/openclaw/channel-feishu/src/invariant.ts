@@ -15,12 +15,11 @@ export const name = 'channel-feishu-invariant'
 export const inject = ['invariants']
 
 /**
- * No runtime invariant: the package owns no authoritative provider state. It
- * emits `channel/inbound`, while channel-core and `dsh-agent` own routing and
- * durable reply logging. The official Lark SDK owns token, de-duplication,
- * send bookkeeping, and WebSocket reconnect state; adapter-local
- * connect/retry/in-flight lifecycle is bounded by its disposer and shutdown
- * tests.
+ * No runtime invariant: the adapter owns no authoritative event stream or mutable runtime data — it
+ * emits `channel/inbound`, and routing plus reply logging are the legacy channel-core registry's
+ * and `dsh-agent`'s invariants. Its only mutable state is the per-thread reply-target map and the
+ * de-duplication set, which are protocol bookkeeping verified by unit tests rather than runtime
+ * invariants; the tenant token is owned by the Lark SDK's `tokenManager`.
  */
 const install: InvariantInstaller = () => {}
 

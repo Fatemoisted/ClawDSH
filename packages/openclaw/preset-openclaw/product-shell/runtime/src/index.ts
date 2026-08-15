@@ -44,24 +44,32 @@ const PRODUCT_ROOT = '/clawdsh/'
 const LOOPBACK_HOST = '127.0.0.1'
 const COMMUNICATION_PLANE_ID = 'clawdsh-communication-plane'
 
-/** Projections indexed by the pinned Cordis `FiberState` numeric order. */
-const FIBER_PHASE = [
-  'pending',
-  'loading',
-  'active',
-  'failed',
-  null,
-  'unloading',
-] as const satisfies Record<FiberState, ClawdshFiberPhase>
+const FIBER_STATE = {
+  PENDING: 0 as FiberState.PENDING,
+  LOADING: 1 as FiberState.LOADING,
+  ACTIVE: 2 as FiberState.ACTIVE,
+  FAILED: 3 as FiberState.FAILED,
+  DISPOSED: 4 as FiberState.DISPOSED,
+  UNLOADING: 5 as FiberState.UNLOADING,
+} as const
 
-const FIBER_LOADER_STATE = [
-  'starting',
-  'starting',
-  'active',
-  'failed',
-  'misconfigured',
-  'starting',
-] as const satisfies Record<FiberState, ClawdshLoaderState>
+const FIBER_PHASE = {
+  [FIBER_STATE.PENDING]: 'pending',
+  [FIBER_STATE.LOADING]: 'loading',
+  [FIBER_STATE.ACTIVE]: 'active',
+  [FIBER_STATE.FAILED]: 'failed',
+  [FIBER_STATE.DISPOSED]: null,
+  [FIBER_STATE.UNLOADING]: 'unloading',
+} as const satisfies Record<FiberState, ClawdshFiberPhase>
+
+const FIBER_LOADER_STATE = {
+  [FIBER_STATE.PENDING]: 'starting',
+  [FIBER_STATE.LOADING]: 'starting',
+  [FIBER_STATE.ACTIVE]: 'active',
+  [FIBER_STATE.FAILED]: 'failed',
+  [FIBER_STATE.DISPOSED]: 'misconfigured',
+  [FIBER_STATE.UNLOADING]: 'starting',
+} as const satisfies Record<FiberState, ClawdshLoaderState>
 
 interface ComponentDefinition {
   readonly id: string

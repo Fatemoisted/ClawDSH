@@ -11,33 +11,15 @@
 
 `Requires:` 行列出插件通过 `inject` 注入的服务键：其 `cordis.yml` 树还必须加载这些服务的提供者。范围限定为 harness 层级（`packages/`）；配置树还可能加载的 vendored cordis 插件（`hmr`、控制台日志记录器等）固定为上游源代码（参见 [vendoring policy](../vendor/README.md)），未收录于此目录。
 
-<a id="clawdshdsh-activity"></a>
-
-## `@clawdsh/dsh-activity`
-
-需要： `settings`
-
-```ts config-catalog
-/** Managed Activity configuration. */
-export interface Config {
-  /** Activity is a required product capability and cannot be disabled. */
-  readonly enabled?: true
-}
-```
-
-来源： [`packages/openclaw/activity/src/index.ts:51`](../packages/openclaw/activity/src/index.ts)
-
 <a id="clawdshdsh-automation"></a>
 
 ## `@clawdsh/dsh-automation`
 
-需要： `agents` · `sessions` · `agentDefaultModel` · `settings`
+需要： `agents` · `sessions` · `agentDefaultModel`
 
 ```ts config-catalog
 /** Plugin config: the declared rule set. cordis.yml is the durable store — no separate storage seam. */
 export interface Config {
-  /** Whether any automation runtime, timer, or durable session may start. */
-  enabled?: boolean
   /** Scheduled rules; each gets its own durable agent session. */
   rules?: AutomationRule[]
 }
@@ -83,13 +65,13 @@ export interface EverySchedule {
 }
 ```
 
-来源： [`packages/openclaw/automation/src/index.ts:93`](../packages/openclaw/automation/src/index.ts)
+来源： [`packages/openclaw/automation/src/index.ts:89`](../packages/openclaw/automation/src/index.ts)
 
 <a id="clawdshdsh-channel-agent"></a>
 
 ## `@clawdsh/dsh-channel-agent`
 
-需要： `channels` · `agents` · `sessions` · `sessionPersistence` · `agentDefaultModel` · `agentPresets` · `attachments` · `storageDomain` · `tools` · `settings`
+需要： `channels` · `agents` · `sessions` · `sessionPersistence` · `agentDefaultModel` · `agentPresets` · `attachments` · `storageDomain` · `tools`
 
 ```ts config-catalog
 /** Deployment decisions for channel-created Agents and media intake. */
@@ -109,38 +91,28 @@ export interface Config {
 }
 ```
 
-来源： [`packages/openclaw/channel-agent/src/index.ts:87`](../packages/openclaw/channel-agent/src/index.ts)
+来源： [`packages/openclaw/channel-agent/src/index.ts:74`](../packages/openclaw/channel-agent/src/index.ts)
 
 <a id="clawdshdsh-channel-core"></a>
 
 ## `@clawdsh/dsh-channel-core`
 
-需要： `agents` · `sessions` · `llm` · `agentDefaultModel` · `agentPresets` · `sessionPersistence` · `timer`
+需要： `agents` · `sessions` · `agentDefaultModel`
 
 ```ts config-catalog
 /** Channel registry config: identity presentation (never prompt content). */
 export interface Config {
-  /** Agent preset composed for newly created channel sessions. */
-  agentPreset?: string
-  /** Group messages become turns only after a bot mention by default. */
-  groupMode?: GroupMode
-  /** Scope of the non-blocking inbound acknowledgement reaction. */
-  ackReactionScope?: AckReactionScope
-  /** Dispose idle live Agents after this many milliseconds; 0 disables eviction. */
-  idleTimeoutMs?: number
   /** Identity the presentation resolves against. */
   identity?: IdentityConfig
-  /** Outbound prefix; `'auto'` renders `[name]`, while an explicit empty string disables it. */
+  /** Outbound prefix; `'auto'` renders `[name]`. */
   responsePrefix?: string
   /** Ack emoji; falls back to `identity.emoji`, then `👀`; an explicit empty string disables acks. */
   ackReaction?: string
+  /** Where the ack applies; defaults to `group-mentions` (groups, mentioned only). */
+  ackReactionScope?: AckReactionScope
+  /** Whether group chats demand a mention before acks; defaults to true. */
+  requireMention?: boolean
 }
-
-/** Whether group traffic requires a bot mention before it becomes an agent turn. */
-export type GroupMode = 'mention' | 'always'
-
-/** Where the ack emoji reaction applies (OpenClaw's `messages.ackReactionScope`). */
-export type AckReactionScope = 'all' | 'direct' | 'group-all' | 'group-mentions' | 'off' | 'none'
 
 /** Identity config: presentation only, never injected into the prompt. */
 export interface IdentityConfig {
@@ -151,47 +123,26 @@ export interface IdentityConfig {
   /** Emoji used as the ack reaction fallback and a literal mention pattern. */
   emoji?: string
 }
+
+/** Where the ack emoji reaction applies (OpenClaw's `messages.ackReactionScope`). */
+export type AckReactionScope = 'all' | 'direct' | 'group-all' | 'group-mentions'
 ```
 
-来源： [`packages/openclaw/channel-core/src/index.ts:182`](../packages/openclaw/channel-core/src/index.ts)
-
-<a id="clawdshdsh-channel-discord"></a>
-
-## `@clawdsh/dsh-channel-discord`
-
-需要： `legacyChannels` · `timer`
-
-```ts config-catalog
-/** Plugin configuration. */
-export interface Config {
-  /** Literal token for programmatic use; prefer `botTokenEnv` so config never contains the secret. */
-  botToken?: string
-  /** Harness credential reference resolved when opening the Gateway. */
-  botTokenEnv?: string
-  /** Request the privileged guild Message Content intent. Off by default for least privilege. */
-  messageContentIntent?: boolean
-}
-```
-
-来源： [`packages/openclaw/channel-discord/src/index.ts:46`](../packages/openclaw/channel-discord/src/index.ts)
+来源： [`packages/openclaw/channel-core/src/index.ts:113`](../packages/openclaw/channel-core/src/index.ts)
 
 <a id="clawdshdsh-channel-feishu"></a>
 
 ## `@clawdsh/dsh-channel-feishu`
 
-需要： `legacyChannels` · `timer`
+需要： `legacyChannels`
 
 ```ts config-catalog
 /** Plugin config: app identity plus which Open Platform region to dial. */
 export interface Config {
-  /** Literal Feishu app ID for programmatic compatibility; prefer {@link appIdEnv}. */
-  appId?: string
-  /** Harness credential reference resolved before opening the WebSocket. */
-  appIdEnv?: string
-  /** Literal Feishu app secret for programmatic compatibility; prefer {@link appSecretEnv}. */
-  appSecret?: string
-  /** Harness credential reference resolved before opening the WebSocket. */
-  appSecretEnv?: string
+  /** Feishu app ID (from the developer console); must not be committed. */
+  appId: string
+  /** Feishu app secret; must not be committed. */
+  appSecret: string
   /** Open Platform region; `feishu` (default) or `lark`. */
   domain?: FeishuDomain
 }
@@ -200,19 +151,17 @@ export interface Config {
 export type FeishuDomain = 'feishu' | 'lark'
 ```
 
-来源： [`packages/openclaw/channel-feishu/src/index.ts:48`](../packages/openclaw/channel-feishu/src/index.ts)
+来源： [`packages/openclaw/channel-feishu/src/index.ts:39`](../packages/openclaw/channel-feishu/src/index.ts)
 
 <a id="clawdshdsh-channel-openclaw"></a>
 
 ## `@clawdsh/dsh-channel-openclaw`
 
-需要： `channels` · `storageDomain` · `subprocess` · `settings`
+需要： `channels` · `storageDomain` · `subprocess`
 
 ```ts config-catalog
 /** Fully explicit managed-Gateway configuration. */
 export interface Config extends Omit<OpenClawSupervisorConfig, 'extensions'> {
-  /** Whether the managed Gateway may preflight, bind IPC, or start a process. */
-  readonly enabled: boolean
   /** Mutable schema output consumed as immutable extension locks by the Supervisor. */
   readonly extensions: OpenClawExtensionLock[]
 }
@@ -290,51 +239,39 @@ export interface ChannelIpcConfig {
 export type OpenClawTrack = 'production' | 'canary'
 ```
 
-来源： [`packages/openclaw/channel-openclaw/src/index.ts:54`](../packages/openclaw/channel-openclaw/src/index.ts)
+来源： [`packages/openclaw/channel-openclaw/src/index.ts:28`](../packages/openclaw/channel-openclaw/src/index.ts)
 
 <a id="clawdshdsh-channel-telegram"></a>
 
 ## `@clawdsh/dsh-channel-telegram`
 
-需要： `legacyChannels` · `timer`
+需要： `legacyChannels`
 
 ```ts config-catalog
 /** Plugin config: the bot token plus long-polling tuning. */
 export interface Config {
-  /** Literal token for programmatic use; prefer {@link botTokenEnv}. */
-  botToken?: string
-  /** Harness credential reference resolved when opening Telegram. */
-  botTokenEnv?: string
+  /** Bot token from `@BotFather`; must not be committed. */
+  botToken: string
   /** When `false`, the adapter is send-only and does not poll for inbound messages. */
   polling?: boolean
   /** Long-poll hold timeout in seconds (Telegram clamps to 1–60). */
   timeout?: number
-  /** Total deadline in milliseconds for downloading one admitted image. */
-  imageDownloadTimeoutMs?: number
-  /** Persisted current-to-stable chat ids for migrations observed before this process. */
-  chatIdAliases?: TelegramChatIdAlias[]
-}
-
-/** One current-to-stable Telegram chat id mapping kept across a group migration. */
-export interface TelegramChatIdAlias {
-  /** Current Telegram chat id used for provider delivery. */
-  chatId: string
-  /** Stable prior chat id used only to derive the durable Harness session. */
-  sessionChatId: string
 }
 ```
 
-来源： [`packages/openclaw/channel-telegram/src/index.ts:60`](../packages/openclaw/channel-telegram/src/index.ts)
+来源： [`packages/openclaw/channel-telegram/src/index.ts:31`](../packages/openclaw/channel-telegram/src/index.ts)
 
 <a id="clawdshdsh-embeddings-ark"></a>
 
 ## `@clawdsh/dsh-embeddings-ark`
 
-需要： `settings`
-
 ```ts config-catalog
 /** Plugin config (all optional — `static Config` supplies the defaults). */
 export interface Config {
+  /** Literal Ark API key; prefer {@link apiKeyEnv} so no secret enters configuration files. */
+  apiKey?: string
+  /** Credential reference resolved per embed; defaults to `ARK_API_KEY`. */
+  apiKeyEnv?: string
   /** Endpoint base; `/embeddings/multimodal` is appended. */
   baseURL?: string
   /** Embedding model name. Defaults to {@link ARK_DEFAULT_MODEL}. */
@@ -346,19 +283,17 @@ export interface Config {
 }
 ```
 
-来源： [`packages/openclaw/embeddings-ark/src/index.ts:47`](../packages/openclaw/embeddings-ark/src/index.ts)
+来源： [`packages/openclaw/embeddings-ark/src/index.ts:44`](../packages/openclaw/embeddings-ark/src/index.ts)
 
 <a id="clawdshdsh-memory"></a>
 
 ## `@clawdsh/dsh-memory`
 
-需要： `tools` · `systemPrompt` · `fs` · `settings`
+需要： `tools` · `systemPrompt` · `fs`
 
 ```ts config-catalog
 /** Plugin config; `root` is required — the memory directory a deployment owns. */
 export interface Config {
-  /** Whether Memory registers prompt guidance, tools, file watching, and flush hooks. */
-  enabled?: boolean
   /** Memory root directory (absolute or resolved against `process.cwd()`). Required, fail-loud. */
   root: string
   /** Character budget per index chunk. Defaults to 1600. */
@@ -398,19 +333,17 @@ export interface FlushConfig {
 }
 ```
 
-来源： [`packages/openclaw/memory/src/index.ts:66`](../packages/openclaw/memory/src/index.ts)
+来源： [`packages/openclaw/memory/src/index.ts:59`](../packages/openclaw/memory/src/index.ts)
 
 <a id="clawdshdsh-skills-hub"></a>
 
 ## `@clawdsh/dsh-skills-hub`
 
-需要： `skills` · `settings` · `subprocess`
+需要： `skills`
 
 ```ts config-catalog
 /** Plugin config: which OpenClaw-style roots to scan and whether to evaluate `metadata.clawdbot` gating. */
 export interface Config {
-  /** Whether this row registers the ClawHub provider. */
-  enabled?: boolean
   /**
    * Fixed workspace skills directory. Empty (default) scans `<cwd>/skills`
    * per lookup instead, mirroring OpenClaw's `<workspaceDir>/skills`.
@@ -425,19 +358,17 @@ export interface Config {
 }
 ```
 
-来源： [`packages/openclaw/skills-hub/src/index.ts:59`](../packages/openclaw/skills-hub/src/index.ts)
+来源： [`packages/openclaw/skills-hub/src/index.ts:55`](../packages/openclaw/skills-hub/src/index.ts)
 
 <a id="clawdshdsh-soul"></a>
 
 ## `@clawdsh/dsh-soul`
 
-需要： `systemPrompt` · `clawdshSoulSettings`
+需要： `systemPrompt`
 
 ```ts config-catalog
 /** Plugin config: where the soul text comes from and how it lands. */
 export interface Config {
-  /** Whether new agent scopes receive a Soul prompt contribution. */
-  enabled?: boolean
   /**
    * Path to a soul file (markdown). Wins over `text`. A relative path resolves
    * against the mount tree's `ctx.baseUrl` — the preset composition directory
@@ -456,7 +387,7 @@ export interface Config {
 }
 ```
 
-来源： [`packages/openclaw/soul/src/index.ts:58`](../packages/openclaw/soul/src/index.ts)
+来源： [`packages/openclaw/soul/src/index.ts:45`](../packages/openclaw/soul/src/index.ts)
 
 <a id="deepseek-aidsh-acp"></a>
 

@@ -71,26 +71,6 @@ function Warnings({ snapshot }: { readonly snapshot: ActivitySnapshot }): ReactN
   )
 }
 
-function EmptyActivityPage({
-  title,
-  children,
-}: {
-  readonly title: string
-  readonly children: ReactNode
-}): ReactNode {
-  return (
-    <div className={css.page}>
-      <p className={css.eyebrow}>会话可解释性</p>
-      <h1>ClawDSH 活动</h1>
-      <div className={css.empty} role="status">
-        <span className={css.emptyIcon} aria-hidden="true">◎</span>
-        <strong>{title}</strong>
-        {children}
-      </div>
-    </div>
-  )
-}
-
 /** Session-following semantic Activity view over the loopback control plane. */
 export function ActivityPage({ control, localControlAvailable, sessionId }: ActivityPageProps): ReactNode {
   const [categories, setCategories] = useState<readonly ClawdshActivityCategory[]>(ALL_CATEGORIES)
@@ -197,18 +177,30 @@ export function ActivityPage({ control, localControlAvailable, sessionId }: Acti
 
   if (!localControlAvailable) {
     return (
-      <EmptyActivityPage title="ClawDSH 活动仅本机可用">
-        <p>远程页面仍可使用对话；请在运行 ClawDSH 的本机打开此页面查看活动。</p>
-      </EmptyActivityPage>
+      <div className={css.page}>
+        <p className={css.eyebrow}>会话可解释性</p>
+        <h1>ClawDSH 活动</h1>
+        <div className={css.empty} role="status">
+          <span className={css.emptyIcon} aria-hidden="true">◎</span>
+          <strong>ClawDSH 活动仅本机可用</strong>
+          <p>远程页面仍可使用对话；请在运行 ClawDSH 的本机打开此页面查看活动。</p>
+        </div>
+      </div>
     )
   }
 
   if (sessionId === undefined) {
     return (
-      <EmptyActivityPage title="请先选择一个对话">
-        <p>Activity 跟随当前会话。进入对话并选择或创建一个 Session 后即可查看。</p>
-        <a className={css.primaryLink} href="/clawdsh/">进入对话</a>
-      </EmptyActivityPage>
+      <div className={css.page}>
+        <p className={css.eyebrow}>会话可解释性</p>
+        <h1>ClawDSH 活动</h1>
+        <div className={css.empty} role="status">
+          <span className={css.emptyIcon} aria-hidden="true">◎</span>
+          <strong>请先选择一个对话</strong>
+          <p>Activity 跟随当前会话。进入对话并选择或创建一个 Session 后即可查看。</p>
+          <a className={css.primaryLink} href="/clawdsh/">进入对话</a>
+        </div>
+      </div>
     )
   }
 

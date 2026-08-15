@@ -20,8 +20,7 @@ const raceHooks = vi.hoisted((): {
   beforeRealpath: ((path: string) => Promise<void>) | undefined
   beforeOpen: (() => Promise<void>) | undefined
   afterRead: (() => Promise<void>) | undefined
-  changeStatAfterRead: boolean
-} => ({ beforeRealpath: undefined, beforeOpen: undefined, afterRead: undefined, changeStatAfterRead: false }))
+} => ({ beforeRealpath: undefined, beforeOpen: undefined, afterRead: undefined }))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
@@ -39,7 +38,6 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       raceHooks.beforeOpen = undefined
       if (beforeOpen !== undefined) await beforeOpen()
       const handle = await actual.open(...args)
-      let readFinished = false
       return new Proxy(handle, {
         get(target, property) {
           if (property === 'readFile') {
@@ -48,22 +46,10 @@ vi.mock('node:fs/promises', async (importOriginal) => {
               const afterRead = raceHooks.afterRead
               raceHooks.afterRead = undefined
               if (afterRead !== undefined) await afterRead()
-              readFinished = true
               return data
             }
           }
-          if (property === 'stat') {
-            return async () => {
-              const info = await target.stat()
-              if (!readFinished || !raceHooks.changeStatAfterRead) return info
-              raceHooks.changeStatAfterRead = false
-              return new Proxy(info, {
-                get(stats, field, receiver) {
-                  return field === 'size' ? stats.size + 1 : Reflect.get(stats, field, receiver) as unknown
-                },
-              })
-            }
-          }
+          if (property === 'stat') return () => target.stat()
           if (property === 'close') return () => target.close()
           return Reflect.get(target, property, target) as unknown
         },
@@ -78,7 +64,6 @@ afterEach(async () => {
   raceHooks.beforeRealpath = undefined
   raceHooks.beforeOpen = undefined
   raceHooks.afterRead = undefined
-  raceHooks.changeStatAfterRead = false
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
 
@@ -251,7 +236,7 @@ describe('staged channel media intake', () => {
     await writeFile(join(staging, 'nested/image.png'), data)
     await writeFile(join(outside, 'image.png'), data)
     raceHooks.beforeRealpath = async (path) => {
-      if (!path.endsWith(join('nested', 'image.png'))) return
+      if (!path.endsWith('/nested/image.png')) return
       raceHooks.beforeRealpath = undefined
       await rename(join(staging, 'nested'), join(staging, 'original'))
       await symlink(outside, join(staging, 'nested'), 'dir')
@@ -276,17 +261,7 @@ describe('staged channel media intake', () => {
       .rejects.toThrow(/path changed before it was read/)
   })
 
-  it('rejects an opened file whose metadata changes after its bytes are read', async () => {
-    const staging = await root()
-    const data = Buffer.from('changing-open-file')
-    await writeFile(join(staging, 'image.png'), data)
-    raceHooks.changeStatAfterRead = true
-
-    await expect(importStagedImages(store().service, staging, [staged('image.png', data)], 100))
-      .rejects.toThrow(/changed while it was read/)
-  })
-
-  it.skipIf(process.platform === 'win32')('rejects a parent identity change after reading even when the file inode is preserved', async () => {
+  it('rejects a parent identity change after reading even when the file inode is preserved', async () => {
     const staging = await root()
     const data = Buffer.from('stable-file-changing-parent')
     await mkdir(join(staging, 'nested'))

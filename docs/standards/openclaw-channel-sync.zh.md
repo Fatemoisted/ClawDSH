@@ -2,7 +2,7 @@
 
 [English](openclaw-channel-sync.md) | 中文
 
-本规范治理 ClawDSH 渠道平面使用的 OpenClaw host、渠道目录、bridge 兼容范围或支持声明的全部变更，并落实 [ADR-0008](../adr/0008-openclaw-channel-plane.md)、按 [ADR-0010](../adr/0010-harness-contract-first.md) 组合 Harness contract，同时把 [ADR-0011](../adr/0011-deferred-channel-images-and-address-continuity.md) 限定为仅 legacy 决策。它与 `upstream-sync.md` 分离：DeepSeek Harness 上游和内嵌的 OpenClaw 通信 host 有独立 lock 与审查周期。
+本规范治理 ClawDSH 渠道平面使用的 OpenClaw host、渠道目录、bridge 兼容范围或支持声明的全部变更，并落实 [ADR-0008](../adr/0008-openclaw-channel-plane.md)。它与 `upstream-sync.md` 分离：DeepSeek Harness 上游和内嵌的 OpenClaw 通信 host 有独立 lock 与审查周期。
 
 ## 权威来源
 
@@ -65,9 +65,9 @@ Host commit、channel artifact integrity、bridge protocol、AgentHarness genera
 
 ## 当前认证阻塞项
 
-交付 profile 包含 canonical sidecar 组合及三个 invariant companion，Gateway 仍显式默认禁用。另一个 compatibility group 只注册 `ctx.legacyChannels`，也默认关闭；存在 legacy opt-in 时，canonical Gateway 启动与 Settings preflight 必须在产生副作用前失败。无密钥证据现已覆盖锁定 schema 下策略完整的 Telegram 与 Feishu 配置，以及装配后的 Gateway-to-Agent 路径，但仍没有完整的逐 Channel 配置/capability/delivery 证据或带凭证 live 证据；缺少 Windows endpoint authorization；稳定版 AgentHarness V1 不能提供安全 staging 的入站媒体；非图片 dsh attachment 与出站媒体仍不完整；锁定 host 既没有关联最终回答的 delivery report，也没有公开的聚合账号 health seam；downstream namespaced Session event 必须保持禁用；全部 external 治理审查仍待完成；本次变更没有新的、带凭证的 Telegram、飞书或 Discord sidecar smoke。这些是明确 blocker：production sidecar 的全部条目保持 `cataloged`，当前支持目录中没有任何 sidecar Channel 达到 installable、certified 或 enabled。
+交付 profile 始终挂载 sidecar 组合及三个 invariant companion，Gateway 仍显式默认禁用。无密钥证据现已覆盖锁定 schema 下策略完整的 Telegram 与 Feishu 配置，以及装配后的 Gateway-to-Agent 路径，但仍没有完整的逐 Channel 配置/capability/delivery 证据或带凭证 live 证据；缺少 Windows endpoint authorization；稳定版 AgentHarness V1 不能提供安全 staging 的入站媒体；非图片 dsh attachment 与出站媒体仍不完整；锁定 host 既没有关联最终回答的 delivery report，也没有公开的聚合账号 health seam；downstream namespaced Session event 必须保持禁用；全部 external 治理审查仍待完成；本次变更没有新的 Telegram 或 Feishu live smoke。这些是明确 blocker：production sidecar 的全部条目保持 `cataloged`，当前支持目录中没有任何 sidecar Channel 达到 installable、certified 或 enabled。
 
-旧 `channel-telegram`、`channel-discord` 与 `channel-feishu` package 保留到 ADR-0008 替换条件通过。它们历史上带凭证的 Telegram 与飞书流量、Discord 无密钥覆盖，以及 ADR-0011 的媒体/地址测试，都不能复用为 sidecar 认证，因为 host、Service namespace、执行路径、准入 owner 与 delivery ledger 均不同。
+旧 `channel-telegram` 与 `channel-feishu` 软件包保留到 ADR-0008 替换条件通过。它们的历史测试不能复用为 sidecar 认证，因为 host、执行路径、准入 owner 和 delivery ledger 均不同。
 
 ## 回滚与事故
 

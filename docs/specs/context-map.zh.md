@@ -25,7 +25,6 @@
 | `channel-openclaw/` | Service Provider | channels、subprocess、storage | 锁定 OpenClaw supervision、认证 IPC、health、actions、delivery ledger |
 | `channel-core/` | legacy Service | Agents、Sessions、default model | `ctx.legacyChannels` 下已取代的进程内 registry；为替换验证保留 |
 | `channel-telegram/` | legacy adapter | legacy channel service | Telegram polling adapter；没有当前认证 |
-| `channel-discord/` | legacy adapter | legacy channel service | Discord Gateway/REST adapter；只有无密钥覆盖 |
 | `channel-feishu/` | legacy adapter | legacy channel service | Feishu long-connection adapter；没有当前认证 |
 | `channel-wechat/` | 历史决策记录 | — | 不可执行记录；可用性说明已被锁定 catalog 取代 |
 | `soul/` | function plugin | system prompt | replace 或 append persona section |

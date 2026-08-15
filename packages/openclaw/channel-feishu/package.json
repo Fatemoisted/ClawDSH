@@ -32,19 +32,15 @@
   "peerDependencies": {
     "@clawdsh/dsh-channel-core": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/cordis-plugin-timer": "workspace:^",
-    "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "workspace:^",
-    "@larksuiteoapi/node-sdk": "1.73.0"
+    "@larksuiteoapi/node-sdk": "^1.73.0"
   },
   "devDependencies": {
     "@clawdsh/dsh-channel-core": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/cordis-plugin-timer": "workspace:^",
-    "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-invariants": "workspace:^"
   }
 }

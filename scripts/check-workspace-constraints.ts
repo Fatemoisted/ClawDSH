@@ -47,15 +47,8 @@ const repositoryUrl = 'git+https://github.com/deepseek-harness/deepseek-harness.
  * their trusted publishing against the repository that runs the workflow.
  */
 const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harness.git'
-/** ClawDSH's public packages use their own source repository for npm provenance. */
+/** ClawDSH's own packages publish to the initiator's private registry; the repository field points at the private origin. */
 const clawdshRepositoryUrl = 'git+https://github.com/Fatemoisted/ClawDSH.git'
-/** Pre-sidecar adapters retained for source-checkout migration only; release workflows exclude them. */
-const unpublishedClawdshCompatibilityPackages = new Set([
-  '@clawdsh/dsh-channel-core',
-  '@clawdsh/dsh-channel-discord',
-  '@clawdsh/dsh-channel-feishu',
-  '@clawdsh/dsh-channel-telegram',
-])
 /** Directories whose packages this repository publishes: one release member each. */
 const releaseMemberDirectory = /^(?:packages\/[^/]+\/[^/]+|apps\/[^/]+|vendor\/[^/]+)$/
 
@@ -252,22 +245,13 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
       errors.push(`${label}: published Landlock package repository must use ${repositoryUrl} with directory ${expectedDirectory} for trusted publishing`)
     }
   } else if (manifest.name?.startsWith('@clawdsh/')) {
-    // Public ClawDSH packages use their own repository for npm provenance;
-    // source-only compatibility adapters remain explicitly unpublished.
-    if (unpublishedClawdshCompatibilityPackages.has(manifest.name)) {
-      if (manifest.private !== true) {
-        errors.push(`${label}: unpublished ClawDSH compatibility package must set "private": true`)
-      }
-      if (manifest.publishConfig !== undefined) {
-        errors.push(`${label}: unpublished ClawDSH compatibility package must not set publishConfig`)
-      }
-    } else {
-      if (manifest.private === true) {
-        errors.push(`${label}: ClawDSH package must not set "private": true`)
-      }
-      if (manifest.publishConfig?.access !== 'public') {
-        errors.push(`${label}: ClawDSH package must set publishConfig.access to "public"`)
-      }
+    // ClawDSH packages publish to the initiator's private registry; the repository
+    // field points at the private origin, not the public harness repository.
+    if (manifest.private === true) {
+      errors.push(`${label}: ClawDSH package must not set "private": true`)
+    }
+    if (manifest.publishConfig?.access !== 'public') {
+      errors.push(`${label}: ClawDSH package must set publishConfig.access to "public"`)
     }
     if (manifest.repository?.type !== 'git'
       || manifest.repository.url !== clawdshRepositoryUrl

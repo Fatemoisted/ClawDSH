@@ -2,31 +2,20 @@
 
 English | [中文](README.zh.md)
 
-**Purpose**: legacy Feishu (Lark) adapter — a thin `ctx.legacyChannels` bridge over the official `@larksuiteoapi/node-sdk` 1.73 high-level `LarkChannel`. **The initiator's first-priority channel** (established 2026-08-14).
+**Purpose**: legacy Feishu (Lark) adapter over `ctx.legacyChannels`, using the official `@larksuiteoapi/node-sdk` for WebSocket inbound and `im.message.create` outbound. It remains only until credentialed OpenClaw sidecar live cutover.
 
-**OpenClaw correspondence**: ✅ upstream's official `extensions/feishu`, shipped since v2026.2.12. ClawDSH delegates the platform machinery to the SDK's own channel component instead of copying that machinery into this package.
+**OpenClaw correspondence**: ✅ upstream's official `extensions/feishu` — introduced 2026-02-03 (commit `2483f26c23` "Channels: add Feishu/Lark support" → `0223416c61` "finish Feishu/Lark integration"), shipped since v2026.2.12. Use that extension as the functional reference for the port: it likewise uses `@larksuiteoapi/node-sdk`'s long-connection mode (`Lark.Client` + `Lark.WSClient` + `Lark.EventDispatcher` registering `im.message.receive_v1`).
 
-**Seams**: legacy-only `ctx.legacyChannels` (`@clawdsh/dsh-channel-core`, ADR-0002), Harness credentials / launch environment, and the Harness timer. It has no alias to the canonical production `ctx.channels` service.
+**Seam**: legacy-only `ctx.legacyChannels` (@clawdsh/dsh-channel-core, historical ADR-0002). It has no compatibility alias to the production `ctx.channels` service.
 
-**Specification**: docs/specs/roadmap.md (historical stage 2 deliverable) · **Status**: legacy compatibility, disabled by default, pending sidecar cutover; the never-settling handshake timeout below remains open
-
-The tracked configuration carries references, not values:
-
-```yaml
-appIdEnv: FEISHU_APP_ID
-appSecretEnv: FEISHU_APP_SECRET
-domain: feishu
-```
+**Specification**: docs/specs/roadmap.md (historical stage 2 deliverable) · **Status**: legacy, disabled by default, pending decommission; sidecar live cutover is not yet claimed
 
 ## Design notes
 
-- **SDK-owned platform layer**: `createLarkChannel` owns bot `open_id` discovery before accepting traffic, WebSocket reconnect, stale-event rejection, TTL de-duplication, in-flight locks, structured mention removal, rich-message normalization, token refresh, ordinary outbound chunking/retry, reply fallback, and reactions;
-- **thin translation**: the adapter maps `NormalizedMessage` to `ChannelMessage` (`conversationId` = group `chatId` or p2p sender id, optional `threadId`, structured `mention`, and SDK-rendered text). Because the SDK policy enables `respondToMentionAll`, a broadcast mention is normalized as an accepted bot mention for channel-core's group gate too. The callback awaits `ctx.parallel('channel/inbound', inbound)` through the FIFO turn, `sessions.flush`, outbound send, and ack settlement. SDK 1.73's queue-disabled safety dispatcher launches that callback asynchronously, so the WebSocket ingress acknowledgement itself is not a durability barrier;
-- **no cross-topic batching**: SDK `chatQueue` batching is disabled because its scope is the chat id while Harness sessions additionally separate Feishu topics. Mention policy is also disabled in the SDK and owned centrally by channel-core;
-- **pre-WebSocket identity retry**: the SDK still owns reconnect once a WebSocket client exists. Only transient failures while discovering bot identity before the WebSocket are retried by the adapter through the Harness timer, with exponential backoff from 1 to 30 seconds; permanent SDK errors fail without a retry loop;
-- **Unicode-safe outbound**: the adapter pre-splits every send at 3500 UTF-16 units without cutting surrogate pairs, then delegates each chunk's authentication, retry, and vanished-target fallback to `LarkChannel.send`. Topic replies carry the same `replyTo`/`replyInThread` on every chunk so later chunks do not leave the topic. Reactions continue through SDK `addReaction`: a small explicit table maps common portable ack emoji to Feishu named reactions, while any unknown identity emoji degrades stably to `EYES` instead of failing every ack;
-- **drain and settled failed-handshake cleanup**: disposal first unsubscribes ingress and waits every adapter-tracked message callback before disconnecting. After a connection attempt settles without reaching `connected=true`, disposal force-closes the SDK 1.73 `rawWsClient`, drains its safety timers, then calls the public disconnect; successful connections stay entirely on the public lifecycle. A connection attempt that never settles is the known exception below;
-- **Harness-owned credentials**: `appIdEnv` and `appSecretEnv` are credential references, defaulting to `FEISHU_APP_ID` and `FEISHU_APP_SECRET`. Each field resolves independently through `ctx.credentials`; the Harness launch environment is used only when no credentials service is mounted. Existing literal `appId`/`appSecret` configuration remains a programmatic compatibility override and takes precedence, but must never be committed. If either reference is unresolved, no SDK channel is constructed, all capabilities remain unavailable, the lifecycle logs both missing reference names, and attempted sends reject. A matching `credentials/updated` event stops and drains the old SDK channel, resolves the pair again, and starts a fresh channel; literal fields do not hot-rotate;
+- **inbound**: `Lark.EventDispatcher` registers `im.message.receive_v1`, `Lark.WSClient` starts the long connection (the SDK performs auth and ACK internally, at-least-once delivery); idempotent dedup by `message_id`; text message → `channel/inbound` (group `threadId` = chat_id, p2p/private = sender open_id, `sender` = open_id, text decoded from the `content` JSON string `{"text":"…"}`). `isGroup` comes from `chat_type === 'group'`; `wasMentioned` is derived by matching `mentions[].name` against the identity-derived patterns (absent patterns omit the field → fail-open).
+- **outbound**: `Lark.Client.im.message.create` (`params.receive_id_type` group = `chat_id`, p2p = `open_id`, `data.receive_id` + `msg_type:'text'` + `content` JSON); `tenant_access_token` is cached and refreshed by the SDK's `tokenManager`, the adapter does not manage it itself.
+- **ack reaction**: `Lark.Client.im.messageReaction.create` (`path.message_id` + `data.reaction_type.emoji_type`); a non-zero `code` throws, mirroring `sendMessage`.
+- **credentials**: `appId`/`appSecret` enter via Config, no secret is stored privately; wiring into `ctx.credentials` is left for the real-e2e wrap-up.
 - **long connection instead of webhook**: no `verificationToken`/`encryptKey`, no inbound HTTP port, no URL-verification challenge (these are only needed in webhook mode; the long connection performs auth via the SDK). `domain` selects Feishu (default) or international Lark.
 
 ## Model Experience
@@ -35,11 +24,11 @@ domain: feishu
 
 #### What the model sees
 
-The SDK converts text, post, image/file/audio/video/sticker/card/share/location/calendar and other supported Feishu message shapes into stable normalized text; this adapter relays that text as `channel/inbound` to channel-core. The adapter registers no prompt or tool schema of its own.
+The adapter parses a Feishu `im.message.receive_v1` event (delivered over the SDK's WebSocket long-connection) and emits a `channel/inbound` message; the channel-core router writes that message's `text` into the session log as a user message. The adapter registers no prompt or tool schema of its own.
 
 #### Token effect
 
-Only the relayed message text reaches the model, through channel-core's durable session write.
+Only the relayed message text reaches the model, through channel-core's session write.
 
 #### KV Cache effect
 
@@ -47,10 +36,11 @@ Append-only through channel-core's user-message write.
 
 ## Known Limitations and Deferred Work
 
-- **binary attachments**: the SDK recognizes and textifies resource messages, but the shared `ChannelMessage` contract does not yet download their bytes into Harness `ctx.attachments`; the model sees the SDK's resource marker rather than image/file bytes.
-- **interactive actions**: inbound card-action/comment/reaction events and outbound streaming cards are supported by `LarkChannel` but are not yet projected onto the text-only `ctx.legacyChannels` contract.
-- **credentialed e2e boundary**: a real Feishu deployment passed authentication, WebSocket ingress, the durable Harness agent turn, SDK outbound delivery, and user-confirmed receipt on 2026-08-14. That run predates the current credential-reference and hot-rotation adapter. Those two paths, plus launch-environment fallback, fail-loud missing credentials, normalized mapping, awaited inbound, pre-WebSocket backoff, rejected-handshake cleanup, Unicode-safe topic chunking, native replies, and reactions have keyless coverage; the credential-reference and rotation paths still need a fresh deployed run.
-- **never-settling handshake**: `LarkChannel` is currently created without an SDK handshake timeout, and disposal awaits the active `connect()` promise before closing the socket. A DNS/proxy/NAT path that never settles can therefore hang shutdown or reload; configure the SDK timeout and cover this path before claiming complete failed-handshake cleanup.
-- **async readiness**: adapter disposal is asynchronous and drains connection cleanup, but `start` still has no ready promise; SDK identity/handshake failures are logged asynchronously rather than rejecting daemon boot.
-- **SDK ingress acknowledgement**: SDK 1.73 marks an accepted event seen after its callback settles even when that callback ultimately fails. SDK outbound retry handles transient sends, but there is no durable ingress/outbox replay after a final failure.
-- **SDK 1.73 compatibility shim**: cleanup after a settled failed handshake must reach the SDK's `rawWsClient` and safety component because the public lifecycle is incomplete on that path. Revalidate or remove this narrow shim when upgrading the Lark SDK.
+- **decommission gate**: remove this adapter only after a credentialed Feishu account passes the OpenClaw sidecar live-cutover matrix; unit and contract tests do not satisfy that gate.
+
+- **rich text / interactive cards / attachments**: text messages only; rich-text, interactive cards, images, and `reply_in_thread` quoted replies all belong to stage 3 channel extensions.
+- **p2p session thread**: p2p/private uses the sender's `open_id` as the thread id, with `chat_id` as the fallback only when the sender is missing.
+- **real e2e**: the assembly test running a real agent turn inside the Loader needs a real key (see the stage 2 summary for the credential list); currently covered by contract tests (protocol mapping + `send` payload + idempotent dedup) + dump-config smoke.
+- **dedup set**: `seen` evicts the oldest entry past 10000, so a long-running bot does not grow without bound.
+- **send failure throws**: an error is thrown when `im.message.create` returns a non-zero `code`; retry/rate-limit policy deferred to stage 3.
+- **mention mapping by display name**: `wasMentioned` matches `mentions[].name` against the identity patterns; resolving the bot's own `open_id` from the mention `id` (and thus a name-agnostic match) needs an extra API round-trip, deferred. A mention whose name does not match any identity pattern reports `wasMentioned: false`.

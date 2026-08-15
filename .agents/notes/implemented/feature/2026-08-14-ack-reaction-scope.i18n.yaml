@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-14-ack-reaction-scope.md
-2026-08-14-ack-reaction-scope.md: 3c1ca7d08cfd3c72983bc21d13bc1d850fd8d1f2
-2026-08-14-ack-reaction-scope.zh.md: 2e4fc8d808176692346afcda41946d1fffc6ea9c
+2026-08-14-ack-reaction-scope.md: 4502dff70f4ba743b08a5c21b17909b793f31038
+2026-08-14-ack-reaction-scope.zh.md: 6bb786c407dfebfe54bfec95397e8de7640942a0

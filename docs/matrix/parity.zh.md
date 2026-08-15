@@ -43,7 +43,7 @@ Production 渠道平面锁定 OpenClaw `v2026.7.1-2`、commit `0790d9f593ad30c94
 | Channel Service Definition | current Gateway integration | 自有 `ctx.channels` | New seam | `channel` | V1 已实现 |
 | Channel Agent Driver | dsh Session 与 Agent lifecycle | `ctx.channels`、Agents、Sessions、attachments | Plugin | `channel-agent` | 基础已实现；认证未完成 |
 | OpenClaw 通信 Provider | 锁定 Gateway 与 plugins | `ctx.channels`、subprocess、storage | Plugin | `channel-openclaw` | 基础已实现；默认关闭 |
-| 旧进程内渠道路径 | ADR-0002 实验 | `ctx.legacyChannels` | Deferred removal | `channel-core`、`channel-telegram`、`channel-discord`、`channel-feishu` | 只用于 compatibility；默认关闭，保留到 ADR-0008 替换门禁通过 |
+| 旧进程内渠道路径 | ADR-0002 实验 | `ctx.legacyChannels` | Deferred removal | `channel-core`、`channel-telegram`、`channel-feishu` | 保留到 ADR-0008 替换条件通过 |
 | Approval / security policy | later OpenClaw security reference | approvals 与 guards | Reuse/config | — | 可直接使用 |
 | Federation node | outside early baseline | `ctx.subagents` transport | Plugin | `clawd-federation` | 仅 ADR-0005 评估；实现推迟 |
 | Smart home | outside selected scope | 无已接受 seam | Deferred | — | 需要经审查的来源与能力设计 |
@@ -56,10 +56,6 @@ Channel Agent 路径把完整且净化后的模型可见来源存储在已知 `u
 
 Distribution CLI 固定使用 `@deepseek-ai/dsh@0.1.0-rc.6`，已准备的发行 workflow 只以公共 npm `next` 为目标，并使用 OIDC trusted publishing 与 provenance。13 个 package name 均不存在，因此发行状态是 `bootstrap-required`，而不是 `OIDC-ready`：首次创建需要用户另行授权交互式 2FA 发布，staged publishing 不适用于全新 package，后续 OIDC 权限则要求全部 13 条 trust 记录、branch-restricted GitHub `npm` environment 与精确 `refs/heads/clawdsh`。仓库保持 private，且没有执行 bootstrap、trust 配置或真实发布。
 
-### Legacy 证据边界
-
-保留的 `clawdsh-legacy-channel-plane` group 默认关闭。若存在它的 opt-in，Gateway 启动与 Settings preflight 会拒绝启用 canonical sidecar。其 2026-08-14 飞书文本 round trip 与 2026-08-15 Telegram 真实客户端矩阵是历史实现证据；Discord 只有无密钥覆盖。这些运行使用进程内 adapter host，而不是锁定的 OpenClaw Gateway，因此不能提升任何 sidecar Channel。准确的 passed/not-run 边界由[证据日志](../journal/2026-08-15.md)与 [Telegram 手册](../cookbook/telegram-e2e.md)拥有。
-
 ## Production 渠道目录
 
 Stable public chat catalog 含 27 个条目：**1 core + 2 bundled + 21 repository-official + 3 external = 24+3**。精确名称、包版本、integrity、source path 与 observation time 位于 `tools/openclaw-channel-host/channels.production.json`。
@@ -68,9 +64,8 @@ Stable public chat catalog 含 27 个条目：**1 core + 2 bundled + 21 reposito
 |---|---:|---|---|
 | Core + bundled + repository-official | 24 | **cataloged** | 精确 stable host source 与逐条目来源已锁定；逐渠道装配与认证未完成 |
 | External | 3 | **cataloged** | WeChat、Yuanbao 与 Zalo ClawBot 有精确包身份；仍需外部审查及相同的装配和认证要求 |
-| 旧 Telegram 适配器 | 1 | **installable** | 本地包与历史带凭证文本/caption 证据存在；后续图片/轮换/迁移工作只有无密钥覆盖；默认关闭 |
-| 旧 Discord 适配器 | 1 | **installable** | 本地包与无密钥 Gateway/REST lifecycle 证据存在；没有带凭证真实服务器 E2E；默认关闭 |
-| 旧 Feishu 适配器 | 1 | **installable** | 本地包与历史带凭证文本证据存在；后续凭据引用/热切换工作只有无密钥覆盖；默认关闭 |
+| 旧 Telegram 适配器 | 1 | **installable** | 本地包存在；没有当前带凭证 live smoke 建立认证或启用状态 |
+| 旧 Feishu 适配器 | 1 | **installable** | 本地包存在；历史 smoke 不建立当前发布的认证或启用状态 |
 
 Catalog 来源不是运行时支持声明。只有兼容的锁定 host 与 bridge composition 完成装配，已校验 npm integrity 才能使渠道达到 installable。Canary catalog 含 31 个条目，但仍只是 cataloged 审计输入。
 

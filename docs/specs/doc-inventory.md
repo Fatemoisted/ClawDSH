@@ -4,7 +4,7 @@ English | [中文](doc-inventory.zh.md)
 
 - **Status**: Phase 4 productization; the product shell, Settings, Activity, and public-distribution preparation are implemented
 - **Purpose**: identify repository locations that are upstream read-only, ClawDSH-owned, or narrow ADR-backed additions
-- **Authority**: root `AGENTS.md`, ADR-0001, ADR-0004, ADR-0006, [GUI ADR-0007](../adr/0007-clawdsh-local-gui-product.md), [channel ADR-0008](../adr/0008-openclaw-channel-plane.md), [public-distribution ADR-0009](../adr/0009-public-npm-distribution.md), and [Harness reuse ADR-0010](../adr/0010-harness-contract-first.md)
+- **Authority**: root `AGENTS.md`, ADR-0001, ADR-0004, ADR-0006, [GUI ADR-0007](../adr/0007-clawdsh-local-gui-product.md), [channel ADR-0008](../adr/0008-openclaw-channel-plane.md), and [public-distribution ADR-0009](../adr/0009-public-npm-distribution.md)
 
 ## 1. Upstream read-only locations
 
@@ -34,14 +34,12 @@ Upstream means `deepseek-ai/deepseek-harness` through the `upstream` remote. Dir
 
 | Location | Current content |
 |---|---|
-| `packages/openclaw/` | feature packages, the current channel seam, retained legacy channel packages, restricted preset, product assembly, nested non-workspace GUI/runtime and public-distribution builds, and package template |
-| `docs/adr/` | ClawDSH decisions; ADR-0007 owns the GUI product posture, ADR-0008 owns the channel plane and supersedes ADR-0002 there, ADR-0009 owns public distribution, ADR-0010 owns Harness-first reuse, and ADR-0011 is legacy-only |
+| `packages/openclaw/` | feature packages, the current channel seam, retained legacy channel packages, restricted preset, product assembly, nested non-workspace GUI/runtime and distribution builds, and package template |
+| `docs/adr/` | ClawDSH decisions; ADR-0007 owns the GUI product posture, ADR-0008 supersedes ADR-0002 for channel architecture, and ADR-0009 owns public distribution |
 | `docs/specs/` | roadmap, context map, inventory, product chain, GUI spec, current feature specs, and legacy channel reference |
-| `docs/matrix/` | product/channel status plus the ClawDSH-to-Harness reuse view; exact channel artifacts remain in machine catalogs |
-| `docs/subsystems/clawdsh*` | generated Cordis projection for ClawDSH-owned `ctx.channels`, `ctx.legacyChannels`, `ctx.embeddings`, and channel events; the surrounding subsystem tree remains upstream-owned |
+| `docs/matrix/parity.md` | product and channel support projection; exact channel artifacts remain in machine catalogs |
 | `docs/standards/` | naming, plugin, PR, dsh upstream sync, and OpenClaw channel sync rules |
 | `docs/journal/` | dated development history, not current-state authority |
-| `docs/cookbook/telegram-e2e*` | narrow legacy Telegram credentialed-test procedure; not sidecar certification or ownership of the surrounding upstream cookbook tree |
 | `docs/upstream-proposal/` | dsh Session-event and OpenClaw AgentHarness proposals; no upstream PR is implied |
 | `tools/openclaw-channel-host/` | production and canary host locks, channel catalogs, schemas, verifier, and tests |
 | other `tools/` entries | ClawDSH installer, migration, verification, and e2e drivers |
@@ -103,14 +101,13 @@ The bundle and CLI are prepared release candidates, not published packages. All 
 | Promotion, certification, and rollback | `openclaw-channel-sync` standard |
 | User-visible support state | parity matrix |
 | Runtime protocol and ledgers | `channel`, `channel-agent`, and `channel-openclaw` |
-| Legacy adapter behavior | ADR-0002, ADR-0011, `feature-channel-core`, `feature-channel-discord`, legacy packages, the Telegram cookbook, and active Agent Notes |
+| Legacy adapter behavior | ADR-0002, `feature-channel-core`, legacy packages, and their active Agent Notes |
 
 OpenClaw source archives and npm tarballs are external inputs, not repository-owned source trees. Do not copy the full host under `packages/openclaw/`. The production bridge may distribute the minimum derived code and notices its license permits; the lock verifier remains authoritative for the external host.
 
 ## 7. Transitional state
 
-- `channel-core`, `channel-telegram`, `channel-discord`, and `channel-feishu` are owned but legacy. They remain default-disabled until the ADR-0008 replacement conditions pass; do not archive their Agent Notes earlier.
-- Historical Feishu/Telegram credentialed results and Discord keyless results belong only to `ctx.legacyChannels`; none can certify the locked sidecar.
+- `channel-core`, `channel-telegram`, and `channel-feishu` are owned but legacy. They remain until the ADR-0008 replacement conditions pass; do not archive their Agent Notes earlier.
 - `channel-wechat` is a historical exclusion record whose availability statement is superseded by the production external WeChat catalog. It is not a runtime package or current status authority.
 - The production sidecar is not certified or enabled. Documentation must not convert catalog or package evidence into a live support claim.
 - Canary has an approved source archive but no locked built artifact and remains audit input only.

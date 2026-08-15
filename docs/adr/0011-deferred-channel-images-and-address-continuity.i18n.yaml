@@ -1,6 +1,0 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write docs/adr/0011-deferred-channel-images-and-address-continuity.md
-0011-deferred-channel-images-and-address-continuity.md: d4c9a223d887b6f4051a15947de11899a7d39541
-0011-deferred-channel-images-and-address-continuity.zh.md: b50a9803b68217887f91267752e37dbf8749caf8

@@ -10,14 +10,14 @@ Status: implemented
 
 ## 决策
 
-**身份呈现落在 legacy channel-core**（`src/presentation.ts` 纯函数 + `LegacyChannelRegistry` Config），逐字移植自 OpenClaw v2026.1.15（`src/agents/identity.ts` + `src/auto-reply/reply/mentions.ts`）：
+**身份呈现落在 channel-core**（`src/presentation.ts` 纯函数 + `ChannelRegistry` Config），逐字移植自 OpenClaw v2026.1.15（`src/agents/identity.ts` + `src/auto-reply/reply/mentions.ts`）：
 
 - `resolveAckReaction`：`ackReaction` → `identity.emoji` → `👀`；
 - `resolveResponsePrefix`：`'auto'`（默认）渲染 `[name]`，无名则空；字面量直通；
 - `resolveMessagePrefix`：`[name]` 或空；
 - `deriveMentionPatterns`：`\b@?<名字各段以 \s+ 连接>\b` 大小写不敏感 + 原始 emoji 字面量模式，含 OpenClaw 的 `→\b` 归一化；`stripMentions` 去除匹配。
 
-接线：`LegacyChannelRegistry` 携带 Config（`identity` / `responsePrefix` / `ackReaction`）；`driveTurn` 给提取回复加前缀、回合前 fire-and-forget 触发 ack；`ChannelMessage.messageId` + `ChannelCapabilities.react` + 可选 `ChannelAdapter.react(message, emoji)` 把 ack 送到适配器。Telegram 经 grammY `setMessageReaction` 实现 `react` 并捕获入站 `message_id`；飞书捕获 `message_id` 并使用官方 SDK 的 `im.messageReaction.create`。默认关闭的 legacy profile 行带 `responsePrefix: auto` + `ackReaction: '👀'`。`agent.cordis.yml` 不动：身份呈现不是 prompt 内容。后续 [ack-reaction scope Note](2026-08-14-ack-reaction-scope.md)负责群提及门控及其当前 adapter consumer。
+接线：`ChannelRegistry` 增 `static Config`（`identity` / `responsePrefix` / `ackReaction`）；`driveTurn` 给提取回复加前缀、回合前 fire-and-forget 触发 ack；`ChannelMessage.messageId` + `ChannelCapabilities.react` + 可选 `ChannelAdapter.react(message, emoji)` 把 ack 送到适配器。Telegram 经 grammY `setMessageReaction` 实现 `react` 并捕获入站 `message_id`；飞书捕获 `message_id` 但声明 `react: false`（其 `im.message.reaction.create` 的 node-sdk 表面在本 workspace 未验证——Known Limitation 指名 REST 路径）。`clawdsh` preset 的 channel-core 行带 `responsePrefix: auto` + `ackReaction: '👀'` 与注释身份示例。`agent.cordis.yml` 不动：身份呈现不是 prompt 内容。
 
 ## 考虑过的替代方案
 
@@ -25,14 +25,13 @@ Status: implemented
 
 **适配器本地呈现（每个适配器自加前缀）。** 否决：前缀逻辑逐渠道重复，绕过 seam 的唯一渲染点（`driveTurn`，回复提取已在此）。
 
-**完整移植 `ackReactionScope`（群提及门控）。** 本增量因需要群聊提及检测而延后；后续 [ack-reaction scope 决策](2026-08-14-ack-reaction-scope.md)已交付该能力。
+**完整移植 `ackReactionScope`（群提及门控）。** 延后：需要本批次没有的群聊提及检测；恒开 ack 是成文过渡。
 
 **新身份服务 seam。** 否决：Config 面上的纯函数模块覆盖全部功能；`ctx.identity` 服务不承载任何额外能力。
 
 ## 影响
 
 - 矩阵 soul 行的 `(IDENTITY, Deferred)` 移除；`feature-soul.md` 的映射行指向本 Note；
-- `deriveMentionPatterns` 已由后续 ack-scope 决策下的 adapter mention detection 消费；
-- 适配器能力 `react` 是 `ChannelAdapter` 契约的一部分；新适配器必须声明，Telegram 与飞书当前都已实现；
-- 默认关闭的 legacy group 携带身份呈现；部署改名字/emoji 无需触碰 prompt；
-- 该策略只属于 legacy `ctx.legacyChannels`；[test1 重建 Note](../architecture/2026-08-15-test1-channel-plane-rebuild.md)负责它与规范 `ctx.channels` 的隔离。
+- `deriveMentionPatterns` 随契约测试出但无请求内消费者（未来 owner：ack scope 门控与适配器提及检测）——按 current-owner 规则在 PR 描述标注；
+- 适配器能力 `react` 成为 `ChannelAdapter` 契约的一部分；新适配器必须声明（飞书的 `false` 即模板）；
+- `clawdsh` preset 带身份呈现块；部署改名字/emoji 无需触碰 prompt。

@@ -28,13 +28,15 @@ function processExists(pid: number): boolean {
 }
 
 async function readTree(path: string): Promise<TreeState> {
-  const text = await readFile(path, 'utf8')
-  const state = JSON.parse(text) as Partial<TreeState>
-  if (!Number.isSafeInteger(state.root) || !Number.isSafeInteger(state.descendant)
-    || (state.root ?? 0) <= 0 || (state.descendant ?? 0) <= 0 || state.root === state.descendant) {
-    throw new Error(`invalid managed-tree state: ${text}`)
-  }
-  return state as TreeState
+  return vi.waitFor(async () => {
+    const text = await readFile(path, 'utf8')
+    const state = JSON.parse(text) as Partial<TreeState>
+    if (!Number.isSafeInteger(state.root) || !Number.isSafeInteger(state.descendant)
+      || (state.root ?? 0) <= 0 || (state.descendant ?? 0) <= 0 || state.root === state.descendant) {
+      throw new Error(`invalid managed-tree state: ${text}`)
+    }
+    return state as TreeState
+  }, { interval: 10, timeout: scenarioTimeoutMs })
 }
 
 async function captureIdentities(inspector: ProcessInspector, state: TreeState): Promise<ProcessIdentity[]> {
@@ -104,35 +106,11 @@ async function runScenario(kind: ManagedKind, trigger: ExitTrigger) {
   let settled = false
   let treeGone = false
   try {
-    const childSettled = child.then(
-      outcome => ({ kind: 'exit' as const, outcome }),
-      (error: unknown) => ({ kind: 'error' as const, error }),
-    )
-    const waitForPublication = async <T>(probe: () => Promise<T>): Promise<T> => {
-      const published = await vi.waitUntil(async () => {
-        const result = await Promise.race([
-          probe().then(
-            value => ({ kind: 'ready' as const, value }),
-            () => ({ kind: 'pending' as const }),
-          ),
-          childSettled,
-        ])
-        if (result.kind === 'ready') return { value: result.value }
-        if (result.kind === 'pending') return false
-        if (result.kind === 'error') throw result.error
-        throw new Error([
-          'managed host exited before publishing startup state',
-          `exitCode=${result.outcome.exitCode ?? '<none>'}`,
-          `signal=${result.outcome.signal ?? '<none>'}`,
-          `stdout:\n${result.outcome.stdout}`,
-          `stderr:\n${result.outcome.stderr}`,
-        ].join('\n'))
-      }, { interval: 10, timeout: scenarioTimeoutMs })
-      return published.value
-    }
-
-    state = await waitForPublication(() => readTree(join(root, 'tree.json')))
-    await waitForPublication(() => readFile(join(root, 'ready'), 'utf8'))
+    state = await readTree(join(root, 'tree.json'))
+    await vi.waitFor(() => readFile(join(root, 'ready'), 'utf8'), {
+      interval: 10,
+      timeout: scenarioTimeoutMs,
+    })
     if (process.platform !== 'win32') identities = await captureIdentities(createProcessInspector(), state)
     await writeFile(join(root, 'proceed'), 'proceed')
     const outcome = await child

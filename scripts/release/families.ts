@@ -77,24 +77,12 @@ export abstract class ReleaseFamily {
   abstract readonly tagPrefix: string
 
   /**
-   * Decide whether a path selected by {@link patterns} belongs to this family.
-   * @param _manifestPath - normalized repository-relative manifest path.
-   * @returns Whether the manifest is a member.
-   */
-  protected includesManifest(_manifestPath: string): boolean {
-    return true
-  }
-
-  /**
    * Discover this family's members.
    * @param root - repository root.
    * @returns Members sorted by directory, with names validated and deduplicated.
    */
   members(root: string): ReleaseMember[] {
-    const manifestPaths = globSync([...this.patterns], { cwd: root })
-      .map(manifestPath => manifestPath.replaceAll('\\', '/'))
-      .filter(manifestPath => this.includesManifest(manifestPath))
-      .sort()
+    const manifestPaths = globSync([...this.patterns], { cwd: root }).sort()
     if (manifestPaths.length === 0) throw new Error(`release family ${this.id} matched no manifests`)
 
     const members: ReleaseMember[] = []
@@ -210,11 +198,6 @@ class DshFamily extends ReleaseFamily {
   readonly id = 'dsh'
   readonly patterns = ['packages/*/*/package.json', 'apps/*/package.json'] as const
   readonly tagPrefix = 'dsh-v'
-
-  /** Keep the separately distributed ClawDSH packages out of the upstream family. */
-  protected override includesManifest(manifestPath: string): boolean {
-    return !manifestPath.startsWith('packages/openclaw/')
-  }
 
   /**
    * Require one version across the family, the way a single tag can name it.

@@ -1,494 +1,296 @@
 /**
- * Feishu/Lark adapter over the `ctx.legacyChannels` seam.
+ * A Feishu (Lark) channel adapter over the legacy `ctx.legacyChannels` seam,
+ * backed by the official `@larksuiteoapi/node-sdk` and retained only until
+ * credentialed sidecar cutover.
  *
- * Platform behavior is deliberately delegated to the official
- * `@larksuiteoapi/node-sdk` LarkChannel: authenticated bot identity,
- * WebSocket lifecycle/reconnect, normalization, stale/duplicate protection,
- * outbound chunking/retry/fallback, native replies, and reactions. This
- * package only translates the SDK's normalized contract to ClawDSH's channel
- * contract and attaches it to Cordis lifecycle.
+ * Inbound messages arrive through the SDK's WebSocket long-connection: the
+ * adapter registers an `im.message.receive_v1` handler on a `Lark.EventDispatcher`,
+ * starts a `Lark.WSClient` (which authenticates the connection and ACKs delivery
+ * at-least-once), de-duplicates by `message_id`, and maps each text message onto
+ * `channel/inbound`. Outbound replies post through `Lark.Client.im.message.create`
+ * with the tenant token the SDK caches and refreshes on its own.
+ *
+ * Long-connection mode replaces the earlier `node:http` webhook: no
+ * `verificationToken`/`encryptKey`, no inbound HTTP surface, no URL-verification
+ * challenge. Rich-text cards, attachments, and `reply_in_thread` quoting are out
+ * of scope for this cut; only text messages are relayed.
  * @module @clawdsh/dsh-channel-feishu
  */
 
 import * as Lark from '@larksuiteoapi/node-sdk'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type {} from '@deepseek-ai/cordis-plugin-timer'
-import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
-import {
-  createChannelMaintenanceQueue,
-  normalizeChannelCredential,
-  registerLegacyChannelAdapter,
-  resolveChannelCredential,
-  splitTextByUtf16Limit,
-} from '@clawdsh/dsh-channel-core'
+import { registerLegacyChannelAdapter, stripZeroWidth } from '@clawdsh/dsh-channel-core'
 import type { ChannelAdapter, ChannelMessage } from '@clawdsh/dsh-channel-core'
+
+/** Cap on retained de-duplication message ids before the oldest is evicted. */
+const SEEN_CAP = 10000
 
 /** Cordis plugin name. */
 export const name = 'channel-feishu'
 
-/** The channel registry this adapter contributes to. */
-export const inject = ['legacyChannels', 'timer']
-
-/** Default Harness credential reference for the Feishu/Lark app id. */
-export const FEISHU_DEFAULT_APP_ID_ENV = 'FEISHU_APP_ID'
-
-/** Default Harness credential reference for the Feishu/Lark app secret. */
-export const FEISHU_DEFAULT_APP_SECRET_ENV = 'FEISHU_APP_SECRET'
-
-/** Adapter-level retry starts only when identity failed before the SDK created a WebSocket. */
-const INITIAL_CONNECT_RETRY_MS = 1000
-const MAX_CONNECT_RETRY_MS = 30_000
+/** The legacy channel registry this adapter contributes to. */
+export const inject = ['legacyChannels']
 
 /** Feishu API domain: mainland Feishu or international Lark. */
 export type FeishuDomain = 'feishu' | 'lark'
 
 /** Plugin config: app identity plus which Open Platform region to dial. */
 export interface Config {
-  /** Literal Feishu app ID for programmatic compatibility; prefer {@link appIdEnv}. */
-  appId?: string
-  /** Harness credential reference resolved before opening the WebSocket. */
-  appIdEnv?: string
-  /** Literal Feishu app secret for programmatic compatibility; prefer {@link appSecretEnv}. */
-  appSecret?: string
-  /** Harness credential reference resolved before opening the WebSocket. */
-  appSecretEnv?: string
+  /** Feishu app ID (from the developer console); must not be committed. */
+  appId: string
+  /** Feishu app secret; must not be committed. */
+  appSecret: string
   /** Open Platform region; `feishu` (default) or `lark`. */
   domain?: FeishuDomain
 }
 
 /** Runtime schema for the Feishu adapter. */
 export const Config: z<Config> = z.object({
-  appId: z.string(),
-  appIdEnv: z.string().role('credential-ref').default(FEISHU_DEFAULT_APP_ID_ENV),
-  appSecret: z.string().role('secret'),
-  appSecretEnv: z.string().role('credential-ref').default(FEISHU_DEFAULT_APP_SECRET_ENV),
+  appId: z.string().required(),
+  appSecret: z.string().required(),
   domain: z.union([z.const('feishu'), z.const('lark')]).default('feishu'),
 })
 
-/** Fully resolved SDK identity. Values never enter tracked configuration. */
-export interface ResolvedFeishuConfig {
-  /** Resolved Feishu/Lark app id. */
-  appId: string
-  /** Resolved Feishu/Lark app secret. */
-  appSecret: string
-  /** Open Platform region. */
-  domain?: FeishuDomain
+/** The `im.message.receive_v1` event fields this adapter consumes. */
+interface FeishuReceiveEvent {
+  sender?: {
+    sender_id?: { open_id?: string; user_id?: string; union_id?: string }
+  }
+  message?: {
+    message_id?: string
+    chat_id?: string
+    chat_type?: string
+    message_type?: string
+    content?: string
+    mentions?: Array<{
+      name?: string
+      id?: { open_id?: string; user_id?: string; union_id?: string }
+    }>
+  }
 }
 
-/** Dependency injection seam so tests can substitute the high-level SDK channel. */
+/** Mutable bookkeeping shared between the inbound handler and the sender. */
+export interface AdapterState {
+  /** Per-thread reply target (`receive_id` + its type), keyed by inbound thread id. */
+  receiveByThread: Map<string, { id: string; type: 'chat_id' | 'open_id' }>
+  /** Recently seen message ids, for at-least-once de-duplication. */
+  seen: Set<string>
+}
+
+/** Dependency injection seam so tests can substitute the API client. */
 export interface AdapterDeps {
-  /** Fixed high-level channel for focused adapter tests; bypasses credential resolution. */
-  channel?: Lark.LarkChannel
-  /** Channel factory; production uses {@link buildLarkChannel}. */
-  channelFactory?: (config: ResolvedFeishuConfig) => Lark.LarkChannel
-  /** Credential resolver override; production uses Harness credentials / launch environment. */
-  resolveCredential?: (ctx: Context, ref: CredentialRef) => Promise<string | undefined>
+  /** Lark API client; when omitted, one is built from the app credentials. */
+  client?: Lark.Client
+  /** Identity-derived mention patterns for group-mention detection. */
+  mentionPatterns?: readonly RegExp[]
 }
 
-/** Resolve the SDK `Domain` enum from the plugin's domain string. */
+/**
+ * Create a fresh, empty adapter state.
+ * @returns A state with an empty reply-target map and an empty de-dup set.
+ */
+export function createAdapterState(): AdapterState {
+  return { receiveByThread: new Map(), seen: new Set() }
+}
+
+/** Resolve the SDK `Domain` enum from the plugin's `domain` string. */
 function resolveDomain(domain: FeishuDomain | undefined): Lark.Domain {
   return domain === 'lark' ? Lark.Domain.Lark : Lark.Domain.Feishu
 }
 
 /**
- * Construct the official high-level Lark channel.
- *
- * Policy stays in channel-core, so the SDK must not pre-filter mentions.
- * SDK text batching is also disabled: its scope is `chatId`, while ClawDSH's
- * durable routing additionally separates `threadId`; merging here could move
- * two topics into the last message's session. The SDK still owns stale-event
- * rejection, TTL de-duplication, and the in-flight processing lock.
- *
- * @param config - validated app identity and Open Platform region.
- * @returns the configured official high-level Lark channel.
+ * Extract the text from a `message.content` JSON string such as `{"text":"hi"}`.
+ * @param content - the raw message content, or `undefined` when absent.
+ * @returns the decoded `text` field, or the raw content when it is not the expected JSON envelope.
  */
-export function buildLarkChannel(config: ResolvedFeishuConfig): Lark.LarkChannel {
-  return Lark.createLarkChannel({
-    appId: config.appId,
-    appSecret: config.appSecret,
-    transport: 'websocket',
-    domain: resolveDomain(config.domain),
-    source: 'clawdsh',
-    policy: {
-      requireMention: false,
-      respondToMentionAll: true,
-    },
-    safety: {
-      chatQueue: { enabled: false },
-    },
-  })
-}
-
-/** Resolve both SDK identity fields and fail with reference names, never secret values. */
-async function resolveFeishuConfig(
-  ctx: Context,
-  config: Config,
-  appIdRef: CredentialRef,
-  appSecretRef: CredentialRef,
-  override: AdapterDeps['resolveCredential'],
-): Promise<ResolvedFeishuConfig> {
-  const [appId, appSecret] = await Promise.all([
-    resolveChannelCredential(ctx, config.appId, appIdRef, override),
-    resolveChannelCredential(ctx, config.appSecret, appSecretRef, override),
-  ])
-  const missing = [
-    ...(appId === undefined ? [`appId (${String(appIdRef)})`] : []),
-    ...(appSecret === undefined ? [`appSecret (${String(appSecretRef)})`] : []),
-  ]
-  if (appId === undefined || appSecret === undefined) {
-    throw new Error(`channel-feishu: no credential resolved for ${missing.join(' and ')}`)
+export function extractText(content: string | undefined): string {
+  if (content === undefined) return ''
+  try {
+    const parsed: unknown = JSON.parse(content)
+    if (typeof parsed === 'object' && parsed !== null && 'text' in parsed) {
+      const text = (parsed as { text?: unknown }).text
+      if (typeof text === 'string') return text
+    }
+  } catch {
+    // Fall back to the raw content when it is not the expected JSON envelope.
   }
-  return {
-    appId,
-    appSecret,
-    ...(config.domain === undefined ? {} : { domain: config.domain }),
-  }
+  return content
 }
 
 /**
- * Map one SDK-normalized message to the channel seam.
- * @param message - a normalized message produced after bot identity is known.
- * @returns the inbound channel message, or `undefined` for an empty body.
+ * Map an `im.message.receive_v1` event to a normalized inbound message, or
+ * `undefined` when it is not a non-empty text message.
+ * @param event - the SDK-delivered receive event.
+ * @param mentionPatterns - identity-derived mention patterns; absent means the
+ *   adapter cannot evaluate mentions and `wasMentioned` stays absent (fail-open).
+ * @returns the inbound thread id, optional sender, and text, or `undefined`.
  */
-export function toInbound(message: Lark.NormalizedMessage): ChannelMessage | undefined {
-  const text = message.content.trim()
+export function toInbound(
+  event: FeishuReceiveEvent,
+  mentionPatterns: readonly RegExp[] = [],
+): { threadId: string; sender?: string; messageId?: string; isGroup?: boolean; wasMentioned?: boolean; text: string } | undefined {
+  const message = event.message
+  if (message === undefined || message.message_type !== 'text') return undefined
+  const text = extractText(message.content)
   if (text === '') return undefined
-  const isDirect = message.chatType === 'p2p'
-  const conversationId = isDirect ? (message.senderId || message.chatId) : message.chatId
-  if (conversationId === '') return undefined
+  const senderOpenId = event.sender?.sender_id?.open_id
+  const isDirect = message.chat_type === 'p2p' || message.chat_type === 'private'
+  const threadId = isDirect
+    ? (senderOpenId ?? message.chat_id ?? 'p2p')
+    : (message.chat_id ?? 'group')
+  // Minimal mention mapping: Feishu text does not inline @-tokens; mention
+  // entries carry the app's display name, matched against the identity
+  // patterns. Without patterns `wasMentioned` stays absent (fail-open).
+  const wasMentioned = (message.mentions ?? []).some(mention =>
+    mention.name !== undefined && mentionPatterns.some(pattern => pattern.test(stripZeroWidth(mention.name ?? ''))))
   return {
-    channel: 'feishu',
-    direction: 'in',
-    conversationId,
-    ...(message.threadId === undefined ? {} : { threadId: message.threadId }),
-    chatType: isDirect ? 'direct' : 'group',
-    mention: {
-      detectable: true,
-      // `respondToMentionAll` is enabled on the SDK policy above, so preserve
-      // that accepted broadcast as an explicit mention for channel-core's
-      // centralized group gate too.
-      botMentioned: isDirect || message.mentionedBot || message.mentionAll,
-    },
-    ...(message.senderId === '' ? {} : { sender: message.senderId }),
-    messageId: message.messageId,
+    threadId,
+    ...(senderOpenId === undefined ? {} : { sender: senderOpenId }),
+    ...(message.message_id === undefined ? {} : { messageId: message.message_id }),
+    ...(message.chat_type === undefined ? {} : { isGroup: message.chat_type === 'group' }),
+    // Presence is the detection-capability signal: without patterns the adapter
+    // cannot evaluate mentions, so `wasMentioned` stays absent (fail-open).
+    ...(!isDirect && mentionPatterns.length > 0 ? { wasMentioned } : {}),
     text,
   }
 }
 
-/** Render an SDK/lifecycle failure while redacting resolved identity values. */
-function describe(error: unknown, ...credentials: Array<string | undefined>): string {
-  let rendered = error instanceof Error ? error.message : String(error)
-  for (const credential of credentials) {
-    if (credential !== undefined && credential !== '') rendered = rendered.replaceAll(credential, '[redacted]')
+/** Deduplicate by message id, evicting the oldest past the cap. */
+function dedup(state: AdapterState, messageId: string | undefined): boolean {
+  if (messageId === undefined) return false
+  if (state.seen.has(messageId)) return true
+  state.seen.add(messageId)
+  if (state.seen.size > SEEN_CAP) {
+    const oldest = state.seen.values().next().value
+    if (oldest !== undefined) state.seen.delete(oldest)
   }
-  return rendered
-}
-
-/** Permanent credential/shape failures cannot recover through reconnecting. */
-function isRetryableConnectError(error: unknown): boolean {
-  return !(error instanceof Lark.LarkChannelError)
-    || !['permission_denied', 'format_error', 'ssrf_blocked', 'target_revoked'].includes(error.code)
-}
-
-/** SDK 1.73 lifecycle surface needed only when connect never reached `connected=true`. */
-interface FailedConnectInternals {
-  safety?: { dispose(): Promise<void> }
+  return false
 }
 
 /**
- * Dispose the high-level channel, including the SDK 1.73 failed-handshake gap:
- * its public `disconnect()` returns early before `connected=true`, despite an
- * already-created public `rawWsClient` and private safety timers. Successful
- * connections stay entirely on the public SDK lifecycle.
+ * Handle one SDK-delivered receive event: de-duplicate, normalize, remember the
+ * reply target, and emit `channel/inbound`.
+ * @param ctx - Cordis context to emit `channel/inbound` on.
+ * @param state - shared adapter bookkeeping (reply targets and de-dup set).
+ * @param event - the SDK-delivered `im.message.receive_v1` event.
+ * @param mentionPatterns - identity-derived mention patterns for group-mention detection.
  */
-async function disconnectChannel(channel: Lark.LarkChannel, connectedOnce: boolean): Promise<void> {
-  const failures: unknown[] = []
-  if (!connectedOnce) {
-    try {
-      channel.rawWsClient?.close({ force: true })
-    } catch (error: unknown) {
-      failures.push(error)
-    }
-    const internals = channel as unknown as FailedConnectInternals
-    try {
-      await internals.safety?.dispose()
-    } catch (error: unknown) {
-      failures.push(error)
-    }
-  }
-  try {
-    await channel.disconnect()
-  } catch (error: unknown) {
-    failures.push(error)
-  }
-  if (failures.length > 0) throw new AggregateError(failures, 'failed to fully disconnect Lark channel')
-}
-
-/** Attach the SDK channel to Cordis and return a disposer that drains connection teardown. */
-function startChannel(
+export function handleReceiveEvent(
   ctx: Context,
-  channel: Lark.LarkChannel,
-  credentials: readonly string[] = [],
-): () => Promise<void> {
-  const inFlightMessages = new Set<Promise<void>>()
-  const unsubscribeMessage = channel.on('message', (message) => {
-    const inbound = toInbound(message)
-    if (inbound === undefined) return
-    const operation = ctx.parallel('channel/inbound', inbound)
-    inFlightMessages.add(operation)
-    // SDK 1.73's queue-disabled dispatcher does not retain the callback
-    // promise. Observe it here for lifecycle tracking while returning the
-    // original promise for SDK versions that do await handlers.
-    void operation.then(
-      () => { inFlightMessages.delete(operation) },
-      () => { inFlightMessages.delete(operation) },
-    )
-    return operation
+  state: AdapterState,
+  event: FeishuReceiveEvent,
+  mentionPatterns: readonly RegExp[] = [],
+): void {
+  const message = event.message
+  if (dedup(state, message?.message_id)) return
+  const inbound = toInbound(event, mentionPatterns)
+  if (inbound === undefined) return
+  const isDirect = message?.chat_type === 'p2p' || message?.chat_type === 'private'
+  state.receiveByThread.set(inbound.threadId, {
+    id: isDirect ? (inbound.sender ?? inbound.threadId) : inbound.threadId,
+    type: isDirect ? 'open_id' : 'chat_id',
   })
-  const unsubscribeError = channel.on('error', (error) => {
-    ctx.logger.warn(`channel-feishu: ${describe(error, ...credentials)}`)
+  ctx.emit('channel/inbound', {
+    channel: 'feishu',
+    direction: 'in',
+    threadId: inbound.threadId,
+    ...(inbound.sender === undefined ? {} : { sender: inbound.sender }),
+    ...(inbound.messageId === undefined ? {} : { messageId: inbound.messageId }),
+    text: inbound.text,
   })
-  let disposed = false
-  let connectedOnce = false
-  let attempt = 0
-  let cancelRetry: (() => void) | undefined
-  let connecting: Promise<void> | undefined
-  const connect = (): void => {
-    if (disposed) return
-    connecting = channel.connect()
-    void connecting.then(() => {
-      connectedOnce = true
-      attempt = 0
-    }, (error: unknown) => {
-      if (disposed) return
-      // Once the SDK has constructed its WSClient, its built-in autoReconnect
-      // remains authoritative. The adapter retries only the earlier identity
-      // path, where getConnectionStatus() is still undefined and the SDK has
-      // no reconnecting component yet.
-      const sdkOwnsReconnect = channel.getConnectionStatus() !== undefined
-      if (!isRetryableConnectError(error) || sdkOwnsReconnect) {
-        ctx.logger.warn(`channel-feishu: connect failed: ${describe(error, ...credentials)}`)
-        return
-      }
-      const delay = Math.min(INITIAL_CONNECT_RETRY_MS * 2 ** attempt, MAX_CONNECT_RETRY_MS)
-      attempt += 1
-      ctx.logger.warn(`channel-feishu: connect failed: ${describe(error, ...credentials)}; retrying in ${delay}ms`)
-      cancelRetry = ctx.timeout(() => {
-        cancelRetry = undefined
-        connect()
-      }, delay)
-    })
-  }
-  connect()
-  return async () => {
-    disposed = true
-    cancelRetry?.()
-    cancelRetry = undefined
-    unsubscribeMessage()
-    unsubscribeError()
-    // A disposer may race the initial identity probe/handshake. Wait for that
-    // attempt to settle before asking the SDK to close its socket and queues.
-    await (connecting ?? Promise.resolve()).catch(() => undefined)
-    while (inFlightMessages.size > 0) {
-      await Promise.allSettled([...inFlightMessages])
-    }
-    try {
-      await disconnectChannel(channel, connectedOnce)
-    } catch (error: unknown) {
-      ctx.logger.warn(`channel-feishu: disconnect failed: ${describe(error, ...credentials)}`)
-    }
-  }
 }
 
-/** Send one text reply through the SDK's chunk/retry/fallback implementation. */
-async function sendMessage(channel: Lark.LarkChannel, message: ChannelMessage): Promise<void> {
-  if (message.conversationId === undefined || message.conversationId === '') {
-    throw new Error('feishu: send requires a conversationId')
-  }
-  const options = {
-    ...(message.replyToMessageId === undefined ? {} : { replyTo: message.replyToMessageId }),
-    ...(message.threadId === undefined ? {} : { replyInThread: true }),
-  }
-  // node-sdk 1.73 splits with plain String.slice, which can cut a surrogate
-  // pair at the 3500 UTF-16-unit boundary. Pre-split every message safely and
-  // keep the SDK responsible for authenticated delivery/retry/fallback. A
-  // normal chat quotes only the first chunk (matching the SDK); a topic keeps
-  // the native reply target on every chunk so none falls back to chat create.
-  const chunks = splitTextByUtf16Limit(message.text, 3500)
-  for (let index = 0; index < chunks.length; index++) {
-    const chunk = chunks[index]
-    if (chunk === undefined) continue
-    const chunkOptions = index === 0 || message.threadId !== undefined ? options : {}
-    await channel.send(message.conversationId, { text: chunk }, chunkOptions)
-  }
+/** Build a Lark API client from validated config. */
+function buildClient(config: Config): Lark.Client {
+  return new Lark.Client({
+    appId: config.appId,
+    appSecret: config.appSecret,
+    appType: Lark.AppType.SelfBuild,
+    domain: resolveDomain(config.domain),
+  })
 }
 
-/** Portable reactions with an unambiguous Feishu named-reaction equivalent. */
-const FEISHU_REACTION_BY_ACK: ReadonlyMap<string, string> = new Map([
-  ['👀', 'EYES'],
-  ['EYES', 'EYES'],
-  ['👍', 'THUMBSUP'],
-  ['THUMBSUP', 'THUMBSUP'],
-  ['🙏', 'THANKS'],
-  ['THANKS', 'THANKS'],
-  ['😊', 'SMILE'],
-  ['🙂', 'SMILE'],
-  ['SMILE', 'SMILE'],
-  ['✅', 'DONE'],
-  ['DONE', 'DONE'],
-  ['❤', 'HEART'],
-  ['❤️', 'HEART'],
-  ['HEART', 'HEART'],
-  ['🎉', 'PARTY'],
-  ['PARTY', 'PARTY'],
-] as const)
-
-/** Map a portable ack to Feishu's named type, safely degrading to eyes. */
-function resolveReactionType(emoji: string): string {
-  return FEISHU_REACTION_BY_ACK.get(emoji) ?? 'EYES'
-}
-
-/** Attach an acknowledgement reaction using the SDK's typed helper. */
-async function react(channel: Lark.LarkChannel, message: ChannelMessage, emoji: string): Promise<void> {
-  if (message.messageId === undefined) return
-  await channel.addReaction(message.messageId, resolveReactionType(emoji))
-}
-
-/** Run one credential-backed SDK channel and rebuild it after a relevant rotation. */
-function startCredentialLifecycle(
+/** Start the WebSocket long-connection and return its disposer. */
+function startLongConnection(
   ctx: Context,
   config: Config,
-  appIdRef: CredentialRef,
-  appSecretRef: CredentialRef,
-  makeChannel: (config: ResolvedFeishuConfig) => Lark.LarkChannel,
-  setChannel: (channel: Lark.LarkChannel | undefined) => void,
-  capabilities: ChannelAdapter['capabilities'],
-  resolveCredentialOverride: AdapterDeps['resolveCredential'],
-): () => Promise<void> {
-  let active: { channel: Lark.LarkChannel; stop: () => Promise<void> } | undefined
-  let disposed = false
-  const maintenance = createChannelMaintenanceQueue((error) => {
-    ctx.logger.warn(
-      `channel-feishu: credential lifecycle failed: ${describe(error, config.appId, config.appSecret)}`,
-    )
+  state: AdapterState,
+  mentionPatterns: readonly RegExp[],
+): () => void {
+  const dispatcher = new Lark.EventDispatcher({})
+  dispatcher.register({
+    'im.message.receive_v1': (event) => {
+      handleReceiveEvent(ctx, state, event, mentionPatterns)
+    },
   })
-
-  const activate = async (): Promise<void> => {
-    const resolved = await resolveFeishuConfig(
-      ctx,
-      config,
-      appIdRef,
-      appSecretRef,
-      resolveCredentialOverride,
-    )
-    if (disposed) return
-    let channel: Lark.LarkChannel
-    let stop: () => Promise<void>
-    try {
-      channel = makeChannel(resolved)
-      stop = startChannel(ctx, channel, [resolved.appId, resolved.appSecret])
-    } catch (error: unknown) {
-      throw new Error(
-        `channel-feishu: activation failed: ${describe(error, resolved.appId, resolved.appSecret)}`,
-      )
-    }
-    active = { channel, stop }
-    setChannel(channel)
-    capabilities.receive = true
-    capabilities.send = true
-    capabilities.react = true
-  }
-
-  const deactivate = async (): Promise<void> => {
-    const current = active
-    capabilities.receive = false
-    if (current === undefined) {
-      capabilities.send = false
-      capabilities.react = false
-      setChannel(undefined)
-      return
-    }
-    await current.stop()
-    if (active !== current) return
-    active = undefined
-    setChannel(undefined)
-    capabilities.send = false
-    capabilities.react = false
-  }
-
-  const replace = async (): Promise<void> => {
-    await deactivate()
-    if (!disposed) await activate()
-  }
-  maintenance.enqueue(activate)
-  const literalAppId = normalizeChannelCredential(config.appId) !== undefined
-  const literalAppSecret = normalizeChannelCredential(config.appSecret) !== undefined
-  const disposeCredentialUpdate = ctx.on('credentials/updated', (updated) => {
-    const appIdChanged = !literalAppId && updated === appIdRef
-    const appSecretChanged = !literalAppSecret && updated === appSecretRef
-    if (disposed || (!appIdChanged && !appSecretChanged)) return
-    maintenance.enqueue(replace)
+  const wsClient = new Lark.WSClient({
+    appId: config.appId,
+    appSecret: config.appSecret,
+    domain: resolveDomain(config.domain),
+    loggerLevel: Lark.LoggerLevel.info,
   })
+  void wsClient.start({ eventDispatcher: dispatcher }).catch((error: unknown) => {
+    ctx.logger.warn(`channel-feishu: WebSocket start failed: ${error instanceof Error ? error.message : String(error)}`)
+  })
+  return () => { wsClient.close({ force: true }) }
+}
 
-  return async () => {
-    disposed = true
-    disposeCredentialUpdate()
-    await maintenance.settle(deactivate, (error) => {
-      ctx.logger.warn(`channel-feishu: lifecycle stop failed: ${describe(error, config.appId, config.appSecret)}`)
-    })
+/** Post an outbound text message through `im.message.create`. */
+async function sendMessage(client: Lark.Client, state: AdapterState, message: ChannelMessage): Promise<void> {
+  if (message.threadId === undefined) {
+    throw new Error('feishu: send requires a threadId')
+  }
+  const receive = state.receiveByThread.get(message.threadId) ?? { id: message.threadId, type: 'chat_id' as const }
+  const response = await client.im.message.create({
+    params: { receive_id_type: receive.type },
+    data: {
+      receive_id: receive.id,
+      msg_type: 'text',
+      content: JSON.stringify({ text: message.text }),
+    },
+  })
+  if (response.code !== 0) {
+    throw new Error(`feishu: im.message.create failed: ${response.msg ?? 'unknown error'}`)
+  }
+}
+
+/** Attach an ack emoji reaction to an inbound message through `im.message.reaction.create`. */
+async function react(client: Lark.Client, message: ChannelMessage, emoji: string): Promise<void> {
+  if (message.messageId === undefined) return
+  const response = await client.im.messageReaction.create({
+    path: { message_id: message.messageId },
+    data: { reaction_type: { emoji_type: emoji } },
+  })
+  if (response.code !== 0) {
+    throw new Error(`feishu: im.messageReaction.create failed: ${response.msg ?? 'unknown error'}`)
   }
 }
 
 /**
  * Build the Feishu adapter from validated config.
- * @param config - validated app identity and region.
- * @param deps - optional high-level SDK channel for tests.
+ * @param config - validated plugin config carrying app identity and region.
+ * @param deps - optional dependency injection (test-only API client).
  * @returns the adapter to register with `ctx.legacyChannels`.
  */
-export function createAdapter(config: Config = {}, deps: AdapterDeps = {}): ChannelAdapter {
-  const appIdRef = credentialRef(config.appIdEnv ?? FEISHU_DEFAULT_APP_ID_ENV)
-  const appSecretRef = credentialRef(config.appSecretEnv ?? FEISHU_DEFAULT_APP_SECRET_ENV)
-  const suppliedChannel = deps.channel
-  let channel = suppliedChannel
-  const capabilities = suppliedChannel === undefined
-    ? { receive: false, send: false, react: false }
-    : { receive: true, send: true, react: true }
-  const requireChannel = (): Lark.LarkChannel => {
-    if (channel === undefined) {
-      throw new Error(
-        `feishu: no app credentials resolved for ${String(appIdRef)} / ${String(appSecretRef)}`,
-      )
-    }
-    return channel
-  }
+export function createAdapter(config: Config, deps: AdapterDeps = {}): ChannelAdapter {
+  const client = deps.client ?? buildClient(config)
+  const state = createAdapterState()
+  const mentionPatterns = deps.mentionPatterns ?? []
   return {
     id: 'feishu',
-    capabilities,
-    start: suppliedChannel === undefined
-      ? ctx => startCredentialLifecycle(
-        ctx,
-        config,
-        appIdRef,
-        appSecretRef,
-        deps.channelFactory ?? buildLarkChannel,
-        (next) => { channel = next },
-        capabilities,
-        deps.resolveCredential,
-      )
-      : ctx => startChannel(
-        ctx,
-        suppliedChannel,
-        [normalizeChannelCredential(config.appId), normalizeChannelCredential(config.appSecret)]
-          .filter((value): value is string => value !== undefined),
-      ),
-    send: message => sendMessage(requireChannel(), message),
-    react: (message, emoji) => react(requireChannel(), message, emoji),
+    capabilities: { receive: true, send: true, react: true },
+    start: ctx => startLongConnection(ctx, config, state, mentionPatterns),
+    send: message => sendMessage(client, state, message),
+    react: (message, emoji) => react(client, message, emoji),
   }
 }
 
-/** Mount the Feishu adapter into the shared Harness-backed channel registry. */
-export function apply(ctx: Context, config: Config = {}): void {
-  registerLegacyChannelAdapter(ctx, () => createAdapter(config))
+/**
+ * Mount the Feishu adapter into the channel registry.
+ * @param ctx - Cordis context carrying the `legacyChannels` service.
+ * @param config - validated plugin config.
+ */
+export function apply(ctx: Context, config: Config): void {
+  registerLegacyChannelAdapter(ctx, mentionPatterns => createAdapter(config, { mentionPatterns }))
 }

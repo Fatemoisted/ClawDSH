@@ -24,7 +24,6 @@ import type {
 
 export * from './brand.ts'
 export * from './protocol.ts'
-export * from './semantics.ts'
 export type * from './types.ts'
 
 declare module '@deepseek-ai/cordis' {

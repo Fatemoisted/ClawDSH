@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-15-openclaw-gui-dsh-web-app.md
-2026-08-15-openclaw-gui-dsh-web-app.md: 0b1afb51ccc1ba5aea563891e99f020b6f5b6886
-2026-08-15-openclaw-gui-dsh-web-app.zh.md: ff1e9d84e736e75defcba1852e12c4ee3ccbd1af
+2026-08-15-openclaw-gui-dsh-web-app.md: dfa43d4e9389e153c1533d7e1c728763ac25af23
+2026-08-15-openclaw-gui-dsh-web-app.zh.md: d931c011515231fadd48e83891c99ff1acec239e

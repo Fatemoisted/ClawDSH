@@ -34,7 +34,6 @@ Deferred in the note (documented in channel-core README): `shouldBypassMention` 
 
 - The channel-core README's "ack scope is always-on" and "`deriveMentionPatterns` has no consumer" limitations are removed; the control-command bypass and remove-after-reply remain as the sole ack-scope deferred items.
 - Feishu's `react: false` Known Limitation is removed; `capabilities.react: true` is now the adapter template alongside Telegram.
-- The default-disabled `clawdsh-legacy-channel-plane` group carries `groupMode: mention` + `ackReactionScope: group-mentions` explicitly.
+- The `clawdsh` preset's channel-core row carries `ackReactionScope: group-mentions` + `requireMention: true` explicitly.
 - The `wasMentioned` field-presence contract is written into `ChannelMessage` JSDoc; any future adapter must honor it (omit → fail open).
 - Tests: `presentation.spec` (table-driven `shouldAckReaction` + `''` disables), `channel-core.spec` (ack gating across scopes), and adapter specs (`detectBotMention`, Feishu mention mapping and `react` payload).
-- This policy belongs only to legacy `ctx.legacyChannels`; the [test1 rebuild note](../architecture/2026-08-15-test1-channel-plane-rebuild.md) owns its isolation from canonical `ctx.channels`.

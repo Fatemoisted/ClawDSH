@@ -529,17 +529,13 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY || notReady.length > 0)('web smoke
     const template = await page.locator('[class*="frame"]').evaluate(el => getComputedStyle(el).gridTemplateColumns)
     expect(template.split(' ').length).toBe(3)
     await screen(page, '01-cold-start')
-    const welcome = page.getByRole('dialog', { name: 'Internal Testing Notice' })
-    await welcome.waitFor({ timeout: 15_000 })
-    await welcome.getByRole('button', { name: 'Continue' }).click()
-    await welcome.waitFor({ state: 'detached', timeout: 15_000 })
   })
 
   it('empty-state first send completes a real model round', async () => {
     onTestFailed(() => saveFailureShot(page, 'w5-first-round'))
     // This scenario spawns its own server against a fresh $DSH_HOME with the
-    // The DeepSeek credential inherited from the environment skips credential
-    // onboarding; the cold-start case already acknowledged the product notice.
+    // DeepSeek credential inherited from the environment, so no onboarding
+    // step mounts and the page is immediately interactive.
     // Fresh world: connect a Workspace so the composer starts live.
     await connectFreshWorkspace(page, sessionsDir)
     const input = page.locator('textarea').first()

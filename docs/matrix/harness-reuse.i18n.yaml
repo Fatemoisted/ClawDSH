@@ -1,6 +1,0 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write docs/matrix/harness-reuse.md
-harness-reuse.md: 1da297d5a11f28d6b10b390fd34bf002e8d86a4a
-harness-reuse.zh.md: e0c0331f5fefa6dd5013ae4b0edf8425e701fffc

@@ -1,18 +1,12 @@
 /** Offline verification of locked OpenClaw host artifacts and fail-closed config. @module @clawdsh/dsh-channel-openclaw/integrity */
 
 import { createHash } from 'node:crypto'
-import { readFile, realpath } from 'node:fs/promises'
-import { isAbsolute, resolve } from 'node:path'
+import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { validateExtensionLocks, type OpenClawExtensionLock } from './extensions.ts'
 import { installedProjectTreeDigest, ordinaryFileTreeDigest, sha512File } from './file-integrity.ts'
 import type { OpenClawRuntimeLock } from './locks.ts'
-import {
-  installIdentity,
-  installedPackageDirectories,
-  isPackageLockPath,
-  requireOrdinaryDirectory,
-} from './npm-tree.ts'
 import { supportsCurrentPlatform } from './npm-platform.ts'
 
 export { sha512File } from './file-integrity.ts'
@@ -116,9 +110,9 @@ export async function verifyRuntimeInstallation(
   }
   const expectedPackages = requireRecord(expectedLock.packages, 'checked runtime dependency lock packages')
   const actualPackages = requireRecord(actualLock.packages, 'installed runtime dependency lock packages')
-  const discovered = await installedPackageDirectories({ root: runtimeRoot, kind: 'runtime' })
+  const discovered = await installedPackageDirectories(runtimeRoot)
   for (const [path, candidate] of Object.entries(actualPackages)) {
-    if (!isPackageLockPath(path) || !isRecord(candidate)) {
+    if (!isRuntimePackagePath(path) || !isRecord(candidate)) {
       throw new Error(`channel-openclaw: installed runtime lock contains invalid package path ${JSON.stringify(path)}`)
     }
     const expected = expectedPackages[path]
@@ -167,6 +161,83 @@ function parsePackageLock(bytes: Buffer, label: string): Record<string, unknown>
   return requireRecord(value, label)
 }
 
+/** Require an ordinary non-symlink deployment directory. */
+async function requireOrdinaryDirectory(path: string, label: string): Promise<void> {
+  const info = await lstat(path)
+  if (!info.isDirectory() || info.isSymbolicLink()) {
+    throw new Error(`channel-openclaw: ${label} must be an ordinary directory`)
+  }
+}
+
+/** Collect every npm package directory and reject package indirections. */
+async function installedPackageDirectories(runtimeRoot: string): Promise<Set<string>> {
+  const packages = new Set<string>()
+  const visit = async (nodeModules: string): Promise<void> => {
+    for (const entry of await readdir(nodeModules, { withFileTypes: true })) {
+      if (entry.name === '.bin' || entry.name === '.package-lock.json') continue
+      const entryPath = resolve(nodeModules, entry.name)
+      if (entry.isSymbolicLink() || !entry.isDirectory()) {
+        throw new Error(`channel-openclaw: runtime node_modules contains a non-directory entry ${entryPath}`)
+      }
+      if (entry.name.startsWith('@')) {
+        for (const child of await readdir(entryPath, { withFileTypes: true })) {
+          if (child.isSymbolicLink() || !child.isDirectory()) {
+            throw new Error(`channel-openclaw: runtime package scope contains a non-directory entry ${resolve(entryPath, child.name)}`)
+          }
+          await addPackage(resolve(entryPath, child.name))
+        }
+      } else {
+        await addPackage(entryPath)
+      }
+    }
+  }
+  const addPackage = async (packagePath: string): Promise<void> => {
+    const key = relative(runtimeRoot, packagePath).split(sep).join('/')
+    packages.add(key)
+    const nested = resolve(packagePath, 'node_modules')
+    try {
+      await requireOrdinaryDirectory(nested, `nested node_modules for ${key}`)
+      await visit(nested)
+    } catch (error) {
+      if (!isMissing(error)) throw error
+    }
+  }
+  await visit(resolve(runtimeRoot, 'node_modules'))
+  return packages
+}
+
+/** Require one canonical node_modules-relative package-lock key. */
+function isRuntimePackagePath(path: string): boolean {
+  if (!path.startsWith('node_modules/')) return false
+  const parts = path.split('/')
+  if (parts.some(part => part === '' || part === '.' || part === '..')) return false
+  for (let index = 0; index < parts.length;) {
+    if (parts[index] !== 'node_modules') return false
+    index += 1
+    const packageHead = parts[index]
+    if (packageHead === undefined) return false
+    if (packageHead.startsWith('@')) {
+      if (parts[index + 1] === undefined) return false
+      index += 2
+    } else {
+      index += 1
+    }
+  }
+  return true
+}
+
+/** Compare registry identity fields that npm carries into the hidden lock. */
+function installIdentity(value: Record<string, unknown>): string {
+  return JSON.stringify({
+    version: value.version,
+    resolved: value.resolved,
+    integrity: value.integrity,
+    link: value.link,
+    os: value.os,
+    cpu: value.cpu,
+  })
+}
+
 /** Verify the package's own immutable name and version facts. */
 async function verifyInstalledPackage(
   runtimeRoot: string,
@@ -177,6 +248,11 @@ async function verifyInstalledPackage(
   if (!isRecord(packageJson) || typeof packageJson.name !== 'string' || packageJson.version !== lockEntry.version) {
     throw new Error(`channel-openclaw: installed package metadata differs from the dependency lock at ${path}`)
   }
+}
+
+/** Test whether a filesystem failure is an absent path. */
+function isMissing(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT'
 }
 
 /**

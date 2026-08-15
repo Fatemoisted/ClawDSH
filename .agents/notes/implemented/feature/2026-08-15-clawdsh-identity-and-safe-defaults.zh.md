@@ -14,7 +14,7 @@ Status: implemented
 
 安装后的 profile id、agent preset id 与默认 preset 统一为 `clawdsh`；preset 标签为 `ClawDSH 模式`；本地开发刷新入口为 `tools/link-clawdsh.sh`。物理源码目录保留 `packages/openclaw/preset-openclaw/`，因为仓库检查识别该路径。目录名属于内部实现，不定义产品文案、安装 id 或兼容别名。只有功能来源、上游字面路径等需要来源说明时，OpenClaw 才继续作为上游名称出现。
 
-profile 同时包含规范 `clawdsh-communication-plane` group 与仅供兼容的 `clawdsh-legacy-channel-plane` group，两者默认都关闭；Automation 也继续关闭。Legacy group 包含 channel-core、Telegram、Discord 与飞书，必须同时设置总开关与逐 adapter 开关。存在该总 opt-in 时，canonical Gateway 启动与 Settings preflight 会在产生副作用前 fail-loud。因此干净 home 无需 channel、Ark 或 automation 凭据即可启动 Web 应用，也不会产生外部渠道或定时运行副作用。启用带凭据的适配器仍是显式配置动作；适配器挂载后继续执行既有的 fail-loud 凭据校验。[test1 重建 Note](../architecture/2026-08-15-test1-channel-plane-rebuild.md)负责两套 channel Service 及其互斥。
+profile 保持 `channel-core` 挂载，但把飞书、Telegram 与 Automation Loader entry 标为 disabled。因此干净 home 无需飞书、Telegram、Ark 或 automation 凭据即可启动 Web 应用，也不会产生外部渠道或定时运行副作用。启用带凭据的适配器仍是显式配置动作；适配器挂载后继续执行既有的 fail-loud 凭据校验。
 
 `tools/link-clawdsh.sh` 在安装新资产前检查旧 `$DSH_HOME/profiles/openclaw/` 与 `$DSH_HOME/.agent-presets/openclaw/` 路径。任一路径存在时，它打印迁移说明，并让两者保持原样。ClawDSH 不安装 `openclaw` 别名，脚本也绝不自动删除、移动、改写或接管旧目录。只要已保存 Session 仍引用旧 id，用户就保留旧 preset。
 
@@ -33,7 +33,7 @@ ClawDSH preset 仍是 dsh 用户 preset 根目录中的受管副本；它不具�
 ## 影响
 
 - 新开发安装在命令、profile、preset、默认选择与可见标签上使用同一产品身份。
-- 干净 home 的 GUI 启动不依赖可选渠道和 automation 凭据；两个通信平面与 Automation 在 Loader 层都保持显式 opt-in。
+- 干净 home 的 GUI 启动不依赖可选渠道和 automation 凭据；本增量中这些能力在 Loader 层保持 opt-in。
 - ClawDSH 冒烟工作流运行无密钥真实 profile 浏览器测试：从空 dsh home 启动构建后的 Host，并对可见的 `ClawDSH 模式` 入口和已选 `clawdsh` preset id 做快照。其 `gui-tests/` 源码使用专用 TypeScript program，不进入根 Host aggregate。
 - 既有 `openclaw` 资产会收到警告，但不获得兼容承诺或自动生命周期管理。
 - 普通 dsh 用户 preset 的信任模型保持可见：Harness 自有控件仍可删除该 preset，ClawDSH 产品 UI 不增加删除入口，重新运行 `tools/link-clawdsh.sh` 可修复开发安装。

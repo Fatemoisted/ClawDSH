@@ -36,19 +36,7 @@ concurrency:
 jobs:
   lifecycle:
     name: Issue lifecycle
-    # This automation owns the canonical repository's GitHub App and Project.
-    # Mirrors do not have those credentials. GitHub also withholds secrets from
-    # cross-repository and Dependabot PRs, including their review events.
-    if: >-
-      ${{
-        github.repository == 'deepseek-ai/deepseek-harness'
-        && (github.event_name == 'issues'
-          || (github.event.pull_request.head.repo.full_name == github.repository
-            && github.event.pull_request.user.login != 'dependabot[bot]'))
-        && (github.event_name != 'pull_request_review'
-          || (github.event.action == 'submitted'
-            && github.event.review.state == 'changes_requested'))
-      }}
+    if: ${{ github.event_name != 'pull_request_review' || (github.event.action == 'submitted' && github.event.review.state == 'changes_requested') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out trusted policy

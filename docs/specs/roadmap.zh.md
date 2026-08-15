@@ -20,7 +20,6 @@
 6. **ClawDSH 是产品。** 本地 GUI 默认展示 ClawDSH，并把原生 Harness 保留为高级入口。切换 Agent preset 不会卸载 Host capability。
 7. **不 patch 上游 GUI。** 产品壳消费公开 dsh Web 与 Host API，不增加 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。
 8. **不提前删除 legacy。** 只有等价 assembly、snapshot、live behavior 与 failure handling 通过后，替换项才删除旧路径。
-9. **Harness 约定优先。** 日常工作先读持续维护的 architecture、subsystem、package 与 graph reference 加[复用地图](../matrix/harness-reuse.md)；按 ADR-0010，只在缺陷、未记录 behavior、缺失 seam 与上游破坏时检查 source。
 
 ## 3. 已完成基础
 
@@ -38,7 +37,7 @@
 
 ### 阶段 3 · 本地生态 plugin
 
-`skills-hub` 与 opt-in `automation` 使用既有 dsh seam。Discord 以无密钥 Gateway/REST 与 lifecycle 覆盖加入旧路径，但没有带凭证真实服务器 E2E。Channel identity presentation 与 acknowledgement behavior 仍可通过该路径使用。Federation 按 ADR-0005 保持 evaluation-only。
+`skills-hub` 与 opt-in `automation` 使用既有 dsh seam。Channel identity presentation 与 acknowledgement behavior 通过旧路径继续可用。Federation 按 ADR-0005 保持 evaluation-only。
 
 ## 4. 当前阶段 4 · 产品 GUI、渠道平面与发行
 
@@ -62,7 +61,7 @@
 
 基础由 `@clawdsh/dsh-channel`、`@clawdsh/dsh-channel-agent`、`@clawdsh/dsh-channel-openclaw` 与 `tools/openclaw-channel-host` 组成。Profile 始终挂载三个 runtime package；Channel Protocol 与 Agent Bridge 保持可用，OpenClaw Gateway 业务 setting 则默认关闭。没有渠道 certified 或 enabled；逐渠道 assembly、自有 keyless snapshot evidence、当前 live smoke、Windows endpoint authorization 与剩余 media support 尚未完成。
 
-旧渠道 package 在 `ctx.legacyChannels` 下的默认关闭 compatibility group 中单独保留，并有逐 adapter switch。存在 legacy opt-in 时，Gateway 启动与 Settings preflight 会拒绝 canonical enablement。两条路径不得连接同一 platform account，legacy package 只能在替换条件通过后删除。历史飞书/Telegram live evidence 与 Discord 无密钥 evidence 都不能认证 sidecar。
+旧渠道 package 在 `ctx.legacyChannels` 下单独保留，用于替换验证。它们不得与 OpenClaw 通信平面连接同一 platform account，并且只能在替换条件通过后删除。
 
 ### 4.3 公共发行
 
@@ -83,7 +82,7 @@
 
 1. 维护可复现 production host 与 bridge assembly，包括 sole-AgentHarness routing 与精确 runtime inspection。
 2. 增加自有 keyless Gateway-to-Agent snapshot lane，并关闭 protocol、recovery、delivery、action 与 attachment evidence gap。
-3. 运行逐渠道 certification，从 Telegram 与飞书开始；活跃 legacy Discord deployment 需要迁移时再认证 Discord；记录精确 host、channel、OS 与 live-traffic evidence。
+3. 运行逐渠道 certification，从 Telegram 与 Feishu 开始，记录精确 host、channel、OS 与 live-traffic evidence。
 4. 只启用 certified combination，然后在同一变更中删除 legacy package 并归档其 Agent Note。
 5. 按 ecosystem value、credential availability、platform risk 与 external-package review 分批提升更多 production catalog entry。
 
@@ -113,7 +112,7 @@
 - [x] 实现 semantic Activity 与 sidecar degradation behavior。
 - [x] 为产品壳增加自有 real-profile browser 与 keyless snapshot。
 - [ ] 在把任何 production entry 提升为 installable 前增加逐渠道 configuration、capability probe 与 keyless contract evidence。
-- [ ] 完成新的 Telegram 与飞书 sidecar certification；两者都未 certified 或 enabled。迁移任何活跃 legacy Discord deployment 前完成 Discord certification。
+- [ ] 完成新的 Telegram 与 Feishu certification；两者都未 certified 或 enabled。
 - [ ] 在 Windows channel support 推进前增加 Windows named-pipe ACL enforcement。
 - [ ] 在宣传对应 media path 前增加 durable non-image attachment 与 outbound staging。
 - [ ] 在持久化冗余 `channel/*` event 前增加 ignorable Session append mechanism。

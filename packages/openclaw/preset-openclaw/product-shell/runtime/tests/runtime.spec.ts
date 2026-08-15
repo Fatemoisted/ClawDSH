@@ -228,34 +228,6 @@ describe('ClawDSH product runtime projections', () => {
     await expect(stateFor({ enabled: true, state: 'certified' })).resolves.toBe('misconfigured')
   })
 
-  it('keeps active legacy Discord inventory out of canonical Channel evidence', () => {
-    const canonicalEntries = [
-      entry('clawdsh-communication-plane', 'cordis:group', 2, false, true),
-      entry('channel', '@clawdsh/dsh-channel', 2),
-      entry('channel-agent', '@clawdsh/dsh-channel-agent', 2),
-      entry('channel-openclaw', '@clawdsh/dsh-channel-openclaw', 2),
-    ]
-    const baseline = internals.capabilitiesResponse(canonicalEntries, 'active', 'active')
-    const withLegacy = internals.capabilitiesResponse([
-      ...canonicalEntries,
-      entry('channel-discord', '@clawdsh/dsh-channel-discord', 2),
-    ], 'active', 'active')
-
-    expect(withLegacy.loaderInventory.find(item => item.localId === 'channel-discord')).toMatchObject({
-      moduleName: '@clawdsh/dsh-channel-discord',
-      source: 'clawdsh',
-      state: 'active',
-    })
-    const baselineChannels = baseline.capabilities.find(item => item.id === 'channels')
-    const channels = withLegacy.capabilities.find(item => item.id === 'channels')
-    expect(channels).toEqual(baselineChannels)
-    expect(channels).toMatchObject({ state: 'active' })
-    expect(channels?.channels).toHaveLength(27)
-    expect(new Set(channels?.channels?.map(item => item.support))).toEqual(new Set(['cataloged']))
-    expect(channels?.components.flatMap(component => component.loaderEntries))
-      .not.toContainEqual(expect.objectContaining({ moduleName: '@clawdsh/dsh-channel-discord' }))
-  })
-
   it('reports absent required Channel children as disabled under the disabled parent group', () => {
     const response = internals.capabilitiesResponse([
       entry('clawdsh-communication-plane', 'cordis:group', undefined, true, true),

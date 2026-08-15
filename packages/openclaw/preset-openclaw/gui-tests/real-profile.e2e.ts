@@ -16,16 +16,10 @@ const productShell = join(repositoryRoot, 'packages/openclaw/preset-openclaw/pro
 const builtProductRuntime = join(productShell, 'runtime/lib/index.mjs')
 const builtProductWeb = join(productShell, 'runtime/web/index.html')
 const expectedSnapshot = join(import.meta.dirname, 'snapshots/real-profile/ui.expected.md')
-const externalConfigurationNames = [
+const externalCredentialNames = [
   'ARK_API_KEY',
-  'CLAWDSH_LEGACY_CHANNELS_ENABLED',
-  'CLAWDSH_LEGACY_DISCORD_ENABLED',
-  'CLAWDSH_LEGACY_FEISHU_ENABLED',
-  'CLAWDSH_LEGACY_TELEGRAM_ENABLED',
-  'CLAWDSH_OPENCLAW_CHANNELS_ENABLED',
   'DEEPSEEK_API_KEY',
   'DEEPSEEK_BASE_URL',
-  'DISCORD_BOT_TOKEN',
   'FEISHU_APP_ID',
   'FEISHU_APP_SECRET',
   'TELEGRAM_BOT_TOKEN',
@@ -67,12 +61,8 @@ interface PageLike {
 }
 
 interface BrowserLike {
-  /** Open a page with deterministic locale, timezone, and viewport. */
-  newPage(options: {
-    viewport: { width: number; height: number }
-    locale: string
-    timezoneId: string
-  }): Promise<PageLike>
+  /** Open a page with deterministic locale and viewport. */
+  newPage(options: { viewport: { width: number; height: number }; locale: string }): Promise<PageLike>
   /** Close the browser and its pages. */
   close(): Promise<void>
 }
@@ -97,10 +87,10 @@ async function chromiumLauncher(): Promise<BrowserLauncherLike> {
 }
 
 function keylessEnvironment(harnessHome: string, agentsHome: string): NodeJS.ProcessEnv {
-  const externalConfiguration = new Set<string>(externalConfigurationNames)
+  const externalCredentials = new Set<string>(externalCredentialNames)
   const environment = Object.fromEntries(
     Object.entries(process.env).filter(([name]) => (
-      !externalConfiguration.has(name)
+      !externalCredentials.has(name)
       && !name.startsWith('CLAWDSH_OPENCLAW_')
       && name !== 'CLAWDSH_CHANNEL_CWD'
     )),
@@ -241,7 +231,7 @@ describe('ClawDSH isolated real profile browser entry', () => {
     const temporaryRoot = mkdtempSync(join(tmpdir(), 'clawdsh-real-profile-'))
     const harnessHome = join(temporaryRoot, '.dsh')
     const environment = keylessEnvironment(harnessHome, join(temporaryRoot, '.agents'))
-    expect(externalConfigurationNames.every(name => environment[name] === undefined)).toBe(true)
+    expect(externalCredentialNames.every(name => environment[name] === undefined)).toBe(true)
     expect(Object.keys(environment).some(name => name.startsWith('CLAWDSH_OPENCLAW_'))).toBe(false)
     let child: ChildProcess | undefined
     let browser: BrowserLike | undefined
@@ -286,11 +276,7 @@ describe('ClawDSH isolated real profile browser entry', () => {
       const chromium = await chromiumLauncher()
       const channel = process.env.DSH_PLAYWRIGHT_CHANNEL
       browser = await chromium.launch(channel === undefined || channel === '' ? {} : { channel })
-      const page = await browser.newPage({
-        viewport: { width: 1680, height: 1000 },
-        locale: 'zh-CN',
-        timezoneId: 'Asia/Shanghai',
-      })
+      const page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: 'zh-CN' })
       await page.goto(ready.productUrl, { waitUntil: 'load' })
 
       const conversationLink = page.getByRole('link', { name: '对话', exact: true })

@@ -1,18 +1,17 @@
 /**
  * Contract tests for the skills-hub row, keyless: the real SkillRegistry, the
  * real provider over temp roots, and fixture SKILL.md files. Gating probes the
- * Harness executable resolver and host environment without child processes.
- * Registry-level assertions observe summaries (rank/metadata are provider-level
- * fields); candidate-level fields are asserted against the provider directly.
+ * host PATH and environment without child processes. Registry-level assertions
+ * observe summaries (rank/metadata are provider-level fields); candidate-level
+ * fields are asserted against the provider directly.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
-import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import * as SkillsHub from '../src/index.ts'
 
 class TestSettings extends SettingsProvider {
@@ -25,16 +24,6 @@ class TestSettings extends SettingsProvider {
   }
 }
 
-type ExecutableResolver = Pick<SubprocessRuntime, 'resolveExecutable'>
-
-const defaultExecutableResolver: ExecutableResolver = {
-  async resolveExecutable(command, _env, signal) {
-    signal?.throwIfAborted()
-    if (command === 'node') return process.execPath
-    throw new Error(`test executable not found: ${command}`)
-  },
-}
-
 async function tempDir(name: string): Promise<string> {
   return await mkdtemp(join(tmpdir(), `dsh-${name}-`))
 }
@@ -45,46 +34,23 @@ async function writeSkill(root: string, name: string, description: string, body 
   await writeFile(join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: ${description}${frontmatter}\n---\n\n${body}\n`)
 }
 
-/** Override only the managed root without spreading Schemastery's config instance type. */
-function testConfig(workspace: string, config: SkillsHub.Config): SkillsHub.Config {
-  const resolved: SkillsHub.Config = { managedDir: join(workspace, 'no-clawdbot') }
-  if (config.enabled !== undefined) resolved.enabled = config.enabled
-  if (config.workspaceDir !== undefined) resolved.workspaceDir = config.workspaceDir
-  if (config.extraDirs !== undefined) resolved.extraDirs = config.extraDirs
-  if (config.gating !== undefined) resolved.gating = config.gating
-  return resolved
-}
-
 /** Mount the registry + hub row; the managed dir points into the temp tree so the host's real `~/.clawdbot` never leaks in. */
-async function setup(
-  workspace: string,
-  config: SkillsHub.Config = {},
-  subprocess: ExecutableResolver = defaultExecutableResolver,
-): Promise<{ ctx: Context; fiber: { dispose: () => Promise<void> } }> {
+async function setup(workspace: string, config: SkillsHub.Config = {}): Promise<{ ctx: Context; fiber: { dispose: () => Promise<void> } }> {
   const ctx = new Context()
   await ctx.plugin(TestSettings, {})
-  ctx.provide('subprocess', subprocess as SubprocessRuntime)
   await ctx.plugin(SkillRegistry)
-  const fiber = await ctx.plugin(SkillsHub, testConfig(workspace, config))
+  const fiber = await ctx.plugin(SkillsHub, { managedDir: join(workspace, 'no-clawdbot'), ...config })
   return { ctx, fiber }
 }
 
 /** A provider over the same roots as `setup`, for candidate-level fields the registry summaries strip. */
-function hubProvider(
-  workspace: string,
-  logger: Context['logger'],
-  config: SkillsHub.Config = {},
-): SkillsHub.ClawHubProvider {
-  return new SkillsHub.ClawHubProvider(
-    SkillsHub.resolveConfig(testConfig(workspace, config)),
-    logger,
-    defaultExecutableResolver,
-  )
+function hubProvider(workspace: string, logger: Context['logger'], config: SkillsHub.Config = {}): SkillsHub.ClawHubProvider {
+  return new SkillsHub.ClawHubProvider(SkillsHub.resolveConfig({ managedDir: join(workspace, 'no-clawdbot'), ...config }), logger)
 }
 
 describe('skills-hub provider', () => {
-  it('declares Settings and the Harness executable resolver as required plugin dependencies', () => {
-    expect(SkillsHub.inject).toEqual(['skills', 'settings', 'subprocess'])
+  it('declares Settings as a required plugin dependency', () => {
+    expect(SkillsHub.inject).toEqual(['skills', 'settings'])
   })
 
   it('keeps the provider absent until restart when the resolved setting is disabled', async () => {
@@ -93,7 +59,6 @@ describe('skills-hub provider', () => {
       await writeSkill(join(workspace, 'skills'), 'hidden', 'Hidden while disabled')
       const ctx = new Context()
       await ctx.plugin(TestSettings, { 'clawdsh-skills-hub': { enabled: false } })
-      ctx.provide('subprocess', defaultExecutableResolver as SubprocessRuntime)
       await ctx.plugin(SkillRegistry)
       const fiber = await ctx.plugin(SkillsHub, { enabled: true, managedDir: join(workspace, 'managed') })
       expect(await ctx.skills.list({ cwd: workspace })).toEqual([])
@@ -178,25 +143,6 @@ describe('skills-hub provider', () => {
     }
   })
 
-  it('delegates Windows PATHEXT lookup to the Harness executable resolver', async () => {
-    const workspace = await tempDir('hub-pathext')
-    const resolveExecutable = vi.fn<SubprocessRuntime['resolveExecutable']>(async (command, _env, signal) => {
-      signal?.throwIfAborted()
-      if (command === 'win-tool') return String.raw`C:\tools\win-tool.EXE`
-      throw new Error(`test executable not found: ${command}`)
-    })
-    try {
-      await writeSkill(join(workspace, 'skills'), 'windows-bin', 'Requires a Windows executable', 'Windows body.',
-        '\nmetadata: {"clawdbot":{"requires":{"bins":["win-tool"]}}}')
-      const { ctx } = await setup(workspace, {}, { resolveExecutable })
-
-      expect((await ctx.skills.list({ cwd: workspace })).map(skill => skill.name)).toEqual(['windows-bin'])
-      expect(resolveExecutable).toHaveBeenCalledWith('win-tool', undefined, undefined)
-    } finally {
-      await rm(workspace, { recursive: true, force: true })
-    }
-  })
-
   it('normalizes single-line JSON metadata into the candidate and the loaded definition', async () => {
     const workspace = await tempDir('hub-metadata')
     try {
@@ -260,7 +206,6 @@ describe('skills-hub provider', () => {
   it('validates raw config types defensively for non-Loader callers', async () => {
     const ctx = new Context()
     await ctx.plugin(TestSettings, {})
-    ctx.provide('subprocess', defaultExecutableResolver as SubprocessRuntime)
     await ctx.plugin(SkillRegistry)
     await expect(ctx.plugin(SkillsHub, { gating: 'yes' as never })).rejects.toThrow(/gating/)
     await expect(ctx.plugin(SkillsHub, { extraDirs: 'nope' as never })).rejects.toThrow(/extraDirs/)
@@ -274,7 +219,6 @@ describe('skills-hub provider', () => {
       await writeSkill(join(customRoot, 'skills'), 'tie-skill', 'Filesystem body')
       const ctx = new Context()
       await ctx.plugin(TestSettings, {})
-      ctx.provide('subprocess', defaultExecutableResolver as SubprocessRuntime)
       await ctx.plugin(SkillRegistry)
       const SkillFileSystem = await import('@deepseek-ai/dsh-skill-filesystem')
       // Registration order: skill-filesystem (base bundle) first, then the hub provider.

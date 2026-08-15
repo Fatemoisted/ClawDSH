@@ -195,18 +195,22 @@ export class ClawdshWebEntry {
 
   private assertEntriesActive(): void {
     const ctx = this.requireContext()
-    const failures = [...ctx.loader.entries()].flatMap((entry): string[] => {
-      const fiber = entry.fiber
-      if (fiber === undefined) {
-        return [`${entry.options.name}: import failed (see console for the import error)`]
+    const failures: string[] = []
+    for (const entry of ctx.loader.entries()) {
+      const name = entry.options.name
+      if (entry.fiber === undefined) {
+        failures.push(`${name}: import failed (see console for the import error)`)
+        continue
       }
-      const phase = this.web.STATE_LABELS[fiber.state]
-      if (phase === 'active') return []
-      if (phase !== 'pending') return [`${entry.options.name}: ${phase}`]
-      const missing = Object.keys(fiber.inject).filter(service => ctx.get(service) === undefined)
-      const serviceNoun = missing.length === 1 ? 'service' : 'services'
-      return [`${entry.options.name}: pending (waiting for ${serviceNoun}: ${missing.join(', ') || 'unknown'})`]
-    })
+      const state = this.web.STATE_LABELS[entry.fiber.state]
+      if (state === 'active') continue
+      if (state === 'pending') {
+        const missing = Object.keys(entry.fiber.inject).filter(service => ctx.get(service) === undefined)
+        failures.push(`${name}: pending (waiting for service${missing.length === 1 ? '' : 's'}: ${missing.join(', ') || 'unknown'})`)
+      } else {
+        failures.push(`${name}: ${state}`)
+      }
+    }
     if (failures.length > 0) {
       throw new Error(`ClawDSH browser: ${String(failures.length)} Loader entries did not activate\n${failures.join('\n')}`)
     }

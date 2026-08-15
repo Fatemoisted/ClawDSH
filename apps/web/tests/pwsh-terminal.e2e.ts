@@ -16,7 +16,6 @@ import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
-import { composeEntries, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
 import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
@@ -29,9 +28,6 @@ const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/pwsh-terminal', import.m
 const SEED = join(SNAPSHOT_DIR, 'seed.jsonl')
 const TERMINAL_EXPECTED = join(SNAPSHOT_DIR, 'terminal-card.expected.md')
 const OVERLAY = fileURLToPath(new URL('./pwsh-terminal.overlay.yml', import.meta.url))
-const REPOSITORY_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
-const BASE_PATCH = join(REPOSITORY_ROOT, 'packages/bundle/base/cordis.patch.yml')
-const WEB_PATCH = join(REPOSITORY_ROOT, 'packages/bundle/web-app/cordis.patch.yml')
 const PROMPT = 'Run a PowerShell command that fails, then stop.'
 const SEED_ID = 'pwsh-terminal-web-e2e'
 const MODE = webSnapshotMode()
@@ -46,31 +42,6 @@ const HAS_PWSH = MODE === 'record' ? false : spawnSync(
   resolvePwshPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '$true'],
   { encoding: 'utf8' },
 ).status === 0
-
-describe('pwsh terminal overlay composition', () => {
-  it('reuses the shipped pwsh tool row and mounts one unconfined executor', () => {
-    const warnings: string[] = []
-    const rows = composeEntries([
-      loadOverlayPatches('dsh-test', BASE_PATCH),
-      loadOverlayPatches('dsh-test', WEB_PATCH),
-      loadOverlayPatches('dsh-test', OVERLAY),
-    ], message => warnings.push(message))
-    const ids = rows.map(row => row.id)
-    const byId = new Map(rows.map(row => [row.id, row]))
-
-    expect(warnings).toEqual([])
-    expect(new Set(ids).size).toBe(ids.length)
-    expect(rows.filter(row => row.id === 'tool-pwsh')).toHaveLength(1)
-    expect(byId.get('tool-pwsh')).toMatchObject({
-      name: '@deepseek-ai/dsh-tool-pwsh',
-      disabled: false,
-    })
-    expect(rows.filter(row => row.id === 'pwsh-local')).toHaveLength(1)
-    for (const id of ['bash-sandbox', 'pwsh-sandbox', 'permission']) {
-      expect(byId.get(id)?.disabled, id).toBe(true)
-    }
-  })
-})
 
 describe.skipIf(MODE === 'record' || !HAS_PWSH)('web e2e: pwsh calls use the bash terminal-card layout', () => {
   let scaffold: WebScaffold

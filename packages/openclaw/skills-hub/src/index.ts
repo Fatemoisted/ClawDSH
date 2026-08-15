@@ -18,14 +18,14 @@
  * @module @clawdsh/dsh-skills-hub
  */
 
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { access, readFile, readdir, stat } from 'node:fs/promises'
+import { constants } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import type { Context, LoggerService } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { parse as parseYaml } from 'yaml'
-import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import {
   isSkillName,
   type SkillCandidate,
@@ -49,8 +49,8 @@ export const name = 'skills-hub'
 /** User-settings namespace for the ClawHub-compatible provider. */
 export const SKILLS_HUB_SETTINGS_NAMESPACE = settingsNamespace('clawdsh-skills-hub')
 
-/** Required registry, settings, and execution-world resolver services. */
-export const inject = ['skills', 'settings', 'subprocess']
+/** Required services used to register the provider and its user settings. */
+export const inject = ['skills', 'settings']
 
 /** Default legacy managed root: `~/.clawdbot/skills`. */
 export const DEFAULT_MANAGED_DIR = join(homedir(), '.clawdbot', 'skills')
@@ -152,7 +152,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   }).get() ?? Config(config)
   const resolved = resolveConfig(runtimeConfig)
   if (!resolved.enabled) return
-  ctx.skills.registerProvider(() => new ClawHubProvider(resolved, ctx.logger, ctx.subprocess))
+  ctx.skills.registerProvider(() => new ClawHubProvider(resolved, ctx.logger))
 }
 
 /** Provider that maps OpenClaw-style skill directories into `ctx.skills`. */
@@ -162,7 +162,6 @@ export class ClawHubProvider implements SkillProvider {
   constructor(
     private readonly config: ResolvedConfig,
     private readonly logger: LoggerService,
-    private readonly subprocess: Pick<SubprocessRuntime, 'resolveExecutable'>,
   ) {}
 
   private rootSpecs(options: SkillLookupOptions): RootSpec[] {
@@ -183,7 +182,7 @@ export class ClawHubProvider implements SkillProvider {
       for (const skillFile of await this.scanRoot(spec)) {
         const parsed = await this.parseSkill(skillFile, options.signal)
         if (parsed === undefined) continue
-        if (this.config.gating && !(await passesGating(parsed.metadata, this.subprocess, options.signal))) continue
+        if (this.config.gating && !(await passesGating(parsed.metadata))) continue
         candidates.push({
           name: parsed.name,
           description: parsed.description,
@@ -329,21 +328,17 @@ function parseMetadata(data: Record<string, unknown>): { metadata?: Record<strin
 }
 
 /** Evaluate `metadata.clawdbot.requires.*` gates; a skill without gates passes. */
-async function passesGating(
-  metadata: Readonly<Record<string, unknown>> | undefined,
-  subprocess: Pick<SubprocessRuntime, 'resolveExecutable'>,
-  signal?: AbortSignal,
-): Promise<boolean> {
+async function passesGating(metadata: Readonly<Record<string, unknown>> | undefined): Promise<boolean> {
   const clawdbot = metadata?.clawdbot
   if (typeof clawdbot !== 'object' || clawdbot === null) return true
   const requires = (clawdbot as { requires?: unknown }).requires
   if (typeof requires !== 'object' || requires === null) return true
   const gates = requires as { bins?: unknown; anyBins?: unknown; env?: unknown }
   if (gates.bins !== undefined) {
-    if (!isStringArray(gates.bins) || !(await everyBinOnPath(gates.bins, subprocess, signal))) return false
+    if (!isStringArray(gates.bins) || !(await everyBinOnPath(gates.bins))) return false
   }
   if (gates.anyBins !== undefined) {
-    if (!isStringArray(gates.anyBins) || !(await anyBinOnPath(gates.anyBins, subprocess, signal))) return false
+    if (!isStringArray(gates.anyBins) || !(await anyBinOnPath(gates.anyBins))) return false
   }
   if (gates.env !== undefined) {
     if (!isStringArray(gates.env) || !gates.env.every(entry => process.env[entry] !== undefined)) return false
@@ -355,44 +350,33 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(entry => typeof entry === 'string')
 }
 
-async function everyBinOnPath(
-  names: string[],
-  subprocess: Pick<SubprocessRuntime, 'resolveExecutable'>,
-  signal?: AbortSignal,
-): Promise<boolean> {
+async function everyBinOnPath(names: string[]): Promise<boolean> {
   for (const entry of names) {
-    if (!(await binOnPath(entry, subprocess, signal))) return false
+    if (!(await binOnPath(entry))) return false
   }
   return true
 }
 
-async function anyBinOnPath(
-  names: string[],
-  subprocess: Pick<SubprocessRuntime, 'resolveExecutable'>,
-  signal?: AbortSignal,
-): Promise<boolean> {
+async function anyBinOnPath(names: string[]): Promise<boolean> {
   for (const entry of names) {
-    if (await binOnPath(entry, subprocess, signal)) return true
+    if (await binOnPath(entry)) return true
   }
   return false
 }
 
-/** Resolve a gate through the Harness execution-world resolver without spawning it. */
-async function binOnPath(
-  name: string,
-  subprocess: Pick<SubprocessRuntime, 'resolveExecutable'>,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  signal?.throwIfAborted()
+/** Probe whether an executable of this name exists on PATH (best-effort, no child processes). */
+async function binOnPath(name: string): Promise<boolean> {
   if (name === '') return false
-  try {
-    await subprocess.resolveExecutable(name, undefined, signal)
-    signal?.throwIfAborted()
-    return true
-  } catch {
-    signal?.throwIfAborted()
-    return false
+  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+    if (dir === '') continue
+    try {
+      await access(join(dir, name), constants.X_OK)
+      return true
+    } catch {
+      // Not in this directory; keep probing.
+    }
   }
+  return false
 }
 
 /** Parse dsh invocation-policy frontmatter keys with the same semantics as skill-filesystem. */

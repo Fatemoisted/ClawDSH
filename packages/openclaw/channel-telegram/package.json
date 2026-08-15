@@ -32,25 +32,15 @@
   "peerDependencies": {
     "@clawdsh/dsh-channel-core": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/cordis-plugin-timer": "workspace:^",
-    "@deepseek-ai/dsh-attachment": "workspace:^",
-    "@deepseek-ai/dsh-credentials": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-timeout": "workspace:^"
+    "@deepseek-ai/dsh-invariants": "workspace:^"
   },
   "dependencies": {
-    "@grammyjs/auto-retry": "2.0.2",
-    "@grammyjs/files": "1.2.0",
     "@deepseek-ai/schemastery": "workspace:^",
     "grammy": "^1.45.1"
   },
   "devDependencies": {
     "@clawdsh/dsh-channel-core": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/cordis-plugin-timer": "workspace:^",
-    "@deepseek-ai/dsh-attachment": "workspace:^",
-    "@deepseek-ai/dsh-credentials": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-timeout": "workspace:^"
+    "@deepseek-ai/dsh-invariants": "workspace:^"
   }
 }

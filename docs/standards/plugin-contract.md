@@ -32,7 +32,7 @@ Adding a `ctx.*` service is the highest-cost change, and the process is mandator
 
 1. Write an ADR (template at the top of `docs/adr/0001-project-foundation.md`);
 2. Give the contract draft in the ADR (interface + minimal surface);
-3. **upstream-first (with exceptions)**: by default first PR to the dsh upstream, with a local profile patch as the bridge. ADR-0008 accepts the owned provider-neutral `ctx.channels` V1 seam for the locked OpenClaw sidecar. ADR-0002's older adapter registry now lives only at `ctx.legacyChannels` and is not a precedent for adding another platform adapter;
+3. **upstream-first (with exceptions)**: by default first PR to the dsh upstream, with a local profile patch as the bridge; but the sponsor decided on 2026-08-14 to skip the upstream PR and move fast (see ADR-0002 decision 4), keeping `ctx.channels` as a ClawDSH-owned seam for the long term;
 4. Before a new seam is approved, the feature is frozen and must not be bypassed.
 
 ## 6. Contract tests (merge gate)
@@ -40,7 +40,7 @@ Adding a `ctx.*` service is the highest-cost change, and the process is mandator
 Every package must provide:
 
 - **Contract tests**: exercise the minimal behavior surface of the seam interface it implements (mount → behavior → teardown rollback);
-- **profile smoke test**: after `tools/link-clawdsh.sh`, `pnpm dsh --profile clawdsh --dump-config` resolves the package's mount line; the clean-install check must leave Automation, the canonical sidecar group, and the legacy-channel group disabled;
+- **profile smoke test**: after `tools/link-clawdsh.sh`, `pnpm dsh --profile clawdsh --dump-config` resolves the package's mount line; the clean-install check must leave Feishu, Telegram, and Automation disabled;
 - Channel-type plugins: one end-to-end session test of one inbound → one outbound (the channel API may be mocked).
 
 ## 7. Public-surface changes
@@ -57,14 +57,3 @@ When porting an OpenClaw feature to dsh, the order is fixed as **look at the ups
 3. **Prefer reusing the SDKs/dependencies the upstream has proven**: adopt the libraries the upstream already de-risked (Feishu `@larksuiteoapi/node-sdk`, Telegram `grammy`) first, and **never hand-roll the low-level protocol** — unless the upstream has no corresponding SDK and hand-writing would cut substantial code. This is both "prefer maintained dependencies over hand-rolling" and avoiding repeating the pitfalls the upstream already hit.
 
 Motivation: OpenClaw's channel integration has a large amount of non-obvious ceremony (permissions, long connection, event format, idempotency), and hand-rolling it is error-prone; reading the upstream implementation first inherits these already-proven decisions, then trims them into a minimal Cordis surface.
-
-For communication-plane work, ADR-0008 now takes precedence over the historical one-adapter-per-package method: reuse the locked Gateway and its channel plugins as one subsystem. The Telegram, Discord, and Feishu packages remain compatibility code and are not templates for new channel integrations.
-
-## 9. Harness reuse principle (contracts first, source when needed)
-
-The OpenClaw implementation establishes provider behavior; the Harness side uses a different reading order:
-
-1. Start with the [Harness architecture](../architecture.md), owning [subsystem page](../subsystems/README.md), generated [graph index](../graph-atlas.md), package README, and the [ClawDSH reuse map](../matrix/harness-reuse.md).
-2. Reuse documented `ctx.*` services, events, public types, utilities, and existing providers through their contracts. Do not import or copy a concrete Harness provider to inherit its implementation.
-3. Inspect the owning Harness source only for an internal bug, security/concurrency/performance behavior, an undocumented contract, a missing seam, or an upstream breaking change. If the missing contract affects future integration, document it in the same change.
-4. When no existing seam fits, follow section 5 and stop at an ADR instead of building a private parallel core. [ADR-0010](../adr/0010-harness-contract-first.md) owns the rationale.

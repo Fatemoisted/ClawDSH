@@ -235,18 +235,7 @@ describe('runtime inspection contract', () => {
   })
 })
 
-describe('Windows supervisor boundary', () => {
-  it.runIf(process.platform === 'win32')('fails closed before preflight when 0700 directory semantics are unavailable', async () => {
-    const app = await fixture()
-    const process = contextWith([])
-
-    await expect(OpenClawSupervisor.start(process.ctx, app.config)).rejects.toThrow(/ordinary 0700/)
-    expect(process.spawn).not.toHaveBeenCalled()
-    expect(mocks.createProvider).not.toHaveBeenCalled()
-  })
-})
-
-describe.skipIf(process.platform === 'win32')('managed POSIX Gateway supervision', () => {
+describe('managed Gateway supervision', () => {
   it('exposes structural and read-only deployment preflight before configuration is persisted', async () => {
     const app = await fixture()
     expect(() => { validateOpenClawConfig(app.config) }).not.toThrow()

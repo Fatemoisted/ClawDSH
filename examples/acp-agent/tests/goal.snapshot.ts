@@ -23,9 +23,6 @@ const stdoutExpected = join(scenarioDir, 'stdout.expected.jsonl')
 const sessionExpected = join(scenarioDir, 'session.expected.jsonl')
 const wrapupDir = join(dirname(fileURLToPath(import.meta.url)), 'goal-snapshots/goal-wrapup')
 const refreshing = process.env.DSH_SNAPSHOT === 'refresh'
-const snapshotChildEnvironment: NodeJS.ProcessEnv = {
-  NODE_OPTIONS: [process.env.NODE_OPTIONS, '--disable-warning=ExperimentalWarning'].filter(Boolean).join(' '),
-}
 
 const agent: AgentUnderTest = {
   binScript: fileURLToPath(new URL('../../../packages/examples/acp-demo/src/bin.ts', import.meta.url)),
@@ -76,7 +73,6 @@ describe('same-session goal snapshot through the ACP automation driver', () => {
       fixtureFile,
       overrideFile,
       configPath: agent.configPath,
-      env: snapshotChildEnvironment,
     })
 
     expect(result.stderr).toBe('')
@@ -126,7 +122,6 @@ describe('same-session goal snapshot through the ACP automation driver', () => {
       fixtureFile: join(wrapupDir, 'session.jsonl'),
       overrideFile: join(wrapupDir, 'replay.override.json'),
       configPath: agent.configPath,
-      env: snapshotChildEnvironment,
     })
 
     expect(result.stderr).toBe('')

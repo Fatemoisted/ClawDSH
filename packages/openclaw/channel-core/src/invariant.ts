@@ -15,10 +15,10 @@ export const name = 'channel-core-invariant'
 export const inject = ['invariants']
 
 /**
- * No runtime invariant: the registry owns no authoritative event stream or mutable runtime data —
- * each inbound message becomes a `user/message` session event and the reply is logged by `dsh-agent`
- * (its own invariant covers model-visible-means-logged). Adapter-id uniqueness fails loud in
- * `registerAdapter` rather than at runtime.
+ * No runtime invariant: this legacy registry owns no authoritative event stream or mutable runtime
+ * data — each inbound message becomes a `user/message` session event and the reply is logged by
+ * `dsh-agent` (its own invariant covers model-visible-means-logged). Adapter-id uniqueness fails
+ * loud in `registerAdapter` rather than at runtime.
  */
 const install: InvariantInstaller = () => {}
 

@@ -63,19 +63,7 @@ async function reportDelivery(client: BridgeClient, receipt: Record<string, unkn
   })
 }
 
-describe('Windows Provider boundary', () => {
-  it('fails closed before opening storage when named-pipe ACL enforcement is unavailable', async () => {
-    const fixture = await providerConfig()
-    roots.push(fixture.root)
-    const context = providerContext()
-    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
-
-    await expect(OpenClawChannelProvider.create(context.ctx, fixture.config)).rejects.toThrow(/named-pipe ACL/)
-    expect(context.media.closes).toBe(0)
-  })
-})
-
-describe.skipIf(process.platform === 'win32')('authenticated local Provider lifecycle', () => {
+describe('authenticated local Provider lifecycle', () => {
   it('binds a 0600 socket, authenticates the exact lock, and reports local lifecycle state', async () => {
     const app = await setup({ authenticate: false })
     expect((await stat(app.config.endpoint)).mode & 0o777).toBe(0o600)
@@ -212,9 +200,8 @@ describe.skipIf(process.platform === 'win32')('authenticated local Provider life
 
   it('surfaces an owned peer drain failure after releasing the durable ledger', async () => {
     const app = await setup()
-    const rejectedDrain = Promise.withResolvers<undefined>()
-    rejectedDrain.reject('owned peer drain failed')
-    Reflect.set(app.provider, 'peer', { close: () => rejectedDrain.promise })
+    const rejectedDrain = Promise.reject('owned peer drain failed')
+    Reflect.set(app.provider, 'peer', { close: () => rejectedDrain })
 
     await expect(app.provider.dispose()).rejects.toThrow(/owned peer drain failed/)
     expect(app.media.closes).toBe(1)
@@ -371,11 +358,14 @@ describe.skipIf(process.platform === 'win32')('authenticated local Provider life
     await app.client.waitForClose()
   })
 
-  it('rejects a relative Unix socket and closes storage after validation fails', async () => {
-    const fixture = await providerConfig()
-    roots.push(fixture.root)
+  it('fails closed on Windows and closes storage after a bind failure', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValueOnce('win32')
+    const windows = await providerConfig()
+    roots.push(windows.root)
+    await expect(OpenClawChannelProvider.create(providerContext().ctx, windows.config)).rejects.toThrow(/named-pipe ACL/)
+
     const relative = providerContext()
-    await expect(OpenClawChannelProvider.create(relative.ctx, { ...fixture.config, endpoint: 'relative.sock' }))
+    await expect(OpenClawChannelProvider.create(relative.ctx, { ...windows.config, endpoint: 'relative.sock' }))
       .rejects.toThrow(/absolute Unix socket/)
     expect(relative.media.closes).toBe(1)
   })
@@ -650,7 +640,7 @@ describe.skipIf(process.platform === 'win32')('authenticated local Provider life
   })
 })
 
-describe.skipIf(process.platform === 'win32')('bridge-to-DSH request routing', () => {
+describe('bridge-to-DSH request routing', () => {
   it('runs turns and routes cancellation, reset, close, health, and negotiated progress', async () => {
     const app = await setup()
     app.channels.runTurn.mockImplementationOnce(async (_request, execution) => {
@@ -725,7 +715,7 @@ describe.skipIf(process.platform === 'win32')('bridge-to-DSH request routing', (
   })
 })
 
-describe.skipIf(process.platform === 'win32')('DSH-to-bridge actions and receipts', () => {
+describe('DSH-to-bridge actions and receipts', () => {
   it('persists a successful mutation and replays it without a second platform request', async () => {
     const app = await setup()
     const action = sendAction()

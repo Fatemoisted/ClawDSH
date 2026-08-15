@@ -36,7 +36,7 @@ describe('channel identity presentation', () => {
   })
 
   it('gates the ack reaction across every scope', () => {
-    // scope, isGroup, mentionRequired, canDetectMention, wasMentioned → expected
+    // scope, isGroup, requireMention, canDetectMention, wasMentioned → expected
     const cases: Array<[Parameters<typeof shouldAckReaction>, boolean]> = [
       // all acks everything, regardless of group or mention.
       [['all', false, true, true, false], true],
@@ -47,16 +47,12 @@ describe('channel identity presentation', () => {
       // group-all acks groups unconditionally.
       [['group-all', true, true, true, false], true],
       [['group-all', false, true, true, true], false],
-      // Legacy-compatible disable sentinels never ack.
-      [['off', false, true, true, true], false],
-      [['none', true, true, true, true], false],
       // group-mentions acks groups only when a mention was detected.
       [['group-mentions', true, true, true, true], true],
       [['group-mentions', true, true, true, false], false],
       [['group-mentions', false, true, true, true], false],
-      // Mention-gated routing off still acks an actual mention, but not other traffic.
+      // requireMention off does not turn group-mentions into group-all.
       [['group-mentions', true, false, true, false], false],
-      [['group-mentions', true, false, true, true], true],
       // undetectable mentions fail open: no ack, never a blocked message.
       [['group-mentions', true, true, false, false], false],
     ]
@@ -69,7 +65,6 @@ describe('channel identity presentation', () => {
     expect(resolveResponsePrefix({})).toBe('')
     expect(resolveResponsePrefix({ identity: { name: 'Clawd' } })).toBe('[Clawd]')
     expect(resolveResponsePrefix({ identity: { name: 'Clawd' }, responsePrefix: '>> ' })).toBe('>> ')
-    expect(resolveResponsePrefix({ identity: { name: 'Clawd' }, responsePrefix: '' })).toBe('')
     expect(resolveResponsePrefix({ responsePrefix: 'literal' })).toBe('literal')
   })
 
@@ -99,7 +94,6 @@ describe('channel identity presentation', () => {
   it('derives nothing from an absent name and emoji', () => {
     expect(deriveMentionPatterns(undefined, undefined)).toEqual([])
     expect(deriveMentionPatterns('   ', undefined)).toEqual([])
-    expect(deriveMentionPatterns('\u200b', undefined)).toEqual([])
   })
 
   it('strips mention matches from message text', () => {

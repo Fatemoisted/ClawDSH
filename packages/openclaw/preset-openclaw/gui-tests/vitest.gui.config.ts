@@ -5,9 +5,6 @@ const repositoryRoot = resolve(import.meta.dirname, '../../../..')
 
 export default defineConfig({
   root: repositoryRoot,
-  resolve: {
-    tsconfigPaths: true,
-  },
   test: {
     include: [
       'packages/openclaw/preset-openclaw/gui-tests/identity.spec.ts',

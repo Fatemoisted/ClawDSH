@@ -10,8 +10,6 @@
 
 `clawdsh` profile 启动一个 dsh Host 进程并提供两个浏览器应用。`/clawdsh/` 是 ClawDSH 产品入口，`/` 则保留未修改的 dsh Web 应用，并以「Harness 高级」暴露。两个应用使用相同的 Host service、Session、Connection transport 与持久化。单独启动的 `dsh --profile web` 进程仍是纯净 Harness 入口。
 
-干净安装默认关闭规范渠道平面 group、包含 channel-core 与 Telegram、Discord、飞书的 legacy group，以及 Automation，因此 Host 无需这些功能的凭据或 Gateway artifact 即可启动。存在 legacy opt-in 时，Gateway 启动与 Settings preflight 会拒绝 canonical enablement，具体由 [ADR-0008](../adr/0008-openclaw-channel-plane.md)与 [test1 重建决策](../../.agents/notes/implemented/architecture/2026-08-15-test1-channel-plane-rebuild.md)约束。
-
 产品边界是进程级 `clawdsh` profile，而不是逐 Session preset 选择。新 Session 默认使用显示为 `ClawDSH 模式` 的 `clawdsh` preset；选择其他 preset 只会改变该 Session 的 Agent 组装，不会卸载 ClawDSH Host plugin。
 
 产品壳不增加模型可见输入。对话请求继续使用所选 agent preset 与已挂载的能力 plugin。
@@ -56,9 +54,9 @@ Loader 组装状态与渠道支持证据是两个独立概念：
 - Loader 状态为 `disabled`、`starting`、`active`、`failed` 或 `misconfigured`，从配置 entry 与观测到的 Fiber lifecycle 推导。
 - 渠道支持为 `cataloged`、`installable`、`certified` 或 `enabled`，从明确的产品证据推导，绝不从 Gateway 进程正在运行推断。
 
-即使 Cordis 会让 group carrier 本身保持 active 并省略已关闭的子 entry，受管 communication-plane 父组的关闭状态仍是 Channels 的权威依据。Channel Core 只在显式启用的 legacy group 内启动，每个 legacy transport 还需要自己的 opt-in；请求该 group 时会拒绝 canonical Gateway enablement。只有默认 `clawdsh` preset 包含准确且已启用的受管 Soul entry，并且它的 standing composition 成功挂载时，Soul 才显示为 active。Embeddings 等实现依赖显示在所属产品能力之下，而不是作为无关的顶层开关。
+即使 Cordis 会让 group carrier 本身保持 active 并省略已关闭的子 entry，受管 communication-plane 父组的关闭状态仍是 Channels 的权威依据。只有默认 `clawdsh` preset 包含准确且已启用的受管 Soul entry，并且它的 standing composition 成功挂载时，Soul 才显示为 active。
 
-Channels 包含三个组件：Channel Protocol（`@clawdsh/dsh-channel`）、Agent Bridge（`@clawdsh/dsh-channel-agent`）与 OpenClaw Gateway Provider（`@clawdsh/dsh-channel-openclaw`）。飞书、Telegram、Discord 与其他锁定 production entry 在 Gateway 下显示为支持状态为 `cataloged` 的 catalog item；它们不是独立 dsh plugin card。Legacy `channel-core`、`channel-feishu`、`channel-telegram` 与 `channel-discord` entry 可以出现在 raw Loader inventory 中，但不影响产品健康状态。
+Channels 包含三个组件：Channel Protocol（`@clawdsh/dsh-channel`）、Agent Bridge（`@clawdsh/dsh-channel-agent`）与 OpenClaw Gateway Provider（`@clawdsh/dsh-channel-openclaw`）。飞书、Telegram 与其他锁定 production entry 在 Gateway 下显示为支持状态为 `cataloged` 的 catalog item；它们不是独立 dsh plugin card。Legacy `channel-core`、`channel-feishu` 与 `channel-telegram` entry 可以出现在 raw Loader inventory 中，但不影响产品健康状态。
 
 Package 来源遵循固定映射：`@clawdsh/*` 属于 ClawDSH，`@deepseek-ai/*` 与 `cordis:*` 属于 Platform，其他来源全部属于 Community。
 

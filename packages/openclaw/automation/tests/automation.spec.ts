@@ -271,7 +271,7 @@ describe('automation row', () => {
       enabled: true,
       rules: [{ id: 'daily', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
-    await vi.waitFor(() => { expect(runRecords(first, 'daily')).toEqual(['started', 'ok']) }, { timeout: 5_000 })
+    await vi.waitFor(() => expect(runRecords(first, 'daily')).toEqual(['started', 'ok']), { timeout: 5_000 })
 
     await first.fiber.dispose()
     contexts.splice(contexts.indexOf(first), 1)
@@ -283,7 +283,7 @@ describe('automation row', () => {
       rules: [{ id: 'daily', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
     // The remounted rule fires once more (anchor reset), and the resumed session carries run one's records.
-    await vi.waitFor(() => { expect(runRecords(second, 'daily')).toEqual(['started', 'ok', 'started', 'ok']) }, { timeout: 5_000 })
+    await vi.waitFor(() => expect(runRecords(second, 'daily')).toEqual(['started', 'ok', 'started', 'ok']), { timeout: 5_000 })
     const agent = agentFor(second, 'daily')
     const turnCount = agent?.session.events.filter(event =>
       event.type === 'user/message' && event.data.source.kind === 'plugin').length
@@ -299,7 +299,7 @@ describe('automation row', () => {
     contexts.push(first)
     const rules: Automation.Config['rules'] = [{ id: 'once', schedule: { kind: 'at', at: '2026-08-05T08:00:00.000Z' }, message: 'run once' }]
     await first.plugin(Automation, { enabled: true, rules })
-    await vi.waitFor(() => { expect(runRecords(first, 'once')).toEqual(['started', 'ok']) }, { timeout: 5_000 })
+    await vi.waitFor(() => expect(runRecords(first, 'once')).toEqual(['started', 'ok']), { timeout: 5_000 })
 
     await first.fiber.dispose()
     contexts.splice(contexts.indexOf(first), 1)

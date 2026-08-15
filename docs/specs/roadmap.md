@@ -20,7 +20,6 @@ The project keeps community features out of a monolithic core. A feature belongs
 6. **ClawDSH is the product.** The local GUI presents ClawDSH by default and keeps the native Harness as an advanced entry point. Switching an Agent preset does not uninstall Host capabilities.
 7. **No upstream GUI patch.** The product shell consumes public dsh Web and Host APIs and does not add a Client Slot or modify `api-proxy`, Client Catalog, Agent Loop, generated files, or upstream GUI source.
 8. **No premature legacy deletion.** A replacement removes an older path only after equivalent assembly, snapshots, live behavior, and failure handling pass.
-9. **Harness contracts first.** Ordinary work starts from maintained architecture, subsystem, package, and graph references plus the [reuse map](../matrix/harness-reuse.md); source inspection is reserved for defects, undocumented behavior, missing seams, and upstream breaks under ADR-0010.
 
 ## 3. Completed foundations
 
@@ -38,7 +37,7 @@ The project selected OpenClaw `v2026.1.5` as the compact non-channel reference a
 
 ### Phase 3 · Local ecosystem plugins
 
-`skills-hub` and opt-in `automation` use existing dsh seams. Discord joined the legacy path with keyless Gateway/REST and lifecycle coverage but no credentialed live-server E2E. Channel identity presentation and acknowledgement behavior remain available there. Federation remains evaluation-only under ADR-0005.
+`skills-hub` and opt-in `automation` use existing dsh seams. Channel identity presentation and acknowledgement behavior remain available through the legacy path. Federation remains evaluation-only under ADR-0005.
 
 ## 4. Current Phase 4 · Product GUI, channel plane, and distribution
 
@@ -62,7 +61,7 @@ The `clawdsh` profile composes the stock dsh Web application with the owned nest
 
 The foundation comprises `@clawdsh/dsh-channel`, `@clawdsh/dsh-channel-agent`, `@clawdsh/dsh-channel-openclaw`, and `tools/openclaw-channel-host`. The profile always mounts the three runtime packages; Channel Protocol and Agent Bridge remain available while the OpenClaw Gateway business setting defaults to disabled. No channel is certified or enabled; per-channel assembly, owned keyless snapshot evidence, current live smoke, Windows endpoint authorization, and remaining media support are incomplete.
 
-The legacy channel packages remain separately available under `ctx.legacyChannels` in a default-disabled compatibility group with per-adapter switches. While legacy opt-in is present, Gateway startup and Settings preflight reject canonical enablement. The two paths must not connect to the same platform accounts and the legacy packages are removed only after the replacement conditions pass. Historical Feishu and Telegram live evidence and Discord keyless evidence do not certify the sidecar.
+The legacy channel packages remain separately available under `ctx.legacyChannels` for replacement verification. They must not connect to the same platform accounts as the OpenClaw communication plane and are removed only after the replacement conditions pass.
 
 ### 4.3 Public distribution
 
@@ -83,7 +82,7 @@ The release workflow targets public npm `next` through OIDC trusted publishing w
 
 1. Maintain the reproducible production host and bridge assembly, including sole-AgentHarness routing and exact runtime inspection.
 2. Add the owned keyless Gateway-to-Agent snapshot lane and close protocol, recovery, delivery, action, and attachment evidence gaps.
-3. Run per-channel certification, starting with Telegram and Feishu, then Discord where an active legacy deployment requires migration; record exact host, channel, OS, and live-traffic evidence.
+3. Run per-channel certification, starting with Telegram and Feishu, and record exact host, channel, OS, and live-traffic evidence.
 4. Enable only certified combinations, then remove legacy packages and archive their Agent Notes in the same change.
 5. Promote further production catalog entries in cohorts based on ecosystem value, credential availability, platform risk, and external-package review.
 
@@ -113,7 +112,7 @@ The release workflow targets public npm `next` through OIDC trusted publishing w
 - [x] Implement semantic Activity and sidecar degradation behavior.
 - [x] Add owned real-profile browser and keyless snapshots for the product shell.
 - [ ] Add per-channel configuration, capability probes, and keyless contract evidence before promoting any production entry to installable.
-- [ ] Complete fresh Telegram and Feishu sidecar certification; neither is certified or enabled. Complete Discord certification before migrating any active legacy Discord deployment.
+- [ ] Complete fresh Telegram and Feishu certification; neither is certified or enabled.
 - [ ] Add Windows named-pipe ACL enforcement before Windows channel support advances.
 - [ ] Add durable non-image attachments and outbound staging before advertising those media paths.
 - [ ] Add an ignorable Session append mechanism before persisting redundant `channel/*` events.

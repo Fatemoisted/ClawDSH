@@ -36,7 +36,6 @@ const RELEASE_PACKAGE_NAME_SET = new Set(RELEASE_PACKAGE_NAMES)
 
 export const LEGACY_PACKAGE_NAMES = Object.freeze([
   '@clawdsh/dsh-channel-core',
-  '@clawdsh/dsh-channel-discord',
   '@clawdsh/dsh-channel-feishu',
   '@clawdsh/dsh-channel-telegram',
 ])

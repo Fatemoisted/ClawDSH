@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/specs/doc-inventory.md
-doc-inventory.md: 702cf5c49773d1821998de71a1d547b1bfdcffab
-doc-inventory.zh.md: 0996059a4817667d89ae1b69a4ccee31f7bc5ecb
+doc-inventory.md: b2c891cd382922366b56acab46caef6551c4a86f
+doc-inventory.zh.md: cf331162f66d07ba05761ca34a8c6760cb3302bc

@@ -2,7 +2,7 @@
 
 English | [中文](openclaw-channel-sync.zh.md)
 
-This standard governs every change to the OpenClaw host, channel catalog, bridge compatibility range, or support claim used by the ClawDSH channel plane. It implements [ADR-0008](../adr/0008-openclaw-channel-plane.md), composes Harness contracts under [ADR-0010](../adr/0010-harness-contract-first.md), and treats [ADR-0011](../adr/0011-deferred-channel-images-and-address-continuity.md) as legacy-only. It is separate from `upstream-sync.md`: DeepSeek Harness upstream and the embedded OpenClaw communication host have independent locks and review cycles.
+This standard governs every change to the OpenClaw host, channel catalog, bridge compatibility range, or support claim used by the ClawDSH channel plane. It implements [ADR-0008](../adr/0008-openclaw-channel-plane.md). It is separate from `upstream-sync.md`: DeepSeek Harness upstream and the embedded OpenClaw communication host have independent locks and review cycles.
 
 ## Authorities
 
@@ -65,9 +65,9 @@ Evidence expires when the host commit, channel artifact integrity, bridge protoc
 
 ## Current certification blockers
 
-The shipped profile contains the canonical sidecar composition and its three invariant companions while the Gateway remains explicitly disabled by default. A separate compatibility group registers only `ctx.legacyChannels` and is also default-disabled; legacy opt-in must make canonical Gateway startup and Settings preflight fail before side effects. Keyless evidence now covers policy-complete Telegram and Feishu configuration against the locked schema and the assembled Gateway-to-Agent path, but there is no complete per-Channel configuration/capability/delivery evidence or credentialed live evidence; Windows endpoint authorization is missing; stable AgentHarness V1 cannot supply safely staged inbound media; non-image dsh attachments and outbound media remain incomplete; the locked host exposes neither correlated final-answer delivery reports nor a public aggregate account-health seam; downstream namespaced Session events must remain disabled; every external governance review remains pending; and this change ran no fresh credentialed Telegram, Feishu, or Discord sidecar smoke. These are explicit blockers: all production sidecar entries remain `cataloged`, and no sidecar Channel is installable, certified, or enabled in the current support catalog.
+The shipped profile always mounts the sidecar composition and its three invariant companions, while the Gateway remains explicitly disabled by default. Keyless evidence now covers policy-complete Telegram and Feishu configuration against the locked schema and the assembled Gateway-to-Agent path, but there is no complete per-Channel configuration/capability/delivery evidence or credentialed live evidence; Windows endpoint authorization is missing; stable AgentHarness V1 cannot supply safely staged inbound media; non-image dsh attachments and outbound media remain incomplete; the locked host exposes neither correlated final-answer delivery reports nor a public aggregate account-health seam; downstream namespaced Session events must remain disabled; every external governance review remains pending; and this change ran no fresh Telegram or Feishu live smoke. These are explicit blockers: all production sidecar entries remain `cataloged`, and no sidecar Channel is installable, certified, or enabled in the current support catalog.
 
-The legacy `channel-telegram`, `channel-discord`, and `channel-feishu` packages remain until ADR-0008's replacement conditions pass. Their historical credentialed Telegram and Feishu traffic, keyless Discord coverage, and ADR-0011 media/address tests cannot be reused as sidecar certification because the host, Service namespace, execution path, admission owner, and delivery ledger differ.
+The legacy `channel-telegram` and `channel-feishu` packages remain until ADR-0008's replacement conditions pass. Their historical tests cannot be reused as sidecar certification because the host, execution path, admission owner, and delivery ledger differ.
 
 ## Rollback and incidents
 

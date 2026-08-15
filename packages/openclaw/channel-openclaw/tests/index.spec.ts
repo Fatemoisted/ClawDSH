@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createLaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 
 const mocks = vi.hoisted(() => ({
   preflight: vi.fn(async () => ({
@@ -63,9 +62,6 @@ function context<T extends object>(value: T): T & {
   }
 } {
   const target = value as T & Record<string, unknown>
-  if (!Object.hasOwn(target, 'launchEnvironment')) {
-    Reflect.set(target, 'launchEnvironment', createLaunchEnvironmentSnapshot([{ source: 'process', values: {} }]))
-  }
   const provide = vi.fn((name: string, service: unknown) => { Reflect.set(target, name, service) })
   return Object.assign(target, {
     get: vi.fn((service: string) => Reflect.get(target, service)),
@@ -109,9 +105,7 @@ describe('channel-openclaw plugin', () => {
   })
 
   it('stays mounted without preflight, IPC, a Gateway process, or Provider registration when disabled', async () => {
-    const resolve = vi.fn(async () => ({ value: 'true', source: 'test' }))
     const ctx = context({
-      credentials: { resolve },
       channels: { registerProvider: vi.fn() },
       effect: vi.fn(),
       storageDomain: { open: vi.fn() },
@@ -126,25 +120,6 @@ describe('channel-openclaw plugin', () => {
     expect(ctx.storageDomain.open).not.toHaveBeenCalled()
     expect(ctx.subprocess.resolveExecutable).not.toHaveBeenCalled()
     expect(ctx.subprocess.spawn).not.toHaveBeenCalled()
-    expect(resolve).not.toHaveBeenCalled()
-  })
-
-  it('rejects enabled startup while the launch environment enables legacy channels', async () => {
-    const ctx = context({
-      launchEnvironment: createLaunchEnvironmentSnapshot([{
-        source: 'process',
-        values: { CLAWDSH_LEGACY_CHANNELS_ENABLED: 'on' },
-      }]),
-      channels: { registerProvider: vi.fn() },
-      effect: vi.fn(),
-    })
-
-    await expect(apply(ctx as never, config()))
-      .rejects.toThrow(/managed Gateway cannot be enabled.*CLAWDSH_LEGACY_CHANNELS_ENABLED/)
-
-    expect(mocks.start).not.toHaveBeenCalled()
-    expect(mocks.preflight).not.toHaveBeenCalled()
-    expect(ctx.channels.registerProvider).not.toHaveBeenCalled()
   })
 
   it('registers restart-scoped Settings and starts only from the captured user snapshot', async () => {
@@ -269,57 +244,6 @@ describe('channel-openclaw plugin', () => {
     expect(mocks.validateDeployment).not.toHaveBeenCalled()
     expect(ctx.channels.registerProvider).not.toHaveBeenCalled()
     expect(ctx.effect).not.toHaveBeenCalled()
-  })
-
-  it('rejects a Settings enable before preflight when credentials enable legacy channels', async () => {
-    const resolve = vi.fn(async () => ({ value: 'yes', source: 'test' }))
-    const ctx = context({
-      credentials: { resolve },
-      channels: { registerProvider: vi.fn() },
-      effect: vi.fn(),
-    })
-    await apply(ctx as never, config({ enabled: false }))
-
-    await expect(ctx.clawdshOpenClawControl.validateDesired(config()))
-      .rejects.toThrow(/managed Gateway cannot be enabled.*CLAWDSH_LEGACY_CHANNELS_ENABLED/)
-
-    expect(resolve).toHaveBeenCalledWith('CLAWDSH_LEGACY_CHANNELS_ENABLED')
-    expect(mocks.preflight).not.toHaveBeenCalled()
-    expect(mocks.start).not.toHaveBeenCalled()
-  })
-
-  it.each(['', '0', 'false', 'FALSE', 'no', 'OFF'])(
-    'treats the legacy-channel value %j as disabled during Settings preflight',
-    async (value) => {
-      const ctx = context({
-        launchEnvironment: createLaunchEnvironmentSnapshot([{
-          source: 'process',
-          values: { CLAWDSH_LEGACY_CHANNELS_ENABLED: value },
-        }]),
-        channels: { registerProvider: vi.fn() },
-        effect: vi.fn(),
-      })
-      await apply(ctx as never, config({ enabled: false }))
-
-      const desired = config()
-      await expect(ctx.clawdshOpenClawControl.validateDesired(desired)).resolves.toBeUndefined()
-      expect(mocks.preflight).toHaveBeenCalledWith(ctx, desired)
-    },
-  )
-
-  it('fails loudly on an invalid legacy-channel enabled value without exposing it', async () => {
-    const resolve = vi.fn(async () => ({ value: 'definitely-secret-invalid-value', source: 'test' }))
-    const ctx = context({
-      credentials: { resolve },
-      channels: { registerProvider: vi.fn() },
-      effect: vi.fn(),
-    })
-    await apply(ctx as never, config({ enabled: false }))
-
-    const validation = ctx.clawdshOpenClawControl.validateDesired(config())
-    await expect(validation).rejects.toThrow(/must be 1\/true\/yes\/on or 0\/false\/no\/off/)
-    await expect(validation).rejects.not.toThrow(/definitely-secret-invalid-value/)
-    expect(mocks.preflight).not.toHaveBeenCalled()
   })
 
   it('rejects managed desired fields before full preflight', async () => {

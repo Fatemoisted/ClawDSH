@@ -1,6 +1,0 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write docs/cookbook/telegram-e2e.md
-telegram-e2e.md: e7884475578b7ae201eacd8ebfaf645ad32ee338
-telegram-e2e.zh.md: 8ced8001d9b4cc353a1dd2928febb9be130e90fa

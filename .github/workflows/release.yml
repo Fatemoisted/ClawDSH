@@ -31,7 +31,6 @@ concurrency:
 env:
   PRIMARY_NODE_VERSION: '24'
   DSH_TELEMETRY_DISABLED: '1'
-  NODE_OPTIONS: --max-old-space-size=4096
 
 jobs:
   pack:

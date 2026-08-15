@@ -68,7 +68,7 @@ async function occupiedEndpoint(): Promise<Awaited<ReturnType<typeof providerCon
   return fixture
 }
 
-describe.skipIf(process.platform === 'win32')('existing POSIX IPC endpoint probe failures', () => {
+describe('existing IPC endpoint probe failures', () => {
   it('rejects an endpoint whose liveness probe reaches its deadline', async () => {
     const fixture = await occupiedEndpoint()
     const context = providerContext()
