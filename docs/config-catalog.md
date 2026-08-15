@@ -109,6 +109,26 @@ export interface IdentityConfig {
 
 Source: [`packages/openclaw/channel-core/src/index.ts:151`](../packages/openclaw/channel-core/src/index.ts)
 
+<a id="clawdshdsh-channel-discord"></a>
+
+## `@clawdsh/dsh-channel-discord`
+
+Requires: `channels` · `timer`
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Literal token for programmatic use; prefer `botTokenEnv` so config never contains the secret. */
+  botToken?: string
+  /** Harness credential reference resolved when opening the Gateway. */
+  botTokenEnv?: string
+  /** Request the privileged guild Message Content intent. Off by default for least privilege. */
+  messageContentIntent?: boolean
+}
+```
+
+Source: [`packages/openclaw/channel-discord/src/index.ts:43`](../packages/openclaw/channel-discord/src/index.ts)
+
 <a id="clawdshdsh-channel-feishu"></a>
 
 ## `@clawdsh/dsh-channel-feishu`

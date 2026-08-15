@@ -22,7 +22,7 @@
     "build:lib:host": "tsc -b tsconfig.host.json packages/openclaw/tsconfig.json && tsdown --env.DSH_BUILD_FACE host",
     "build:lib:client": "tsc -b tsconfig.client.json && tsdown --env.DSH_BUILD_FACE client",
     "build:openclaw:types": "tsc -b packages/openclaw/tsconfig.json",
-    "build:openclaw:bundle": "tsdown -F @clawdsh/dsh-automation -F @clawdsh/dsh-channel-core -F @clawdsh/dsh-channel-feishu -F @clawdsh/dsh-channel-telegram -F @clawdsh/dsh-embeddings -F @clawdsh/dsh-embeddings-ark -F @clawdsh/dsh-memory -F @clawdsh/dsh-skills-hub -F @clawdsh/dsh-soul --env.DSH_BUILD_FACE host",
+    "build:openclaw:bundle": "tsdown -F @clawdsh/dsh-automation -F @clawdsh/dsh-channel-core -F @clawdsh/dsh-channel-discord -F @clawdsh/dsh-channel-feishu -F @clawdsh/dsh-channel-telegram -F @clawdsh/dsh-embeddings -F @clawdsh/dsh-embeddings-ark -F @clawdsh/dsh-memory -F @clawdsh/dsh-skills-hub -F @clawdsh/dsh-soul --env.DSH_BUILD_FACE host",
     "build:openclaw": "pnpm run build:openclaw:types && pnpm run build:openclaw:bundle",
     "build:web": "pnpm --filter @deepseek-ai/dsh-web-frontend run build",
     "clean": "tsx scripts/clean.ts",

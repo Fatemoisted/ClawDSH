@@ -39,7 +39,7 @@ English | [中文](parity.zh.md)
 | Memory | baseline absent → reference v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`, `memory-tool.ts` | Harness `ctx.fs`/sandbox + tools/system prompt + embeddings | Plugin | `memory` + `embeddings` + `embeddings-ark` | **implemented** (three tools, configured defaults, missing-root startup, durable flush cycle ✅) |
 | **Channel gateway (Gateway)** | `src/gateway/` | **none** | **new seam** | `channel-core` | **implemented** (awaited durability, deterministic resume/preset/FIFO, legacy thread-only compatibility, `groupMode`/structured-mention policy ✅) |
 | Channel: Telegram | `src/telegram/` | `ctx.channels` | Plugin | `channel-telegram` | **implemented** (commands/mentions/captions/topics/replies/reactions, Unicode-safe 4096 splitting, lifecycle catches ✅) |
-| Channel: Discord | `src/discord/` | `ctx.channels` | Plugin | `channel-discord` (to be built) | planning |
+| Channel: Discord | `src/discord/` | `ctx.channels` | Plugin | `channel-discord` | **implemented** (Harness credentials/timer, DM/guild/thread normalization, mention gating, native replies/reactions, safe 2000-unit splitting, drain-first lifecycle ✅; credentialed live e2e pending) |
 | Channel: iMessage / Signal / Slack | `src/imessage/` etc. | `ctx.channels` | Plugin | per-package later | Deferred (Phase 3) |
 | Channel: WhatsApp | reference v2026.1.15 `src/whatsapp/` | `ctx.channels` | Plugin | per-package later | Deferred (Phase 3) |
 | Approval / security policy | `src/security/` (from 1.15) | `ctx.approval` / guard | Reuse (config) | — | directly usable |
@@ -67,7 +67,7 @@ WeChat family not in the matrix (not implemented), decision record in `docs/spec
 
 ## Distribution status (not feature parity)
 
-The nine `packages/openclaw/*` members now form an independent, shared-version `clawdsh` release family with `clawdsh-v*` tags. Synchronized bump/verify/pack/publish, workspace constraints, pack artifacts, fresh packed-install verification for the main and invariant paths, and the protected private-registry `.github/workflows/clawdsh-publish.yml` path are implemented. No ClawDSH npm publication has been executed from this worktree; local profile assembly still uses `tools/link-openclaw.sh` symlinks.
+The ten `packages/openclaw/*` members now form an independent, shared-version `clawdsh` release family with `clawdsh-v*` tags. Synchronized bump/verify/pack/publish, workspace constraints, pack artifacts, fresh packed-install verification for the main and invariant paths, and the protected private-registry `.github/workflows/clawdsh-publish.yml` path are implemented. No ClawDSH npm publication has been executed from this worktree; local profile assembly still uses `tools/link-openclaw.sh` symlinks.
 
 ## Maintenance rules
 

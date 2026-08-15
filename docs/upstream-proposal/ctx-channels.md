@@ -60,8 +60,8 @@ Per-thread inbound turns are serialized via a tail-chain to avoid concurrent int
 
 This seam introduces no channel-feature semantics (attachments/references/rich text/cards all stay out of this layer): `ChannelMessage` carries only `text`, and the remaining channel features are mapped by the adapter itself inside `send`. Routing/session/log/reply-delivery are compositions of dsh's existing capabilities, and `channel-core` only does "assembly + serialization", so the intrusion surface into upstream is minimal, and the cost of adding a channel = one `ChannelAdapter` implementation.
 
-## Local validation status (stage 2)
+## Local validation status
 
-- `channel-core` + `channel-telegram` (grammY `Bot` long polling) + `channel-feishu` (`@larksuiteoapi/node-sdk` long connection + `im.message.create`) implemented;
+- `channel-core` + `channel-telegram` (grammY long polling) + `channel-feishu` (official Lark SDK WebSocket) + `channel-discord` (discord.js Gateway/REST) implemented;
 - Contract tests (MockAdapter validating the "inbound → real agent turn → reply out" closed loop) + full typecheck + `--dump-config` smoke are all green;
-- Real e2e (real key + real bot) left as a finishing item once credentials are in place.
+- Feishu has passed real e2e. Discord keyless protocol/lifecycle coverage is complete; its real Gateway e2e remains pending a rotated token installed through the Harness credential seam.

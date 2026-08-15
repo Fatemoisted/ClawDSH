@@ -11,6 +11,7 @@
   "references": [
     { "path": "./soul" },
     { "path": "./channel-core" },
+    { "path": "./channel-discord" },
     { "path": "./channel-telegram" },
     { "path": "./channel-feishu" },
     { "path": "./embeddings" },

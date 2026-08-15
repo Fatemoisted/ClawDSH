@@ -39,7 +39,7 @@
 | 记忆（Memory） | 基线无 → 参考 v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`、`memory-tool.ts` | Harness `ctx.fs`/sandbox + tools/system prompt + embeddings | 插件 | `memory` + `embeddings` + `embeddings-ark` | **implemented**（三工具、配置默认、缺失 root 启动、持久 flush 周期 ✅） |
 | **渠道网关（Gateway）** | `src/gateway/` | **无** | **新 seam** | `channel-core` | **implemented**（可等待持久化、确定性恢复/preset/FIFO、legacy thread-only 兼容、`groupMode`/结构化 mention 策略 ✅） |
 | 渠道：Telegram | `src/telegram/` | `ctx.channels` | 插件 | `channel-telegram` | **implemented**（command/mention/caption/topic/引用/reaction、Unicode-safe 4096 分片、生命周期 catch ✅） |
-| 渠道：Discord | `src/discord/` | `ctx.channels` | 插件 | `channel-discord`（待建） | planning |
+| 渠道：Discord | `src/discord/` | `ctx.channels` | 插件 | `channel-discord` | **implemented**（Harness credentials/timer、私信/服务器/thread 归一化、mention 门控、原生引用/reaction、安全 2000-unit 分片、先排空再销毁的生命周期 ✅；带凭证线上 e2e 待完成） |
 | 渠道：iMessage / Signal / Slack | `src/imessage/` 等 | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
 | 渠道：WhatsApp | 参考 v2026.1.15 `src/whatsapp/` | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
 | 审批 / 安全策略 | `src/security/`（1.15 起） | `ctx.approval` / guard | 复用（配置） | — | 直接可用 |
@@ -67,7 +67,7 @@
 
 ## 分发状态（不属于功能对齐）
 
-9 个 `packages/openclaw/*` 成员现已组成独立、共享版本的 `clawdsh` release family，使用 `clawdsh-v*` tag。同步 bump/verify/pack/publish、workspace 约束、pack 产物、主路径与 invariant 路径的全新 packed-install 验证及受保护的私有 registry `.github/workflows/clawdsh-publish.yml` 路径均已实现。当前工作树尚未执行 ClawDSH npm 发布；本地 profile 组装仍使用 `tools/link-openclaw.sh` symlink。
+10 个 `packages/openclaw/*` 成员现已组成独立、共享版本的 `clawdsh` release family，使用 `clawdsh-v*` tag。同步 bump/verify/pack/publish、workspace 约束、pack 产物、主路径与 invariant 路径的全新 packed-install 验证及受保护的私有 registry `.github/workflows/clawdsh-publish.yml` 路径均已实现。当前工作树尚未执行 ClawDSH npm 发布；本地 profile 组装仍使用 `tools/link-openclaw.sh` symlink。
 
 ## 维护规则
 

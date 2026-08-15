@@ -30,6 +30,7 @@ describe('release families', () => {
     expect(clawdshMembers.map(entry => entry.directory)).toEqual([
       'packages/openclaw/automation',
       'packages/openclaw/channel-core',
+      'packages/openclaw/channel-discord',
       'packages/openclaw/channel-feishu',
       'packages/openclaw/channel-telegram',
       'packages/openclaw/embeddings-ark',

@@ -60,8 +60,8 @@ per-thread 入站 turn 以 tail-chain 串行化，避免并发交错。**一切�
 
 本 seam 不引入任何渠道特性语义（附件/引用/富文本/卡片一律不在此层）：`ChannelMessage` 只带 `text`，其余渠道特性由适配器在 `send` 内自行映射。路由/会话/日志/回投是 dsh 既有能力的组合，`channel-core` 只做「装配 + 串行化」，因此对上游侵入面最小，新增一个渠道的成本 = 一个 `ChannelAdapter` 实现。
 
-## 本地验证状态（阶段 2）
+## 本地验证状态
 
-- `channel-core` + `channel-telegram`（grammY `Bot` 长轮询）+ `channel-feishu`（`@larksuiteoapi/node-sdk` 长连接 + `im.message.create`）已实现；
+- `channel-core` + `channel-telegram`（grammY 长轮询）+ `channel-feishu`（官方 Lark SDK WebSocket）+ `channel-discord`（discord.js Gateway/REST）已实现；
 - 契约测试（MockAdapter 验证「入站 → 真 agent turn → 回复出」闭环）+ 全量 typecheck + `--dump-config` 冒烟全绿；
-- 真实 e2e（真 key + 真 bot）留待凭证到位后收尾。
+- 飞书已通过真实 e2e；Discord 的无密钥协议/生命周期覆盖已完成，真实 Gateway e2e 留待把轮换后的 token 装入 Harness 凭据接缝后收尾。

@@ -1,8 +1,8 @@
 # ClawDSH「openclaw」profile 层（复制到 $DSH_HOME/profiles/openclaw/ 后生效）。
 # 格式：顶层 YAML 数组的 loader patch entries（覆盖既有行 / insert 新行）。
 # 阶段 0：把部署级默认人格换成 OpenClaw 的中性开场——验证 profile 层叠机制。
-# 阶段 2：insert 渠道行（channel-core 注册表 + Telegram/飞书双适配器）。飞书已启用（凭证走 env），
-#         Telegram 保持 disabled（无账号）。
+# 阶段 2：insert 渠道行（channel-core 注册表 + Telegram/飞书/Discord 适配器）。飞书已启用（凭证走 env），
+#         Telegram 与 Discord 保持 disabled（无账号）。
 
 - id: system-prompt
   config:
@@ -37,6 +37,13 @@
     - id: channel-telegram
       name: '@clawdsh/dsh-channel-telegram'
       disabled: true
+
+    - id: channel-discord
+      name: '@clawdsh/dsh-channel-discord'
+      disabled: true
+      config:
+        botTokenEnv: DISCORD_BOT_TOKEN
+        messageContentIntent: false
 
     - id: channel-feishu
       name: '@clawdsh/dsh-channel-feishu'

@@ -34,7 +34,7 @@ mkdir -p "$DSH_HOME_DIR/memory/memory"
 
 echo "==> 3/3 建立 @clawdsh / Harness bridge symlink（过渡，发布后移除）"
 mkdir -p "$LINK_DIR"
-for pkg in soul channel-core channel-feishu channel-telegram memory embeddings embeddings-ark skills-hub automation; do
+for pkg in soul channel-core channel-discord channel-feishu channel-telegram memory embeddings embeddings-ark skills-hub automation; do
   ln -sfn "$PWD/packages/openclaw/$pkg" "$LINK_DIR/dsh-$pkg"
   echo "    $LINK_DIR/dsh-$pkg -> packages/openclaw/$pkg"
 done

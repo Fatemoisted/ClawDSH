@@ -160,7 +160,7 @@ jobs:
           registry-url: ${{ vars.NPM_REGISTRY_URL }}
           always-auth: true
 
-      # Only the nine ClawDSH tarballs are local here. Harness, Cordis, and
+      # Only the ten ClawDSH tarballs are local here. Harness, Cordis, and
       # other prerequisites must resolve from the actual target registry.
       - name: Verify target-registry fresh install
         env:
