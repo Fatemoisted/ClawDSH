@@ -9,6 +9,7 @@
     { "path": "../../../vendor/cordis" },
     { "path": "../../../vendor/schemastery" },
     { "path": "../channel" },
+    { "path": "../../settings/settings" },
     { "path": "../../storage/storage-domain" },
     { "path": "../../subprocess/subprocess" },
     { "path": "../../runtime-diagnostics/invariants" }

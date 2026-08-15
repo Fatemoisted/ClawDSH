@@ -16,6 +16,7 @@
     { "path": "../../llm/llm" },
     { "path": "../../core/session" },
     { "path": "../../session/session-persistence" },
+    { "path": "../../settings/settings" },
     { "path": "../../storage/storage-domain" },
     { "path": "../../core/tools" },
     { "path": "../../runtime-diagnostics/invariants" }

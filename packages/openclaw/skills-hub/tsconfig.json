@@ -16,6 +16,9 @@
       "path": "../../skill/skill"
     },
     {
+      "path": "../../settings/settings"
+    },
+    {
       "path": "../../runtime-diagnostics/invariants"
     }
   ]

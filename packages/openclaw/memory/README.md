@@ -21,6 +21,7 @@ English | [中文](README.zh.md)
 - id: memory
   name: '@clawdsh/dsh-memory'
   config:
+    enabled: true                 # false registers no prompt, tools, watcher, or flush hooks
     root: /abs/path/to/memory      # 必配：记忆根目录（fail-loud）
     # chunkSizeChars: 1600          # chunk 字符预算
     # chunkOverlapChars: 160        # 相邻 chunk 句子对齐重叠
@@ -38,6 +39,8 @@ English | [中文](README.zh.md)
     #   prompt: 'Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY.'
 ```
 
+The `clawdsh-memory` settings namespace is restart-applied: startup resolves schema defaults, profile base, then the user section. A committed edit changes the desired value; the running Memory registrations remain unchanged until process restart.
+
 Write convention (taught to the model by the guidance section): stable facts go into `MEMORY.md`, runtime notes are appended to `memory/YYYY-MM-DD.md`, only via file tools, append-only and never rewriting history.
 
 ## Design notes
@@ -47,6 +50,7 @@ Write convention (taught to the model by the guidance section): stable facts go 
 - **Path allowlist + double safety**: `isMemoryPath` (`MEMORY.md` | `memory/<file>.md`, rejecting absolute paths and `..`) + `fs.contains(root, target)` enforced at the resolution operation;
 - **Fail-loud culture**: root required, no embeddings provider, path escape, dimension drift (provider-side) all fail loudly;
 - **Dispose rollback**: the section and both tool registrations all go through `ctx.effect`, removed on unload (test-covered).
+- **Fail-closed disable**: `enabled: false` returns before prompt, tools, watcher, index, or flush hooks are created.
 
 ## Changelog
 

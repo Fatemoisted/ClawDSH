@@ -15,7 +15,7 @@ English | [中文](README.zh.md)
 
 **Spec**: docs/specs/feature-automation.md · **Status**: implemented (Phase 3 ✅)
 
-The clean-install `clawdsh` profile keeps this Loader row disabled, so no rule starts without explicit opt-in. This package does not yet expose a business-level `enabled` field; the capability Settings increment keeps it mounted and adds that validated switch.
+The row stays mounted and owns the `clawdsh-automation` settings namespace. Its business-level `enabled` defaults to `false`; while disabled it creates no runtime, timer, or automation session. Settings are restart-applied.
 
 ## Usage
 
@@ -23,6 +23,7 @@ The clean-install `clawdsh` profile keeps this Loader row disabled, so no rule s
 - id: automation
   name: '@clawdsh/dsh-automation'
   config:
+    enabled: true
     rules:
       - id: morning-digest
         name: Morning            # optional label in the turn framing
@@ -41,6 +42,7 @@ Rule ids must match `[a-zA-Z0-9_-]+` (they land in persisted session names). Inv
 ## Design notes
 
 - **Config is the durable store**: rules live in cordis.yml, so no job-store file, no CRUD tools, no new storage seam (runtime-editable rules are deferred);
+- **Disabled by default**: the schema defaults `enabled` to false, and the disabled path validates configuration but creates no runtime, timer, or session;
 - **One re-arming unref'd timer**: armed to the earliest occurrence across rules; on wake, due rules run sequentially, then the timer re-arms (OpenClaw's scheduler shape);
 - **Per-rule session lifecycle**: resume-or-create keeps the session log (and thus the run history) across restarts; the rule fires immediately at mount for `every` rules (OpenClaw's "first run at/after the anchor");
 - **Failure semantics**: a `started` record lands before the turn (at-least-once); the `turn/end` reason decides `ok` vs `error` (loop-contained adapter failures still surface as `error`); failures log and the next occurrence still fires.

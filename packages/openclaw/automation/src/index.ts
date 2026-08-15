@@ -25,6 +25,7 @@
 import { Cron } from 'croner'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { installModelSelection, type AgentHandle } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId, type SessionEvent, type SessionHeader } from '@deepseek-ai/dsh-session'
@@ -42,8 +43,11 @@ const RULE_ID = /^[a-zA-Z0-9_-]+$/
 /** Cordis plugin name. */
 export const name = 'automation'
 
-/** Agent registry, session store, and default model selection this row drives. */
-export const inject = ['agents', 'sessions', 'agentDefaultModel']
+/** User-settings namespace for scheduled ClawDSH turns. */
+export const AUTOMATION_SETTINGS_NAMESPACE = settingsNamespace('clawdsh-automation')
+
+/** Agent, session, model-selection, and settings services this row requires. */
+export const inject = ['agents', 'sessions', 'agentDefaultModel', 'settings']
 
 /** A 5-field cron schedule with an optional IANA timezone. */
 export interface CronSchedule {
@@ -87,12 +91,15 @@ export interface AutomationRule {
 
 /** Plugin config: the declared rule set. cordis.yml is the durable store — no separate storage seam. */
 export interface Config {
+  /** Whether any automation runtime, timer, or durable session may start. */
+  enabled?: boolean
   /** Scheduled rules; each gets its own durable agent session. */
   rules?: AutomationRule[]
 }
 
 /** Runtime schema for the automation row. */
 export const Config: z<Config> = z.object({
+  enabled: z.boolean().default(false),
   rules: z.array(z.object({
     id: z.string().min(1),
     name: z.string().default(''),
@@ -168,6 +175,22 @@ function validateCronSchedule(rule: AutomationRule): void {
  * @param config - the declared rule set.
  */
 export function apply(ctx: Context, config: Config = {}): void {
+  const settings = ctx.get('settings')
+  const runtimeConfig = settings?.register(AUTOMATION_SETTINGS_NAMESPACE, Config, {
+    base: config,
+    applies: 'restart',
+    validate: value => void resolveRules(value),
+  }).get() ?? Config(config)
+  const rules = resolveRules(runtimeConfig)
+  if (!(runtimeConfig.enabled ?? false)) return
+  const runtime = new AutomationRuntime(ctx, rules)
+  void runtime.initialize()
+  ctx.effect(function* () {
+    yield () => runtime.dispose()
+  }, 'automation.runtime()')
+}
+
+function resolveRules(config: Config): ResolvedRule[] {
   const rules = (config.rules ?? []).map(rule => resolveRule(rule))
   const ids = new Set<string>()
   for (const rule of rules) {
@@ -175,11 +198,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     ids.add(rule.id)
     validateCronSchedule(rule)
   }
-  const runtime = new AutomationRuntime(ctx, rules)
-  void runtime.initialize()
-  ctx.effect(function* () {
-    yield () => runtime.dispose()
-  }, 'automation.runtime()')
+  return rules
 }
 
 /** Owns the rule states, the re-arming timer, and the per-rule agent handles. */

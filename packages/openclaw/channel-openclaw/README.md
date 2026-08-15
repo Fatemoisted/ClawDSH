@@ -6,12 +6,15 @@ English | [中文](README.zh.md)
 
 ## Configuration
 
-Every deployment path, identity, port, timeout, and resource limit is explicit. The plugin creates the state, workspace, and staging directories as private `0700` directories; `configPath`, `endpoint`, and `stagingRoot` must remain beneath `stateDir` without a symlinked parent.
+The plugin is always mounted and registers its existing schema under `clawdsh-channel-openclaw` when the DSH Settings service is present. Schema defaults, the profile base, and the user layer are resolved once at startup with `applies: restart`. The user layer may change `enabled` and bounded ports, frame limits, concurrency, and timeout values. A change to `track`, Gateway identity, artifact/runtime/host/Node/config/state/staging/socket paths, extension locks, or the media limit is rejected before persistence or startup, including a hand-edited Settings document. `enabled` defaults to `false`; in that state the plugin does not inspect artifacts, open storage, bind a socket, spawn a process, or register a Provider. The ClawDSH control plane runs the complete locked runtime, Node, OpenClaw config, and plugin-inspection preflight before it persists an enablement change.
+
+Every enabled deployment path, identity, port, timeout, and resource limit is explicit. The managed installer must provision `stateDir` and `stagingRoot` as existing private `0700` directories; after read-only preflight succeeds, startup creates the private workspace. `configPath`, `endpoint`, and `stagingRoot` must remain beneath `stateDir` without a symlinked parent.
 
 ```yaml
 - id: channel-openclaw
   name: '@clawdsh/dsh-channel-openclaw'
   config:
+    enabled: false
     track: production
     gatewayInstanceId: personal-gateway
     artifactPath: /srv/clawdsh/openclaw/openclaw-2026.7.1-2.tgz
@@ -38,13 +41,14 @@ Every deployment path, identity, port, timeout, and resource limit is explicit. 
 
 | Key | Contract |
 |---|---|
+| `enabled` | User-controlled Gateway enablement. `false` keeps only Settings and sanitized lifecycle status mounted; changing it takes effect after restart. |
 | `track` | Selects the checked-in `production` or isolated `canary` host identity. It never resolves a floating tag. |
 | `gatewayInstanceId` | Stable non-blank identity included in routes, handshakes, storage, and cross-Gateway isolation checks. |
 | `artifactPath` | Absolute downloaded archive whose SHA-512 must equal the selected host lock. |
 | `runtimeRoot` / `hostRoot` | Absolute checked npm project and its exact `node_modules/openclaw` child. Package inputs, visible lock, hidden installed lock, actual package set, package metadata, extracted host tree, and the current platform's complete installed-project digest are verified before Node runs. |
-| `extensions` | Exact opt-in plugin locks. Each entry names `pluginId`, non-empty unique `channelIds`, exact npm `packageName` and semantic `version`, a 64-byte `sha512` SRI, and the isolated npm project's `projectTree.fileCount` and lowercase `projectTree.sha512`. Empty disables all external extensions. |
+| `extensions` | Installer-managed exact opt-in plugin locks, shown read-only by the product UI. Each entry names `pluginId`, non-empty unique `channelIds`, exact npm `packageName` and semantic `version`, a 64-byte `sha512` SRI, and the isolated npm project's `projectTree.fileCount` and lowercase `projectTree.sha512`. Empty disables all external extensions. |
 | `nodePath` | Dedicated absolute executable or bare executable name. Its reported version must satisfy the locked host engine range. |
-| `configPath` / `stateDir` / `stagingRoot` | Strict JSON OpenClaw config, private isolated state, and shared inbound-media staging root. The supervisor parses the complete config to enforce admission policy, but it never extracts, copies, outputs, or persists credential values; OpenClaw's config and state remain their owner. |
+| `configPath` / `stateDir` / `stagingRoot` | Strict JSON OpenClaw config, private isolated state, and shared inbound-media staging root. The supervisor reads and parses the complete config to enforce admission policy, but it does not select credential fields for return, logs, or DSH persistence; OpenClaw's config and state remain their owner. |
 | `maxMediaBytes` | Positive safe-integer byte limit injected into the bridge for every staged inbound media item. |
 | `endpoint` | Absolute Unix socket path inside `stateDir`; the bound socket is changed to `0600`. TCP is not accepted. |
 | `gatewayPort` | Integer loopback Gateway port from 1 through 65535. The OpenClaw config must also select local mode and loopback binding. |
@@ -67,7 +71,7 @@ The Provider accepts one bridge on a private Unix socket. Each startup creates a
 
 After authentication, peers exchange strict JSON-RPC 2.0 objects over bounded UTF-8 NDJSON. Extra envelope fields, responses containing both `result` and `error`, malformed errors, and unknown notifications fail closed. The router implements `turn.run`, `turn.cancel`, `session.reset`, `session.close`, `channel.action`, and `health.get`; negotiated `turn.progress` is presentation-only, and pending progress writes are bounded by `maxInFlight` so excess updates can be dropped under backpressure. Every DSH-to-Gateway request has a local deadline. A timeout or IPC disconnect does not cancel remote work or an Agent run. Reconnection restores transport, while durable Agent and Provider ledgers decide whether work or delivery can be replayed.
 
-Startup verifies the runtime, artifact, extensions, Node engine, fail-closed config, OpenClaw config validator, and runtime plugin inspections before binding the Provider and spawning `gateway run`. Every Node preflight and the Gateway receive explicit tombstones for inherited `NODE_*`, `LD_*`, `DYLD_*`, OpenSSL module/config, TLS trust-path, and TLS key-log variables, preventing ambient loaders or Node options from altering the verified runtime. Readiness requires the authenticated bridge handshake while the process remains alive. Disposal stops new peers, terminates and waits for the Gateway process tree, closes the Provider, removes only an exact socket entry, and releases its storage domain. Independent cleanup failures are aggregated instead of hidden.
+Startup uses the restart-scoped Settings snapshot and verifies the runtime, artifact, extensions, Node engine, fail-closed config, OpenClaw config validator, and runtime plugin inspections before binding the Provider and spawning `gateway run`. The same full preflight is exposed to the local control plane without creating directories, opening storage, binding IPC, or starting the Gateway; only the verified, locked inspection subprocesses run. Every Node preflight and the Gateway receive explicit tombstones for inherited `NODE_*`, `LD_*`, `DYLD_*`, OpenSSL module/config, TLS trust-path, and TLS key-log variables, preventing ambient loaders or Node options from altering the verified runtime. Readiness requires the authenticated bridge handshake while the process remains alive. Disposal stops new peers, terminates and waits for the Gateway process tree, closes the Provider, removes only an exact socket entry, and releases its storage domain. Independent cleanup failures are aggregated instead of hidden.
 
 The [`bridge`](bridge/README.md) directory owns the OpenClaw-loaded V1/V2 adapters and their narrower host-facing capability details.
 

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/openclaw/embeddings-ark/README.md
-README.md: 3c8e8baf234dc55fb66ebcff0facbf08eb2b7908
-README.zh.md: f01c3e16281e32fbc8b17d86413bedbff577f4aa
+README.md: 4c0071788b2b7d375bc71f62b83aa26d29d189e3
+README.zh.md: 3ca20bd95178783c620f82e3f5803aee72770e62

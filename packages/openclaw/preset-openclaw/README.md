@@ -8,7 +8,7 @@ The directory is not a Cordis plugin. It supplies:
 
 1. the `clawdsh` Agent preset (`preset.yml`, `agent.cordis.yml`, and `souls/assistant.md`), displayed as `ClawDSH 模式`;
 2. the `clawdsh` profile template (`profile/`), which composes dsh base and Web bundles with ClawDSH Host plugins;
-3. the nested ClawDSH browser shell and `@clawdsh/dsh-product-runtime`, with a read-only capability overview and explicit deferred states for later Settings and Activity increments;
+3. the nested ClawDSH browser shell and `@clawdsh/dsh-product-runtime`, with the capability overview, editable Settings control plane, and explicit deferred Activity state;
 4. the development installation source consumed by `tools/link-clawdsh.sh`.
 
 The OpenClaw Gateway is an external communication-plane provider inside this product. It does not define the product, profile, or Agent preset identity.
@@ -30,22 +30,21 @@ The product shell has its own lockfile because it stays outside the root workspa
 
 ## Communication plane
 
-The `clawdsh-communication-plane` group is disabled unless `CLAWDSH_OPENCLAW_CHANNELS_ENABLED=1`. When enabled, it mounts the complete current seam in this order:
+The profile always mounts the complete communication seam in this order:
 
 1. `@clawdsh/dsh-channel`, the platform-independent Service Definition;
 2. `@clawdsh/dsh-channel-agent`, the durable Agent Driver and route-scoped `message` tool;
 3. `@clawdsh/dsh-channel-openclaw`, the authenticated IPC Provider and locked Gateway supervisor.
 
-No channel is enabled by the template. The legacy in-process Telegram and Feishu packages are absent from the active profile, and external extension selection defaults to empty. OpenClaw remains the only owner of platform credentials; this profile neither reads nor copies them. Never connect a legacy adapter and the OpenClaw communication plane to the same platform account.
+Channel Protocol always provides the Service Definition, and Agent Bridge always registers its network-inert Driver. OpenClaw Gateway remains mounted with its validated `enabled` setting false, so it performs no artifact check, socket binding, process launch, or Provider registration. The legacy in-process Telegram and Feishu packages are absent from the active profile, and external extension selection defaults to empty. OpenClaw remains the only owner of platform credentials; this profile neither reads nor copies them. Never connect a legacy adapter and the OpenClaw communication plane to the same platform account.
 
 The Provider's configuration, artifact checks, admission defaults, and runtime limitations are documented in the [channel-openclaw README](../channel-openclaw/README.md). The checked support catalog is conservative: presence in OpenClaw's catalog does not mean a channel is installable, certified, or enabled. [ADR-0008](../../../docs/adr/0008-openclaw-channel-plane.md) owns the architecture and replacement conditions.
 
-### Sidecar opt-in
+### Managed Gateway deployment
 
 The OpenClaw release artifact and checked npm runtime must be assembled before startup. The Provider never downloads, installs, or updates them at runtime.
 
 ```bash
-export CLAWDSH_OPENCLAW_CHANNELS_ENABLED=1
 export CLAWDSH_OPENCLAW_TRACK=production
 export CLAWDSH_OPENCLAW_GATEWAY_INSTANCE_ID=personal-gateway
 export CLAWDSH_OPENCLAW_ARTIFACT_PATH=/srv/clawdsh/openclaw/openclaw-2026.7.1-2.tgz
@@ -70,17 +69,17 @@ To inventory legacy adapter references and credential names without copying secr
 pnpm exec tsx tools/openclaw-channel-migration.ts --input /absolute/path/to/old-profile-or-env
 ```
 
-Leaving `CLAWDSH_OPENCLAW_CHANNELS_ENABLED` unset starts the Web profile without the communication sidecar. When enabled, admitted owner direct messages use `clawdsh`; every non-owner or group conversation uses `clawdsh-messaging-safe`.
+The checked deployment paths form the installer-managed profile base and remain read-only in ClawDSH Settings. After the runtime is assembled, enable OpenClaw Gateway from the Settings page; the Host completes deployment preflight before persisting the change. A failed preflight leaves the setting and its revision unchanged. When enabled, admitted owner direct messages use `clawdsh`; every non-owner or group conversation uses `clawdsh-messaging-safe`.
 
 ## Clean-install defaults
 
-Memory and Skills Hub remain enabled. Ark Embeddings resolves `ARK_API_KEY` only when an embedding call needs it. Automation and the complete communication-plane group remain disabled. Disabled capabilities may omit credentials; an enabled capability fails at its earliest validation point when required configuration is absent.
+Memory and Skills Hub remain enabled. Ark Embeddings resolves the fixed `ARK_API_KEY` credential reference only when an embedding call needs it. Automation and OpenClaw Gateway remain disabled. Disabled capabilities may omit credentials; an enabled capability fails at its earliest validation point when required configuration is absent.
 
-Optional features temporarily use Loader `disabled` rows. The Settings control-plane increment keeps business plugins mounted and moves user control to validated `enabled` settings with desired and runtime revisions, restart requirements, and credential references.
+Optional business plugins remain mounted and expose their Config schemas. Validated `enabled` settings control their runtime effects, while ClawDSH Settings displays desired and runtime revisions, restart requirements, field ownership, and secret-free credential state. Reset removes only the user layer and restores the profile base plus schema defaults.
 
 ## Product shell
 
-[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md) and the [local GUI spec](../../../docs/specs/feature-gui-web.md) define the product shell. `/clawdsh/` owns Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced; `/` retains native dsh Web. Conversation reuses the public dsh client graph and renderer, while the initial ClawDSH Settings destination presents a read-only overview and Activity identifies its deferred state. Unknown product paths render an explicit not-found page instead of falling through to Harness.
+[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md) and the [local GUI spec](../../../docs/specs/feature-gui-web.md) define the product shell. `/clawdsh/` owns Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced; `/` retains native dsh Web. Conversation reuses the public dsh client graph and renderer. ClawDSH Settings combines capability health with allowlisted schema editing, optimistic revisions, managed Gateway deployment, Automation rules, and write-only dsh credential updates; Activity identifies its deferred state. Unknown product paths render an explicit not-found page instead of falling through to Harness.
 
 The profile suppresses the native `dsh web:` readiness line and mounts `@clawdsh/dsh-product-runtime`. After the Loader settles, that runtime prints `clawdsh web: http://127.0.0.1:<port>/clawdsh/`, owns the product static routes, and leaves the stock fallback at `/` unchanged. The nested browser build writes assets into `product-shell/runtime/web/`; neither nested package enters the root workspace or Client aggregate.
 
@@ -88,7 +87,7 @@ The assembly does not register a new Client Slot and does not modify `api-proxy`
 
 ## Managed-preset limitation
 
-The presets currently live in dsh's user preset root because the launcher exposes no installation-owned ClawDSH preset root. The ClawDSH product Settings page will not offer deletion, but Harness Advanced still treats them as user presets. The public-distribution CLI owns the managed manifest, integrity checks, backup-before-reset, and `clawdsh doctor`; until then, rerunning the development installer restores checked-in preset files.
+The presets currently live in dsh's user preset root because the launcher exposes no installation-owned ClawDSH preset root. The ClawDSH product Settings page does not offer preset deletion, but Harness Advanced still treats them as user presets. The public-distribution CLI owns the managed manifest, integrity checks, backup-before-reset, and `clawdsh doctor`; until then, rerunning the development installer restores checked-in preset files.
 
 ## Verification boundary
 

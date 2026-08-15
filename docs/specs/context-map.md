@@ -2,7 +2,7 @@
 
 English | [中文](context-map.zh.md)
 
-- **Status**: Phase 4 productization; the product shell and read-only capability overview are implemented
+- **Status**: Phase 4 productization; the product shell and Settings control plane are implemented
 - **Purpose**: entry point for ClawDSH ownership, package roles, and the upstream material an implementation needs to read
 - **Companions**: [documentation inventory](doc-inventory.md) · [roadmap](roadmap.md) · [GUI spec](feature-gui-web.md) · [channel bridge spec](feature-channel-plane-bridge.md)
 
@@ -33,7 +33,7 @@ English | [中文](context-map.zh.md)
 | `embeddings-ark/` | Service Provider | embeddings | Volcano Ark embeddings |
 | `skills-hub/` | Service Provider | skills | ClawHub-compatible skill directory |
 | `automation/` | function plugin | Agents, Sessions, default model | opt-in scheduled Agent turns |
-| `preset-openclaw/` | product assembly | public dsh Web and Host APIs | `clawdsh` profile and preset plus the nested product-shell browser, Host runtime, shared protocol, read-only Settings overview, and Activity empty state |
+| `preset-openclaw/` | product assembly | public dsh Web and Host APIs | `clawdsh` profile and preset plus the nested product-shell browser, Host runtime, shared protocol, editable Settings control plane, and Activity empty state |
 | `preset-clawdsh-messaging-safe/` | preset carrier | soul | restricted channel preset installed as `clawdsh-messaging-safe` |
 | `_template/` | skeleton | — | starting point for a new owned plugin |
 
@@ -61,7 +61,7 @@ A dsh runtime is a plugin tree. Services, events, and registrations are scoped e
 
 The local GUI is a ClawDSH product over the public dsh Web runtime, not another dsh agent preset. `/clawdsh/` owns the product navigation—Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced—while `/` retains the native dsh Web GUI. Conversation reuses the public client module graph, Loader, Slot renderer, and complete `buildRenderApp()` root. The nested non-workspace build under `preset-openclaw/product-shell/` owns the outer shell, static routes, Host runtime, shared DTOs, and `/clawdsh-rpc` Connection channel.
 
-The control channel currently implements only loopback-authorized `bootstrap/get` and `capabilities/list`. Settings is a read-only capability and Loader projection, and Activity is an explicit empty state; setting mutations, credential operations, semantic records, and sidecar storage are not part of the current runtime. This assembly does not register a new Client Slot and does not modify `api-proxy`, Client Catalog, Agent Loop, upstream generated files, or upstream GUI source. `dsh --profile web` remains a pure Harness entry point.
+The loopback-authorized control channel implements `bootstrap/get`, `capabilities/list`, Settings describe/mutate/reset, and secret-free dsh credential describe/set/unset. Settings keeps capability and Loader evidence read-only while exposing only manifest-allowlisted Config fields with optimistic revisions; Activity remains an explicit empty state without semantic records or sidecar storage. This assembly does not register a new Client Slot and does not modify `api-proxy`, Client Catalog, Agent Loop, upstream generated files, or upstream GUI source. `dsh --profile web` remains a pure Harness entry point.
 
 ### Profile layering and identity
 
@@ -89,8 +89,8 @@ Anything reaching a model request must be reconstructable from the Session log. 
 | `ctx.attachments` | dsh | channel-agent | durable images; no general-file seam yet |
 | `ctx.storageDomain` | dsh | channel-agent, channel-openclaw | durable route, execution, and delivery ledgers |
 | `ctx.subprocess` | dsh | channel-openclaw | supervised Gateway lifecycle |
-| Settings and Credentials | dsh | later ClawDSH Settings control plane | available public APIs; not consumed by the current read-only runtime |
-| Connection RPC | dsh | ClawDSH Control Runtime and product shell | loopback-only `/clawdsh-rpc` with `bootstrap/get` and `capabilities/list` |
+| Settings and Credentials | dsh | ClawDSH Settings control plane | allowlisted Config fields, optimistic revisions, and dsh-owned credential references |
+| Connection RPC | dsh | ClawDSH Control Runtime and product shell | loopback-only `/clawdsh-rpc` with read, Settings, and credential methods |
 | `ctx.skills` | dsh | skills-hub | skill Provider registry |
 | `ctx.subagents` | dsh | future federation | delegation transport |
 | `ctx.channels` | ClawDSH, ADR-0008 | channel-openclaw, channel-agent | bidirectional channel V1 dispatch |

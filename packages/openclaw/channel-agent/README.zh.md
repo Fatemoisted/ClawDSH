@@ -10,8 +10,8 @@
 - id: channel-agent
   name: '@clawdsh/dsh-channel-agent'
   config:
-    ownerPreset: openclaw
-    safePreset: openclaw-messaging-safe
+    ownerPreset: clawdsh
+    safePreset: clawdsh-messaging-safe
     cwd: /srv/clawdsh/workspace
     stagingRoot: /srv/clawdsh/channel-media
     maxMediaBytes: 10485760
@@ -22,13 +22,13 @@
 
 | 配置键 | 约定 |
 |---|---|
-| `ownerPreset` | OpenClaw 把直接消息分类为 `owner` 时使用的必填 preset。 |
-| `safePreset` | admitted、paired、allowlisted 或群组发送者使用的必填 preset。agent 上下文会先执行 `tools.restrict({ allow: [] })` 再挂载该 preset，因此继承／全局工具不可见，而作用域本地的 preset 工具与 `message` 仍然可用。 |
-| `cwd` | 每个渠道创建的会话都会记录的必填绝对工作区。 |
-| `stagingRoot` / `maxMediaBytes` | 必填的绝对共享媒体根目录和单对象正整数体积上限；附件存储的数量、类型、总字节数与解码器策略也同时生效。 |
-| `shutdownGraceMs` | 必填的正整数关闭期限。teardown 会停止准入、取消活跃工作，并在该期限内等待已接受轮次、待完成的 agent acquisition 和路由控制达到静止，再释放 agent 并关闭存储。超时会明确失败；只要迟到操作仍可能写入，就会有意保持存储开启。 |
+| `ownerPreset` | OpenClaw 把直接消息分类为 `owner` 时使用、由安装器管理的 `clawdsh` preset。 |
+| `safePreset` | admitted、paired、allowlisted 或群组发送者使用、由安装器管理的 `clawdsh-messaging-safe` preset。agent 上下文会先执行 `tools.restrict({ allow: [] })` 再挂载该 preset，因此继承／全局工具不可见，而作用域本地的 preset 工具与 `message` 仍然可用。 |
+| `cwd` | 每个新建渠道会话都会记录、可由用户配置的绝对工作区。 |
+| `stagingRoot` / `maxMediaBytes` | 由安装器管理并与 Gateway 部署保持一致的绝对共享媒体根目录和单对象正整数体积上限；附件存储的数量、类型、总字节数与解码器策略也同时生效。 |
+| `shutdownGraceMs` | 面向高级用户的正整数关闭期限。teardown 会停止准入、取消活跃工作，并在该期限内等待已接受轮次、待完成的 agent acquisition 和路由控制达到静止，再释放 agent 并关闭存储。超时会明确失败；只要迟到操作仍可能写入，就会有意保持存储开启。 |
 
-该插件依赖 `ctx.channels`、`ctx.agents`、会话持久化、模型选择、agent presets、附件服务、storage-domain facility 和工具注册表。任一路径为相对路径时，配置会在 driver 注册前失败。部署可单独注册不变式配套插件，让仓库的不变式注册表校验实时日志和恢复日志。
+DSH Settings 服务存在时，该插件会把现有 schema 注册到 `clawdsh-channel-agent`。schema 默认值、profile base 和 user layer 会在启动时以 `applies: restart` 解析一次，后续写入不会改变正在运行的 driver。user layer 只要改变 `ownerPreset`、`safePreset`、`stagingRoot` 或 `maxMediaBytes`，系统就会在持久化或创建 driver 前拒绝，因此手工编辑 Settings 也无法替换安装器管理的身份。无论 OpenClaw Gateway Provider 是否启用，该插件都会保持挂载并注册 driver。它依赖 `ctx.channels`、`ctx.agents`、会话持久化、模型选择、agent presets、附件服务、storage-domain facility 和工具注册表。任一路径为相对路径时，配置会在 driver 注册前失败。部署可单独注册不变式配套插件，让仓库的不变式注册表校验实时日志和恢复日志。
 
 ## 轮次与会话语义
 

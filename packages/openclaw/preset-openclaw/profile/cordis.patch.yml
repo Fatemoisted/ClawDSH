@@ -1,6 +1,6 @@
 # ClawDSH「clawdsh」profile 层（复制到 $DSH_HOME/profiles/clawdsh/ 后生效）。
 # 格式：顶层 YAML 数组的 loader patch entries（覆盖既有行 / insert 新行）。
-# 干净安装默认关闭通信 sidecar 与 Automation，确保无外部凭据时 GUI 仍可启动。
+# 干净安装默认关闭 OpenClaw Gateway 与 Automation，确保无外部凭据时 GUI 仍可启动。
 
 - id: system-prompt
   config:
@@ -15,6 +15,14 @@
     trustedHosts: !!js ctx.webStartup.trustedHosts
 
 - insert:
+    # Host singleton 注册 Soul 设置；base 与 managed preset 的 Soul 行保持一致。
+    # Session scope 只在挂载时读取 user layer，因此修改不会影响现有会话。
+    - id: clawdsh-soul-settings
+      name: '@clawdsh/dsh-soul/settings-host'
+      config:
+        source: ./souls/assistant.md
+        mode: append
+
     - id: clawdsh-product-runtime
       name: '@clawdsh/dsh-product-runtime'
 
@@ -23,7 +31,6 @@
     - id: clawdsh-communication-plane
       name: cordis:group
       group: true
-      disabled: !!js process.env.CLAWDSH_OPENCLAW_CHANNELS_ENABLED !== '1'
       config:
         - id: channel
           name: '@clawdsh/dsh-channel'
@@ -34,27 +41,28 @@
             ownerPreset: clawdsh
             safePreset: clawdsh-messaging-safe
             cwd: !!js process.env.CLAWDSH_CHANNEL_CWD || process.cwd()
-            stagingRoot: !!js process.env.CLAWDSH_OPENCLAW_STAGING_ROOT
+            stagingRoot: !!js process.env.CLAWDSH_OPENCLAW_STAGING_ROOT || dshHomePath('clawdsh/channel/openclaw/state/staging')
             maxMediaBytes: 5242880
             shutdownGraceMs: 30000
 
         - id: channel-openclaw
           name: '@clawdsh/dsh-channel-openclaw'
           config:
+            enabled: false
             track: !!js process.env.CLAWDSH_OPENCLAW_TRACK || 'production'
-            gatewayInstanceId: !!js process.env.CLAWDSH_OPENCLAW_GATEWAY_INSTANCE_ID
-            artifactPath: !!js process.env.CLAWDSH_OPENCLAW_ARTIFACT_PATH
-            hostRoot: !!js process.env.CLAWDSH_OPENCLAW_HOST_ROOT
-            runtimeRoot: !!js process.env.CLAWDSH_OPENCLAW_RUNTIME_ROOT
+            gatewayInstanceId: !!js process.env.CLAWDSH_OPENCLAW_GATEWAY_INSTANCE_ID || 'clawdsh-managed'
+            artifactPath: !!js process.env.CLAWDSH_OPENCLAW_ARTIFACT_PATH || dshHomePath('clawdsh/channel/openclaw/artifacts/openclaw.tgz')
+            hostRoot: !!js process.env.CLAWDSH_OPENCLAW_HOST_ROOT || dshHomePath('clawdsh/channel/openclaw/runtime/node_modules/openclaw')
+            runtimeRoot: !!js process.env.CLAWDSH_OPENCLAW_RUNTIME_ROOT || dshHomePath('clawdsh/channel/openclaw/runtime')
             # 分离安装的 Channel 必须逐项提供 pluginId/channelIds/packageName/version/integrity/projectTree；
             # 默认空列表拒绝任何 stateDir/npm/projects 中的插件，运行时不自动安装。
             extensions: []
-            nodePath: !!js process.env.CLAWDSH_OPENCLAW_NODE_PATH
-            configPath: !!js process.env.CLAWDSH_OPENCLAW_CONFIG_PATH
-            stateDir: !!js process.env.CLAWDSH_OPENCLAW_STATE_DIR
-            stagingRoot: !!js process.env.CLAWDSH_OPENCLAW_STAGING_ROOT
+            nodePath: !!js process.env.CLAWDSH_OPENCLAW_NODE_PATH || process.execPath
+            configPath: !!js process.env.CLAWDSH_OPENCLAW_CONFIG_PATH || dshHomePath('clawdsh/channel/openclaw/state/openclaw.json')
+            stateDir: !!js process.env.CLAWDSH_OPENCLAW_STATE_DIR || dshHomePath('clawdsh/channel/openclaw/state')
+            stagingRoot: !!js process.env.CLAWDSH_OPENCLAW_STAGING_ROOT || dshHomePath('clawdsh/channel/openclaw/state/staging')
             maxMediaBytes: 5242880
-            endpoint: !!js process.env.CLAWDSH_OPENCLAW_ENDPOINT
+            endpoint: !!js process.env.CLAWDSH_OPENCLAW_ENDPOINT || dshHomePath('clawdsh/channel/openclaw/state/bridge.sock')
             gatewayPort: 18789
             maxFrameBytes: 1048576
             maxInFlight: 32
@@ -69,6 +77,7 @@
     - id: memory
       name: '@clawdsh/dsh-memory'
       config:
+        enabled: true
         root: !!js dshHomePath('memory')
 
     - id: embeddings-ark
@@ -77,11 +86,14 @@
     # skills-hub（ClawHub 兼容技能目录 provider）默认启用，无凭据、无安装副作用。
     - id: skills-hub
       name: '@clawdsh/dsh-skills-hub'
+      config:
+        enabled: true
 
     # Automation 默认关闭；用户显式配置规则后再启用。
     - id: automation
       name: '@clawdsh/dsh-automation'
-      disabled: true
+      config:
+        enabled: false
 
 # 新 GUI 会话默认挂载「ClawDSH 模式」preset。
 - id: agent-presets

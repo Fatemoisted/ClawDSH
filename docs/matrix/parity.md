@@ -48,7 +48,7 @@ The production channel plane is locked to OpenClaw `v2026.7.1-2`, commit `0790d9
 | Federation node | outside early baseline | `ctx.subagents` transport | Plugin | `clawd-federation` | ADR-0005 evaluation only; implementation deferred |
 | Smart home | outside selected scope | no accepted seam | Deferred | — | requires a reviewed source and capability design |
 | Local browser conversation | dsh Web client | `dsh-web-app` + `clawdsh` preset | Reuse/config | internal `preset-openclaw` source | reused inside the product shell and at native `/` |
-| ClawDSH product shell, Settings, and Activity | ClawDSH-native | public dsh Web assembly, Settings, Credentials, and Session history | Product assembly | internal `preset-openclaw` source | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) shell and read-only overview implemented; Settings mutation and semantic Activity pending |
+| ClawDSH product shell, Settings, and Activity | ClawDSH-native | public dsh Web assembly, Settings, Credentials, and Session history | Product assembly | internal `preset-openclaw` source | [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) shell and conflict-safe Settings implemented; semantic Activity pending |
 
 The channel Agent path stores complete sanitized model provenance on the known `user/message.source.kind = 'channel'` field and keeps admission, idempotency, and delivery authority in durable channel ledgers. It does not persist declared `channel/*` Session events because downstream code cannot mark them ignorable and the static known-event reader would make resume fail closed.
 

@@ -8,7 +8,7 @@
 
 1. `clawdsh` Agent preset（`preset.yml`、`agent.cordis.yml` 与 `souls/assistant.md`），显示为 `ClawDSH 模式`；
 2. `clawdsh` profile template（`profile/`），把 dsh base 与 Web bundle 和 ClawDSH Host plugin 组合；
-3. nested ClawDSH browser shell 与 `@clawdsh/dsh-product-runtime`，包含只读能力总览，并明确标示后续 Settings 与 Activity 增量的 deferred 状态；
+3. nested ClawDSH browser shell 与 `@clawdsh/dsh-product-runtime`，包含能力总览、可编辑 Settings 控制面与明确的 deferred Activity 状态；
 4. 供 `tools/link-clawdsh.sh` 消费的开发安装源。
 
 OpenClaw Gateway 是产品内的外部通信平面 provider。它不定义产品、profile 或 Agent preset identity。
@@ -30,22 +30,21 @@ pnpm dsh --profile clawdsh
 
 ## 通信平面
 
-除非 `CLAWDSH_OPENCLAW_CHANNELS_ENABLED=1`，`clawdsh-communication-plane` group 保持关闭。启用时，它按以下顺序挂载完整当前 seam：
+Profile 始终按以下顺序挂载完整 communication seam：
 
 1. `@clawdsh/dsh-channel`，platform-independent Service Definition；
 2. `@clawdsh/dsh-channel-agent`，durable Agent Driver 与 route-scoped `message` tool；
 3. `@clawdsh/dsh-channel-openclaw`，authenticated IPC Provider 与 locked Gateway supervisor。
 
-Template 不启用任何渠道。旧进程内 Telegram 与 Feishu package 不在 active profile 中，external extension selection 默认为空。OpenClaw 仍是 platform credential 的唯一 owner；本 profile 不读取或复制这些凭证。绝不能让 legacy adapter 与 OpenClaw 通信平面连接同一 platform account。
+Channel Protocol 始终提供 Service Definition，Agent Bridge 始终注册自身 network-inert Driver。OpenClaw Gateway 保持 mounted，其经过校验的 `enabled` setting 默认为 false，因此不执行 artifact check、socket binding、process launch 或 Provider registration。旧进程内 Telegram 与 Feishu package 不在 active profile 中，external extension selection 默认为空。OpenClaw 仍是 platform credential 的唯一 owner；本 profile 不读取或复制这些凭证。绝不能让 legacy adapter 与 OpenClaw 通信平面连接同一 platform account。
 
 Provider 配置、artifact check、admission default 与 runtime limitation 见 [channel-openclaw README](../channel-openclaw/README.md)。受检支持 catalog 采用保守语义：存在于 OpenClaw catalog 不表示渠道 installable、certified 或 enabled。[ADR-0008](../../../docs/adr/0008-openclaw-channel-plane.md)拥有架构与替换条件。
 
-### Sidecar opt-in
+### Managed Gateway deployment
 
 OpenClaw release artifact 与 checked npm runtime 必须在启动前组装完成。Provider 绝不在 runtime 下载、安装或更新它们。
 
 ```bash
-export CLAWDSH_OPENCLAW_CHANNELS_ENABLED=1
 export CLAWDSH_OPENCLAW_TRACK=production
 export CLAWDSH_OPENCLAW_GATEWAY_INSTANCE_ID=personal-gateway
 export CLAWDSH_OPENCLAW_ARTIFACT_PATH=/srv/clawdsh/openclaw/openclaw-2026.7.1-2.tgz
@@ -70,17 +69,17 @@ Platform credential 保留在 OpenClaw 隔离 state 与 account setup 中。Mode
 pnpm exec tsx tools/openclaw-channel-migration.ts --input /absolute/path/to/old-profile-or-env
 ```
 
-不设置 `CLAWDSH_OPENCLAW_CHANNELS_ENABLED` 时，Web profile 不启动 communication sidecar。启用后，已准入 owner direct message 使用 `clawdsh`；每个 non-owner 或 group conversation 使用 `clawdsh-messaging-safe`。
+检入的 deployment path 组成 installer-managed profile base，并在 ClawDSH Settings 中保持只读。Runtime 组装完成后，从 Settings 页面启用 OpenClaw Gateway；Host 会在持久化修改前完成 deployment preflight。Preflight 失败会让 setting 与 revision 保持不变。启用后，已准入 owner direct message 使用 `clawdsh`；每个 non-owner 或 group conversation 使用 `clawdsh-messaging-safe`。
 
 ## Clean-install 默认值
 
-Memory 与 Skills Hub 保持启用。Ark Embeddings 只在 embedding call 需要时解析 `ARK_API_KEY`。Automation 与完整 communication-plane group 保持关闭。Disabled capability 可以缺少 credential；enabled capability 缺少所需配置时在最早 validation point 失败。
+Memory 与 Skills Hub 保持启用。Ark Embeddings 只在 embedding call 需要时解析固定 `ARK_API_KEY` credential reference。Automation 与 OpenClaw Gateway 保持关闭。Disabled capability 可以缺少 credential；enabled capability 缺少所需配置时在最早 validation point 失败。
 
-Optional feature 暂时使用 Loader `disabled` row。Settings control-plane 增量会保持 business plugin mounted，并把用户控制迁到 validated `enabled` setting，同时展示 desired 与 runtime revision、restart requirement 和 credential reference。
+Optional business plugin 保持 mounted，并暴露自身 Config schema。经过校验的 `enabled` setting 控制 runtime effect，ClawDSH Settings 则显示 desired/runtime revision、restart requirement、field ownership 与不含 secret 的 credential state。Reset 只移除 user layer，并恢复 profile base 加 schema default。
 
 ## 产品壳
 
-[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md)与[本地 GUI 规格](../../../docs/specs/feature-gui-web.md)定义产品壳。`/clawdsh/` 拥有对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级；`/` 保留原生 dsh Web。对话复用公开 dsh client graph 与 renderer，初始 ClawDSH 设置目的地呈现只读总览，Activity 则明确标示 deferred 状态。未知产品 path 会渲染明确的未找到页面，不会落入 Harness。
+[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md)与[本地 GUI 规格](../../../docs/specs/feature-gui-web.md)定义产品壳。`/clawdsh/` 拥有对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级；`/` 保留原生 dsh Web。对话复用公开 dsh client graph 与 renderer。ClawDSH Settings 把 capability health 与 allowlist schema editing、optimistic revision、managed Gateway deployment、Automation rules 以及只写 dsh credential update 组合起来；Activity 则明确标示 deferred 状态。未知产品 path 会渲染明确的未找到页面，不会落入 Harness。
 
 Profile 关闭原生 `dsh web:` readiness line，并挂载 `@clawdsh/dsh-product-runtime`。Loader 结算后，该 runtime 打印 `clawdsh web: http://127.0.0.1:<port>/clawdsh/`，拥有产品静态 route，同时保持 `/` 的原生 fallback 不变。Nested browser build 把 asset 写入 `product-shell/runtime/web/`；两个 nested package 都不进入根 workspace 或 Client aggregate。
 
@@ -88,7 +87,7 @@ Profile 关闭原生 `dsh web:` readiness line，并挂载 `@clawdsh/dsh-product
 
 ## Managed-preset 限制
 
-由于 launcher 没有 installation-owned ClawDSH preset root，preset 当前位于 dsh user preset root。ClawDSH 产品 Settings 页面不会提供删除操作，但 Harness 高级仍把它们视为 user preset。公共发行 CLI 拥有 managed manifest、integrity check、reset 前 backup 与 `clawdsh doctor`；在此之前，重新运行开发安装器会恢复已检入 preset file。
+由于 launcher 没有 installation-owned ClawDSH preset root，preset 当前位于 dsh user preset root。ClawDSH 产品 Settings 页面不提供 preset 删除操作，但 Harness 高级仍把它们视为 user preset。公共发行 CLI 拥有 managed manifest、integrity check、reset 前 backup 与 `clawdsh doctor`；在此之前，重新运行开发安装器会恢复已检入 preset file。
 
 ## 验证边界
 

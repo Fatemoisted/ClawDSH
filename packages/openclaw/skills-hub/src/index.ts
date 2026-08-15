@@ -24,6 +24,7 @@ import { homedir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
 import type { Context, LoggerService } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { parse as parseYaml } from 'yaml'
 import {
   isSkillName,
@@ -45,14 +46,19 @@ export const MANAGED_SKILL_RANK = 450
 /** Cordis plugin name. */
 export const name = 'skills-hub'
 
-/** The skill registry this provider registers on. */
-export const inject = ['skills']
+/** User-settings namespace for the ClawHub-compatible provider. */
+export const SKILLS_HUB_SETTINGS_NAMESPACE = settingsNamespace('clawdsh-skills-hub')
+
+/** Required services used to register the provider and its user settings. */
+export const inject = ['skills', 'settings']
 
 /** Default legacy managed root: `~/.clawdbot/skills`. */
 export const DEFAULT_MANAGED_DIR = join(homedir(), '.clawdbot', 'skills')
 
 /** Plugin config: which OpenClaw-style roots to scan and whether to evaluate `metadata.clawdbot` gating. */
 export interface Config {
+  /** Whether this row registers the ClawHub provider. */
+  enabled?: boolean
   /**
    * Fixed workspace skills directory. Empty (default) scans `<cwd>/skills`
    * per lookup instead, mirroring OpenClaw's `<workspaceDir>/skills`.
@@ -68,6 +74,7 @@ export interface Config {
 
 /** Runtime schema for the skills-hub row. */
 export const Config: z<Config> = z.object({
+  enabled: z.boolean().default(true),
   workspaceDir: z.string().default(''),
   managedDir: z.string().default(''),
   extraDirs: z.array(z.string()).default([]),
@@ -76,6 +83,7 @@ export const Config: z<Config> = z.object({
 
 /** Config with defaults applied and paths resolved, for raw (non-Loader) callers that bypass schemastery. */
 export interface ResolvedConfig {
+  enabled: boolean
   workspaceDir?: string
   managedDir: string
   extraDirs: string[]
@@ -122,6 +130,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     throw new TypeError('skills-hub: config "gating" must be a boolean')
   }
   return {
+    enabled: config.enabled ?? true,
     ...(workspaceDir === '' || workspaceDir === undefined ? {} : { workspaceDir: resolve(workspaceDir) }),
     managedDir: managedDir === '' || managedDir === undefined ? DEFAULT_MANAGED_DIR : resolve(managedDir),
     extraDirs: extraDirs.map(dir => resolve(dir)),
@@ -135,7 +144,15 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
  * @param config - root directories and gating policy.
  */
 export function apply(ctx: Context, config: Config = {}): void {
-  ctx.skills.registerProvider(() => new ClawHubProvider(resolveConfig(config), ctx.logger))
+  const settings = ctx.get('settings')
+  const runtimeConfig = settings?.register(SKILLS_HUB_SETTINGS_NAMESPACE, Config, {
+    base: config,
+    applies: 'restart',
+    validate: value => void resolveConfig(value),
+  }).get() ?? Config(config)
+  const resolved = resolveConfig(runtimeConfig)
+  if (!resolved.enabled) return
+  ctx.skills.registerProvider(() => new ClawHubProvider(resolved, ctx.logger))
 }
 
 /** Provider that maps OpenClaw-style skill directories into `ctx.skills`. */

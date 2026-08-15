@@ -5,10 +5,9 @@
  * format and the native `fetch` client are provider-private and do not use
  * `ctx.llm` — dsh's LLM seam has no embedding endpoint.
  *
- * The API key is resolved per `embed` call (never cached): literal
- * `config.apiKey` wins, then the credentials seam (`@deepseek-ai/dsh-credentials`),
- * then the launch environment — the same layering as
- * `@deepseek-ai/dsh-web-search-deepseek`. A call without a resolvable key fails
+ * The fixed `ARK_API_KEY` credential reference is resolved per `embed` call
+ * (never cached), first through the credentials seam and then through the
+ * launch environment. A call without a resolvable key fails
  * loudly; the provider never silently degrades.
  *
  * @module @clawdsh/dsh-embeddings-ark
@@ -24,6 +23,7 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 
 /** Default endpoint base for Ark embeddings; `/embeddings/multimodal` is appended. */
 export const ARK_DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
@@ -34,6 +34,9 @@ export const ARK_DEFAULT_MODEL = 'doubao-embedding-vision-251215'
 /** Default credential reference naming this provider's API key. */
 export const ARK_DEFAULT_API_KEY_ENV = 'ARK_API_KEY'
 
+/** User-settings namespace for Ark endpoint and request tuning. */
+export const ARK_SETTINGS_NAMESPACE = settingsNamespace('clawdsh-embeddings-ark')
+
 /** Default cooperative deadline for one `embed` call. */
 export const ARK_DEFAULT_TIMEOUT_MS = 30_000
 
@@ -42,10 +45,6 @@ export const ARK_DEFAULT_MAX_CONCURRENT_TEXTS = 4
 
 /** Plugin config (all optional — `static Config` supplies the defaults). */
 export interface Config {
-  /** Literal Ark API key; prefer {@link apiKeyEnv} so no secret enters configuration files. */
-  apiKey?: string
-  /** Credential reference resolved per embed; defaults to `ARK_API_KEY`. */
-  apiKeyEnv?: string
   /** Endpoint base; `/embeddings/multimodal` is appended. */
   baseURL?: string
   /** Embedding model name. Defaults to {@link ARK_DEFAULT_MODEL}. */
@@ -57,8 +56,6 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  apiKey: z.string().role('secret'),
-  apiKeyEnv: z.string().role('credential-ref').default(ARK_DEFAULT_API_KEY_ENV),
   // Declared here rather than only at the use site: a configuration surface
   // renders the resolved section, so a default the schema does not carry reads
   // there as no value at all.
@@ -80,35 +77,37 @@ export const Config: z<Config> = z.object({
  * cosine ranking in consumers.
  */
 export class ArkEmbeddings extends Embeddings {
+  static inject = ['settings']
   static Config: z<Config> = Config
 
   private readonly baseURL: string
   private readonly model: string
   private readonly timeoutMs: number
   private readonly maxConcurrentTexts: number
-  /** Literal key when configured; otherwise resolved per embed via credentials/env. */
-  private readonly apiKey: string | undefined
-  private readonly apiKeyEnv: CredentialRef
+  private readonly apiKeyEnv: CredentialRef = credentialRef(ARK_DEFAULT_API_KEY_ENV)
   /** Dimension of the first successful response; later drift fails the call. */
   private firstDimension: number | undefined
 
   constructor(ctx: Context, config: Config) {
     super(ctx)
-    this.baseURL = config.baseURL ?? ARK_DEFAULT_BASE_URL
-    this.model = config.model ?? ARK_DEFAULT_MODEL
-    this.timeoutMs = config.timeoutMs ?? ARK_DEFAULT_TIMEOUT_MS
-    this.maxConcurrentTexts = config.maxConcurrentTexts ?? ARK_DEFAULT_MAX_CONCURRENT_TEXTS
-    this.apiKey = config.apiKey !== undefined && config.apiKey.length > 0 ? config.apiKey : undefined
-    this.apiKeyEnv = credentialRef(config.apiKeyEnv ?? ARK_DEFAULT_API_KEY_ENV)
+    const settings = ctx.get('settings')
+    const runtimeConfig = settings?.register(ARK_SETTINGS_NAMESPACE, Config, {
+      base: config,
+      applies: 'restart',
+    }).get() ?? Config(config)
+    this.baseURL = runtimeConfig.baseURL ?? ARK_DEFAULT_BASE_URL
+    this.model = runtimeConfig.model ?? ARK_DEFAULT_MODEL
+    this.timeoutMs = runtimeConfig.timeoutMs ?? ARK_DEFAULT_TIMEOUT_MS
+    this.maxConcurrentTexts = runtimeConfig.maxConcurrentTexts ?? ARK_DEFAULT_MAX_CONCURRENT_TEXTS
   }
 
   override async embed(texts: readonly string[], signal?: AbortSignal): Promise<EmbeddingVector[]> {
     if (texts.length === 0) return []
-    const apiKey = this.apiKey ?? await this.resolveApiKey()
+    const apiKey = await this.resolveApiKey()
     if (apiKey === undefined) {
       throw new Error(
         `@clawdsh/dsh-embeddings-ark: no API key resolved for ${String(this.apiKeyEnv)} ` +
-        '(set config apiKey, or provide the key through the credentials seam / launch environment)',
+        '(configure ARK_API_KEY through the credentials seam or launch environment)',
       )
     }
     // The multimodal endpoint embeds one input array as ONE multimodal item, so
@@ -134,9 +133,9 @@ export class ArkEmbeddings extends Embeddings {
   }
 
   /**
-   * Resolve the API key for one operation. Literal config wins; then the
-   * credentials seam; then the launch environment as the ambient credential
-   * plane. Per-operation resolution keeps credential changes effective without
+   * Resolve `ARK_API_KEY` for one operation through the credentials seam,
+   * then the launch environment as the ambient credential plane. Per-operation
+   * resolution keeps credential changes effective without
    * a remount, per the credentials seam contract.
    * @returns the resolved key, or `undefined` when no plane carries one.
    */
@@ -164,12 +163,18 @@ export class ArkEmbeddings extends Embeddings {
         : AbortSignal.any([AbortSignal.timeout(this.timeoutMs), signal]),
     })
     if (!response.ok) {
-      const body = await response.text().catch(() => '')
       throw new Error(
-        `@clawdsh/dsh-embeddings-ark: embedding request failed with HTTP ${response.status}: ${body.slice(0, 200)}`,
+        `@clawdsh/dsh-embeddings-ark: embedding request failed with HTTP ${response.status}`,
       )
     }
-    const payload: unknown = await response.json()
+    let payload: unknown
+    try {
+      payload = await response.json()
+    } catch {
+      // The remote response is attacker-controlled and may echo the bearer
+      // credential. Never propagate parser diagnostics derived from its body.
+      throw new Error('@clawdsh/dsh-embeddings-ark: malformed JSON embedding response')
+    }
     const vector = parseResponse(payload)
     if (this.firstDimension === undefined) {
       this.firstDimension = vector.length

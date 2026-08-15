@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -31,7 +31,13 @@ vi.mock('../src/server.ts', () => ({
   OpenClawChannelProvider: { create: mocks.createProvider },
 }))
 
-import { OpenClawSupervisor, verifyRuntimeInspection } from '../src/supervisor.ts'
+import {
+  OpenClawSupervisor,
+  preflightOpenClawDeployment,
+  validateOpenClawConfig,
+  validateOpenClawDeployment,
+  verifyRuntimeInspection,
+} from '../src/supervisor.ts'
 
 interface FakeHandle {
   readonly done: Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>
@@ -228,6 +234,34 @@ describe('runtime inspection contract', () => {
 })
 
 describe('managed Gateway supervision', () => {
+  it('exposes structural and read-only deployment preflight before configuration is persisted', async () => {
+    const app = await fixture()
+    expect(() => { validateOpenClawConfig(app.config) }).not.toThrow()
+    mocks.verifyRuntimeInstallation.mockRejectedValueOnce(new Error('managed runtime missing'))
+    await expect(validateOpenClawDeployment(app.config)).rejects.toThrow(/managed runtime missing/)
+    expect(mocks.createProvider).not.toHaveBeenCalled()
+  })
+
+  it('validates desired deployment without runtime state, a Provider, sockets, or subprocesses', async () => {
+    const app = await fixture()
+    await expect(validateOpenClawDeployment(app.config)).resolves.toBeUndefined()
+    expect(mocks.createProvider).not.toHaveBeenCalled()
+    await expect(lstat(join(app.config.stateDir, 'workspace'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('preflights the installed CLI without creating runtime state, a Provider, or a Gateway', async () => {
+    const app = await fixture()
+    const process = contextWith(successfulHandles().slice(0, 3))
+    await expect(preflightOpenClawDeployment(process.ctx, app.config)).resolves.toMatchObject({
+      lock: { track: 'production' },
+      nodePath: '/opt/node',
+      executable: join(app.config.hostRoot, 'openclaw.mjs'),
+    })
+    expect(process.spawn).toHaveBeenCalledTimes(3)
+    expect(mocks.createProvider).not.toHaveBeenCalled()
+    await expect(lstat(join(app.config.stateDir, 'workspace'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('preflights the locked runtime, starts with isolated environment, and tears down in order', async () => {
     const injectedEnvironment = {
       NODE_OPTIONS: '--import=/tmp/untrusted-loader.mjs',
@@ -281,6 +315,41 @@ describe('managed Gateway supervision', () => {
     expect(gateway.terminate).toHaveBeenCalledOnce()
     expect(gateway.waitForExit).toHaveBeenCalledOnce()
     expect(app.provider.dispose).toHaveBeenCalledOnce()
+  })
+
+  it('reports an unexpected post-handshake process exit without exposing diagnostics', async () => {
+    const app = await fixture()
+    const terminal = Promise.withResolvers<{ exitCode: number | null; signal: NodeJS.Signals | null }>()
+    const gateway = handle('secret diagnostic canary', { done: terminal.promise })
+    const supervisor = await OpenClawSupervisor.start(
+      contextWith(successfulHandles(gateway)).ctx,
+      app.config,
+    )
+
+    terminal.resolve({ exitCode: 23, signal: null })
+
+    await expect(supervisor.done).resolves.toBe('failed')
+    expect(app.provider.beginShutdown).toHaveBeenCalledOnce()
+    expect(gateway.terminate).not.toHaveBeenCalled()
+  })
+
+  it('distinguishes an intentional teardown from an unexpected process exit', async () => {
+    const app = await fixture()
+    const terminal = Promise.withResolvers<{ exitCode: number | null; signal: NodeJS.Signals | null }>()
+    const gateway = handle('', { done: terminal.promise })
+    gateway.terminate.mockImplementation(() => {
+      terminal.resolve({ exitCode: null, signal: 'SIGTERM' })
+    })
+    const supervisor = await OpenClawSupervisor.start(
+      contextWith(successfulHandles(gateway)).ctx,
+      app.config,
+    )
+
+    const disposal = supervisor.dispose()
+
+    await expect(supervisor.done).resolves.toBe('stopped')
+    await disposal
+    expect(app.provider.beginShutdown).toHaveBeenCalledOnce()
   })
 
   it('selects the isolated Canary V2 bridge without falling back to production', async () => {

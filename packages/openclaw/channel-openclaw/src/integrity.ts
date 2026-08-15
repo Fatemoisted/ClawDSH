@@ -256,7 +256,9 @@ function isMissing(error: unknown): boolean {
 }
 
 /**
- * Validate the operator-owned OpenClaw JSON without reading or copying credentials.
+ * Parse and validate the complete operator-owned OpenClaw JSON without selecting,
+ * returning, or logging credential fields. Platform credential ownership remains
+ * with the OpenClaw config and state files.
  * @param configPath Strict JSON configuration file.
  * @param bridgeRoot Verified ClawDSH bridge directory and sole explicit load path.
  * @param stateDir Isolated OpenClaw state directory owning the Agent workspace.
@@ -429,7 +431,7 @@ function verifyManagedChannelAdmission(channel: string, value: Record<string, un
   if (value.enabled !== true && value.enabled !== false) {
     throw new Error(`channel-openclaw: ${path}.enabled must be explicit`)
   }
-  if (value.enabled === false) return
+  if (!value.enabled) return
   if (channel !== 'telegram' && channel !== 'feishu') {
     throw new Error(`channel-openclaw: ${path} must remain disabled until its locked admission validator is implemented`)
   }

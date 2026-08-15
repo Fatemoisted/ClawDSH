@@ -18,11 +18,14 @@ English | [中文](README.zh.md)
 - id: skills-hub
   name: '@clawdsh/dsh-skills-hub'
   config:
+    enabled: true                 # false registers no provider
     # workspaceDir: /abs/path      # 固定 workspace 技能目录；缺省按 lookup cwd 扫 <cwd>/skills
     # managedDir: /abs/path        # 缺省 ~/.clawdbot/skills（legacy OpenClaw 目录）
     # extraDirs: [/abs/path]       # 附加目录，rank 350
     # gating: true                 # 求值 metadata.clawdbot.requires.{bins,anyBins,env}
 ```
+
+The `clawdsh-skills-hub` settings namespace is restart-applied. A disabled startup snapshot leaves `ctx.skills` untouched; changing the stored value does not add a provider until restart.
 
 ## Design notes
 
@@ -31,6 +34,7 @@ English | [中文](README.zh.md)
 - **Gating at list time**: `requires.bins` (all on PATH), `requires.anyBins` (at least one), `requires.env` (env var set); gated-out skills are excluded from the catalog; bins are probed on PATH without child processes;
 - **Directory + SKILL.md only**: matches OpenClaw's convention; a directory without `SKILL.md` is not a skill, a missing root yields no skills (OpenClaw-style silent skip), invalid files warn and are skipped;
 - **No install execution, no remote registry**: the OpenClaw baseline distributes ClawHub skills through an external CLI; this package loads what is already on disk.
+- **Provider-level disable**: `enabled: false` registers no provider, so no ClawHub root participates in catalog collection.
 
 ## Changelog
 

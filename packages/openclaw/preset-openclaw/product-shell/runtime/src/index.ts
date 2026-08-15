@@ -30,12 +30,13 @@ import {
   type ClawdshPluginOrigin,
 } from '../../shared/src/protocol.ts'
 import { PRODUCTION_CHANNEL_CATALOG } from './production-channel-catalog.ts'
+import { ClawdshSettingsControl } from './settings-control.ts'
 
 /** Stable Cordis plugin name. */
 export const name = 'clawdsh-product-runtime'
 
 /** Services required by the static routes, Loader projection, and RPC registration. */
-export const inject = ['webServer', 'connection', 'loader', 'agentPresets']
+export const inject = ['webServer', 'connection', 'loader', 'agentPresets', 'settings', 'credentials']
 
 const PRODUCT_PREFIX = '/clawdsh'
 const PRODUCT_ROOT = '/clawdsh/'
@@ -152,7 +153,7 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
         id: 'ark-embeddings',
         label: 'Ark Embeddings',
         packages: ['@clawdsh/dsh-embeddings-ark'],
-        required: false,
+        required: true,
       },
     ],
   },
@@ -196,14 +197,14 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     description: 'Projects privacy-preserving semantic activity for the current Session.',
     dependencies: [],
     effectTime: 'restart',
-    required: false,
+    required: true,
     stateComponentId: 'activity',
     components: [
       {
         id: 'activity',
         label: 'Activity',
         packages: ['@clawdsh/dsh-activity'],
-        required: false,
+        required: true,
       },
     ],
   },
@@ -212,8 +213,9 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
 const BOOTSTRAP_RESPONSE: ClawdshBootstrapResponse = {
   version: CLAWDSH_PROTOCOL_VERSION,
   product: { id: 'clawdsh', name: 'ClawDSH', modeLabel: 'ClawDSH 模式' },
-  readOnly: true,
+  controlMode: 'local-read-write',
   localControlOnly: true,
+  runtimeState: 'starting',
   routes: {
     conversation: '/clawdsh/',
     settings: '/clawdsh/settings',
@@ -226,6 +228,10 @@ interface AssetPathResult {
   readonly ok: boolean
   readonly path?: string
   readonly status?: 400 | 403
+}
+
+interface ProductRuntimeState {
+  evidence?: StartupEvidence
 }
 
 function resolveDistIndex(): string {
@@ -276,11 +282,14 @@ function componentView(
   disabledByParent: boolean,
 ): ClawdshCapabilityComponent {
   if (definition.stateSource === 'preset') {
+    const state = evidence.enabled.soul === undefined
+      ? 'misconfigured'
+      : evidence.enabled.soul ? evidence.soulPreset : 'disabled'
     return {
       ...definition,
       stateSource: 'preset',
       loaderEntries: [],
-      state: evidence.soulPreset,
+      state,
     }
   }
   const loaderEntries = inventory.filter(entry => definition.packages.includes(entry.moduleName))
@@ -294,12 +303,61 @@ function componentView(
   else if (activeEntries.some(entry => entry.state === 'misconfigured')) state = 'misconfigured'
   else if (activeEntries.every(entry => entry.state === 'active')) state = 'active'
   else state = 'starting'
+  if (state === 'active') {
+    const enabled = definition.id === 'memory'
+      ? evidence.enabled.memory
+      : definition.id === 'skills-hub'
+        ? evidence.enabled.skills
+        : definition.id === 'automation'
+          ? evidence.enabled.automation
+          : definition.id === 'activity'
+            ? evidence.enabled.activity
+            : undefined
+    if (definition.id === 'openclaw-gateway-provider') state = evidence.openClawGateway
+    else if (enabled !== undefined) state = enabled ? 'active' : 'disabled'
+    else if (definition.id === 'memory'
+      || definition.id === 'skills-hub'
+      || definition.id === 'automation'
+      || definition.id === 'activity') state = 'misconfigured'
+  }
   return { ...definition, stateSource: 'loader', loaderEntries, state }
 }
 
 interface ProductEvidence {
   readonly soulPreset: ClawdshLoaderState
   readonly channelPlane: ClawdshLoaderState
+  readonly openClawGateway: ClawdshLoaderState
+  readonly enabled: RuntimeEnablement
+}
+
+interface StartupEvidence {
+  readonly soulPreset: ClawdshLoaderState
+  readonly enabled: RuntimeEnablement
+}
+
+interface RuntimeEnablement {
+  readonly soul: boolean | undefined
+  readonly memory: boolean | undefined
+  readonly skills: boolean | undefined
+  readonly automation: boolean | undefined
+  readonly activity: boolean | undefined
+}
+
+const DEFAULT_RUNTIME_ENABLEMENT: RuntimeEnablement = {
+  soul: true,
+  memory: true,
+  skills: true,
+  automation: false,
+  activity: true,
+}
+
+interface OpenClawControlSnapshot {
+  readonly enabled: boolean
+  readonly state: 'disabled' | 'starting' | 'active' | 'failed'
+}
+
+interface OpenClawControl {
+  readonly snapshot: () => OpenClawControlSnapshot | Promise<OpenClawControlSnapshot>
 }
 
 interface CompositionRow {
@@ -343,21 +401,49 @@ function communicationPlaneState(entries: readonly Entry[]): ClawdshLoaderState 
   }
 }
 
-async function productEvidence(ctx: Context, entries: readonly Entry[]): Promise<ProductEvidence> {
-  const channelPlane = communicationPlaneState(entries)
+async function openClawGatewayState(ctx: Context): Promise<ClawdshLoaderState> {
+  const control = ctx.get('clawdshOpenClawControl') as OpenClawControl | undefined
+  if (control === undefined || typeof control.snapshot !== 'function') return 'misconfigured'
+  try {
+    const snapshot: unknown = await control.snapshot()
+    if (typeof snapshot !== 'object' || snapshot === null || Array.isArray(snapshot)) return 'misconfigured'
+    const enabled = (snapshot as Record<string, unknown>)['enabled']
+    const state = (snapshot as Record<string, unknown>)['state']
+    if (enabled === false && state === 'disabled') return 'disabled'
+    if (enabled === true && state === 'starting') return 'starting'
+    if (enabled === true && state === 'active') return 'active'
+    if (enabled === true && state === 'failed') return 'failed'
+    return 'misconfigured'
+  } catch {
+    return 'misconfigured'
+  }
+}
+
+async function startupEvidence(
+  ctx: Context,
+  settingsControl: ClawdshSettingsControl,
+): Promise<StartupEvidence> {
+  const enabled: RuntimeEnablement = {
+    soul: settingsControl.runtimeEnabled('clawdsh-soul'),
+    memory: settingsControl.runtimeEnabled('clawdsh-memory'),
+    skills: settingsControl.runtimeEnabled('clawdsh-skills-hub'),
+    automation: settingsControl.runtimeEnabled('clawdsh-automation'),
+    activity: settingsControl.runtimeEnabled('clawdsh-activity'),
+  }
   const presets = ctx.get('agentPresets') as AgentPresets | undefined
-  if (presets === undefined) return { soulPreset: 'misconfigured', channelPlane }
-  if (presets.defaultId !== 'clawdsh') return { soulPreset: 'disabled', channelPlane }
+  const common = { enabled }
+  if (presets === undefined) return { ...common, soulPreset: 'misconfigured' }
+  if (presets.defaultId !== 'clawdsh') return { ...common, soulPreset: 'disabled' }
   try {
     const preset = await presets.resolve('clawdsh')
-    if (preset.broken !== undefined) return { soulPreset: 'misconfigured', channelPlane }
+    if (preset.broken !== undefined) return { ...common, soulPreset: 'misconfigured' }
     if (!hasManagedSoul(await presets.read('clawdsh'))) {
-      return { soulPreset: 'misconfigured', channelPlane }
+      return { ...common, soulPreset: 'misconfigured' }
     }
     await presets.standingKeyFor('clawdsh')
-    return { soulPreset: 'active', channelPlane }
+    return { ...common, soulPreset: 'active' }
   } catch {
-    return { soulPreset: 'failed', channelPlane }
+    return { ...common, soulPreset: 'failed' }
   }
 }
 
@@ -365,14 +451,15 @@ function aggregateCapabilityState(
   definition: CapabilityDefinition,
   components: readonly ClawdshCapabilityComponent[],
 ): ClawdshLoaderState {
+  const state = components.find(component => component.id === definition.stateComponentId)?.state
+  if (state === undefined) throw new Error(`ClawDSH capability ${definition.id} has no state component`)
+  if (definition.id === 'memory' && state === 'disabled') return 'disabled'
   const required = components.filter(component => component.required)
   if (required.some(component => component.state === 'failed')) return 'failed'
   if (required.some(component => component.state === 'misconfigured' || component.state === 'disabled')) {
     return 'misconfigured'
   }
   if (required.some(component => component.state === 'starting')) return 'starting'
-  const state = components.find(component => component.id === definition.stateComponentId)?.state
-  if (state === undefined) throw new Error(`ClawDSH capability ${definition.id} has no state component`)
   return state
 }
 
@@ -404,12 +491,16 @@ function capabilityView(
 function capabilitiesResponse(
   entries: Iterable<Entry>,
   soulPreset: ClawdshLoaderState,
+  openClawGateway: ClawdshLoaderState = 'misconfigured',
+  enabled: RuntimeEnablement = DEFAULT_RUNTIME_ENABLEMENT,
 ): ClawdshCapabilitiesResponse {
   const allEntries = [...entries]
   const inventory = loaderInventory(allEntries)
   const evidence: ProductEvidence = {
     soulPreset,
     channelPlane: communicationPlaneState(allEntries),
+    openClawGateway,
+    enabled,
   }
   return jsonBoundary({
     version: CLAWDSH_PROTOCOL_VERSION,
@@ -419,8 +510,8 @@ function capabilitiesResponse(
   }, parseClawdshCapabilitiesResponse)
 }
 
-function bootstrapResponse(): ClawdshBootstrapResponse {
-  return jsonBoundary(BOOTSTRAP_RESPONSE, parseClawdshBootstrapResponse)
+function bootstrapResponse(runtimeState: ClawdshBootstrapResponse['runtimeState'] = 'starting'): ClawdshBootstrapResponse {
+  return jsonBoundary({ ...BOOTSTRAP_RESPONSE, runtimeState }, parseClawdshBootstrapResponse)
 }
 
 function jsonBoundary<T>(value: T, parse: (candidate: unknown) => T): T {
@@ -431,6 +522,17 @@ function jsonBoundary<T>(value: T, parse: (candidate: unknown) => T): T {
 
 function badRequest(message: string): RpcResult<never> {
   return { ok: false, error: { code: 'bad-request', message, details: { issues: [] } } }
+}
+
+function starting(): RpcResult<never> {
+  return {
+    ok: false,
+    error: {
+      code: 'internal',
+      message: 'ClawDSH control is starting; retry shortly',
+      details: {},
+    },
+  }
 }
 
 function assetPath(rawUrl: string | undefined): AssetPathResult {
@@ -485,37 +587,66 @@ function registerProductRoutes(ctx: Context, distIndex: string): void {
   }), 'clawdsh-product-runtime: /clawdsh static routes')
 }
 
-function registerReadRpc(ctx: Context): void {
+function registerRpc(
+  ctx: Context,
+  settingsControl: ClawdshSettingsControl,
+  runtimeState: ProductRuntimeState,
+): void {
   ctx.connection.rpc.handle(CLAWDSH_RPC_CHANNEL, async (endpoint, payload) => {
-    try {
-      parseClawdshReadRequest(payload)
-    } catch {
-      return badRequest('invalid ClawDSH protocol v1 request')
-    }
-    if (endpoint === CLAWDSH_RPC_ENDPOINTS.bootstrapGet) {
-      return { ok: true, value: bootstrapResponse() }
-    }
-    if (endpoint === CLAWDSH_RPC_ENDPOINTS.capabilitiesList) {
+    if (endpoint === CLAWDSH_RPC_ENDPOINTS.bootstrapGet
+      || endpoint === CLAWDSH_RPC_ENDPOINTS.capabilitiesList) {
+      try {
+        parseClawdshReadRequest(payload)
+      } catch {
+        return badRequest('invalid ClawDSH protocol v1 request')
+      }
+      if (endpoint === CLAWDSH_RPC_ENDPOINTS.bootstrapGet) {
+        return {
+          ok: true,
+          value: bootstrapResponse(settingsControl.isReady() ? 'ready' : 'starting'),
+        }
+      }
+      if (!settingsControl.isReady() || runtimeState.evidence === undefined) return starting()
       const entries = [...ctx.loader.entries()]
-      const evidence = await productEvidence(ctx, entries)
+      const evidence = runtimeState.evidence
+      const enabled: RuntimeEnablement = {
+        ...evidence.enabled,
+        soul: settingsControl.desiredEnabled('clawdsh-soul'),
+      }
       return {
         ok: true,
-        value: capabilitiesResponse(entries, evidence.soulPreset),
+        value: capabilitiesResponse(
+          entries,
+          evidence.soulPreset,
+          await openClawGatewayState(ctx),
+          enabled,
+        ),
       }
     }
+    const controlled = await settingsControl.handle(endpoint, payload)
+    if (controlled !== undefined) return controlled
     return badRequest('unsupported ClawDSH protocol v1 endpoint')
   }, { authority: 'loopback' })
 }
 
-function scheduleReadyLine(ctx: Context): void {
+function scheduleReadyLine(
+  ctx: Context,
+  settingsControl: ClawdshSettingsControl,
+  runtimeState: ProductRuntimeState,
+): void {
   let live = true
   ctx.effect(() => () => { live = false }, 'clawdsh-product-runtime: readiness guard')
   void Promise.resolve()
     .then(() => ctx.loader.await())
-    .then(() => {
+    .then(async () => {
+      if (!settingsControl.captureRuntime()) return
+      const evidence = await startupEvidence(ctx, settingsControl)
       if (!live || ctx.get('webServer') === undefined) return
+      runtimeState.evidence = evidence
+      settingsControl.markReady()
       console.log(`clawdsh web: http://${LOOPBACK_HOST}:${String(ctx.webServer.port)}${PRODUCT_ROOT}`)
-    }, () => {
+    })
+    .catch(() => {
       // Loader owns the activation failure; product readiness remains silent.
     })
 }
@@ -525,9 +656,13 @@ function scheduleReadyLine(ctx: Context): void {
  * @param ctx - Host context carrying WebServer, Connection, and Loader.
  */
 export function apply(ctx: Context): void {
-  registerProductRoutes(ctx, internals.resolveDistIndex())
-  registerReadRpc(ctx)
-  scheduleReadyLine(ctx)
+  const distIndex = internals.resolveDistIndex()
+  const settingsControl = new ClawdshSettingsControl(ctx)
+  settingsControl.registerManagedNamespaces()
+  const runtimeState: ProductRuntimeState = {}
+  registerProductRoutes(ctx, distIndex)
+  registerRpc(ctx, settingsControl, runtimeState)
+  scheduleReadyLine(ctx, settingsControl, runtimeState)
 }
 
 /** Narrow test seams for filesystem location and pure response projections. */
@@ -537,6 +672,7 @@ export const internals = {
   bootstrapResponse,
   capabilitiesResponse,
   hasManagedSoul,
+  openClawGatewayState,
   pluginOrigin,
   registerProductRoutes,
 }

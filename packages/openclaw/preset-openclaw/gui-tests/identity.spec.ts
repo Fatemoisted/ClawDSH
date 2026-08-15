@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 const repositoryRoot = resolve(import.meta.dirname, '../../../..')
 const assemblyRoot = join(repositoryRoot, 'packages/openclaw/preset-openclaw')
 const profileSource = join(assemblyRoot, 'profile')
+const profileManifestSource = join(profileSource, 'package.template.json')
 const presetSource = assemblyRoot
 const safePresetSource = join(repositoryRoot, 'packages/openclaw/preset-clawdsh-messaging-safe')
 const productRuntimeSource = join(assemblyRoot, 'product-shell/runtime')
@@ -82,7 +83,7 @@ afterEach(() => {
 
 describe('ClawDSH installed profile identity', () => {
   it('uses the ClawDSH ids and user-visible mode name', () => {
-    const manifest = JSON.parse(read(join(profileSource, 'package.json'))) as { name?: unknown }
+    const manifest = JSON.parse(read(profileManifestSource)) as { name?: unknown }
     const patch = read(join(profileSource, 'cordis.patch.yml'))
     const preset = read(join(presetSource, 'preset.yml'))
 
@@ -91,19 +92,47 @@ describe('ClawDSH installed profile identity', () => {
     expect(preset).toMatch(/^name: ClawDSH 模式$/m)
   })
 
-  it('keeps the OpenClaw communication sidecar disabled in the clean-install profile', () => {
+  it('always mounts the communication plane while keeping the OpenClaw Gateway disabled', () => {
     const entry = loaderEntry(read(join(profileSource, 'cordis.patch.yml')), 'clawdsh-communication-plane')
-    expect(entry).toContain("disabled: !!js process.env.CLAWDSH_OPENCLAW_CHANNELS_ENABLED !== '1'")
+    expect(entry).not.toMatch(/^      disabled:/m)
     expect(entry).toMatch(/name: '@clawdsh\/dsh-channel'/)
     expect(entry).toMatch(/ownerPreset: clawdsh/)
     expect(entry).toMatch(/safePreset: clawdsh-messaging-safe/)
     expect(entry).toMatch(/name: '@clawdsh\/dsh-channel-openclaw'/)
+    expect(entry).toMatch(/- id: channel-openclaw[\s\S]*?config:\n            enabled: false/)
+    const stagingRoot = new RegExp(
+      String.raw`stagingRoot: !!js process\.env\.CLAWDSH_OPENCLAW_STAGING_ROOT `
+        + String.raw`\|\| dshHomePath\('clawdsh/channel/openclaw/state/staging'\)`,
+      'g',
+    )
+    expect(entry.match(stagingRoot)).toHaveLength(2)
+    expect(entry).toMatch(/gatewayInstanceId: !!js process\.env\.CLAWDSH_OPENCLAW_GATEWAY_INSTANCE_ID \|\| 'clawdsh-managed'/)
     expect(entry).not.toMatch(/dsh-channel-(?:feishu|telegram|core)/)
   })
 
-  it('keeps Automation disabled in the clean-install profile', () => {
-    const entry = loaderEntry(read(join(profileSource, 'cordis.patch.yml')), 'automation')
-    expect(entry).toMatch(/^      disabled: true$/m)
+  it('mounts settings-owning capabilities with fail-closed defaults', () => {
+    const patch = read(join(profileSource, 'cordis.patch.yml'))
+    const memory = loaderEntry(patch, 'memory')
+    const skills = loaderEntry(patch, 'skills-hub')
+    const automation = loaderEntry(patch, 'automation')
+
+    expect(memory).toMatch(/^        enabled: true$/m)
+    expect(skills).toMatch(/^        enabled: true$/m)
+    expect(automation).not.toMatch(/^      disabled:/m)
+    expect(automation).toMatch(/^        enabled: false$/m)
+  })
+
+  it('mounts one Soul settings host with the managed preset base', () => {
+    const patch = read(join(profileSource, 'cordis.patch.yml'))
+    const preset = read(join(presetSource, 'agent.cordis.yml'))
+    const host = loaderEntry(patch, 'clawdsh-soul-settings')
+    const soul = profileOverride(preset, 'soul')
+
+    expect(host).toMatch(/name: '@clawdsh\/dsh-soul\/settings-host'/)
+    expect(host).toMatch(/^        source: \.\/souls\/assistant\.md$/m)
+    expect(host).toMatch(/^        mode: append$/m)
+    expect(soul).toMatch(/^    source: \.\/souls\/assistant\.md$/m)
+    expect(soul).toMatch(/^    mode: append$/m)
   })
 
   it('gives product URL ownership to the ClawDSH runtime', () => {
@@ -133,7 +162,7 @@ describe.skipIf(process.platform === 'win32')('ClawDSH development refresh', () 
     expectRefreshSuccess(first)
     expect(first.stdout).toContain('开发刷新完成')
 
-    expect(read(join(profile, 'package.json'))).toBe(read(join(profileSource, 'package.json')))
+    expect(read(join(profile, 'package.json'))).toBe(read(profileManifestSource))
     expect(read(join(profile, 'cordis.patch.yml'))).toBe(read(join(profileSource, 'cordis.patch.yml')))
     expect(read(join(preset, 'preset.yml'))).toBe(read(join(presetSource, 'preset.yml')))
     expect(read(join(preset, 'agent.cordis.yml'))).toBe(read(join(presetSource, 'agent.cordis.yml')))
@@ -158,7 +187,7 @@ describe.skipIf(process.platform === 'win32')('ClawDSH development refresh', () 
     writeFileSync(join(profile, 'package.json'), '{"name":"drifted"}\n')
     const second = runRefresh(home)
     expectRefreshSuccess(second)
-    expect(read(join(profile, 'package.json'))).toBe(read(join(profileSource, 'package.json')))
+    expect(read(join(profile, 'package.json'))).toBe(read(profileManifestSource))
   })
 
   it.each([

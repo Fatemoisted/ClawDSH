@@ -4,17 +4,17 @@ Status: proposed
 
 [English](2026-08-15-clawdsh-product-shell.md) | 中文
 
-产品形态已由 [ADR-0007](../../../../docs/adr/0007-clawdsh-local-gui-product.md) 接受，用户可见目标由 [ClawDSH 本地 GUI 功能规格](../../../../docs/specs/feature-gui-web.md)定义。
+产品形态已由 [ADR-0007](../../../../docs/adr/0007-clawdsh-local-gui-product.md) 接受，用户可见目标由 [ClawDSH 本地 GUI 功能规格](../../../../docs/specs/feature-gui-web.md)定义。[产品壳 runtime](../../implemented/feature/2026-08-15-clawdsh-product-shell-runtime.md)与 [Settings 控制面](../../implemented/feature/2026-08-15-clawdsh-settings-control-plane.md)已经实现本设计的对应部分；本 Note 只为语义 Activity 保持 proposed。
 
 ## Problem
 
-[当前 GUI 组装](../../implemented/feature/2026-08-15-openclaw-gui-dsh-web-app.md)正确地复用了原生 dsh Web 应用，并且只改变默认 agent preset。它已经证明一个本地浏览器对话能够运行 Soul、Memory、Skills、渠道与标准工具，但 ClawDSH 只表现为 Harness 自有信息架构中的一个 preset 名称。
+[原始 GUI 组装](../../implemented/feature/2026-08-15-openclaw-gui-dsh-web-app.md)正确地复用了原生 dsh Web 应用，并且只改变默认 agent preset。已实现产品壳解决了该产品边界问题，同时保留完整 Harness 对话 runtime。
 
-在本 Note 仍为 proposed 期间，该 implemented Note 继续作为当前权威。如果本提案实现，它只部分 supersede 旧 Note 中「不拥有 ClawDSH 浏览器 UI」的决策；复用 `dsh-web-app`、通过 profile 与 preset 组装，以及由 Harness 对话 runtime 继续作为权威的决策保持不变。
+产品壳与 Settings 决策是已交付行为的当前权威。它们只部分 supersede 旧 Note 中「不拥有 ClawDSH 浏览器 UI」的选择；复用 `dsh-web-app`、通过 profile 与 preset 组装，以及由 Harness 对话 runtime 继续作为权威的决策保持不变。
 
 该信息架构无法准确解释产品。[profile bundle](../../implemented/architecture/2026-08-05-profile-plugin-bundles.md)拥有进程级 Host 组装，[逐 Session preset](../../implemented/architecture/2026-08-03-per-session-agent-presets.md)则拥有 Agent 组装。选择 `standard` 不会卸载 ClawDSH Host 插件，因此 preset selector 不能作为 ClawDSH 与纯净 Harness 之间的产品边界。
 
-Settings 也存在相同的不匹配。原始 Loader entry 适合诊断，但用户需要的是能力级所有权、依赖、启用状态、凭据就绪状态、经过验证的字段与生效时间。现有[user-settings seam](../../implemented/architecture/2026-07-28-user-settings-seam.md)、[Web 配置面](../../implemented/architecture/2026-07-30-web-config-plane.md)与[插件配置 UI](../../implemented/feature/2026-08-10-web-plugin-configuration.md)提供了可复用机制；它们并不定义 ClawDSH 产品分类，也不决定哪些 mutation 可以安全暴露。
+已实现 Settings 控制面以产品自有能力分类、字段权限、credential ownership、revision 与生效时间解决配置不匹配，同时让 raw Loader entry 保持只读。
 
 原始 [Trajectory ledger](../../implemented/feature/2026-07-27-trajectory-inspection-ledger.md)是有序 Harness 证据的权威记录，却不会把 ClawDSH 行为分成 Soul/Prompt、Memory、Channels、Skills 与 Automation。替换 Trajectory 会丢失诊断细节，只保留它一个视图又会让产品行为难以理解。
 
@@ -40,7 +40,7 @@ ClawDSH profile 启动一个 dsh Host 进程，并暴露两个浏览器应用。
 
 ### Settings 与 Activity
 
-初版产品壳保持只读。概览把产品能力映射到所属包、依赖、Loader entry 与 Fiber 状态，并把 `@clawdsh/*` 分类为 ClawDSH、`@deepseek-ai/*` 与 `cordis:*` 分类为 Platform、其他来源全部分类为 Community。该 inventory 提供 runtime 证据，但不提供开关。
+能力总览保持只读。它把产品能力映射到所属包、依赖、Loader entry 与 Fiber 状态，并把 `@clawdsh/*` 分类为 ClawDSH、`@deepseek-ai/*` 与 `cordis:*` 分类为 Platform、其他来源全部分类为 Community。该 inventory 提供 runtime 证据，但不提供 Loader 开关；可编辑字段遵循独立 Settings 决策。
 
 ClawDSH Settings 对产品能力 namespace 与 credential reference 使用静态 allowlist。每项能力贡献由服务端拥有的 Config 描述；控制面把 profile base、user override 与 schema default 解析成一份 desired configuration。mutation 携带 expected revision，reset 只移除 user layer，响应区分 desired revision、runtime revision 与 restart requirement。
 

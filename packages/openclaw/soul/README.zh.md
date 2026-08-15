@@ -18,11 +18,14 @@
 - id: soul
   name: '@clawdsh/dsh-soul'
   config:
+    enabled: true                 # false skips the Soul section for new sessions
     source: ./souls/assistant.md   # 相对 process.cwd()；优先于 text
     # text: 也可以直接内联
     mode: replace                  # replace=灵魂即完整系统提示；append（默认）=叠加段落
     includeRuntimeContext: true    # false 时抑制该作用域的运行时上下文快照
 ```
+
+Host 仅挂载一次 `@clawdsh/dsh-soul/settings-host`，由它独占 `clawdsh-soul` 设置 namespace。每个 agent scope 只在挂载时读取该用户层，因此修改只影响新会话，不会改写运行中会话的 prompt。
 
 ## OpenClaw identity 映射（阶段 2 深读定稿）
 
@@ -47,6 +50,7 @@ OpenClaw 的 identity 由四层组成（`src/gateway/` 无装配代码，全部�
 
 - **scope-only**：无作用域挂载直接报错（避免发布进程级灵魂），与上游 persona 的约束一致；
 - **挂载即定格**：灵魂文本在挂载时读取一次，运行期不变——提示前缀稳定，KV 缓存复用不受影响（沿用上游设计）；换灵魂 = 重新挂载（patch + 会话重启）；
+- **Host 独占设置**：一个 Host singleton 注册 namespace；Session 行只消费挂载时快照，`enabled: false` 不贡献 prompt 段；
 - **相对 source 按挂载树解析**：相对路径以 `ctx.baseUrl` 为锚——agent preset 里即组合目录（preset 目录随 `copyComposition` 传播，灵魂文件跟着走）、profile 启动器下即 profile 目录；无 baseUrl 的裸上下文回退 `process.cwd()`。与相对模块说明符同语义（typert-loader/client-modules 同款 seam）；
 - **可逆**：全部注册走 `ctx.effect()`，卸载即回卷（热插拔）；
 - **日志不变式**：灵魂文本作为 prompt section 参与装配，"model-visible means logged" 由上游 session 机制保证。

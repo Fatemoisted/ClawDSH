@@ -11,7 +11,18 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
+import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import * as SkillsHub from '../src/index.ts'
+
+class TestSettings extends SettingsProvider {
+  constructor(ctx: Context, private readonly store: Record<string, unknown>) { super(ctx) }
+  get writable(): boolean { return true }
+  protected load(): Promise<Record<string, unknown>> { return Promise.resolve(structuredClone(this.store)) }
+  protected persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
+    this.store[ns] = structuredClone(section)
+    return Promise.resolve()
+  }
+}
 
 async function tempDir(name: string): Promise<string> {
   return await mkdtemp(join(tmpdir(), `dsh-${name}-`))
@@ -26,6 +37,7 @@ async function writeSkill(root: string, name: string, description: string, body 
 /** Mount the registry + hub row; the managed dir points into the temp tree so the host's real `~/.clawdbot` never leaks in. */
 async function setup(workspace: string, config: SkillsHub.Config = {}): Promise<{ ctx: Context; fiber: { dispose: () => Promise<void> } }> {
   const ctx = new Context()
+  await ctx.plugin(TestSettings, {})
   await ctx.plugin(SkillRegistry)
   const fiber = await ctx.plugin(SkillsHub, { managedDir: join(workspace, 'no-clawdbot'), ...config })
   return { ctx, fiber }
@@ -37,6 +49,33 @@ function hubProvider(workspace: string, logger: Context['logger'], config: Skill
 }
 
 describe('skills-hub provider', () => {
+  it('declares Settings as a required plugin dependency', () => {
+    expect(SkillsHub.inject).toEqual(['skills', 'settings'])
+  })
+
+  it('keeps the provider absent until restart when the resolved setting is disabled', async () => {
+    const workspace = await tempDir('hub-disabled')
+    try {
+      await writeSkill(join(workspace, 'skills'), 'hidden', 'Hidden while disabled')
+      const ctx = new Context()
+      await ctx.plugin(TestSettings, { 'clawdsh-skills-hub': { enabled: false } })
+      await ctx.plugin(SkillRegistry)
+      const fiber = await ctx.plugin(SkillsHub, { enabled: true, managedDir: join(workspace, 'managed') })
+      expect(await ctx.skills.list({ cwd: workspace })).toEqual([])
+      expect(ctx.settings.describe().find(entry => entry.ns === SkillsHub.SKILLS_HUB_SETTINGS_NAMESPACE))
+        .toMatchObject({ applies: 'restart', value: { enabled: false } })
+
+      await ctx.settings.update(SkillsHub.SKILLS_HUB_SETTINGS_NAMESPACE, { enabled: true })
+      expect(await ctx.skills.list({ cwd: workspace })).toEqual([])
+      await fiber.dispose()
+      await ctx.plugin(SkillsHub, { enabled: true, managedDir: join(workspace, 'managed') })
+      expect((await ctx.skills.list({ cwd: workspace })).map(skill => skill.name)).toEqual(['hidden'])
+      await ctx.fiber.dispose()
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+
   it('lists SKILL.md directory skills from the workspace root and skips invalid files', async () => {
     const workspace = await tempDir('hub-workspace')
     try {
@@ -166,6 +205,7 @@ describe('skills-hub provider', () => {
 
   it('validates raw config types defensively for non-Loader callers', async () => {
     const ctx = new Context()
+    await ctx.plugin(TestSettings, {})
     await ctx.plugin(SkillRegistry)
     await expect(ctx.plugin(SkillsHub, { gating: 'yes' as never })).rejects.toThrow(/gating/)
     await expect(ctx.plugin(SkillsHub, { extraDirs: 'nope' as never })).rejects.toThrow(/extraDirs/)
@@ -178,6 +218,7 @@ describe('skills-hub provider', () => {
       await writeSkill(join(workspace, 'skills'), 'tie-skill', 'Hub body')
       await writeSkill(join(customRoot, 'skills'), 'tie-skill', 'Filesystem body')
       const ctx = new Context()
+      await ctx.plugin(TestSettings, {})
       await ctx.plugin(SkillRegistry)
       const SkillFileSystem = await import('@deepseek-ai/dsh-skill-filesystem')
       // Registration order: skill-filesystem (base bundle) first, then the hub provider.

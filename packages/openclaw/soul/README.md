@@ -18,11 +18,14 @@ Mounted within an agent scope (i.e. inside the agent preset's `agent.cordis.yml`
 - id: soul
   name: '@clawdsh/dsh-soul'
   config:
+    enabled: true                 # false skips the Soul section for new sessions
     source: ./souls/assistant.md   # 相对 process.cwd()；优先于 text
     # text: 也可以直接内联
     mode: replace                  # replace=灵魂即完整系统提示；append（默认）=叠加段落
     includeRuntimeContext: true    # false 时抑制该作用域的运行时上下文快照
 ```
+
+The Host mounts `@clawdsh/dsh-soul/settings-host` once to own the `clawdsh-soul` settings namespace. Each agent-scope row reads that user layer only at mount, so a change affects new sessions and never rewrites the prompt of a running session.
 
 ## OpenClaw identity mapping (finalized in stage 2 deep read)
 
@@ -47,6 +50,7 @@ Does not add template bootstrapping or the `[MISSING]` placeholder: the former s
 
 - **scope-only**: mounting without a scope errors out immediately (avoiding publishing a process-level soul), consistent with upstream persona's constraint;
 - **fixed at mount**: the soul text is read once at mount and does not change while running — the prompt prefix is stable, so KV-cache reuse is unaffected (following upstream's design); swapping the soul = re-mounting (patch + session restart);
+- **Host-owned settings**: one Host singleton registers the namespace; session rows only consume a mount-time snapshot, and `enabled: false` contributes no prompt section;
 - **relative `source` resolved against the mount tree**: a relative path is anchored to `ctx.baseUrl` — the composition directory inside an agent preset (the preset directory propagates with `copyComposition`, and the soul file follows it), or the profile directory under a profile launcher; a bare context with no baseUrl falls back to `process.cwd()`. Same semantics as relative module specifiers (the typert-loader/client-modules seam);
 - **reversible**: every registration goes through `ctx.effect()`, so unmounting rolls it back (hot-swappable);
 - **log invariant**: the soul text participates in assembly as a prompt section; "model-visible means logged" is guaranteed by upstream's session mechanism.

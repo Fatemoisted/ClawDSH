@@ -19,6 +19,7 @@ import type {} from '@clawdsh/dsh-embeddings'
 import type {} from '@deepseek-ai/dsh-fs'
 import type { FsTarget } from '@deepseek-ai/dsh-fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { readLineSlice, resolveMemoryTarget } from './memory-files.ts'
 import { MemoryIndex } from './search.ts'
@@ -37,8 +38,11 @@ export type { SearchHit } from './search.ts'
 /** Cordis plugin name used by Loader diagnostics. */
 export const name = 'memory'
 
+/** User-settings namespace for the Memory capability. */
+export const MEMORY_SETTINGS_NAMESPACE = settingsNamespace('clawdsh-memory')
+
 /** Capability services the plugin mounts on; embeddings is read optionally via `ctx.get`. */
-export const inject = ['tools', 'systemPrompt', 'fs']
+export const inject = ['tools', 'systemPrompt', 'fs', 'settings']
 
 /** Default character budget per index chunk (mirrors OpenClaw's ~400-token chunks). */
 export const DEFAULT_CHUNK_SIZE_CHARS = 1600
@@ -57,6 +61,8 @@ export const DEFAULT_MAX_READ_LINES = 1000
 
 /** Plugin config; `root` is required — the memory directory a deployment owns. */
 export interface Config {
+  /** Whether Memory registers prompt guidance, tools, file watching, and flush hooks. */
+  enabled?: boolean
   /** Memory root directory (absolute or resolved against `process.cwd()`). Required, fail-loud. */
   root: string
   /** Character budget per index chunk. Defaults to 1600. */
@@ -84,6 +90,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
+  enabled: z.boolean().default(true),
   root: z.string(),
   chunkSizeChars: z.number().step(1).min(1).default(DEFAULT_CHUNK_SIZE_CHARS),
   chunkOverlapChars: z.number().step(1).min(0).default(DEFAULT_CHUNK_OVERLAP_CHARS),
@@ -99,6 +106,7 @@ export const Config: z<Config> = z.object({
 })
 
 interface ResolvedConfig {
+  readonly enabled: boolean
   readonly root: string
   readonly chunkSizeChars: number
   readonly chunkOverlapChars: number
@@ -132,7 +140,14 @@ const MEMORY_GET_PARAMETERS = {
 
 /** Register the memory guidance section, both tools, and the flush-turn hooks. */
 export function apply(ctx: Context, config: Config): void {
-  const resolved = resolveConfig(config)
+  const settings = ctx.get('settings')
+  const runtimeConfig = settings?.register(MEMORY_SETTINGS_NAMESPACE, Config, {
+    base: config,
+    applies: 'restart',
+    validate: value => void resolveConfig(value),
+  }).get() ?? Config(config)
+  const resolved = resolveConfig(runtimeConfig)
+  if (!resolved.enabled) return
   const disposeFlush = installMemoryFlush(ctx, resolved.flush)
   const rootPath = resolve(resolved.root)
   let rootPromise: Promise<FsTarget> | undefined
@@ -253,6 +268,7 @@ function resolveConfig(config: Config): ResolvedConfig {
   }
   const flush = resolveFlushConfig(config.flush)
   return {
+    enabled: config.enabled ?? true,
     root: config.root,
     chunkSizeChars,
     chunkOverlapChars,

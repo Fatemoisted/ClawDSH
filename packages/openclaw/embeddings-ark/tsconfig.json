@@ -22,6 +22,9 @@
       "path": "../../credentials/credentials"
     },
     {
+      "path": "../../settings/settings"
+    },
+    {
       "path": "../../util/launch-environment"
     },
     {

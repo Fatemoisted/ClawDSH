@@ -21,9 +21,18 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import { CompactionId } from '@deepseek-ai/dsh-compaction'
+import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import * as Memory from '@clawdsh/dsh-memory'
 
 const MODEL = 'flush-test-model'
+
+class TestSettings extends SettingsProvider {
+  get writable(): boolean { return true }
+  protected load(): Promise<Record<string, unknown>> { return Promise.resolve({}) }
+  protected persist(_ns: SettingsNamespace, _section: Record<string, unknown>): Promise<void> {
+    return Promise.resolve()
+  }
+}
 
 /** Scripted adapter with a fixed context window; each model call consumes the next entry. */
 class WindowAdapter extends LlmAdapter {
@@ -75,6 +84,7 @@ async function harness(options: {
   const root = mkdtempSync(join(tmpdir(), 'dsh-flush-'))
   const adapter = options.adapter ?? new WindowAdapter(options.window, [])
   const ctx = new Context()
+  await ctx.plugin(TestSettings)
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt)
@@ -258,6 +268,7 @@ describe('memory flush turn', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-flush-'))
     const adapter = new WindowAdapter(1_000, [textReply('main one'), textReply('main two')])
     const ctx = new Context()
+    await ctx.plugin(TestSettings)
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(SessionStore)
     await ctx.plugin(SystemPrompt)

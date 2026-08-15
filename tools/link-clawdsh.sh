@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ClawDSH 本地开发刷新脚本 —— 用法: tools/link-clawdsh.sh
 # 1) 校验 nested ClawDSH 产品 runtime 与 browser assets 已构建；
-# 2) 把 preset-openclaw/profile/* 复制到 ~/.dsh/profiles/clawdsh/；
+# 2) 把受管 profile patch 与 manifest 模板安装到 ~/.dsh/profiles/clawdsh/；
 # 3) 为 @clawdsh/* 包建立 ~/.dsh/profiles/node_modules/@clawdsh/ 下的 symlink 过渡；
 # 4) 安装 clawdsh owner preset 与 clawdsh-messaging-safe 受限 preset。
 # 幂等：重复执行即刷新。脚本不读取、复制、移动或删除凭据与旧 OpenClaw 资产。
@@ -53,7 +53,8 @@ fi
 
 echo "==> 2/4 复制 profile 模板到 $PROFILE_DIR"
 mkdir -p "$PROFILE_DIR"
-cp -R packages/openclaw/preset-openclaw/profile/. "$PROFILE_DIR/"
+cp packages/openclaw/preset-openclaw/profile/cordis.patch.yml "$PROFILE_DIR/cordis.patch.yml"
+cp packages/openclaw/preset-openclaw/profile/package.template.json "$PROFILE_DIR/package.json"
 
 echo "==> 3/4 建立 @clawdsh 包 symlink（过渡，发布后移除）"
 mkdir -p "$LINK_DIR"

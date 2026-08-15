@@ -5,13 +5,26 @@ import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { createScope, type ScopeKey } from '@deepseek-ai/dsh-scope'
+import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { describe, expect, it } from 'vitest'
 import * as Soul from '@clawdsh/dsh-soul'
 import { PERSONA_SECTION, SOUL_SECTION } from '@clawdsh/dsh-soul'
 
-async function harness(deploymentPersona: string): Promise<Context> {
+class TestSettings extends SettingsProvider {
+  constructor(ctx: Context, private readonly store: Record<string, unknown>) { super(ctx) }
+  get writable(): boolean { return true }
+  protected load(): Promise<Record<string, unknown>> { return Promise.resolve(structuredClone(this.store)) }
+  protected persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
+    this.store[ns] = structuredClone(section)
+    return Promise.resolve()
+  }
+}
+
+async function harness(deploymentPersona: string, hostConfig: Soul.Config = { text: 'host identity' }): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt, { persona: deploymentPersona })
+  await ctx.plugin(TestSettings, {})
+  await ctx.plugin(Soul.SoulSettingsHost, hostConfig)
   return ctx
 }
 
@@ -20,6 +33,28 @@ function sectionText(assembly: { sections: { name: string; text: string }[] }, n
 }
 
 describe('the soul row', () => {
+  it('declares Host Settings and session snapshot dependencies', () => {
+    expect(Soul.SoulSettingsHost.inject).toEqual(['settings'])
+    expect(Soul.inject).toEqual(['systemPrompt', 'clawdshSoulSettings'])
+  })
+
+  it('reads Host settings once per new session and can disable only subsequent Soul mounts', async () => {
+    const ctx = await harness('deployment identity', { text: 'base identity' })
+    const first: ScopeKey = { agent: 'first' }
+    await createScope(ctx, first).ctx.plugin(Soul, { text: 'preset identity' })
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: first }), SOUL_SECTION)).toBe('preset identity')
+
+    await ctx.settings.update(Soul.SOUL_SETTINGS_NAMESPACE, { enabled: false })
+    const second: ScopeKey = { agent: 'second' }
+    await createScope(ctx, second).ctx.plugin(Soul, { text: 'preset identity' })
+
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: first }), SOUL_SECTION)).toBe('preset identity')
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: second }), SOUL_SECTION)).toBeUndefined()
+    expect(ctx.settings.describe().find(entry => entry.ns === Soul.SOUL_SETTINGS_NAMESPACE)?.base)
+      .toMatchObject({ enabled: true, text: 'base identity' })
+    await ctx.fiber.dispose()
+  })
+
   it('rejects an unscoped mount, which would publish a process-global soul', async () => {
     const ctx = await harness('deployment identity')
 

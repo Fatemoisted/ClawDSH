@@ -2,7 +2,7 @@
 
 English | [中文](feature-gui-web.zh.md)
 
-- **Status**: the ClawDSH product shell and read-only capability overview are implemented; editable Settings and semantic Activity records are not available
+- **Status**: the ClawDSH product shell, capability overview, and editable Settings control plane are implemented; semantic Activity records are not available
 - **Assembly**: `packages/openclaw/preset-openclaw/product-shell/`
 - **Product role**: the local ClawDSH frontend alongside Gateway-connected messaging frontends
 
@@ -33,18 +33,20 @@ Conversation loads the complete stock dsh Client plugin graph from the public bo
 
 The browser, Host runtime, and shared protocol form a nested non-workspace build below `preset-openclaw/product-shell/`. The build emits the browser application into the runtime distribution and uses Vite base `/clawdsh/`. `tools/link-clawdsh.sh` refuses to install the development profile until both runtime and browser artifacts exist, then links the runtime as `@clawdsh/dsh-product-runtime`.
 
-## Read-only control plane
+## Local control plane
 
-The frozen protocol-v1 Connection channel is `/clawdsh-rpc`. It is registered with loopback-only authority, so a configured trusted host cannot call it. Every request is an exact `{ version: 1 }` object; unknown fields, versions, endpoints, and response fields fail validation. The implemented methods are:
+The frozen protocol-v1 Connection channel is `/clawdsh-rpc`. It is registered with loopback-only authority, so a configured trusted host cannot call it. Every request is an exact versioned object; unknown fields, versions, endpoints, response fields, namespaces, setting paths, credential ids, and prototype-pollution path segments fail validation. The implemented methods are:
 
-- `bootstrap/get`, which returns the product identity, stable routes, and read-only/local-control flags.
+- `bootstrap/get`, which returns the product identity, stable routes, and the local read-write control mode.
 - `capabilities/list`, which returns JSON-only product capabilities, sanitized Loader evidence, and the locked OpenClaw channel catalog.
+- `settings/describe`, `settings/mutate`, and `settings/reset`, which expose only product-allowlisted schemas and fields with optimistic revisions.
+- `credentials/describe`, `credentials/set`, and `credentials/unset`, which expose secret-free state and write-only mutation for allowlisted dsh-owned references.
 
-The control runtime returns data-transfer objects rather than live Cordis objects. The browser also refuses product-control calls when the Connection is not loopback. Remote trusted-host pages can continue to use the Harness conversation, but ClawDSH Settings and Activity control data remain local-only.
+The control runtime returns data-transfer objects rather than live Cordis objects. The browser also refuses product-control calls when the Connection is not loopback. Remote trusted-host pages can continue to use the Harness conversation, but ClawDSH Settings, credentials, and Activity control data remain local-only.
 
 ## Capability overview
 
-ClawDSH Settings is currently a read-only overview. It shows Soul, Channels, Memory, Skills Hub, Automation, and Activity with dependencies, effect timing, component packages, and Loader state. It also presents a complete read-only Loader inventory for diagnosis. It provides no enable, disable, save, reset, arbitrary Loader mutation, or credential operation.
+ClawDSH Settings shows Soul, Channels, Memory, Skills Hub, Automation, and Activity with dependencies, effect timing, component packages, and Loader state. It retains a complete read-only Loader inventory for diagnosis, while editable capability fields use product-owned Settings namespaces rather than arbitrary Loader mutation.
 
 Loader composition state and channel-support evidence are separate concepts:
 
@@ -57,11 +59,25 @@ Channels contain three components: Channel Protocol (`@clawdsh/dsh-channel`), Ag
 
 Package provenance follows one fixed mapping: `@clawdsh/*` is ClawDSH, `@deepseek-ai/*` and `cordis:*` are Platform, and every other source is Community.
 
-## Activity and Settings gaps
+## Settings semantics
+
+The fixed namespaces are `clawdsh-soul`, `clawdsh-channel-agent`, `clawdsh-channel-openclaw`, `clawdsh-memory`, `clawdsh-embeddings-ark`, `clawdsh-skills-hub`, `clawdsh-automation`, and the managed `clawdsh-activity` placeholder. Channel Protocol is required infrastructure and has no user namespace. A server-owned manifest controls field order, copy, editor selection, dependencies, and whether each exact field is editable or installer-managed; the browser cannot expand this allowlist.
+
+Each capability registers its existing Config schema. Values resolve in `schema default → profile base → user settings` order. Reset removes only the namespace's user layer. A mutation carries `expectedRevision` and a bounded, non-empty set of distinct `set` or `unset` operations; the Host validates and persists the complete set atomically. A stale write returns `settings-conflict` without merge or retry. Responses distinguish `desiredRevision` from `runtimeRevision`, calculate `restartRequired` from desired and runtime values, and label effect timing as `live`, `new-session`, `next-call`, or `restart`.
+
+Optional business plugins stay in Loader composition so their schemas remain available. Their `enabled` field controls effects at mount: disabled Memory registers no prompt, tools, watcher, or flush, disabled Skills Hub registers no provider, and disabled Automation creates no timer, runtime, or Automation Session. Soul changes apply to new Sessions. Channel Agent is required and remains network-inert by itself.
+
+OpenClaw Gateway remains mounted with `enabled=false` without checking artifacts, binding a socket, starting a process, or registering a Provider. Enabling it runs managed-deployment preflight before persistence, so a failed preflight leaves the value and revision unchanged. Deployment identity, paths, extensions, and media limits remain visible but read-only. Gateway process state never implies that a platform account is ready, certified, or enabled.
+
+Ark Embeddings uses only the fixed `ARK_API_KEY` credential reference and resolves it per call. Credential RPC exposes configured and writable metadata but never a value. OpenClaw exclusively owns Feishu, Telegram, and other platform credentials; they never enter dsh credentials, Settings RPC, retained browser state, logs, Session files, or Activity storage.
+
+Each Settings card owns an independent draft and revision. The generic editor supports schema-described strings, numbers, booleans, enums, nested objects, and string arrays; Automation saves the complete `rules` field atomically, and Gateway uses a dedicated managed-deployment view. A conflict keeps the draft and disables another save until explicit reload. Credential inputs clear in `finally` after both success and failure, and responses retain only secret-free descriptors.
+
+## Activity gap
 
 The Activity route currently renders an explicit empty state. It does not read Session history, create sidecars, expose filters, or claim that semantic Prompt, Memory, Channel, Skill, or Automation records exist. Raw Trajectory remains available in Harness Advanced.
 
-The current RPC protocol does not implement `settings/describe`, `settings/mutate`, `settings/reset`, credential methods, or `activity/list`. No product setting is mutable, no secret crosses the ClawDSH browser control path, and no `@clawdsh/dsh-activity` package is mounted. The broader Settings and Activity design remains proposal scope until those server, browser, persistence, and privacy behaviors ship together.
+The current RPC protocol does not implement `activity/list`, and no `@clawdsh/dsh-activity` package is mounted. Activity persistence, history projection, privacy mapping, degradation, filtering, and pagination remain proposal scope.
 
 ## Integration constraints
 
@@ -73,4 +89,4 @@ The current RPC protocol does not implement `settings/describe`, `settings/mutat
 
 ## Current verification
 
-The nested build has independent browser and runtime typechecks, focused tests, and build output checks. The real-profile keyless journey builds the nested application, installs it into an isolated dsh home, waits for the Loader-settled product URL, verifies all product destinations and the read-only overview, confirms unknown product routes render the product 404, and confirms `/` contains no ClawDSH product navigation. Identity coverage verifies the `clawdsh` preset and idempotent development installation.
+The nested build has independent browser and runtime typechecks, focused tests, and build output checks. The real-profile keyless journey builds the nested application, installs it into an isolated dsh home, waits for the Loader-settled product URL, verifies all product destinations and capability namespaces, confirms Gateway is disabled and Ark is unconfigured, confirms unknown product routes render the product 404, and confirms `/` contains no ClawDSH product navigation. Focused protocol, runtime, and browser coverage verifies strict requests, mutation and reset, stale revisions, restart state, managed fields, independent drafts, preflight-before-persist behavior, secret-free responses, credential cleanup, the `clawdsh` preset, and idempotent development installation.

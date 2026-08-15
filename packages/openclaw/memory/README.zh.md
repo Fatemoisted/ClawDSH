@@ -21,6 +21,7 @@
 - id: memory
   name: '@clawdsh/dsh-memory'
   config:
+    enabled: true                 # false registers no prompt, tools, watcher, or flush hooks
     root: /abs/path/to/memory      # 必配：记忆根目录（fail-loud）
     # chunkSizeChars: 1600          # chunk 字符预算
     # chunkOverlapChars: 160        # 相邻 chunk 句子对齐重叠
@@ -38,6 +39,8 @@
     #   prompt: 'Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY.'
 ```
 
+`clawdsh-memory` 设置 namespace 在重启时生效：启动时依次合并 schema 默认值、profile base 与用户分节。提交修改只改变 desired value；运行中的 Memory 注册保持不变，直到进程重启。`enabled: false` 会在创建 prompt、tools、watcher、index 或 flush hooks 之前返回。
+
 写入规约（由指引段教给模型）：稳定事实进 `MEMORY.md`，运行笔记追加到 `memory/YYYY-MM-DD.md`，只经文件工具、只追加不改写历史。
 
 ## 设计要点
@@ -47,6 +50,7 @@
 - **路径白名单 + 双保险**：`isMemoryPath`（`MEMORY.md` | `memory/<file>.md`，拒绝绝对路径与 `..`）+ `fs.contains(root, target)` 在解析操作处 enforcement；
 - **fail-loud 文化**：root 必配、无 embeddings provider、路径逃逸、维度漂移（provider 侧）全部响亮失败；
 - **dispose 回卷**：段与两工具注册全部走 `ctx.effect`，卸载即移除（测试覆盖）。
+- **关闭即无副作用**：`enabled: false` 会在创建 prompt、tools、watcher、index 或 flush hooks 之前返回。
 
 ## 变更说明
 

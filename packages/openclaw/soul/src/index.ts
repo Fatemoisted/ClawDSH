@@ -23,9 +23,10 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Context } from '@deepseek-ai/cordis'
+import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { scopeOf } from '@deepseek-ai/dsh-scope'
+import { settingsNamespace, type SettingsProvider } from '@deepseek-ai/dsh-settings'
 import { PERSONA_ORDER, PERSONA_SECTION } from '@deepseek-ai/dsh-system-prompt'
 
 export { PERSONA_ORDER, PERSONA_SECTION }
@@ -35,14 +36,19 @@ export const SOUL_SECTION = 'clawdsh:soul'
 /** Order band: right after the order-0 deployment persona, before tool guidance (100–199). */
 export const SOUL_ORDER = 10
 
+/** User-settings namespace owned by the ClawDSH Soul host singleton. */
+export const SOUL_SETTINGS_NAMESPACE = settingsNamespace('clawdsh-soul')
+
 /** Cordis plugin name. */
 export const name = 'soul'
 
-/** The prompt registry this row contributes to. */
-export const inject = ['systemPrompt']
+/** The prompt registry and Host settings snapshot this session row requires. */
+export const inject = ['systemPrompt', 'clawdshSoulSettings']
 
 /** Plugin config: where the soul text comes from and how it lands. */
 export interface Config {
+  /** Whether new agent scopes receive a Soul prompt contribution. */
+  enabled?: boolean
   /**
    * Path to a soul file (markdown). Wins over `text`. A relative path resolves
    * against the mount tree's `ctx.baseUrl` — the preset composition directory
@@ -62,11 +68,67 @@ export interface Config {
 
 /** Runtime schema for the soul row. */
 export const Config: z<Config> = z.object({
+  enabled: z.boolean().default(true),
   source: z.string().default(''),
   text: z.string().default(''),
   mode: z.union([z.const('replace'), z.const('append')]).default('append'),
   includeRuntimeContext: z.boolean().default(true),
 })
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Host singleton that resolves the Soul settings snapshot for a new agent scope. */
+    clawdshSoulSettings: SoulSettingsHost
+  }
+}
+
+/**
+ * Host-owned Soul settings registration. Agent-scope Soul rows query it once
+ * at mount, so a committed change affects only subsequently mounted sessions.
+ */
+export class SoulSettingsHost extends Service {
+  static inject = ['settings']
+  static Config: z<Config> = Config
+
+  private readonly settings: SettingsProvider | undefined
+
+  /**
+   * @param ctx - Host context that may carry the optional settings provider.
+   * @param config - composition-layer defaults mirrored from the managed preset.
+   */
+  constructor(ctx: Context, config: Config = {}) {
+    super(ctx, 'clawdshSoulSettings')
+    this.settings = ctx.get('settings')
+    this.settings?.register(SOUL_SETTINGS_NAMESPACE, Config, {
+      base: config,
+      applies: 'live',
+      validate: validateSoulConfig,
+    })
+  }
+
+  /**
+   * Resolve one new agent scope from its preset entry plus the current user layer.
+   * @param entry - Soul entry from the agent preset being mounted.
+   * @returns the immutable-at-session-mount Soul settings snapshot.
+   */
+  forSession(entry: Config): Config {
+    const user = this.settings?.describe().find(descriptor => descriptor.ns === SOUL_SETTINGS_NAMESPACE)?.user
+    return Config({
+      ...entry,
+      ...(isRecord(user) ? user : {}),
+    })
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function validateSoulConfig(config: Config): void {
+  if ((config.source ?? '') === '' && (config.text ?? '') === '') {
+    throw new Error('soul: settings require a non-empty "source" file path or inline "text"')
+  }
+}
 
 /**
  * Mount the soul row for the calling context's agent scope.
@@ -77,12 +139,17 @@ export function apply(ctx: Context, config: Config): void {
   if (scopeOf(ctx) === undefined) {
     throw new Error('soul: mounts only inside an agent scope (an unscoped mount would publish a process-global soul)')
   }
-  const mode = config.mode ?? 'append'
+  if (config.mode !== undefined && config.mode !== 'replace' && config.mode !== 'append') {
+    throw new Error(`soul: unknown mode ${JSON.stringify(config.mode)}; expected "replace" or "append"`)
+  }
+  const resolved = ctx.get('clawdshSoulSettings')?.forSession(config) ?? Config(config)
+  if (!(resolved.enabled ?? true)) return
+  const mode = resolved.mode ?? 'append'
   if (mode !== 'replace' && mode !== 'append') {
     throw new Error(`soul: unknown mode ${JSON.stringify(mode)}; expected "replace" or "append"`)
   }
   const base = ctx.baseUrl === undefined ? undefined : fileURLToPath(ctx.baseUrl)
-  const text = config.source ? readFileSync(resolve(base ?? '.', config.source), 'utf8') : (config.text ?? '')
+  const text = resolved.source ? readFileSync(resolve(base ?? '.', resolved.source), 'utf8') : (resolved.text ?? '')
   if (text === '') {
     throw new Error('soul: config requires a non-empty "source" file path or inline "text"')
   }
@@ -92,5 +159,5 @@ export function apply(ctx: Context, config: Config): void {
     text,
     ...(mode === 'replace' ? { complete: true } : {}),
   }), 'soul.section()')
-  if (!(config.includeRuntimeContext ?? true)) ctx.systemPrompt.suppressRuntimeContext()
+  if (!(resolved.includeRuntimeContext ?? true)) ctx.systemPrompt.suppressRuntimeContext()
 }

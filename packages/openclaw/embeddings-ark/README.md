@@ -16,20 +16,21 @@ English | [中文](README.zh.md)
 - id: embeddings-ark
   name: '@clawdsh/dsh-embeddings-ark'
   config:
-    apiKeyEnv: ARK_API_KEY        # 默认值；经 credentials seam 每操作解析
-    # apiKey: 也可直接给字面量（不推荐——secret 会进配置面）
     baseURL: https://ark.cn-beijing.volces.com/api/v3   # 默认
     model: doubao-embedding-vision-251215               # 默认
     # timeoutMs: 30000            # 单次 embed 调用截止
     # maxConcurrentTexts: 4       # 每文本请求并发上限
 ```
 
-Credential layering (inheriting the dsh credentials seam): config `apiKey` literal → credentials seam (env variables / `$DSH_HOME/.credentials.yaml` / project `.env` / `$DSH_HOME/.env`) → launch environment snapshot. **The API key never enters the repo**: put it in the root `.env` (`ARK_API_KEY=...`, already gitignored). When no key resolves, `embed` fails loud, never silently degrades.
+The credential reference is fixed to `ARK_API_KEY`; neither literal keys nor alternate refs are accepted in plugin config. Each `embed` resolves it through the credentials seam, then the launch environment snapshot. The key therefore never enters settings, profile YAML, RPC, or the DOM. When no key resolves, `embed` fails loud, never silently degrades.
+
+The `clawdsh-embeddings-ark` namespace exposes endpoint/model/request tuning with restart semantics. Credential replacement remains next-call because the provider never caches the resolved value.
 
 ## Design notes
 
 - **Resolve credentials per operation**: never cache the key (credentials seam rule); a `.env` change takes effect without a remount;
 - **Response validation**: vectors non-empty and all finite; **cross-call dimension drift fails loud** — the server silently swapping models must not break the consumer's cosine comparability (measured 2048 dims; drift errors);
+- **Secret-safe failures**: HTTP response bodies and JSON parser diagnostics are never propagated because an endpoint that received the bearer credential could echo it; failures expose only fixed provider text and the HTTP status;
 - **Cooperative cancellation**: `AbortSignal.timeout(timeoutMs)` merged with the caller's signal, so tool timeout / session cancellation reaches HTTP directly;
 - **One request per text, bounded concurrency**: the multimodal endpoint embeds the whole input array as one multimodal item, batching is impossible — `embed(N)` runs a worker pool of at most `maxConcurrentTexts` (default 4) in-flight requests; each worker claims the next index, so results return in input order, and any failure rejects the whole call (the embeddings seam contract). In-flight requests are not force-cancelled on a sibling failure.
 
@@ -60,4 +61,4 @@ No prompt text is produced by this provider, so the prompt prefix and its KV cac
 - **Text input only**: the Ark endpoint is multimodal (image_url input type), this cycle only sends `type: "text"`; image embedding is deferred until a consumer needs it;
 - **No batching**: the endpoint cannot batch (one request per text), so large-corpus recall stays N requests; bounded concurrency (`maxConcurrentTexts`) amortizes it, and a partial-failure run leaves its in-flight siblings to settle (no force-cancel);
 - **No local model**: OpenClaw's local GGUF branch is not ported; offline deployment has no embedding capability (matching memory's no retrieval);
-- **No settings integration**: baseURL/model changes use patch + remount, no runtime settings section (`web-search-deepseek` has one; align later as needed).
+- **Restart-applied tuning**: base URL, model, timeout, and concurrency come from the startup settings snapshot; only credential changes take effect on the next call.

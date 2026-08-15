@@ -46,15 +46,127 @@ export interface OpenClawSupervisorConfig extends ChannelIpcConfig {
   readonly diagnosticBytes: number
 }
 
+/** Immutable result of a read-only managed deployment preflight. */
+export interface OpenClawPreflightResult {
+  /** Locked release selected by the managed production or canary track. */
+  readonly lock: OpenClawRuntimeLock
+  /** Resolved dedicated Node executable satisfying the locked host engine. */
+  readonly nodePath: string
+  /** Verified OpenClaw CLI and Gateway entrypoint. */
+  readonly executable: string
+}
+
+interface VerifiedOpenClawInstallation {
+  readonly lock: OpenClawRuntimeLock
+  readonly executable: string
+  readonly extensionRoots: ReadonlyMap<string, string>
+}
+
+/**
+ * Validate deployment scalars and path relationships without reading or mutating the host.
+ * @param config Fully explicit managed deployment inputs.
+ */
+export function validateOpenClawConfig(config: OpenClawSupervisorConfig): void {
+  validateConfig(config)
+}
+
+/**
+ * Verify managed files and fail-closed configuration without persistence, sockets, or subprocesses.
+ * @param config Fully explicit managed deployment inputs.
+ * @returns Completion after the complete read-only managed deployment validation passes.
+ */
+export async function validateOpenClawDeployment(config: OpenClawSupervisorConfig): Promise<void> {
+  await validateManagedInstallation(config)
+}
+
+/**
+ * Verify a managed deployment without binding IPC, creating directories, or starting the Gateway.
+ * @param ctx Cordis context providing bounded subprocess inspection.
+ * @param config Fully explicit managed deployment inputs.
+ * @returns Verified immutable inputs reusable by Gateway startup.
+ */
+export async function preflightOpenClawDeployment(
+  ctx: Context,
+  config: OpenClawSupervisorConfig,
+): Promise<OpenClawPreflightResult> {
+  const { executable, extensionRoots, lock } = await validateManagedInstallation(config)
+  const nodePath = await ctx.subprocess.resolveExecutable(config.nodePath)
+  await verifyNodeEngine(ctx, nodePath, lock, config)
+  const preflightEnvironment = bridgeEnvironment(config, lock, {
+    token: 'preflight-token-not-valid-for-runtime',
+    startupNonce: 'preflight-nonce-not-valid-for-runtime',
+  })
+  const validateOutput = await runChecked(
+    ctx,
+    [nodePath, executable, 'config', 'validate', '--json'],
+    config.hostRoot,
+    preflightEnvironment,
+    config,
+  )
+  requireJsonObject(validateOutput, 'OpenClaw config validation')
+  const inspectionOutput = await runChecked(
+    ctx,
+    [nodePath, executable, 'plugins', 'inspect', 'clawdsh-bridge', '--runtime', '--json'],
+    config.hostRoot,
+    preflightEnvironment,
+    config,
+  )
+  verifyRuntimeInspection(inspectionOutput)
+  for (const extension of config.extensions) {
+    const extensionOutput = await runChecked(
+      ctx,
+      [nodePath, executable, 'plugins', 'inspect', extension.pluginId, '--runtime', '--json'],
+      config.hostRoot,
+      preflightEnvironment,
+      config,
+    )
+    const expectedRoot = extensionRoots.get(extension.pluginId)
+    if (expectedRoot === undefined) throw new Error(`channel-openclaw: extension ${extension.pluginId} lost its verified package root`)
+    await verifyExtensionRuntimeInspection(extensionOutput, extension, expectedRoot)
+  }
+  return { lock, nodePath, executable }
+}
+
+/** Validate immutable managed installation state without invoking the installed runtime. */
+async function validateManagedInstallation(
+  config: OpenClawSupervisorConfig,
+): Promise<VerifiedOpenClawInstallation> {
+  validateConfig(config)
+  const lock = lockFor(config.track)
+  await requirePrivateDirectory(config.stateDir)
+  await requirePrivateDirectory(config.stagingRoot)
+  await requireContained(config.stateDir, config.configPath, 'configPath')
+  await requireContained(config.stateDir, config.endpoint, 'endpoint')
+  await requireContained(config.stateDir, config.stagingRoot, 'stagingRoot')
+  await verifyRuntimeInstallation(lock, config.runtimeRoot, config.hostRoot)
+  await verifyManagedHost(lock, config.artifactPath, config.hostRoot)
+  const extensionRoots = await verifyExtensionInstallations(config.extensions, config.stateDir, config.hostRoot)
+  await verifyFailClosedConfig(config.configPath, bridgeRootFor(lock), config.stateDir, config.extensions)
+  const executable = resolve(config.hostRoot, 'openclaw.mjs')
+  await requireOrdinaryFile(executable, 'OpenClaw entrypoint')
+  return { lock, executable, extensionRoots }
+}
+
 /** One verified Gateway process and its authenticated Provider endpoint. */
 export class OpenClawSupervisor {
   private disposePromise: Promise<void> | undefined
+  private stopping = false
+
+  /** Sanitized terminal state for the supervised process after startup succeeds. */
+  readonly done: Promise<'stopped' | 'failed'>
 
   private constructor(
     readonly provider: OpenClawChannelProvider,
     private readonly gateway: SubprocessHandle,
     private readonly shutdownGraceMs: number,
-  ) {}
+  ) {
+    const observeExit = (): 'stopped' | 'failed' => {
+      if (this.stopping) return 'stopped'
+      this.provider.beginShutdown()
+      return 'failed'
+    }
+    this.done = gateway.done.then(observeExit, observeExit)
+  }
 
   /**
    * Verify every immutable input, start the Gateway, and require its exact bridge handshake.
@@ -63,56 +175,8 @@ export class OpenClawSupervisor {
    * @returns Running supervised Gateway and authenticated Provider endpoint.
    */
   static async start(ctx: Context, config: OpenClawSupervisorConfig): Promise<OpenClawSupervisor> {
-    validateConfig(config)
-    const lock = lockFor(config.track)
-    await preparePrivateDirectory(config.stateDir)
-    await preparePrivateDirectory(config.stagingRoot)
+    const { executable, lock, nodePath } = await preflightOpenClawDeployment(ctx, config)
     await preparePrivateDirectory(resolve(config.stateDir, 'workspace'))
-    await requireContained(config.stateDir, config.configPath, 'configPath')
-    await requireContained(config.stateDir, config.endpoint, 'endpoint')
-    await requireContained(config.stateDir, config.stagingRoot, 'stagingRoot')
-    await verifyRuntimeInstallation(lock, config.runtimeRoot, config.hostRoot)
-    await verifyManagedHost(lock, config.artifactPath, config.hostRoot)
-    const extensionRoots = await verifyExtensionInstallations(config.extensions, config.stateDir, config.hostRoot)
-    const nodePath = await ctx.subprocess.resolveExecutable(config.nodePath)
-    await verifyNodeEngine(ctx, nodePath, lock, config)
-    const bridgeRoot = bridgeRootFor(lock)
-    await verifyFailClosedConfig(config.configPath, bridgeRoot, config.stateDir, config.extensions)
-    const preflightEnvironment = bridgeEnvironment(config, lock, {
-      token: 'preflight-token-not-valid-for-runtime',
-      startupNonce: 'preflight-nonce-not-valid-for-runtime',
-    })
-    const executable = resolve(config.hostRoot, 'openclaw.mjs')
-    await requireOrdinaryFile(executable, 'OpenClaw entrypoint')
-    const validateOutput = await runChecked(
-      ctx,
-      [nodePath, executable, 'config', 'validate', '--json'],
-      config.hostRoot,
-      preflightEnvironment,
-      config,
-    )
-    requireJsonObject(validateOutput, 'OpenClaw config validation')
-    const inspectionOutput = await runChecked(
-      ctx,
-      [nodePath, executable, 'plugins', 'inspect', 'clawdsh-bridge', '--runtime', '--json'],
-      config.hostRoot,
-      preflightEnvironment,
-      config,
-    )
-    verifyRuntimeInspection(inspectionOutput)
-    for (const extension of config.extensions) {
-      const extensionOutput = await runChecked(
-        ctx,
-        [nodePath, executable, 'plugins', 'inspect', extension.pluginId, '--runtime', '--json'],
-        config.hostRoot,
-        preflightEnvironment,
-        config,
-      )
-      const expectedRoot = extensionRoots.get(extension.pluginId)
-      if (expectedRoot === undefined) throw new Error(`channel-openclaw: extension ${extension.pluginId} lost its verified package root`)
-      await verifyExtensionRuntimeInspection(extensionOutput, extension, expectedRoot)
-    }
-
     let provider: OpenClawChannelProvider | undefined
     let gateway: SubprocessHandle | undefined
     try {
@@ -143,6 +207,7 @@ export class OpenClawSupervisor {
 
   /** Stop the Gateway tree before closing the IPC Provider and its durable ledger. */
   dispose(): Promise<void> {
+    this.stopping = true
     this.disposePromise ??= shutdownGateway(this.provider, this.gateway, this.shutdownGraceMs)
     return this.disposePromise
   }
@@ -189,6 +254,11 @@ function validateConfig(config: OpenClawSupervisorConfig): void {
 /** Create or validate a non-symlink directory inaccessible to other users. */
 async function preparePrivateDirectory(path: string): Promise<void> {
   await mkdir(path, { recursive: true, mode: 0o700 })
+  await requirePrivateDirectory(path)
+}
+
+/** Require an existing non-symlink directory inaccessible to other users. */
+async function requirePrivateDirectory(path: string): Promise<void> {
   const info = await lstat(path)
   if (!info.isDirectory() || info.isSymbolicLink() || (info.mode & 0o077) !== 0) {
     throw new Error(`channel-openclaw: private directory is not an ordinary 0700 directory: ${path}`)

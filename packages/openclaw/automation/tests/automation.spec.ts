@@ -19,7 +19,18 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionPersistenceJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import * as Automation from '../src/index.ts'
+
+class TestSettings extends SettingsProvider {
+  constructor(ctx: Context, private readonly store: Record<string, unknown>) { super(ctx) }
+  get writable(): boolean { return true }
+  protected load(): Promise<Record<string, unknown>> { return Promise.resolve(structuredClone(this.store)) }
+  protected persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
+    this.store[ns] = structuredClone(section)
+    return Promise.resolve()
+  }
+}
 
 /** Minimal scripted adapter: each model call consumes the next entry. */
 class ScriptedAdapter extends LlmAdapter {
@@ -63,8 +74,13 @@ function textReply(text: string): StreamChunk[] {
   ]
 }
 
-async function harness(adapter: ScriptedAdapter, persistenceRoot?: string): Promise<Context> {
+async function harness(
+  adapter: ScriptedAdapter,
+  persistenceRoot?: string,
+  settingsStore: Record<string, unknown> = {},
+): Promise<Context> {
   const ctx = new Context()
+  await ctx.plugin(TestSettings, settingsStore)
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt)
@@ -119,25 +135,54 @@ function runRecords(ctx: Context, id: string) {
 }
 
 describe('automation row', () => {
+  it('declares Settings as a required plugin dependency', () => {
+    expect(Automation.inject).toEqual(['agents', 'sessions', 'agentDefaultModel', 'settings'])
+  })
+
+  it('does not create a runtime, timer, or session while the restart setting is disabled', async () => {
+    const adapter = new ScriptedAdapter([textReply('must not run')])
+    const ctx = await harness(adapter, undefined, { 'clawdsh-automation': { enabled: false } })
+    contexts.push(ctx)
+    await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'disabled', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+    await settle()
+    expect(agentFor(ctx, 'disabled')).toBeUndefined()
+    expect(adapter.requests).toHaveLength(0)
+    expect(ctx.settings.describe().find(entry => entry.ns === Automation.AUTOMATION_SETTINGS_NAMESPACE))
+      .toMatchObject({ applies: 'restart', value: { enabled: false } })
+
+    await ctx.settings.update(Automation.AUTOMATION_SETTINGS_NAMESPACE, { enabled: true })
+    await settle()
+    expect(agentFor(ctx, 'disabled')).toBeUndefined()
+    expect(adapter.requests).toHaveLength(0)
+  })
+
   it('fails mount loudly on invalid rules, naming the rule', async () => {
     const ctx = await harness(new ScriptedAdapter([]))
     contexts.push(ctx)
     await expect(ctx.plugin(Automation, {
+      enabled: true,
       rules: [
         { id: 'ok-1', schedule: { kind: 'at', at: NOW }, message: 'x' },
         { id: 'ok-1', schedule: { kind: 'at', at: NOW }, message: 'y' },
       ],
     })).rejects.toThrow(/duplicate rule id "ok-1"/)
     await expect(ctx.plugin(Automation, {
+      enabled: true,
       rules: [{ id: 'bad-cron', schedule: { kind: 'cron', expr: 'not a cron' }, message: 'x' }],
     })).rejects.toThrow(/bad-cron.*invalid cron expression/)
     await expect(ctx.plugin(Automation, {
+      enabled: true,
       rules: [{ id: 'bad-tz', schedule: { kind: 'cron', expr: '0 9 * * *', timeZone: 'Mars/Olympus' }, message: 'x' }],
     })).rejects.toThrow(/bad-tz.*invalid timezone/)
     await expect(ctx.plugin(Automation, {
+      enabled: true,
       rules: [{ id: 'bad-at', schedule: { kind: 'at', at: 'not a time' }, message: 'x' }],
     })).rejects.toThrow(/bad-at.*invalid "at" time/)
     await expect(ctx.plugin(Automation, {
+      enabled: true,
       rules: [{ id: 'bad id', schedule: { kind: 'at', at: NOW }, message: 'x' }],
     })).rejects.toThrow(/bad id.*invalid id/)
   })
@@ -148,6 +193,7 @@ describe('automation row', () => {
     contexts.push(ctx)
     vi.setSystemTime(new Date('2026-08-05T08:59:50.000Z'))
     await ctx.plugin(Automation, {
+      enabled: true,
       rules: [{ id: 'digest', name: 'Daily', schedule: { kind: 'cron', expr: '0 9 * * *', timeZone: 'UTC' }, message: 'post the digest' }],
     })
     await settle()
@@ -174,6 +220,7 @@ describe('automation row', () => {
     const ctx = await harness(adapter)
     contexts.push(ctx)
     await ctx.plugin(Automation, {
+      enabled: true,
       rules: [{ id: 'slow', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
     await settle()
@@ -193,6 +240,7 @@ describe('automation row', () => {
     contexts.push(ctx)
     vi.setSystemTime(new Date('2026-08-05T09:00:30.000Z'))
     await ctx.plugin(Automation, {
+      enabled: true,
       rules: [{ id: 'minutely', schedule: { kind: 'cron', expr: '*/1 * * * *', timeZone: 'UTC' }, message: 'tick' }],
     })
     await settle()
@@ -220,6 +268,7 @@ describe('automation row', () => {
     const first = await harness(new ScriptedAdapter([textReply('run one')]), root)
     contexts.push(first)
     await first.plugin(Automation, {
+      enabled: true,
       rules: [{ id: 'daily', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
     await vi.waitFor(() => expect(runRecords(first, 'daily')).toEqual(['started', 'ok']), { timeout: 5_000 })
@@ -230,6 +279,7 @@ describe('automation row', () => {
     const second = await harness(new ScriptedAdapter([textReply('run two')]), root)
     contexts.push(second)
     await second.plugin(Automation, {
+      enabled: true,
       rules: [{ id: 'daily', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
     // The remounted rule fires once more (anchor reset), and the resumed session carries run one's records.
@@ -248,7 +298,7 @@ describe('automation row', () => {
     const first = await harness(new ScriptedAdapter([textReply('once')]), root)
     contexts.push(first)
     const rules: Automation.Config['rules'] = [{ id: 'once', schedule: { kind: 'at', at: '2026-08-05T08:00:00.000Z' }, message: 'run once' }]
-    await first.plugin(Automation, { rules })
+    await first.plugin(Automation, { enabled: true, rules })
     await vi.waitFor(() => expect(runRecords(first, 'once')).toEqual(['started', 'ok']), { timeout: 5_000 })
 
     await first.fiber.dispose()
@@ -257,7 +307,7 @@ describe('automation row', () => {
     const secondAdapter = new ScriptedAdapter([])
     const second = await harness(secondAdapter, root)
     contexts.push(second)
-    await second.plugin(Automation, { rules })
+    await second.plugin(Automation, { enabled: true, rules })
     // The mount-time once-guard skips the completed rule; give any hypothetical fire a window, then assert nothing ran.
     await new Promise(resolve => setTimeout(resolve, 300))
     expect(secondAdapter.requests).toHaveLength(0)
@@ -269,6 +319,7 @@ describe('automation row', () => {
     const ctx = await harness(adapter)
     contexts.push(ctx)
     await ctx.plugin(Automation, {
+      enabled: true,
       rules: [{ id: 'flaky', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
     await settle()
@@ -285,6 +336,7 @@ describe('automation row', () => {
     const ctx = await harness(adapter)
     contexts.push(ctx)
     const fiber = await ctx.plugin(Automation, {
+      enabled: true,
       rules: [{ id: 'stops', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
     await settle()

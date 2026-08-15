@@ -6,6 +6,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Entry } from '@deepseek-ai/cordis-plugin-loader'
 import type { ConnectionRpcHandler } from '@deepseek-ai/dsh-client-connection'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import z from '@deepseek-ai/schemastery'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   CLAWDSH_READ_REQUEST,
@@ -61,6 +62,34 @@ function entry(
   } as unknown as Entry
 }
 
+function controlServices(): { settings: object; credentials: object } {
+  let activity: {
+    ns: string
+    schema: unknown
+    value: unknown
+    revision: number
+    base: unknown
+    applies: 'restart'
+  } | undefined
+  return {
+    settings: {
+      register(ns: string, schema: z, options: { base: unknown; applies: 'restart' }) {
+        activity = {
+          ns,
+          schema: schema.toJSON(),
+          value: schema(options.base),
+          revision: 0,
+          base: options.base,
+          applies: options.applies,
+        }
+        return {}
+      },
+      describe: () => activity === undefined ? [] : [activity],
+    },
+    credentials: {},
+  }
+}
+
 afterEach(() => {
   vi.restoreAllMocks()
 })
@@ -92,7 +121,11 @@ describe('ClawDSH product runtime projections', () => {
       'Agent Bridge',
       'OpenClaw Gateway Provider',
     ])
-    expect(response.capabilities.some(item => item.id === 'activity')).toBe(true)
+    expect(response.capabilities.find(item => item.id === 'activity')).toMatchObject({
+      required: true,
+      state: 'misconfigured',
+      components: [{ required: true }],
+    })
     const soul = response.capabilities.find(item => item.id === 'soul')
     expect(soul).toMatchObject({ state: 'active', components: [{ stateSource: 'preset', loaderEntries: [] }] })
     expect(channels?.dependencies).toEqual(['Channel Protocol', 'Agent Bridge'])
@@ -105,11 +138,97 @@ describe('ClawDSH product runtime projections', () => {
       entry('channel', '@clawdsh/dsh-channel', 2),
       entry('channel-agent', '@clawdsh/dsh-channel-agent', 3),
       entry('channel-openclaw', '@clawdsh/dsh-channel-openclaw', 2),
-    ], 'disabled')
+    ], 'disabled', 'active')
 
     const channels = response.capabilities.find(item => item.id === 'channels')
     expect(channels?.components.find(component => component.id === 'openclaw-gateway-provider')?.state).toBe('active')
     expect(channels?.state).toBe('failed')
+  })
+
+  it('does not hide missing or failed required Channel infrastructure behind a disabled Gateway', () => {
+    const missing = internals.capabilitiesResponse([
+      entry('clawdsh-communication-plane', 'cordis:group', 2, false, true),
+      entry('channel', '@clawdsh/dsh-channel', 2),
+      entry('channel-openclaw', '@clawdsh/dsh-channel-openclaw', 2),
+    ], 'active', 'disabled')
+    expect(missing.capabilities.find(item => item.id === 'channels')?.state).toBe('misconfigured')
+
+    const failed = internals.capabilitiesResponse([
+      entry('clawdsh-communication-plane', 'cordis:group', 2, false, true),
+      entry('channel', '@clawdsh/dsh-channel', 2),
+      entry('channel-agent', '@clawdsh/dsh-channel-agent', 3),
+      entry('channel-openclaw', '@clawdsh/dsh-channel-openclaw', 2),
+    ], 'active', 'disabled')
+    expect(failed.capabilities.find(item => item.id === 'channels')?.state).toBe('failed')
+  })
+
+  it('keeps Loader composition separate from the disabled Gateway lifecycle', () => {
+    const response = internals.capabilitiesResponse([
+      entry('clawdsh-communication-plane', 'cordis:group', 2, false, true),
+      entry('channel', '@clawdsh/dsh-channel', 2),
+      entry('channel-agent', '@clawdsh/dsh-channel-agent', 2),
+      entry('channel-openclaw', '@clawdsh/dsh-channel-openclaw', 2),
+    ], 'active', 'disabled')
+
+    const loader = response.loaderInventory.find(item => item.localId === 'channel-openclaw')
+    const channels = response.capabilities.find(item => item.id === 'channels')
+    expect(loader?.state).toBe('active')
+    expect(channels?.state).toBe('disabled')
+    expect(channels?.components.find(component => component.id === 'openclaw-gateway-provider')?.state)
+      .toBe('disabled')
+    expect(new Set(channels?.channels?.map(channel => channel.support))).toEqual(new Set(['cataloged']))
+  })
+
+  it('uses captured enablement instead of active Loader Fibers for optional capabilities', () => {
+    const response = internals.capabilitiesResponse([
+      entry('memory', '@clawdsh/dsh-memory', 2),
+      entry('skills-hub', '@clawdsh/dsh-skills-hub', 2),
+      entry('automation', '@clawdsh/dsh-automation', 2),
+      entry('activity', '@clawdsh/dsh-activity', 2),
+    ], 'active', 'disabled', {
+      soul: false,
+      memory: false,
+      skills: false,
+      automation: false,
+      activity: true,
+    })
+
+    expect(response.capabilities.find(item => item.id === 'soul')?.state).toBe('disabled')
+    expect(response.capabilities.find(item => item.id === 'memory')?.state).toBe('disabled')
+    expect(response.capabilities.find(item => item.id === 'skills')?.state).toBe('disabled')
+    expect(response.capabilities.find(item => item.id === 'automation')?.state).toBe('disabled')
+    expect(response.capabilities.find(item => item.id === 'activity')?.state).toBe('active')
+    expect(response.loaderInventory.every(item => item.state === 'active')).toBe(true)
+  })
+
+  it('requires Ark Embeddings before an enabled Memory capability can be active', () => {
+    const missing = internals.capabilitiesResponse([
+      entry('memory', '@clawdsh/dsh-memory', 2),
+    ], 'active', 'disabled')
+    const missingMemory = missing.capabilities.find(item => item.id === 'memory')
+    expect(missingMemory?.components.find(component => component.id === 'ark-embeddings'))
+      .toMatchObject({ required: true, state: 'misconfigured' })
+    expect(missingMemory?.state).toBe('misconfigured')
+
+    const failed = internals.capabilitiesResponse([
+      entry('memory', '@clawdsh/dsh-memory', 2),
+      entry('embeddings-ark', '@clawdsh/dsh-embeddings-ark', 3),
+    ], 'active', 'disabled')
+    expect(failed.capabilities.find(item => item.id === 'memory')?.state).toBe('failed')
+  })
+
+  it('accepts only internally consistent Gateway control snapshots', async () => {
+    const stateFor = (snapshot: unknown): Promise<string> => internals.openClawGatewayState({
+      get: (name: string) => name === 'clawdshOpenClawControl' ? { snapshot: () => snapshot } : undefined,
+    } as unknown as Context)
+
+    await expect(stateFor({ enabled: false, state: 'disabled' })).resolves.toBe('disabled')
+    await expect(stateFor({ enabled: true, state: 'starting' })).resolves.toBe('starting')
+    await expect(stateFor({ enabled: true, state: 'active' })).resolves.toBe('active')
+    await expect(stateFor({ enabled: true, state: 'failed' })).resolves.toBe('failed')
+    await expect(stateFor({ enabled: false, state: 'active' })).resolves.toBe('misconfigured')
+    await expect(stateFor({ enabled: false, state: 'failed' })).resolves.toBe('misconfigured')
+    await expect(stateFor({ enabled: true, state: 'certified' })).resolves.toBe('misconfigured')
   })
 
   it('reports absent required Channel children as disabled under the disabled parent group', () => {
@@ -142,6 +261,31 @@ describe('ClawDSH product runtime projections', () => {
 })
 
 describe('ClawDSH product routes', () => {
+  it('fails synchronously before route or readiness registration when the product index is unavailable', () => {
+    const previousResolver = internals.resolveDistIndex
+    internals.resolveDistIndex = () => {
+      throw new Error('clawdsh-product-runtime: browser assets are not built')
+    }
+    const register = vi.fn()
+    const handle = vi.fn()
+    const awaitLoader = vi.fn()
+    const ctx = {
+      webServer: { register, applyIndexTaps: (html: string) => html },
+      connection: { rpc: { handle } },
+      loader: { entries: () => [], await: awaitLoader },
+      effect: vi.fn(),
+    } as unknown as Context
+
+    try {
+      expect(() => apply(ctx)).toThrow('browser assets are not built')
+      expect(register).not.toHaveBeenCalled()
+      expect(handle).not.toHaveBeenCalled()
+      expect(awaitLoader).not.toHaveBeenCalled()
+    } finally {
+      internals.resolveDistIndex = previousResolver
+    }
+  })
+
   it('redirects canonically and applies Host index transforms to SPA fallbacks', async () => {
     const temporary = mkdtempSync(join(tmpdir(), 'clawdsh-product-routes-'))
     const index = join(temporary, 'index.html')
@@ -210,6 +354,7 @@ describe('ClawDSH control channel and readiness', () => {
       register: () => () => undefined,
       applyIndexTaps: (html: string) => html,
     }
+    const services = controlServices()
     const ctx = {
       webServer,
       connection: {
@@ -236,7 +381,10 @@ describe('ClawDSH control channel and readiness', () => {
         return disposer
       },
       get(service: string) {
-        return service === 'webServer' ? webServer : undefined
+        if (service === 'webServer') return webServer
+        if (service === 'settings') return services.settings
+        if (service === 'credentials') return services.credentials
+        return undefined
       },
     } as unknown as Context
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
@@ -251,7 +399,23 @@ describe('ClawDSH control channel and readiness', () => {
         CLAWDSH_READ_REQUEST,
         new AbortController().signal,
       )
-      expect(bootstrap).toMatchObject({ ok: true, value: { product: { id: 'clawdsh' } } })
+      expect(bootstrap).toMatchObject({
+        ok: true,
+        value: {
+          product: { id: 'clawdsh' },
+          controlMode: 'local-read-write',
+          runtimeState: 'starting',
+        },
+      })
+      const startingCapabilities = await handler?.(
+        CLAWDSH_RPC_ENDPOINTS.capabilitiesList,
+        CLAWDSH_READ_REQUEST,
+        new AbortController().signal,
+      )
+      expect(startingCapabilities).toMatchObject({
+        ok: false,
+        error: { code: 'internal', message: 'ClawDSH control is starting; retry shortly' },
+      })
       const invalid = await handler?.(
         CLAWDSH_RPC_ENDPOINTS.capabilitiesList,
         { version: 1, extra: true },
@@ -261,10 +425,185 @@ describe('ClawDSH control channel and readiness', () => {
 
       settle()
       await settled
-      await Promise.resolve()
-      await Promise.resolve()
-      expect(log).toHaveBeenCalledOnce()
+      await vi.waitFor(() => { expect(log).toHaveBeenCalledOnce() })
       expect(log).toHaveBeenCalledWith('clawdsh web: http://127.0.0.1:4567/clawdsh/')
+      const readyBootstrap = await handler?.(
+        CLAWDSH_RPC_ENDPOINTS.bootstrapGet,
+        CLAWDSH_READ_REQUEST,
+        new AbortController().signal,
+      )
+      expect(readyBootstrap).toMatchObject({ ok: true, value: { runtimeState: 'ready' } })
+    } finally {
+      internals.resolveDistIndex = previousResolver
+      await Promise.all(disposers.map(dispose => dispose()))
+      rmSync(temporary, { recursive: true, force: true })
+    }
+  })
+
+  it('reads current Soul desire and Gateway health on every capabilities request', async () => {
+    const temporary = mkdtempSync(join(tmpdir(), 'clawdsh-product-dynamic-capabilities-'))
+    const index = join(temporary, 'index.html')
+    writeFileSync(index, '<main>shell</main>')
+    const previousResolver = internals.resolveDistIndex
+    internals.resolveDistIndex = () => index
+    const disposers: Array<() => void | Promise<void>> = []
+    let handler: ConnectionRpcHandler | undefined
+    const soulSchema = z.object({ enabled: z.boolean().default(true) })
+    let soulEnabled = true
+    let soulRevision = 0
+    let soulUser: { enabled: boolean } | undefined
+    let activity: {
+      ns: string
+      schema: unknown
+      value: unknown
+      revision: number
+      base: unknown
+      applies: 'restart'
+    } | undefined
+    const settings = {
+      register(ns: string, schema: z, options: { base: unknown; applies: 'restart' }) {
+        activity = {
+          ns,
+          schema: schema.toJSON(),
+          value: schema(options.base),
+          revision: 0,
+          base: options.base,
+          applies: options.applies,
+        }
+        return {}
+      },
+      describe: vi.fn(() => [{
+        ns: 'clawdsh-soul',
+        schema: soulSchema.toJSON(),
+        value: { enabled: soulEnabled },
+        revision: soulRevision,
+        base: { enabled: true },
+        ...(soulUser === undefined ? {} : { user: soulUser }),
+        applies: 'new-session' as const,
+      }, ...(activity === undefined ? [] : [activity])]),
+      mutate: vi.fn(async (
+        _ns: unknown,
+        operations: Array<{ op: string; path: string[]; value?: unknown }>,
+        expected: number,
+      ) => {
+        expect(expected).toBe(soulRevision)
+        expect(operations).toEqual([{ op: 'set', path: ['enabled'], value: false }])
+        soulEnabled = false
+        soulUser = { enabled: false }
+        soulRevision += 1
+      }),
+      replace: vi.fn(async (_ns: unknown, section: object, expected: number) => {
+        expect(expected).toBe(soulRevision)
+        expect(section).toEqual({})
+        soulEnabled = true
+        soulUser = undefined
+        soulRevision += 1
+      }),
+    }
+    let gatewaySnapshot: { enabled: boolean; state: 'disabled' | 'failed' } = {
+      enabled: false,
+      state: 'disabled',
+    }
+    const snapshot = vi.fn(() => gatewaySnapshot)
+    const entries = [
+      entry('clawdsh-communication-plane', 'cordis:group', 2, false, true),
+      entry('channel', '@clawdsh/dsh-channel', 2),
+      entry('channel-agent', '@clawdsh/dsh-channel-agent', 2),
+      entry('channel-openclaw', '@clawdsh/dsh-channel-openclaw', 2),
+    ]
+    const webServer = {
+      port: 4568,
+      register: () => () => undefined,
+      applyIndexTaps: (html: string) => html,
+    }
+    const agentPresets = {
+      defaultId: 'clawdsh',
+      resolve: async () => ({ id: 'clawdsh', trust: 'user', path: '/preset/agent.cordis.yml' }),
+      read: async () => "- id: soul\n  name: '@clawdsh/dsh-soul'\n",
+      standingKeyFor: async () => 'standing-key',
+    }
+    const ctx = {
+      webServer,
+      connection: {
+        rpc: {
+          handle(_channel: string, next: ConnectionRpcHandler) {
+            handler = next
+            return async () => undefined
+          },
+        },
+      },
+      loader: { entries: () => entries, await: async () => undefined },
+      effect(factory: () => (() => void | Promise<void>) | void) {
+        const disposer = factory()
+        if (disposer !== undefined) disposers.push(disposer)
+        return disposer
+      },
+      get(service: string) {
+        if (service === 'webServer') return webServer
+        if (service === 'settings') return settings
+        if (service === 'credentials') return {}
+        if (service === 'agentPresets') return agentPresets
+        if (service === 'clawdshOpenClawControl') return { snapshot }
+        return undefined
+      },
+    } as unknown as Context
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const call = async (endpoint: string, payload: unknown): Promise<unknown> => handler?.(
+      endpoint,
+      payload,
+      new AbortController().signal,
+    )
+
+    try {
+      apply(ctx)
+      await vi.waitFor(() => { expect(log).toHaveBeenCalledOnce() })
+      expect(snapshot).not.toHaveBeenCalled()
+
+      const initial = await call(CLAWDSH_RPC_ENDPOINTS.capabilitiesList, CLAWDSH_READ_REQUEST)
+      expect(initial).toMatchObject({
+        ok: true,
+        value: {
+          capabilities: expect.arrayContaining([
+            expect.objectContaining({ id: 'soul', state: 'active' }),
+            expect.objectContaining({ id: 'channels', state: 'disabled' }),
+          ]),
+        },
+      })
+
+      await expect(call(CLAWDSH_RPC_ENDPOINTS.settingsMutate, {
+        version: 1,
+        namespace: 'clawdsh-soul',
+        expectedRevision: 0,
+        operations: [{ op: 'set', path: ['enabled'], value: false }],
+      })).resolves.toMatchObject({ ok: true })
+      gatewaySnapshot = { enabled: true, state: 'failed' }
+      const changed = await call(CLAWDSH_RPC_ENDPOINTS.capabilitiesList, CLAWDSH_READ_REQUEST)
+      expect(changed).toMatchObject({
+        ok: true,
+        value: {
+          capabilities: expect.arrayContaining([
+            expect.objectContaining({ id: 'soul', state: 'disabled' }),
+            expect.objectContaining({ id: 'channels', state: 'failed' }),
+          ]),
+        },
+      })
+
+      await expect(call(CLAWDSH_RPC_ENDPOINTS.settingsReset, {
+        version: 1,
+        namespace: 'clawdsh-soul',
+        expectedRevision: 1,
+      })).resolves.toMatchObject({ ok: true })
+      const reset = await call(CLAWDSH_RPC_ENDPOINTS.capabilitiesList, CLAWDSH_READ_REQUEST)
+      expect(reset).toMatchObject({
+        ok: true,
+        value: {
+          capabilities: expect.arrayContaining([
+            expect.objectContaining({ id: 'soul', state: 'active' }),
+            expect.objectContaining({ id: 'channels', state: 'failed' }),
+          ]),
+        },
+      })
+      expect(snapshot).toHaveBeenCalledTimes(3)
     } finally {
       internals.resolveDistIndex = previousResolver
       await Promise.all(disposers.map(dispose => dispose()))
@@ -281,6 +620,7 @@ describe('ClawDSH control channel and readiness', () => {
       internals.resolveDistIndex = () => index
       const disposers: Array<() => void | Promise<void>> = []
       const webServer = { port: 4567, register: () => () => undefined, applyIndexTaps: (html: string) => html }
+      const services = controlServices()
       const ctx = {
         webServer,
         connection: { rpc: { handle: () => async () => undefined } },
@@ -294,7 +634,12 @@ describe('ClawDSH control channel and readiness', () => {
           if (disposer !== undefined) disposers.push(disposer)
           return disposer
         },
-        get: (service: string) => service === 'webServer' ? webServer : undefined,
+        get: (service: string) => {
+          if (service === 'webServer') return webServer
+          if (service === 'settings') return services.settings
+          if (service === 'credentials') return services.credentials
+          return undefined
+        },
       } as unknown as Context
       try {
         apply(ctx)

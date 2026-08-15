@@ -4,17 +4,17 @@ Status: proposed
 
 English | [中文](2026-08-15-clawdsh-product-shell.zh.md)
 
-The product posture is accepted by [ADR-0007](../../../../docs/adr/0007-clawdsh-local-gui-product.md), and the user-facing target is defined by the [ClawDSH local GUI feature spec](../../../../docs/specs/feature-gui-web.md).
+The product posture is accepted by [ADR-0007](../../../../docs/adr/0007-clawdsh-local-gui-product.md), and the user-facing target is defined by the [ClawDSH local GUI feature spec](../../../../docs/specs/feature-gui-web.md). The [product-shell runtime](../../implemented/feature/2026-08-15-clawdsh-product-shell-runtime.md) and [Settings control plane](../../implemented/feature/2026-08-15-clawdsh-settings-control-plane.md) implement those portions of this design; this Note remains proposed for semantic Activity.
 
 ## Problem
 
-The [current GUI assembly](../../implemented/feature/2026-08-15-openclaw-gui-dsh-web-app.md) correctly reuses the stock dsh Web application and changes only the default agent preset. It proves that one local browser conversation can run Soul, Memory, Skills, channels, and the standard tools, but it exposes ClawDSH only as a preset name inside a Harness-owned information architecture.
+The original [GUI assembly](../../implemented/feature/2026-08-15-openclaw-gui-dsh-web-app.md) correctly reuses the stock dsh Web application and changes only the default agent preset. The implemented product shell resolves that product-boundary problem while preserving the complete Harness conversation runtime.
 
-That implemented Note remains the current authority while this Note is proposed. If this proposal is implemented, it partially supersedes only the earlier decision to own no ClawDSH browser UI; it preserves the decisions to reuse `dsh-web-app`, compose through a profile and preset, and keep the Harness conversation runtime authoritative.
+The product-shell and Settings decisions are current authority for shipped behavior. They partially supersede only the earlier choice to own no ClawDSH browser UI and preserve the decisions to reuse `dsh-web-app`, compose through a profile and preset, and keep the Harness conversation runtime authoritative.
 
 That information architecture cannot explain the product accurately. A [profile bundle](../../implemented/architecture/2026-08-05-profile-plugin-bundles.md) owns process-wide Host composition, while a [per-Session preset](../../implemented/architecture/2026-08-03-per-session-agent-presets.md) owns Agent composition. Selecting `standard` does not unmount ClawDSH Host plugins, so a preset selector cannot be the product boundary between ClawDSH and pure Harness.
 
-Settings have the same mismatch. Raw Loader entries are useful diagnostics, but users need capability-level ownership, dependencies, enabled state, credential readiness, validated fields, and effect timing. The existing [user-settings seam](../../implemented/architecture/2026-07-28-user-settings-seam.md), [Web configuration plane](../../implemented/architecture/2026-07-30-web-config-plane.md), and [plugin configuration UI](../../implemented/feature/2026-08-10-web-plugin-configuration.md) provide reusable mechanisms; they do not define the ClawDSH product taxonomy or decide which mutations are safe to expose.
+The implemented Settings control plane resolves the configuration mismatch with product-owned capability taxonomy, field permissions, credential ownership, revisions, and effect timing while leaving raw Loader entries read-only.
 
 The raw [Trajectory ledger](../../implemented/feature/2026-07-27-trajectory-inspection-ledger.md) is authoritative for ordered Harness evidence, but it does not group ClawDSH behavior into Soul/Prompt, Memory, Channels, Skills, and Automation. Replacing Trajectory would lose diagnostic detail, while leaving it as the only view makes product behavior difficult to understand.
 
@@ -40,7 +40,7 @@ The physical `preset-openclaw` directory remains temporarily because the reposit
 
 ### Settings and activity
 
-The initial shell is read-only. Its overview maps product capabilities to owning packages, dependencies, Loader entries, and Fiber state, classifying `@clawdsh/*` as ClawDSH, `@deepseek-ai/*` and `cordis:*` as Platform, and every other source as Community. This inventory provides runtime evidence without offering a toggle.
+The capability overview is read-only. It maps product capabilities to owning packages, dependencies, Loader entries, and Fiber state, classifying `@clawdsh/*` as ClawDSH, `@deepseek-ai/*` and `cordis:*` as Platform, and every other source as Community. This inventory provides runtime evidence without offering a Loader toggle; editable fields follow the separate Settings decision.
 
 ClawDSH Settings uses a static allowlist of product capability namespaces and credential references. Each capability contributes a server-owned Config description; the control plane resolves profile base, user override, and schema default into one desired configuration. Mutations carry an expected revision, resets remove only the user layer, and the response distinguishes desired revision, runtime revision, and restart requirements.
 

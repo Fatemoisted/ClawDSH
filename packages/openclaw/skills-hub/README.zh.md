@@ -18,11 +18,14 @@
 - id: skills-hub
   name: '@clawdsh/dsh-skills-hub'
   config:
+    enabled: true                 # false registers no provider
     # workspaceDir: /abs/path      # 固定 workspace 技能目录；缺省按 lookup cwd 扫 <cwd>/skills
     # managedDir: /abs/path        # 缺省 ~/.clawdbot/skills（legacy OpenClaw 目录）
     # extraDirs: [/abs/path]       # 附加目录，rank 350
     # gating: true                 # 求值 metadata.clawdbot.requires.{bins,anyBins,env}
 ```
+
+`clawdsh-skills-hub` 设置 namespace 在重启时生效。启动快照为关闭时不会触碰 `ctx.skills`；修改持久化值后也要等重启才会新增 provider，因此任何 ClawHub 根在关闭期间都不会参与目录收集。
 
 ## 设计说明
 
@@ -31,6 +34,7 @@
 - **list 时 gating**：`requires.bins`（全部在 PATH）、`requires.anyBins`（至少一个）、`requires.env`（环境变量已设置）；被排除的技能不进目录；bins 在 PATH 上探测，不起子进程；
 - **仅目录 + SKILL.md**：与 OpenClaw 惯例一致；无 `SKILL.md` 的目录不是技能，根目录缺失即零技能（OpenClaw 式静默跳过），非法文件 warn 跳过；
 - **无安装执行、无远程注册表**：OpenClaw baseline 经外部 CLI 分发 ClawHub 技能；本包只加载已在磁盘上的。
+- **Provider 级关闭**：`enabled: false` 不注册 provider，因此任何 ClawHub 根都不会参与目录收集。
 
 ## 变更日志
 

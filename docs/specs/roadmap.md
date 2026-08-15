@@ -45,15 +45,15 @@ Phase 4 has three parallel workstreams. They share the `clawdsh` product identit
 
 ### 4.1 ClawDSH local GUI
 
-The `clawdsh` profile now composes the stock dsh Web application with the owned nested product runtime. The initial [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) product slice is implemented:
+The `clawdsh` profile composes the stock dsh Web application with the owned nested product runtime. The product-shell and Settings slices of [ADR-0007](../adr/0007-clawdsh-local-gui-product.md) are implemented:
 
 - `/clawdsh/` is the default product route; `/` remains native dsh Web and is labeled Harness Advanced.
 - Navigation is Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced.
 - Conversation reuses the public dsh client plugin graph and renderer; ClawDSH owns the shell, Settings, Activity, and Control Runtime.
-- ClawDSH Settings currently shows a read-only capability overview; schema-driven mutation, credential presence, revisions, and restart requirements remain the next increment.
+- ClawDSH Settings combines the read-only capability and Loader overview with schema-driven mutation, optimistic revisions, desired/runtime state, restart requirements, and secret-free dsh credential metadata.
 - ClawDSH Activity currently identifies its deferred state; semantic Prompt, Memory, Channels, Skills, and Automation records remain pending while raw Trajectory stays available in Harness Advanced.
 - `dsh --profile web` remains a pure Harness entry point.
-- The real-profile browser journey starts from a clean home without model keys or OpenClaw artifacts and verifies both routes, all four destinations, unknown-route handling, and the keyless product snapshot.
+- The real-profile browser journey starts from a clean home without model keys or OpenClaw artifacts and verifies both routes, all four destinations, mounted Settings namespaces, disabled Gateway state, secret absence, unknown-route handling, and the keyless product snapshot. Focused control-plane tests cover mutation, reset, and stale-revision rejection.
 
 ### 4.2 Current channel plane
 
@@ -71,8 +71,8 @@ The legacy channel packages remain separately available under `ctx.legacyChannel
 
 ### Product GUI sequence
 
-1. ✅ The nested ClawDSH Web entry, product runtime, `/clawdsh/` routes, four-destination navigation, read-only capability overview, and keyless real-profile journey are implemented.
-2. Add schema-driven Settings, credential references, optimistic revision checks, desired/runtime revision display, restart requirements, and the dedicated Automation editor.
+1. ✅ The nested ClawDSH Web entry, product runtime, `/clawdsh/` routes, four-destination navigation, capability overview, and keyless real-profile journey are implemented.
+2. ✅ Schema-driven Settings, credential references, optimistic revision checks, desired/runtime state, restart requirements, and dedicated Automation and Gateway editors are implemented.
 3. Add current-Session Activity with bounded, permission-restricted sidecar JSONL plus fallback projection from standard Session history.
 4. Preserve the native GUI, raw Trajectory, and `dsh --profile web` throughout browser and real-profile regression tests.
 
@@ -104,7 +104,7 @@ The legacy channel packages remain separately available under `ctx.legacyChannel
 ## 7. Open conditions
 
 - [x] Implement the ClawDSH product shell and read-only capability overview.
-- [ ] Implement the Settings control plane and credential-safe mutation flow.
+- [x] Implement the Settings control plane and credential-safe mutation flow.
 - [ ] Implement semantic Activity and sidecar degradation behavior.
 - [x] Add owned real-profile browser and keyless snapshots for the product shell.
 - [ ] Add per-channel configuration, capability probes, and keyless contract evidence before promoting any production entry to installable.

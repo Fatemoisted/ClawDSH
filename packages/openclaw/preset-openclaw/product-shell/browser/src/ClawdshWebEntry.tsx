@@ -11,7 +11,10 @@ import type { LoaderStatusStore, KernelValueSignal } from '@deepseek-ai/dsh-clie
 import { ClawdshBootRoot } from './ClawdshBootRoot.tsx'
 import { ProductShell } from './ProductShell.tsx'
 import { createNativeAppPlugin } from './native-app-plugin.tsx'
-import { loadClawdshCapabilities } from './control-client.ts'
+import {
+  createClawdshControlClient,
+  type ClawdshControlClient,
+} from './control-client.ts'
 import { CLAWDSH_APP_SHELL_ID, CLIENT_MODULES_ID, clawdshLoaderRows } from './loader-rows.ts'
 
 /** Test transport seam inherited from the public Client module system. */
@@ -76,6 +79,7 @@ export class ClawdshWebEntry {
   private manifest!: BootManifest
   private root: Root | undefined
   private web!: WebLibrary
+  private control: ClawdshControlClient | undefined
 
   constructor(
     private readonly mount: HTMLElement,
@@ -113,10 +117,11 @@ export class ClawdshWebEntry {
           if (shell === undefined) throw new Error('ClawDSH browser: assembly service missing after settlement')
           const connection = ctx.get('connection') as ConnectionHandle | undefined
           if (connection === undefined) throw new Error('ClawDSH browser: Connection service unavailable')
+          this.control ??= createClawdshControlClient(connection)
           return (
             <ProductShell
               renderConversation={shell.renderConversation}
-              loadCapabilities={this.loadCapabilities}
+              control={this.control}
               localControlAvailable={connection.isLoopback}
             />
           )
@@ -149,13 +154,8 @@ export class ClawdshWebEntry {
         delete win.__ModuleLoader__
       }
       this.modules = undefined
+      this.control = undefined
     }
-  }
-
-  private readonly loadCapabilities = async () => {
-    const connection = this.requireContext().get('connection') as ConnectionHandle | undefined
-    if (connection === undefined) throw new Error('ClawDSH browser: Connection service unavailable')
-    return loadClawdshCapabilities(connection)
   }
 
   private async prefetchImmediateTier(): Promise<void> {

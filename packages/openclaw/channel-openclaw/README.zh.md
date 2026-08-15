@@ -6,12 +6,15 @@
 
 ## 配置
 
-每个部署路径、身份、端口、超时和资源限制都必须显式配置。插件以私有 `0700` 权限创建 state、workspace 和 staging 目录；`configPath`、`endpoint` 和 `stagingRoot` 必须位于 `stateDir` 内，且父路径不得经过符号链接。
+该插件始终保持挂载；DSH Settings 服务存在时，它会把现有 schema 注册到 `clawdsh-channel-openclaw`。schema 默认值、profile base 和 user layer 会在启动时以 `applies: restart` 解析一次。user layer 可以修改 `enabled` 以及有界的端口、帧限制、并发和超时；只要修改 `track`、Gateway 身份、artifact/runtime/host/Node/config/state/staging/socket 路径、extension lock 或媒体上限，系统就会在持久化或启动前拒绝，手工编辑 Settings 文档也不例外。`enabled` 默认为 `false`；此时插件不会检查 artifact、打开存储、绑定 socket、启动进程或注册 Provider。ClawDSH 控制面会在持久化启用变更之前完成锁定 runtime、Node、OpenClaw 配置和插件检查的完整预检。
+
+启用部署时，每个路径、身份、端口、超时和资源限制都必须显式配置。托管安装器必须预先把 `stateDir` 和 `stagingRoot` 配置为已经存在的私有 `0700` 目录；只读预检成功后，启动流程才创建私有 workspace。`configPath`、`endpoint` 和 `stagingRoot` 必须位于 `stateDir` 内，且父路径不得经过符号链接。
 
 ```yaml
 - id: channel-openclaw
   name: '@clawdsh/dsh-channel-openclaw'
   config:
+    enabled: false
     track: production
     gatewayInstanceId: personal-gateway
     artifactPath: /srv/clawdsh/openclaw/openclaw-2026.7.1-2.tgz
@@ -38,13 +41,14 @@
 
 | 配置键 | 约定 |
 |---|---|
+| `enabled` | 用户控制的 Gateway 启用状态。`false` 时仅挂载 Settings 和经过清理的生命周期状态；变更在重启后生效。 |
 | `track` | 选择已检入的 `production` 或隔离 `canary` 宿主身份。它不会解析浮动 tag。 |
 | `gatewayInstanceId` | 稳定且非空的身份，写入 route、握手和存储，并用于跨 Gateway 隔离检查。 |
 | `artifactPath` | 已下载归档的绝对路径；其 SHA-512 必须等于所选宿主 lock。 |
 | `runtimeRoot` / `hostRoot` | 绝对路径形式的已检查 NPM 项目及其精确 `node_modules/openclaw` 子目录。在 Node 启动前，插件会校验 package 输入、可见 lock、隐藏安装 lock、实际 package 集合、package 元数据、解压后的宿主文件树和当前平台完整安装项目的摘要。 |
-| `extensions` | 精确的 opt-in 插件 lock。每个条目包含 `pluginId`、非空且不重复的 `channelIds`、精确的 NPM `packageName` 与语义化 `version`、64 字节 `sha512` SRI，以及隔离 NPM 项目的 `projectTree.fileCount` 和小写 `projectTree.sha512`。空数组会禁用全部外部扩展。 |
+| `extensions` | 由安装器管理、在产品 UI 中只读显示的精确 opt-in 插件 lock。每个条目包含 `pluginId`、非空且不重复的 `channelIds`、精确的 NPM `packageName` 与语义化 `version`、64 字节 `sha512` SRI，以及隔离 NPM 项目的 `projectTree.fileCount` 和小写 `projectTree.sha512`。空数组会禁用全部外部扩展。 |
 | `nodePath` | 专用绝对可执行文件或不含路径的可执行文件名。其报告版本必须满足锁定宿主的 engine 范围。 |
-| `configPath` / `stateDir` / `stagingRoot` | 严格 JSON 格式的 OpenClaw 配置、私有隔离 state，以及共享入站媒体 staging root。Supervisor 会解析完整配置以强制执行准入策略，但绝不会提取、复制、输出或持久化凭据值；凭据仍由 OpenClaw 的配置与 state 持有。 |
+| `configPath` / `stateDir` / `stagingRoot` | 严格 JSON 格式的 OpenClaw 配置、私有隔离 state，以及共享入站媒体 staging root。Supervisor 会读取并解析完整配置以强制执行准入策略，但不会选取 credential field 用于返回、日志或 DSH 持久化；凭据仍由 OpenClaw 的配置与 state 持有。 |
 | `maxMediaBytes` | 注入 bridge 的正安全整数入站媒体单项字节上限。 |
 | `endpoint` | `stateDir` 内的绝对 Unix socket 路径；绑定后权限改为 `0600`。不接受 TCP。 |
 | `gatewayPort` | 1 到 65535 的整数 loopback Gateway 端口。OpenClaw 配置也必须选择 local 模式和 loopback 绑定。 |
@@ -67,7 +71,7 @@ Provider 在私有 Unix socket 上接受一个 bridge。每次启动都会创建
 
 认证后，双方通过有界 UTF-8 NDJSON 交换严格 JSON-RPC 2.0 对象。额外 envelope 字段、同时包含 `result` 与 `error` 的 response、格式错误的 error，以及未知 notification 都会 fail closed。Router 实现 `turn.run`、`turn.cancel`、`session.reset`、`session.close`、`channel.action` 和 `health.get`；协商后的 `turn.progress` 仅用于展示，待处理进度写入受 `maxInFlight` 限制，因此背压时可以丢弃多余更新。每个 DSH 到 Gateway request 都有本地 deadline。超时或 IPC 断开不会取消远端工作或 Agent run。重连会恢复传输，而持久化 Agent 和 Provider ledger 决定能否回放工作或投递。
 
-启动流程会依次校验运行时、产物、扩展、Node engine、fail-closed 配置、OpenClaw 配置校验器和运行时插件检查，然后才绑定 Provider 并 spawn `gateway run`。每个 Node 预检和 Gateway 都会收到显式 tombstone，用于删除继承的 `NODE_*`、`LD_*`、`DYLD_*`、OpenSSL 模块与配置、TLS 信任路径和 TLS 密钥日志变量，防止 ambient loader 或 Node option 改变已校验运行时。进程保持存活并完成已认证 bridge 握手后才进入 ready。dispose 会停止接受新 peer、终止并等待 Gateway 进程树、关闭 Provider、只移除精确 socket 条目，并释放 storage domain。相互独立的清理错误会被聚合返回，而不会被隐藏。
+启动流程使用 restart-scoped Settings snapshot，依次校验运行时、产物、扩展、Node engine、fail-closed 配置、OpenClaw 配置校验器和运行时插件检查，然后才绑定 Provider 并 spawn `gateway run`。本地控制面也可以运行同一套完整预检；该过程不会创建目录、打开存储、绑定 IPC 或启动 Gateway，只会执行经过校验和锁定的检查子进程。每个 Node 预检和 Gateway 都会收到显式 tombstone，用于删除继承的 `NODE_*`、`LD_*`、`DYLD_*`、OpenSSL 模块与配置、TLS 信任路径和 TLS 密钥日志变量，防止 ambient loader 或 Node option 改变已校验运行时。进程保持存活并完成已认证 bridge 握手后才进入 ready。dispose 会停止接受新 peer、终止并等待 Gateway 进程树、关闭 Provider、只移除精确 socket 条目，并释放 storage domain。相互独立的清理错误会被聚合返回，而不会被隐藏。
 
 [`bridge`](bridge/README.md) 目录负责 OpenClaw 加载的 V1/V2 适配器及其更窄的宿主侧能力细节。
 

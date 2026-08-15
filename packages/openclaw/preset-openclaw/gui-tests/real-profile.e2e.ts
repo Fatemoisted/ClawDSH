@@ -39,6 +39,8 @@ interface LocatorLike {
   count(): Promise<number>
   /** Read one DOM attribute without depending on implementation-only selectors. */
   getAttribute(name: string): Promise<string | null>
+  /** Read one checkbox's current DOM property. */
+  isChecked(): Promise<boolean>
 }
 
 interface PageLike {
@@ -168,7 +170,7 @@ function compareOrRefresh(snapshot: string): void {
 }
 
 describe('ClawDSH isolated real profile browser entry', () => {
-  it('boots both routes keyless and exposes the product navigation and read-only overview', async () => {
+  it('boots both routes keyless and exposes secret-free product settings', async () => {
     expect(existsSync(builtCli), 'built CLI missing; run `pnpm run build` before this lane').toBe(true)
     expect(existsSync(builtWeb), 'built Web app missing; run `pnpm run build` before this lane').toBe(true)
 
@@ -257,11 +259,37 @@ describe('ClawDSH isolated real profile browser entry', () => {
       await settings.waitFor({ state: 'detached', timeout: 10_000 })
 
       await settingsLink.click()
+      const settingsPage = page.getByRole('heading', { name: 'ClawDSH 设置', exact: true })
+      await settingsPage.waitFor({ timeout: 10_000 })
       const overview = page.getByRole('heading', { name: 'ClawDSH 总览', exact: true })
       await overview.waitFor({ timeout: 10_000 })
-      expect(await page.getByRole('button', { name: /^(?:启用|停用|保存|重置)$/ }).count()).toBe(0)
+      for (const namespace of [
+        'clawdsh-soul',
+        'clawdsh-channel-agent',
+        'clawdsh-channel-openclaw',
+        'clawdsh-memory',
+        'clawdsh-embeddings-ark',
+        'clawdsh-skills-hub',
+        'clawdsh-automation',
+        'clawdsh-activity',
+      ]) {
+        await page.locator(`[data-settings-namespace="${namespace}"]`).waitFor({ timeout: 10_000 })
+      }
+      const gatewayEnabled = page.locator(
+        '[data-settings-namespace="clawdsh-channel-openclaw"] [data-setting-path="enabled"] input[type="checkbox"]',
+      )
+      expect(await gatewayEnabled.count()).toBe(1)
+      expect(await gatewayEnabled.isChecked()).toBe(false)
+      const arkCredential = page.locator('[data-credential="ark-api-key"]')
+      await arkCredential.waitFor({ timeout: 10_000 })
+      const arkCredentialSnapshot = (await arkCredential.ariaSnapshot()).trim()
+      expect(arkCredentialSnapshot).toContain('未配置')
+      expect(arkCredentialSnapshot).not.toContain('ARK_API_KEY')
+      expect(arkCredentialSnapshot).not.toContain('FEISHU_APP_SECRET')
+      expect(arkCredentialSnapshot).not.toContain('TELEGRAM_BOT_TOKEN')
       await page.getByRole('status', { name: 'Soul 运行中', exact: true }).waitFor({ timeout: 10_000 })
       await page.getByRole('status', { name: 'Channels 已关闭', exact: true }).waitFor({ timeout: 10_000 })
+      await page.getByRole('status', { name: 'Automation 已关闭', exact: true }).waitFor({ timeout: 10_000 })
       expect(await page.locator('[data-capability="channels"] [data-support="cataloged"]').count()).toBe(27)
       expect(await page.locator('[data-origin="ClawDSH"]').count()).toBeGreaterThan(0)
       expect(await page.locator('[data-origin="Platform"]').count()).toBeGreaterThan(0)

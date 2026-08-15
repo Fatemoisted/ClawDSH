@@ -35,6 +35,7 @@ import {
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 import SessionPersistenceJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
+import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility, type Domain } from '@deepseek-ai/dsh-storage-domain'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -51,6 +52,14 @@ import {
 import { report, turn } from './fixtures.ts'
 
 type ScriptEntry = readonly StreamChunk[] | 'hang' | 'fail'
+
+class TestSettings extends SettingsProvider {
+  get writable(): boolean { return true }
+  protected load(): Promise<Record<string, unknown>> { return Promise.resolve({}) }
+  protected persist(_ns: SettingsNamespace, _section: Record<string, unknown>): Promise<void> {
+    return Promise.resolve()
+  }
+}
 
 class ScriptedAdapter extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
@@ -186,6 +195,7 @@ async function harness(
 
   const ctx = new Context()
   contexts.push(ctx)
+  await ctx.plugin(TestSettings)
   const adapter = new ScriptedAdapter(script)
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })

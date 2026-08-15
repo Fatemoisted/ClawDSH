@@ -30,6 +30,7 @@ import type {} from '@deepseek-ai/dsh-attachment'
 import { createUserMessage, type ContentBlock, type TokenUsage } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { Domain, KvTable } from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { ChannelMessageSource } from './events.ts'
@@ -51,11 +52,20 @@ import {
 
 const PUBLIC_DEPENDENCY_FAILURE_MESSAGE = 'The DeepSeek Harness Agent turn failed before a safe result was committed.'
 
+/** Installer-managed preset for OpenClaw-classified owner direct messages. */
+export const MANAGED_OWNER_PRESET = 'clawdsh'
+
+/** Installer-managed restricted preset for every other admitted route. */
+export const MANAGED_SAFE_PRESET = 'clawdsh-messaging-safe'
+
 export type { ChannelMessageSource } from './events.ts'
 export { channelAgentDomainSpec } from './storage.ts'
 
 /** Cordis plugin name. */
 export const name = 'channel-agent'
+
+/** User-settings namespace for the always-mounted Agent bridge. */
+export const CHANNEL_AGENT_SETTINGS_NAMESPACE = settingsNamespace('clawdsh-channel-agent')
 
 /** Complete seam dependencies required before channel turns can be admitted. */
 export const inject = [
@@ -68,6 +78,7 @@ export const inject = [
   'attachments',
   'storageDomain',
   'tools',
+  'settings',
 ]
 
 /** Deployment decisions for channel-created Agents and media intake. */
@@ -88,11 +99,11 @@ export interface Config {
 
 /** Runtime config schema. Deployment-varying choices are mandatory. */
 export const Config: z<Config> = z.object({
-  ownerPreset: z.string().min(1).required(),
-  safePreset: z.string().min(1).required(),
+  ownerPreset: z.string().min(1).default(MANAGED_OWNER_PRESET),
+  safePreset: z.string().min(1).default(MANAGED_SAFE_PRESET),
   cwd: z.string().min(1).required(),
   stagingRoot: z.string().min(1).required(),
-  maxMediaBytes: z.number().step(1).min(1).required(),
+  maxMediaBytes: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).required(),
   shutdownGraceMs: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).required(),
 })
 
@@ -116,13 +127,46 @@ class ChannelTurnCancelledError extends Error {
 
 /** Mount the durable driver after its storage domain is ready. */
 export async function apply(ctx: Context, config: Config): Promise<void> {
-  if (!isAbsolute(config.cwd)) throw new Error('channel-agent: cwd must be absolute')
-  if (!isAbsolute(config.stagingRoot)) throw new Error('channel-agent: stagingRoot must be absolute')
-  const driver = await ChannelAgentDriver.create(ctx, config)
+  const settings = ctx.get('settings')
+  const runtimeConfig = settings?.register(CHANNEL_AGENT_SETTINGS_NAMESPACE, Config, {
+    base: config,
+    applies: 'restart',
+    validate: (value) => {
+      validateConfig(value)
+      assertManagedConfig(value, config)
+    },
+  }).get() ?? config
+  validateConfig(runtimeConfig)
+  assertManagedConfig(runtimeConfig, config)
+  const driver = await ChannelAgentDriver.create(ctx, runtimeConfig)
   ctx.effect(function* () {
     yield () => driver.dispose()
     yield ctx.channels.registerDriver(driver)
   }, 'channel-agent.driver()')
+}
+
+function validateConfig(config: Config): void {
+  if (!isAbsolute(config.cwd)) throw new Error('channel-agent: cwd must be absolute')
+  if (!isAbsolute(config.stagingRoot)) throw new Error('channel-agent: stagingRoot must be absolute')
+  if (!Number.isSafeInteger(config.maxMediaBytes) || config.maxMediaBytes <= 0) {
+    throw new Error('channel-agent: maxMediaBytes must be a positive safe integer')
+  }
+  if (!Number.isSafeInteger(config.shutdownGraceMs) || config.shutdownGraceMs <= 0) {
+    throw new Error('channel-agent: shutdownGraceMs must be a positive safe integer')
+  }
+}
+
+/** Refuse user-layer replacement of installer-owned route and media identities. */
+function assertManagedConfig(config: Config, base: Config): void {
+  const changed = [
+    config.ownerPreset === base.ownerPreset ? undefined : 'ownerPreset',
+    config.safePreset === base.safePreset ? undefined : 'safePreset',
+    config.stagingRoot === base.stagingRoot ? undefined : 'stagingRoot',
+    config.maxMediaBytes === base.maxMediaBytes ? undefined : 'maxMediaBytes',
+  ].filter((field): field is string => field !== undefined)
+  if (changed.length !== 0) {
+    throw new Error(`channel-agent: ${changed.join(', ')} ${changed.length === 1 ? 'is' : 'are'} installer-managed and cannot be overridden by user settings`)
+  }
 }
 
 /** Durable turn driver; one instance owns every Agent handle it creates or resumes. */

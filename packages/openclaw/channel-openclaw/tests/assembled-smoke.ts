@@ -20,6 +20,7 @@ import {
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 import SessionPersistenceJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
+import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
@@ -32,6 +33,14 @@ const REPOSITORY_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
 const RUNTIME_ROOT = join(REPOSITORY_ROOT, 'packages/openclaw/channel-openclaw/runtime')
 const HOST_ROOT = join(RUNTIME_ROOT, 'node_modules/openclaw')
 const BRIDGE_ROOT = join(REPOSITORY_ROOT, 'packages/openclaw/channel-openclaw/bridge/stable-v1')
+
+class TestSettings extends SettingsProvider {
+  get writable(): boolean { return true }
+  protected load(): Promise<Record<string, unknown>> { return Promise.resolve({}) }
+  protected persist(_ns: SettingsNamespace, _section: Record<string, unknown>): Promise<void> {
+    return Promise.resolve()
+  }
+}
 
 /** Deterministic keyless model used by the real ClawDSH Agent loop. */
 class AssembledMockAdapter extends LlmAdapter {
@@ -68,7 +77,10 @@ async function availablePort(): Promise<number> {
   const address = server.address()
   assert(address !== null && typeof address !== 'string')
   await new Promise<void>((resolvePromise, reject) => {
-    server.close(error => error === undefined ? resolvePromise() : reject(error))
+    server.close((error) => {
+      if (error === undefined) resolvePromise()
+      else reject(error)
+    })
   })
   return address.port
 }
@@ -152,6 +164,7 @@ async function mountDsh(root: string): Promise<{
   readonly pool: MemoryMediaPool
 }> {
   const ctx = new Context()
+  await ctx.plugin(TestSettings)
   const adapter = new AssembledMockAdapter()
   await mountAgentLoopTestDependencies(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })

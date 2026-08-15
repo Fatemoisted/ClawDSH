@@ -37,6 +37,9 @@
       "path": "../../core/session"
     },
     {
+      "path": "../../settings/settings"
+    },
+    {
       "path": "../../llm/llm"
     },
     {

@@ -45,15 +45,15 @@
 
 ### 4.1 ClawDSH 本地 GUI
 
-`clawdsh` profile 现已把原生 dsh Web 应用与自有 nested 产品 runtime 组合起来。[ADR-0007](../adr/0007-clawdsh-local-gui-product.md)的首个产品增量已经实现：
+`clawdsh` profile 把原生 dsh Web 应用与自有 nested 产品 runtime 组合起来。[ADR-0007](../adr/0007-clawdsh-local-gui-product.md)的产品壳与 Settings 增量已经实现：
 
 - `/clawdsh/` 是默认产品 route；`/` 保留原生 dsh Web，并标记为 Harness 高级。
 - 导航为对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级。
 - 对话复用公开 dsh client plugin graph 与 renderer；ClawDSH 拥有 shell、Settings、Activity 与 Control Runtime。
-- ClawDSH 设置当前显示只读能力总览；schema-driven mutation、credential presence、revision 与 restart requirement 留给下一增量。
+- ClawDSH 设置把只读 capability 与 Loader 总览同 schema-driven mutation、optimistic revision、desired/runtime state、restart requirement 以及不含 secret 的 dsh credential metadata 组合起来。
 - ClawDSH 活动当前明确显示 deferred 状态；Prompt、Memory、Channels、Skills 与 Automation 语义记录仍待完成，raw Trajectory 留在 Harness 高级。
 - `dsh --profile web` 保持纯 Harness 入口。
-- real-profile browser 旅程从没有模型 key 或 OpenClaw artifact 的 clean home 启动，并验证两个 route、四个目的地、未知 route 处理与 keyless 产品 snapshot。
+- real-profile browser 旅程从没有模型 key 或 OpenClaw artifact 的 clean home 启动，并验证两个 route、四个目的地、已挂载的 Settings namespace、关闭的 Gateway 状态、secret absence、未知 route 处理与 keyless 产品 snapshot。Focused control-plane test 覆盖 mutation、reset 与 stale-revision 拒绝。
 
 ### 4.2 当前渠道平面
 
@@ -71,8 +71,8 @@
 
 ### 产品 GUI 顺序
 
-1. ✅ nested ClawDSH Web entry、产品 runtime、`/clawdsh/` route、四目的地导航、只读 capability overview 与 keyless real-profile 旅程已经实现。
-2. 增加 schema-driven Settings、credential reference、optimistic revision check、desired/runtime revision display、restart requirement 与专用 Automation editor。
+1. ✅ nested ClawDSH Web entry、产品 runtime、`/clawdsh/` route、四目的地导航、capability overview 与 keyless real-profile 旅程已经实现。
+2. ✅ schema-driven Settings、credential reference、optimistic revision check、desired/runtime state、restart requirement 以及专用 Automation 与 Gateway editor 已经实现。
 3. 增加 current-Session Activity，使用有界且受权限限制的 sidecar JSONL，并从 standard Session history 提供 fallback projection。
 4. 在 browser 与 real-profile regression test 中持续保留 native GUI、raw Trajectory 与 `dsh --profile web`。
 
@@ -104,7 +104,7 @@
 ## 7. 开放条件
 
 - [x] 实现 ClawDSH 产品壳与只读 capability overview。
-- [ ] 实现 Settings control plane 与 credential-safe mutation flow。
+- [x] 实现 Settings control plane 与 credential-safe mutation flow。
 - [ ] 实现 semantic Activity 与 sidecar degradation behavior。
 - [x] 为产品壳增加自有 real-profile browser 与 keyless snapshot。
 - [ ] 在把任何 production entry 提升为 installable 前增加逐渠道 configuration、capability probe 与 keyless contract evidence。

@@ -2,8 +2,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useState } from 'react'
 import { ProductShell } from '../src/ProductShell.tsx'
+import type { ClawdshControlClient } from '../src/control-client.ts'
 import { createMemoryRouter } from '../src/router.ts'
-import { CAPABILITIES_FIXTURE } from './fixtures.ts'
+import {
+  CAPABILITIES_FIXTURE,
+  CREDENTIALS_FIXTURE,
+  SETTINGS_FIXTURE,
+} from './fixtures.ts'
 
 afterEach(cleanup)
 
@@ -12,12 +17,25 @@ function ConversationFixture() {
   return <button type="button" onClick={() => { setCount(value => value + 1) }}>conversation {count}</button>
 }
 
+function controlFixture(overrides: Partial<ClawdshControlClient> = {}): ClawdshControlClient {
+  return {
+    loadCapabilities: async () => CAPABILITIES_FIXTURE,
+    loadSettings: async () => SETTINGS_FIXTURE,
+    loadCredentials: async () => CREDENTIALS_FIXTURE,
+    mutateSetting: async () => ({ version: 1, namespace: SETTINGS_FIXTURE.namespaces[0]! }),
+    resetSettings: async () => ({ version: 1, namespace: SETTINGS_FIXTURE.namespaces[0]! }),
+    setCredential: async () => ({ version: 1, credential: CREDENTIALS_FIXTURE.credentials[0]! }),
+    unsetCredential: async () => ({ version: 1, credential: CREDENTIALS_FIXTURE.credentials[0]! }),
+    ...overrides,
+  }
+}
+
 describe('ClawDSH product shell', () => {
   it('exposes the fixed product navigation and a direct Harness document link', () => {
     render(
       <ProductShell
         renderConversation={() => <ConversationFixture />}
-        loadCapabilities={async () => CAPABILITIES_FIXTURE}
+        control={controlFixture()}
         localControlAvailable
         router={createMemoryRouter()}
       />,
@@ -34,7 +52,7 @@ describe('ClawDSH product shell', () => {
     render(
       <ProductShell
         renderConversation={renderConversation}
-        loadCapabilities={async () => CAPABILITIES_FIXTURE}
+        control={controlFixture()}
         localControlAvailable
         router={createMemoryRouter()}
       />,
@@ -59,7 +77,7 @@ describe('ClawDSH product shell', () => {
     render(
       <ProductShell
         renderConversation={() => <ConversationFixture />}
-        loadCapabilities={async () => CAPABILITIES_FIXTURE}
+        control={controlFixture()}
         localControlAvailable
         router={createMemoryRouter('/clawdsh/chat')}
       />,
@@ -76,7 +94,7 @@ describe('ClawDSH product shell', () => {
     render(
       <ProductShell
         renderConversation={() => <ConversationFixture />}
-        loadCapabilities={loadCapabilities}
+        control={controlFixture({ loadCapabilities })}
         localControlAvailable
         router={createMemoryRouter('/clawdsh/settings')}
       />,
@@ -94,7 +112,7 @@ describe('ClawDSH product shell', () => {
     render(
       <ProductShell
         renderConversation={() => <ConversationFixture />}
-        loadCapabilities={loadCapabilities}
+        control={controlFixture({ loadCapabilities })}
         localControlAvailable={false}
         router={router}
       />,

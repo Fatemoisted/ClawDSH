@@ -10,8 +10,8 @@ English | [中文](README.zh.md)
 - id: channel-agent
   name: '@clawdsh/dsh-channel-agent'
   config:
-    ownerPreset: openclaw
-    safePreset: openclaw-messaging-safe
+    ownerPreset: clawdsh
+    safePreset: clawdsh-messaging-safe
     cwd: /srv/clawdsh/workspace
     stagingRoot: /srv/clawdsh/channel-media
     maxMediaBytes: 10485760
@@ -22,13 +22,13 @@ English | [中文](README.zh.md)
 
 | Key | Contract |
 |---|---|
-| `ownerPreset` | Required preset for direct messages classified as `owner` by OpenClaw. |
-| `safePreset` | Required preset for admitted, paired, allowlisted, or group senders. The Agent scope applies `tools.restrict({ allow: [] })` before mounting this preset, so inherited/global tools are absent while scope-local preset tools and `message` remain available. |
-| `cwd` | Required absolute workspace recorded in every channel-created Session. |
-| `stagingRoot` / `maxMediaBytes` | Required absolute shared-media root and positive per-object byte cap. Attachment-store count, type, aggregate-byte, and decoder policies also apply. |
-| `shutdownGraceMs` | Required positive teardown deadline. Teardown stops admission, cancels active work, and waits this long for accepted turns, pending Agent acquisition, and route controls to quiesce before disposing Agents and closing storage. A timeout fails loud and deliberately leaves storage open while a late operation could still write. |
+| `ownerPreset` | Installer-managed `clawdsh` preset for direct messages classified as `owner` by OpenClaw. |
+| `safePreset` | Installer-managed `clawdsh-messaging-safe` preset for admitted, paired, allowlisted, or group senders. The Agent scope applies `tools.restrict({ allow: [] })` before mounting this preset, so inherited/global tools are absent while scope-local preset tools and `message` remain available. |
+| `cwd` | User-configurable absolute workspace recorded in every newly created channel Session. |
+| `stagingRoot` / `maxMediaBytes` | Installer-managed absolute shared-media root and positive per-object byte cap, kept equal to the Gateway deployment. Attachment-store count, type, aggregate-byte, and decoder policies also apply. |
+| `shutdownGraceMs` | Advanced positive teardown deadline. Teardown stops admission, cancels active work, and waits this long for accepted turns, pending Agent acquisition, and route controls to quiesce before disposing Agents and closing storage. A timeout fails loud and deliberately leaves storage open while a late operation could still write. |
 
-The plugin requires `ctx.channels`, `ctx.agents`, Session persistence, model selection, Agent presets, attachments, a storage-domain facility, and the tool registry. Configuration fails before driver registration when either path is relative. The invariant companion is registered separately so deployments that run the repository invariant registry can validate live and restored logs.
+The plugin registers its existing schema under `clawdsh-channel-agent` when the DSH Settings service is present. Schema defaults, the profile base, and the user layer are resolved once at startup with `applies: restart`; later writes cannot mutate the running driver. A user layer that changes `ownerPreset`, `safePreset`, `stagingRoot`, or `maxMediaBytes` is rejected before persistence or driver creation, so hand-edited Settings cannot replace installer-managed identities. The plugin remains mounted and registers its driver regardless of whether the OpenClaw Gateway Provider is enabled. It requires `ctx.channels`, `ctx.agents`, Session persistence, model selection, Agent presets, attachments, a storage-domain facility, and the tool registry. Configuration fails before driver registration when either path is relative. The invariant companion is registered separately so deployments that run the repository invariant registry can validate live and restored logs.
 
 ## Turn and Session Semantics
 

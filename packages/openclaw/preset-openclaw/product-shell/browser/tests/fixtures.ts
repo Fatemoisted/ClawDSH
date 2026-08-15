@@ -1,4 +1,8 @@
-import type { ClawdshCapabilitiesResponse } from '../../shared/src/protocol.ts'
+import type {
+  ClawdshCapabilitiesResponse,
+  ClawdshCredentialsDescribeResponse,
+  ClawdshSettingsDescribeResponse,
+} from '../../shared/src/protocol.ts'
 
 /** Minimal valid Host projection shared by browser component and transport tests. */
 export const CAPABILITIES_FIXTURE: ClawdshCapabilitiesResponse = {
@@ -76,6 +80,48 @@ export const CAPABILITIES_FIXTURE: ClawdshCapabilitiesResponse = {
       fiberPhase: 'active',
       state: 'active',
       source: 'platform',
+    },
+  ],
+}
+
+/** Minimal serialized settings catalog accepted by the browser schema editor. */
+export const SETTINGS_FIXTURE: ClawdshSettingsDescribeResponse = {
+  version: 1,
+  namespaces: [
+    {
+      namespace: 'clawdsh-memory',
+      capabilityId: 'memory',
+      label: 'Memory',
+      description: '配置持久记忆。',
+      editor: 'generic',
+      schema: {
+        uid: 2,
+        refs: {
+          1: { type: 'boolean', meta: { default: true } },
+          2: { type: 'object', meta: { default: {} }, dict: { enabled: 1 } },
+        },
+      },
+      value: { enabled: true },
+      base: { enabled: true },
+      desiredRevision: 0,
+      runtimeRevision: 0,
+      restartRequired: false,
+      effectTime: 'restart',
+      fields: [{ path: ['enabled'], label: '启用 Memory', access: 'editable' }],
+    },
+  ],
+}
+
+/** Secret-free DSH credential catalog fixture. */
+export const CREDENTIALS_FIXTURE: ClawdshCredentialsDescribeResponse = {
+  version: 1,
+  credentials: [
+    {
+      id: 'ark-api-key',
+      label: 'Ark API Key',
+      configured: false,
+      writable: true,
+      effectTime: 'next-call',
     },
   ],
 }

@@ -15,7 +15,7 @@
 
 **规格**：docs/specs/feature-automation.md · **状态**：implemented（阶段 3 ✅）
 
-干净安装的 `clawdsh` profile 默认禁用本 Loader 配置项，因此没有显式 opt-in 就不会启动规则。该包尚未暴露业务级 `enabled` 字段；能力 Settings 增量会保持插件挂载，并增加经过校验的开关。
+该行保持挂载并独占 `clawdsh-automation` 设置 namespace。业务层 `enabled` 默认 `false`；关闭时仍校验配置，但不会创建 runtime、timer 或 Automation Session。设置在重启时生效。
 
 ## 用法
 
@@ -23,6 +23,7 @@
 - id: automation
   name: '@clawdsh/dsh-automation'
   config:
+    enabled: true
     rules:
       - id: morning-digest
         name: Morning            # optional label in the turn framing
@@ -41,6 +42,7 @@
 ## 设计说明
 
 - **Config 即持久 store**：规则写在 cordis.yml 里，无 job-store 文件、无 CRUD 工具、无新存储 seam（运行时编辑规则延后）；
+- **默认关闭**：schema 将 `enabled` 默认设为 false；关闭路径仍校验配置，但不创建 runtime、timer 或 Session；
 - **单 re-arming unref'd timer**：对准所有规则最早的触发点；醒来顺序执行到期规则后重新对准（OpenClaw 调度器形态）；
 - **每规则会话生命周期**：resume-or-create 使会话日志（即运行历史）跨重启保留；`every` 规则挂载时立即触发一次（OpenClaw「first run at/after the anchor」）；
 - **失败语义**：回合前先落 `started` 记录（at-least-once）；`turn/end` reason 决定 `ok` 还是 `error`（被 loop 遏制的 adapter 失败仍呈现为 `error`）；失败记日志，下一次触发照常。

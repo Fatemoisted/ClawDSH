@@ -17,6 +17,7 @@ import { CallId } from '@deepseek-ai/dsh-llm'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { Embeddings } from '@clawdsh/dsh-embeddings'
 import type { EmbeddingVector } from '@clawdsh/dsh-embeddings'
 import * as Memory from '@clawdsh/dsh-memory'
@@ -25,6 +26,16 @@ import { chunkMarkdown } from '../src/chunk.ts'
 import { readLineSlice } from '../src/memory-files.ts'
 import { MemoryIndex } from '../src/search.ts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+class TestSettings extends SettingsProvider {
+  constructor(ctx: Context, private readonly store: Record<string, unknown>) { super(ctx) }
+  get writable(): boolean { return true }
+  protected load(): Promise<Record<string, unknown>> { return Promise.resolve(structuredClone(this.store)) }
+  protected persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
+    this.store[ns] = structuredClone(section)
+    return Promise.resolve()
+  }
+}
 
 /** Deterministic token-overlap embedding backend: one dimension per distinct token. */
 class StubEmbeddings extends Embeddings {
@@ -94,6 +105,7 @@ beforeEach(async () => {
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(LocalFileSystem)
+  await ctx.plugin(TestSettings, {})
   await ctx.plugin(StubEmbeddings)
 })
 
@@ -105,6 +117,10 @@ afterEach(async () => {
 })
 
 describe('chunkMarkdown', () => {
+  it('declares Settings as a required plugin dependency', () => {
+    expect(Memory.inject).toEqual(['tools', 'systemPrompt', 'fs', 'settings'])
+  })
+
   it('aggregates paragraphs within the budget and reports true line numbers', () => {
     // Five source lines: the blank line between paragraphs is line 3.
     const chunks = chunkMarkdown('line one\nline two\n\nline three\nline four', 100, 0)
@@ -130,6 +146,28 @@ describe('chunkMarkdown', () => {
     // The overlap starts at a sentence boundary: either "CCCC DDDD." or the
     // whole first paragraph carries over, never a mid-sentence fragment.
     expect(/^(CCCC DDDD\.|AAAA BBBB\.)/.test(second.trim())).toBe(true)
+  })
+})
+
+describe('memory settings lifecycle', () => {
+  it('uses the startup settings snapshot and registers nothing while disabled', async () => {
+    await ctx.fiber.dispose()
+    ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(LocalFileSystem)
+    await ctx.plugin(TestSettings, { 'clawdsh-memory': { enabled: false } })
+    await ctx.plugin(Memory, { root: dir, enabled: true })
+
+    expect(ctx.tools.get('memory_search')).toBeUndefined()
+    expect(ctx.tools.get('memory_get')).toBeUndefined()
+    expect((await ctx.systemPrompt.assemble()).sections.find(section => section.name === MEMORY_RECALL_SECTION)).toBeUndefined()
+    const descriptor = ctx.settings.describe().find(entry => entry.ns === Memory.MEMORY_SETTINGS_NAMESPACE)
+    expect(descriptor).toMatchObject({ applies: 'restart', value: { enabled: false, root: dir } })
+
+    await ctx.settings.update(Memory.MEMORY_SETTINGS_NAMESPACE, { enabled: true })
+    expect(ctx.tools.get('memory_search')).toBeUndefined()
+    expect((await ctx.systemPrompt.assemble()).sections.find(section => section.name === MEMORY_RECALL_SECTION)).toBeUndefined()
   })
 })
 
@@ -172,6 +210,7 @@ describe('memory_search', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(LocalFileSystem)
+    await ctx.plugin(TestSettings, {})
     await ctx.plugin(Memory, { root: dir })
 
     const result = await call('memory_search', { query: 'anything' })

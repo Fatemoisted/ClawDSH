@@ -5,7 +5,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react'
-import type { CapabilitiesLoader } from './pages/SettingsPage.tsx'
+import type { ClawdshControlClient } from './control-client.ts'
 import { ActivityPage } from './pages/ActivityPage.tsx'
 import { NotFoundPage } from './pages/NotFoundPage.tsx'
 import { SettingsPage } from './pages/SettingsPage.tsx'
@@ -19,7 +19,7 @@ import css from './ProductShell.module.css'
 
 interface ProductShellProps {
   readonly renderConversation: () => ReactNode
-  readonly loadCapabilities: CapabilitiesLoader
+  readonly control: ClawdshControlClient
   readonly localControlAvailable: boolean
   readonly router?: ClawdshRouter
 }
@@ -46,7 +46,7 @@ const TITLE: Record<ClawdshRouteId, string> = {
 /** Product navigation wrapped around one permanently mounted native conversation tree. */
 export function ProductShell({
   renderConversation,
-  loadCapabilities,
+  control,
   localControlAvailable,
   router: suppliedRouter,
 }: ProductShellProps): ReactNode {
@@ -104,7 +104,7 @@ export function ProductShell({
         </div>
         {route.id === 'settings' ? (
           <div className={css.page}>
-            <SettingsPage loadCapabilities={loadCapabilities} localControlAvailable={localControlAvailable} />
+            <SettingsPage control={control} localControlAvailable={localControlAvailable} />
           </div>
         ) : null}
         {route.id === 'activity' ? (
