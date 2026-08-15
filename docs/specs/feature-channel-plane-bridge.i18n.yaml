@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/specs/feature-channel-plane-bridge.md
-feature-channel-plane-bridge.md: 3d9a0549180474833cb862859debcf8a07b3cfdf
-feature-channel-plane-bridge.zh.md: 904f15ec347d9ff0471bf47a8b9b6bcb4585a027
+feature-channel-plane-bridge.md: aaab96e53e05bd01685243fa39a7afebbb5918cf
+feature-channel-plane-bridge.zh.md: d1a6032720cf5a821bb48a25012e8bac558da069

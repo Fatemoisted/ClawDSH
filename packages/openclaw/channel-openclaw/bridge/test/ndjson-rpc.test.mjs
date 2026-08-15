@@ -58,7 +58,7 @@ test('authenticates once and carries bidirectional JSON-RPC', async t => {
     handlers: { 'channel.action': params => ({ echoed: params.action }) },
     onNotification: (_method, params) => { progress.resolve(params) },
   })
-  t.after(() => { client.dispose() })
+  t.after(async () => { await client.dispose() })
   assert.deepEqual(await client.request('health.get', {}), { ok: true })
   assert.deepEqual(await progress.promise, {
     kind: 'status', turnId: 'turn', runId: 'run', sequence: 0, status: 'running',
@@ -94,9 +94,52 @@ test('enforces the outgoing in-flight cap without sending a second request', asy
     return true
   })
   await firstFrame.promise
-  client.dispose()
+  await client.dispose()
   await assert.rejects(first, /disposed/)
   assert.equal(rpcFrames, 1)
+})
+
+test('dispose aborts and drains an inbound handler before resolving', async t => {
+  const entered = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  let receivedSignal
+  let writes = 0
+  const fixture = await socketFixture(t, (socket, frame) => {
+    if (frame.kind === 'handshake') {
+      send(socket, { kind: 'handshake-ack', protocolVersion: 1 })
+      send(socket, { jsonrpc: '2.0', id: 'pending-action', method: 'channel.action', params: {} })
+    }
+  })
+  const client = new NdjsonRpcClient({
+    endpoint: fixture.endpoint,
+    token: 'secret-test',
+    handshake,
+    maxFrameBytes: 4096,
+    maxInFlight: 2,
+    requestTimeoutMs: 2000,
+    handlers: {
+      'channel.action': async (_params, signal) => {
+        receivedSignal = signal
+        entered.resolve()
+        await release.promise
+        writes += 1
+        return {}
+      },
+    },
+  })
+  await client.connect()
+  await entered.promise
+
+  let stopped = false
+  const stopping = client.dispose().then(() => { stopped = true })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(receivedSignal.aborted, true)
+  assert.equal(stopped, false)
+  release.resolve()
+  await stopping
+  assert.equal(writes, 1)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(writes, 1)
 })
 
 test('keeps arbitrary handler failures behind the bridge IPC boundary', async t => {
@@ -124,7 +167,7 @@ test('keeps arbitrary handler failures behind the bridge IPC boundary', async t 
       'channel.public': () => { throw new RpcMethodError(-32601, 'channel action is unsupported') },
     },
   })
-  t.after(() => { client.dispose() })
+  t.after(async () => { await client.dispose() })
   await client.connect()
   await responsesReady.promise
   assert.deepEqual(responses, [
@@ -155,7 +198,7 @@ test('does not send a request cancelled while the handshake is pending', async t
     maxInFlight: 2,
     requestTimeoutMs: 2000,
   })
-  t.after(() => { client.dispose() })
+  t.after(async () => { await client.dispose() })
   const controller = new AbortController()
   const request = client.request('turn.run', {}, { signal: controller.signal })
   const socket = await pendingHandshake.promise
@@ -182,7 +225,7 @@ test('disconnects on invalid UTF-8 instead of accepting replacement text', async
     maxInFlight: 2,
     requestTimeoutMs: 2000,
   })
-  t.after(() => { client.dispose() })
+  t.after(async () => { await client.dispose() })
   await assert.rejects(() => client.request('health.get', {}), /encoded data|UTF-8|disconnected/i)
   assert.equal(client.connected, false)
 })

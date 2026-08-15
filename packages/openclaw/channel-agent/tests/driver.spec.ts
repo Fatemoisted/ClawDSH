@@ -601,7 +601,10 @@ describe('channel Agent turn execution', () => {
     expect(app.ctx.agents.list()).toEqual([])
   })
 
-  it('persists an active cancellation even when the Agent cancel call throws', async () => {
+  it.each([
+    new Error('cancel dispatch failed'),
+    'cancel dispatch failed',
+  ])('persists an active cancellation when Agent cancel throws %s', async (cancellationFailure) => {
     const app = await harness(['hang'])
     const inbound = turn({ idempotencyKey: 'throwing-cancel', turnId: 'throwing-cancel', runId: 'throwing-cancel', messageId: 'throwing-cancel' })
     const pending = app.ctx.channels.runTurn(inbound, execution())
@@ -611,7 +614,7 @@ describe('channel Agent turn execution', () => {
     const originalCancel = agent.cancel.bind(agent)
     vi.spyOn(agent, 'cancel').mockImplementation((reason) => {
       originalCancel(reason)
-      throw new Error('cancel dispatch failed')
+      throw cancellationFailure
     })
 
     await expect(app.ctx.channels.cancel(channelTurnCancelV1Schema.parse({
@@ -705,7 +708,7 @@ describe('channel Agent turn execution', () => {
     expect(result.status).toBe('failed')
     if (result.status !== 'failed') throw new Error('expected a failed result')
     expect(result.sessionId).toBe(sessionIdFor(inbound.route))
-    expect(result.error.message).toMatch(/owned by another runtime/)
+    expect(result.error.message).toBe('The DeepSeek Harness Agent turn failed before a safe result was committed.')
     expect(result.error.retryable).toBe(true)
     expect(app.adapter.requests).toEqual([])
     await external.dispose()
@@ -714,7 +717,7 @@ describe('channel Agent turn execution', () => {
   it('returns a retryable pre-run failure when preset composition rejects Agent acquisition', async () => {
     const app = await harness([textResponse('recovered')])
     vi.spyOn(app.ctx.agentPresets, 'mount')
-      .mockRejectedValueOnce(new Error('preset failed at /Users/operator with token sk-secret'))
+      .mockRejectedValueOnce(new Error('channel-agent: preset failed at /Users/operator with token sk-secret'))
     const failed = await app.ctx.channels.runTurn(turn(), execution())
     expect(failed).toMatchObject({
       status: 'failed',
@@ -729,6 +732,7 @@ describe('channel Agent turn execution', () => {
     const record = app.facility.get('clawdsh_channel_agent')?.table('ledger').get(ledgerKey(turn())) as ChannelLedgerRecord
     expect(record).toMatchObject({ phase: 'accepted', sessionId: sessionIdFor(turn().route) })
     expect(record.result).toBeUndefined()
+    expect(JSON.stringify({ failed, record })).not.toMatch(/\/Users\/operator|sk-secret/)
 
     const recovered = await app.ctx.channels.runTurn(turn(), execution())
     expect(recovered).toMatchObject({
@@ -883,7 +887,7 @@ describe('channel session and ledger lifecycle', () => {
     expect(result.status).toBe('failed')
     if (result.status !== 'failed') throw new Error('expected a failed result')
     expect(result.error.retryable).toBe(true)
-    expect(result.error.message).toMatch(/closed or stale/)
+    expect(result.error.message).toBe('The DeepSeek Harness Agent turn failed before a safe result was committed.')
     expect(app.adapter.requests).toEqual([])
   })
 
@@ -1000,7 +1004,7 @@ describe('channel session and ledger lifecycle', () => {
       const result = await pending
       expect(result.status).toBe('failed')
       if (result.status !== 'failed') throw new Error('expected a failed result')
-      expect(result.error.message).toMatch(/closed or stale route generation/)
+      expect(result.error.message).toBe('The DeepSeek Harness Agent turn failed before a safe result was committed.')
       expect(result.error.retryable).toBe(true)
       expect(app.adapter.requests).toEqual([])
       expect(app.ctx.agents.list()).toEqual([])
@@ -1205,6 +1209,59 @@ describe('channel session and ledger lifecycle', () => {
     expect(ledger.delivery?.status).toBe('confirmed')
   })
 
+  it('keeps a durable receipt successful when Activity is not mounted', async () => {
+    const app = await harness([textResponse('reply')])
+    await app.ctx.channels.runTurn(turn(), execution())
+
+    await expect(app.ctx.channels.reportDelivery(report())).resolves.toBeUndefined()
+    const ledger = app.facility.get('clawdsh_channel_agent')?.table('ledger').get(ledgerKey(turn())) as ChannelLedgerRecord
+    expect(ledger.phase).toBe('delivered')
+    expect(ledger.delivery?.status).toBe('confirmed')
+  })
+
+  it('omits Activity when persisted Session inspection has no events', async () => {
+    const app = await harness([textResponse('reply')])
+    const activity = vi.fn(async (_input: ChannelDeliveryActivityInput) => {})
+    installActivity(app.ctx, activity)
+    await app.ctx.channels.runTurn(turn(), execution())
+    vi.spyOn(app.ctx.sessions, 'get').mockReturnValue(undefined)
+    const inspect = vi.spyOn(app.ctx.sessionPersistence, 'inspect').mockResolvedValue({ events: [] } as never)
+
+    await expect(app.ctx.channels.reportDelivery(report())).resolves.toBeUndefined()
+    await vi.waitFor(() => { expect(inspect).toHaveBeenCalledOnce() })
+    await Promise.resolve()
+    expect(activity).not.toHaveBeenCalled()
+  })
+
+  it('keeps a durable receipt successful when persisted Activity inspection rejects', async () => {
+    const app = await harness([textResponse('reply')])
+    const activity = vi.fn(async (_input: ChannelDeliveryActivityInput) => {})
+    installActivity(app.ctx, activity)
+    await app.ctx.channels.runTurn(turn(), execution())
+    vi.spyOn(app.ctx.sessions, 'get').mockReturnValue(undefined)
+    const inspect = vi.spyOn(app.ctx.sessionPersistence, 'inspect')
+      .mockRejectedValue(new Error('inspection-failure-secret-canary'))
+
+    await expect(app.ctx.channels.reportDelivery(report())).resolves.toBeUndefined()
+    await vi.waitFor(() => { expect(inspect).toHaveBeenCalledOnce() })
+    await Promise.resolve()
+    expect(activity).not.toHaveBeenCalled()
+  })
+
+  it('keeps a durable receipt successful when the optional Activity sink throws synchronously', async () => {
+    const app = await harness([textResponse('reply')])
+    const activity = vi.fn((_input: ChannelDeliveryActivityInput): Promise<unknown> => {
+      throw new Error('synchronous-activity-failure-secret-canary')
+    })
+    installActivity(app.ctx, activity)
+    await app.ctx.channels.runTurn(turn(), execution())
+
+    await expect(app.ctx.channels.reportDelivery(report())).resolves.toBeUndefined()
+    await vi.waitFor(() => { expect(activity).toHaveBeenCalledOnce() })
+    const ledger = app.facility.get('clawdsh_channel_agent')?.table('ledger').get(ledgerKey(turn())) as ChannelLedgerRecord
+    expect(ledger.phase).toBe('delivered')
+  })
+
   it('rejects reports before results, unknown turns, and ambiguous turn/run identities', async () => {
     const app = await harness([textResponse('one'), textResponse('two')])
     await expect(app.ctx.channels.reportDelivery(report())).rejects.toThrow(/unknown turn/)
@@ -1351,7 +1408,7 @@ describe('channel session and ledger lifecycle', () => {
     expect(result.status).toBe('failed')
     if (result.status !== 'failed') throw new Error('expected a failed result')
     expect(result.error.code).toBe('CHANNEL_TURN_FAILED')
-    expect(result.error.message).toMatch(/admission class changed/)
+    expect(result.error.message).toBe('The DeepSeek Harness Agent turn failed before a safe result was committed.')
     expect(app.adapter.requests).toHaveLength(1)
   })
 
@@ -1365,7 +1422,7 @@ describe('channel session and ledger lifecycle', () => {
     const result = await app.ctx.channels.runTurn(conflicting, execution())
     expect(result.status).toBe('failed')
     if (result.status !== 'failed') throw new Error('expected a failed result')
-    expect(result.error.message).toMatch(/route binding.*conflicts/)
+    expect(result.error.message).toBe('The DeepSeek Harness Agent turn failed before a safe result was committed.')
     expect(result.error.retryable).toBe(true)
     expect(app.adapter.requests).toHaveLength(1)
   })
@@ -1436,11 +1493,16 @@ describe('channel admission and media failures', () => {
 
   it('rejects invalid trust, empty input, generation, disposed state, and unsupported media before the model', async () => {
     const app = await harness([])
-    const directGroupTrust = turn({ sender: { senderId: 'x', trust: 'group-allowlisted' } })
+    const directGroupTrust = {
+      ...turn(), sender: { senderId: 'x', trust: 'group-allowlisted' },
+    } as ChannelTurnEnvelopeV1
     expect(() => app.ctx.channels.runTurn(directGroupTrust, execution())).toThrow(/group-only admission/)
-    const groupOwner = routeTurn(turn(), { kind: 'group' }, {
-      sender: { senderId: 'x', trust: 'owner' }, wasMentioned: true,
-    })
+    const groupOwner = {
+      ...turn(),
+      route: { ...turn().route, kind: 'group' },
+      sender: { senderId: 'x', trust: 'owner' },
+      wasMentioned: true,
+    } as ChannelTurnEnvelopeV1
     expect(() => app.ctx.channels.runTurn(groupOwner, execution())).toThrow(/group allowlist/)
     expect(() => app.ctx.channels.runTurn({ ...turn(), text: '', media: [] }, execution()))
       .toThrow(/requires text or media/)
@@ -1464,7 +1526,7 @@ describe('channel admission and media failures', () => {
     const stale = await app.ctx.channels.runTurn(unsupported, execution())
     expect(stale.status).toBe('failed')
     if (stale.status !== 'failed') throw new Error('expected a failed result')
-    expect(stale.error.message).toMatch(/closed or stale route generation/)
+    expect(stale.error.message).toBe('The DeepSeek Harness Agent turn failed before a safe result was committed.')
     expect(stale.error.retryable).toBe(true)
     await app.ctx.fiber.dispose()
     contexts.splice(contexts.indexOf(app.ctx), 1)
@@ -1482,9 +1544,20 @@ describe('channel admission and media failures', () => {
       shutdownGraceMs: 100,
     })).rejects.toThrow(/stagingRoot must be absolute/)
     await expect(ChannelAgent.apply(new Context(), {
+      ownerPreset: 'owner', safePreset: 'safe', cwd: '/tmp/work', stagingRoot: '/tmp/staging', maxMediaBytes: 0,
+      shutdownGraceMs: 100,
+    })).rejects.toThrow(/maxMediaBytes must be a positive safe integer/)
+    await expect(ChannelAgent.apply(new Context(), {
       ownerPreset: 'owner', safePreset: 'safe', cwd: '/tmp/work', stagingRoot: '/tmp/staging', maxMediaBytes: 1,
       shutdownGraceMs: 0,
     })).rejects.toThrow(/shutdownGraceMs must be a positive safe integer/)
+  })
+
+  it('rejects an invalid direct-driver teardown limit before opening storage', async () => {
+    const app = await harness([], { mountAgent: false })
+
+    await expect(ChannelAgent.ChannelAgentDriver.create(app.ctx, driverConfig(app, 0)))
+      .rejects.toThrow(/shutdownGraceMs must be a positive safe integer/)
   })
 
   it('shares one successful teardown promise, cancels active work, and closes storage after quiescence', async () => {

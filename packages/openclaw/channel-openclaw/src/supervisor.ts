@@ -2,6 +2,7 @@
 
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SubprocessHandle } from '@deepseek-ai/dsh-subprocess'
@@ -470,7 +471,7 @@ function assertNoFailureEntries(value: unknown, label: string, severity: string)
   }
 }
 
-/** Require the process to remain alive until the exact authenticated handshake arrives. */
+/** Require the process to remain alive until authentication and bridge recovery are complete. */
 async function awaitStartup(
   provider: OpenClawChannelProvider,
   gateway: SubprocessHandle,
@@ -482,10 +483,22 @@ async function awaitStartup(
   }, timeoutMs)
   timer.unref()
   const exited = gateway.done.then((outcome) => {
-    throw new Error(`channel-openclaw: Gateway exited before bridge handshake (exit ${String(outcome.exitCode)}, signal ${String(outcome.signal)})`)
+    throw new Error(`channel-openclaw: Gateway exited before bridge handshake or recovery completed (exit ${String(outcome.exitCode)}, signal ${String(outcome.signal)})`)
   })
+  const ready = (async () => {
+    await provider.firstHandshake
+    while (true) {
+      const health = await provider.health()
+      if (health.status === 'ready') return
+      if (health.status === 'degraded' || health.status === 'failed'
+        || health.status === 'stopping' || health.status === 'stopped') {
+        throw new Error('channel-openclaw: Gateway bridge recovery did not reach ready state')
+      }
+      await delay(10, undefined, { ref: false })
+    }
+  })()
   try {
-    await Promise.race([provider.firstHandshake, exited, timeoutState.promise])
+    await Promise.race([ready, exited, timeoutState.promise])
   } finally {
     clearTimeout(timer)
   }
@@ -512,7 +525,7 @@ async function shutdownGateway(
     gatewayError = error
   }
   try {
-    await provider?.dispose()
+    if (provider !== undefined) await boundedProviderDispose(provider, timeoutMs)
   } catch (providerError) {
     if (gatewayError !== undefined) {
       throw new AggregateError([gatewayError, providerError], 'channel-openclaw: Gateway and Provider cleanup both failed')
@@ -520,6 +533,20 @@ async function shutdownGateway(
     throw asError(providerError)
   }
   if (gatewayError !== undefined) throw asError(gatewayError)
+}
+
+/** Bound Provider handler drain and storage release without hiding incomplete cleanup. */
+async function boundedProviderDispose(provider: OpenClawChannelProvider, timeoutMs: number): Promise<void> {
+  const timeoutState = Promise.withResolvers<never>()
+  const timer = setTimeout(() => {
+    timeoutState.reject(new Error('channel-openclaw: Provider cleanup did not complete within shutdownGraceMs'))
+  }, timeoutMs)
+  timer.unref()
+  try {
+    await Promise.race([provider.dispose(), timeoutState.promise])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /** Normalize a thrown process or cleanup value. */

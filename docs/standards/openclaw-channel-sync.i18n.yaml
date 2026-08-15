@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/standards/openclaw-channel-sync.md
-openclaw-channel-sync.md: 339778e6b3bf166af41caba80e758847930d1741
-openclaw-channel-sync.zh.md: 3ff4dfee30c419b8b74087d0d19101ef89951aeb
+openclaw-channel-sync.md: 0bbd3fd6a3c41205677a9278816a9a5c4ce55af2
+openclaw-channel-sync.zh.md: 6800b0a9df6f615d71e4e379ff065ef939795a8e

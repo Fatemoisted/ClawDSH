@@ -22,7 +22,7 @@
 
 每个基础 payload 都携带 `protocolVersion: 1`。`CHANNEL_BRIDGE_METHODS_V1` 命名六个 request：`turn.run`、`turn.cancel`、`session.reset`、`session.close`、`channel.action` 和 `health.get`。`CHANNEL_BRIDGE_NOTIFICATIONS_V1` 命名不带 id 的 `turn.progress` notification 以及可选 `delivery.report` 扩展；未协商对应能力时，对端不得发送二者。
 
-`protocol.ts` 为握手、入站与终态 turn、控制请求、出站和查询 action、action 结果、投递回执、进度通知、健康状态及投递报告导出严格 zod 校验器。`ChannelBridgeRequestMapV1` 与 `ChannelBridgeNotificationMapV1` 提供对应的编译期方法映射。校验器拒绝未知对象字段。外部不透明 id 在校验后才添加 brand。暂存媒体携带相对路径、精确字节数、规范小写 SHA-256、媒体类型和连续 ordinal；provider 在发布前仍必须验证实际打开的字节及 staging root 包含关系。
+`protocol.ts` 为握手、入站与终态 turn、控制请求、出站和查询 action、action 结果、投递回执、进度通知、健康状态及投递报告导出严格 zod 校验器。`ChannelBridgeRequestMapV1` 与 `ChannelBridgeNotificationMapV1` 提供对应的编译期方法映射。校验器拒绝未知对象字段，以及每个外部不透明 id、展示值和文本字段中的 NUL。群组 route 必须使用 `group-allowlisted` trust，direct route 则拒绝该 trust class。外部不透明 id 在校验后才添加 brand。暂存媒体携带相对路径、精确字节数、规范小写 SHA-256、媒体类型和连续 ordinal；provider 在发布前仍必须验证实际打开的字节及 staging root 包含关系。
 
 Sender trust 只记录 host 实际暴露的最强准入事实。`admitted` 表示 host 已证明私聊通过准入，但没有暴露由 pairing 还是 allowlist 作出决定；consumer 对它的权限不得高于 restricted preset。
 

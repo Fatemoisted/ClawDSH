@@ -67,6 +67,8 @@ function fixture() {
   }
   write(repository, 'packages/openclaw/preset-openclaw/profile/cordis.patch.yml', `
 - insert:
+    - id: channel-invariants
+      name: '@deepseek-ai/dsh-invariants'
     - id: soul
       name: '@clawdsh/dsh-soul/settings-host'
     - id: activity
@@ -75,10 +77,16 @@ function fixture() {
       name: '@clawdsh/dsh-product-runtime'
     - id: channel
       name: '@clawdsh/dsh-channel'
+    - id: channel-invariant
+      name: '@clawdsh/dsh-channel/invariant'
     - id: channel-agent
       name: '@clawdsh/dsh-channel-agent'
+    - id: channel-agent-invariant
+      name: '@clawdsh/dsh-channel-agent/invariant'
     - id: channel-openclaw
       name: '@clawdsh/dsh-channel-openclaw'
+    - id: channel-openclaw-invariant
+      name: '@clawdsh/dsh-channel-openclaw/invariant'
     - id: memory
       name: '@clawdsh/dsh-memory'
     - id: embeddings
@@ -204,6 +212,7 @@ test('stages a deterministic closed bundle from built output', () => {
     assert.equal(verified.manifest.version, BUNDLE_VERSION)
     assert.deepEqual(verified.manifest.clawdsh.profile.bundles, PROFILE_BUNDLE_ORDER)
     assert.equal(verified.manifest.dependencies['@clawdsh/dsh-activity'], BUNDLE_VERSION)
+    assert.equal(verified.manifest.dependencies['@deepseek-ai/dsh-invariants'], '0.1.0-rc.6')
     assert.deepEqual(readFileSync(join(first, 'assets.json')), readFileSync(join(second, 'assets.json')))
     assert.match(readFileSync(join(first, 'cordis.patch.yml'), 'utf8'), /name: '@clawdsh\/dsh-bundle'/)
     assert.throws(() => readFileSync(join(first, 'web/assets/app.js.map')), /ENOENT/)

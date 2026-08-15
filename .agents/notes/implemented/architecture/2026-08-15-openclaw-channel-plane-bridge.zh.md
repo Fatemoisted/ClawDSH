@@ -16,7 +16,7 @@ ClawDSH 现在通过严格认证的 V1 协议分离通信平面与 Agent 平面�
 
 三个包表达 seam 角色。`@clawdsh/dsh-channel` 是 Service Definition 与严格 wire vocabulary，包含一个 Provider 和一个 Driver。`@clawdsh/dsh-channel-openclaw` 是 Provider：校验 host lock、认证一个私有 IPC peer、强制 handshake、报告健康、转发 action，并拥有 delivery ledger。`@clawdsh/dsh-channel-agent` 是 Consumer/Driver：把完整 OpenClaw 路由身份绑定到 dsh Session，持久化 generation 与幂等，导入已验证媒体，驱动 Agent，注册路由限定的 `message` 工具，并把完整、已净化的 provenance 存在已知 `user/message` source 上。
 
-Production 只接受 OpenClaw `v2026.7.1-2`、commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`，并同时锁定 NPM artifact、解包宿主文件树、已检查的 NPM 依赖 lock 与完整安装运行时字节。安装运行时摘要按 platform 和 architecture 区分；首个获批 assembly 是 Darwin arm64，其他组合会 fail closed，直到具备各自已评审的 lock。Canary 只接受 source commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0` 用于隔离审计与兼容工作；它没有锁定的构建 host，不能使用 managed execution。稳定目录是 1 个 core + 2 个 bundled + 21 个 repo-official + 3 个 external，即 **24+3**。QQ Bot 在该 lock 中是 repo-official；external 条目是 WeChat、Yuanbao 与 Zalo ClawBot。各轨道治理目录把每个 external 条目绑定到相同的精确包，并分别记录许可证声明、平台条款审查和安全审查；全部审查仍待完成，因此会阻止可安装性晋级。
+Production 只接受 OpenClaw `v2026.7.1-2`、commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`，并同时锁定 NPM artifact、解包宿主文件树、已检查的 NPM 依赖 lock 与完整安装运行时字节。安装运行时摘要按 platform 和 architecture 区分；获批 assembly 是 Darwin arm64 与 Linux x64，两者都由已检查 lock 和 npm `10.9.7` 生成，其他组合会 fail closed，直到具备各自已评审的 lock。Canary 只接受 source commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0` 用于隔离审计与兼容工作；它没有锁定的构建 host，不能使用 managed execution。稳定目录是 1 个 core + 2 个 bundled + 21 个 repo-official + 3 个 external，即 **24+3**。QQ Bot 在该 lock 中是 repo-official；external 条目是 WeChat、Yuanbao 与 Zalo ClawBot。各轨道治理目录把每个 external 条目绑定到相同的精确包，并分别记录许可证声明、平台条款审查和安全审查；全部审查仍待完成，因此会阻止可安装性晋级。
 
 一个 opt-in 外部插件对应一个隔离 NPM 项目，而不是一个主 package。其 lock 覆盖项目 manifest、可见与隐藏 NPM lock、主插件、每个传递依赖文件和内部文件链接目标。可选的嵌套 `openclaw` peer 只能指向单独校验过的宿主；项目摘要仍包含该链接的存在性，而目标字节由宿主运行时 lock 负责。空 extension 列表保持为默认值，并拒绝每个未跟踪项目。
 
@@ -24,9 +24,11 @@ Production 只接受 OpenClaw `v2026.7.1-2`、commit `0790d9f593ad30c940ed93b587
 
 handshake 绑定 protocol version、Gateway state lineage、逐次启动 nonce、精确 tag、commit、artifact SHA-512、Node engine、AgentHarness generation、action、notification 与 extension。任一不匹配都会关闭 peer。POSIX endpoint ownership 通过私有 `0700` parent、`0600` socket 与 ephemeral token 强制。Windows 在 native named-pipe ACL seam 能提供同等授权前 fail closed。每个 Node 预检和 Gateway 还会收到用于删除继承 `NODE_*`、native-loader、OpenSSL 模块与配置、TLS 信任路径和 TLS 密钥日志变量的条目，使 ambient 进程设置无法替换 loader 或削弱已校验执行环境。
 
+Gateway 只有在认证和持久 route-transition 恢复都完成后才进入 ready。临时 transport detach 会拒绝 socket 拥有的等待和新调用，但允许已准入 handler 把结果写入持久 Agent 状态；progress 始终绑定已 detach peer。Provider 正式关闭会在 storage 关闭前中止并排空活动和已 detach peer 拥有的 handler。OpenClaw registry 实例使用不可变配置身份租用一条进程共享 transport；最后一个租约会排空 transport，使后续启动获得全新连接。
+
 入站操作是 `turn.run`、精确 `turn.cancel` 和 generation-aware `session.reset` / `session.close`。Provider 可查询 `health.get`；bridge 可协商 `turn.progress` 与 `delivery.report`。Agent 发起的 `channel.action` 覆盖消息、回应、投票、输入状态、目录与解析操作，但 capability negotiation 可缩窄集合，平台对支持情况保持权威。
 
-持久性区分重复传输与重复 Agent 执行。相同幂等请求会附着到 live run 或 replay terminal record。用不同内容复用 key 会失败。崩溃遗留的 running record 变成 `needs-recovery`，因为工具可能已产生副作用，自动重跑不安全。Reset 和 close 会先写入持久 bridge transition，再请求 DSH、commit 已确认 route 与 previous-Session control identity，最后删除 transition；启动和下一次 turn 会恢复任何中断的 transition。Delivery receipt 同样持久且单调；`ambiguous` 是 operator/provider 对账状态，绝不是隐式重发许可。
+持久性区分重复传输与重复 Agent 执行。相同幂等请求会附着到 live run 或 replay terminal record。用不同内容复用 key 会失败。崩溃遗留的 running record 变成 `needs-recovery`，因为工具可能已产生副作用，自动重跑不安全。Reset 和 close 会先写入持久 bridge transition，再请求 DSH、commit 已确认 route 与 previous-Session control identity，最后删除 transition；启动和下一次 turn 会恢复任何中断的 transition。不确定平台 action 的重试使用内部只读 `channel.reconcile` request，并且只回放完全匹配的 terminal record；缺失或非终态 mutation 绝不会重新派发。Delivery receipt 同样持久且单调；`ambiguous` 是 operator/provider 对账状态，绝不是隐式重发许可。
 
 模型执行前，Driver 把 admission 与 idempotency commit 到持久 ledger。已知 `user/message` 包含完整、已净化的渠道 provenance。Owner 私聊可 mount owner preset；其他 sender 和 group 都 mount restricted preset，且 group 必须已经携带 OpenClaw group-allowlist admission。
 
@@ -46,7 +48,7 @@ handshake 绑定 protocol version、Gateway state lineage、逐次启动 nonce�
 
 支持只按 `cataloged → installable → certified → enabled` 推进。Cataloged 记录来源；installable 证明精确锁定装配以及逐 Channel 配置、capability probe 与无密钥 contract 证据；certified 还证明当前发布的装配、安全与投递行为、无密钥装配 transcript 和所需真实平台流量；enabled 是明确激活的交付 profile 决策。实现基础不会跳过这些门禁。
 
-当前 sidecar 没有任何单独 Channel 达到 installable、certified 或 enabled。Production profile 已用 default-disabled group 包含完整新 seam，也不再启动 legacy adapter；但上游 snapshot runner 不发现自有渠道包，本次变更也没有新的 Telegram 或 Feishu live smoke。稳定版 V1 不能投影安全 staging 的入站媒体；锁定 host 既没有关联最终回答的 delivery hook，也没有聚合账号 health；external 审查仍待完成；persistence 与 resume evidence 还必须证明上述 known-event degradation。在自有 snapshot path 和等价 live smoke 通过前，旧包以不冲突的 Service namespace 另行保留；它们的历史测试不能认证新 host 或执行路径。
+当前 sidecar 没有任何单独 Channel 达到 installable、certified 或 enabled。Production profile 始终挂载完整 seam 及其 invariant companion，同时保持 Gateway setting 关闭，并且不启动 legacy adapter。显式 TypeScript source mapping 使三个 companion specifier 在干净 checkout 中都保持 source plane 解析，public bundle 则精确锁定 `@deepseek-ai/dsh-invariants@0.1.0-rc.6`。自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，贯穿锁定 Gateway 与真实 DSH Agent，并在 Linux x64 CI 中运行；经评审的 Darwin arm64 assembly 也已通过。当前没有运行带凭证的 Telegram 或 Feishu live 流量。稳定版 V1 不能投影安全 staging 的入站媒体；锁定 host 既没有关联最终回答的 delivery hook，也没有聚合账号 health；external 审查仍待完成；persistence 与 resume evidence 还必须证明上述 known-event degradation。在 live smoke 与其余替换条件通过前，旧包以不冲突的 Service namespace 另行保留；它们的历史测试不能认证新 host 或执行路径。
 
 ## 曾考虑的替代方案
 

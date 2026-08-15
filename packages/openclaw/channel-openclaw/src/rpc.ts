@@ -3,7 +3,7 @@
 import { NdjsonConnection, isObject, type JsonObject } from './framing.ts'
 
 /** One method implementation; params are validated by the package protocol schemas. */
-export type RpcHandler = (params: unknown) => unknown
+export type RpcHandler = (params: unknown, signal: AbortSignal) => unknown
 
 interface PendingRequest {
   readonly resolve: (value: unknown) => void
@@ -30,8 +30,12 @@ export class JsonRpcPeer {
   private nextId = 0
   private incoming = 0
   private readonly pending = new Map<string, PendingRequest>()
+  private readonly incomingControllers = new Set<AbortController>()
+  private readonly incomingTasks = new Set<Promise<void>>()
   private outgoingNotifications = 0
   private closed = false
+  private abortStarted = false
+  private drainPromise: Promise<void> | undefined
 
   constructor(
     private readonly connection: NdjsonConnection,
@@ -40,7 +44,7 @@ export class JsonRpcPeer {
     private readonly requestTimeoutMs: number,
   ) {
     connection.onValue((value) => { this.receive(value) })
-    connection.onClose((error) => { this.close(error) })
+    connection.onClose((error) => { void this.detach(error) })
   }
 
   /**
@@ -115,11 +119,31 @@ export class JsonRpcPeer {
   }
 
   /**
-   * Reject local waits without cancelling remote work.
+   * Reject local waits, cancel inbound handlers, and wait for them to settle.
    * @param cause - Optional transport failure returned to each local waiter.
+   * @returns Completion after every admitted inbound handler has settled.
    */
-  close(cause?: Error): void {
-    if (this.closed) return
+  close(cause?: Error): Promise<void> {
+    const error = this.disconnect(cause)
+    if (!this.abortStarted) {
+      this.abortStarted = true
+      for (const controller of this.incomingControllers) controller.abort(error)
+    }
+    return this.drain()
+  }
+
+  /**
+   * Detach a failed transport without cancelling work already admitted from it.
+   * @param cause - Optional transport failure returned to each local waiter.
+   * @returns Completion after every admitted inbound handler settles naturally.
+   */
+  detach(cause?: Error): Promise<void> {
+    this.disconnect(cause)
+    return this.drain()
+  }
+
+  /** Close request admission and reject waits owned by this transport. */
+  private disconnect(cause?: Error): Error {
     this.closed = true
     const error = cause ?? new Error('channel-openclaw: Gateway IPC disconnected')
     for (const pending of this.pending.values()) {
@@ -127,9 +151,17 @@ export class JsonRpcPeer {
       pending.reject(error)
     }
     this.pending.clear()
+    return error
+  }
+
+  /** Return the stable drain for every handler admitted before detach. */
+  private drain(): Promise<void> {
+    this.drainPromise ??= this.drainIncoming()
+    return this.drainPromise
   }
 
   private receive(message: JsonObject): void {
+    if (this.closed) return
     if (message.jsonrpc !== '2.0') {
       this.connection.close(new ChannelRpcError('invalid JSON-RPC version', -32600))
       return
@@ -185,14 +217,21 @@ export class JsonRpcPeer {
       return
     }
     this.incoming += 1
-    void Promise.resolve().then(async () => await handler(message.params)).then(
+    const controller = new AbortController()
+    this.incomingControllers.add(controller)
+    const task = Promise.resolve().then(async () => await handler(message.params, controller.signal)).then(
       async (result) => {
         if (id !== undefined) await this.connection.send({ jsonrpc: '2.0', id, result: result ?? null })
       },
       async (error: unknown) => {
         if (id !== undefined) await this.replyError(id, -32000, publicHandlerFailure(error))
       },
-    ).catch(() => {}).finally(() => { this.incoming -= 1 })
+    ).catch(() => {}).finally(() => {
+      this.incoming -= 1
+      this.incomingControllers.delete(controller)
+      this.incomingTasks.delete(task)
+    })
+    this.incomingTasks.add(task)
   }
 
   private resolveResponse(message: JsonObject): void {
@@ -214,6 +253,12 @@ export class JsonRpcPeer {
       await this.connection.send({ jsonrpc: '2.0', id, error: { code, message } })
     } catch (_connectionClosedBeforeErrorReply) {
       // The request keeps running semantics independent from a transient socket.
+    }
+  }
+
+  private async drainIncoming(): Promise<void> {
+    while (this.incomingTasks.size > 0) {
+      await Promise.allSettled([...this.incomingTasks])
     }
   }
 }

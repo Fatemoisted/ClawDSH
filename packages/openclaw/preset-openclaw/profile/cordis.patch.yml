@@ -38,8 +38,17 @@
       name: cordis:group
       group: true
       config:
+        - id: channel-invariants
+          name: '@deepseek-ai/dsh-invariants'
+          config:
+            package_allowlist:
+              - '^@clawdsh/dsh-channel(?:-(?:agent|openclaw))?$'
+
         - id: channel
           name: '@clawdsh/dsh-channel'
+
+        - id: channel-invariant
+          name: '@clawdsh/dsh-channel/invariant'
 
         - id: channel-agent
           name: '@clawdsh/dsh-channel-agent'
@@ -50,6 +59,9 @@
             stagingRoot: !!js process.env.CLAWDSH_OPENCLAW_STAGING_ROOT || dshHomePath('clawdsh/channel/openclaw/state/staging')
             maxMediaBytes: 5242880
             shutdownGraceMs: 30000
+
+        - id: channel-agent-invariant
+          name: '@clawdsh/dsh-channel-agent/invariant'
 
         - id: channel-openclaw
           name: '@clawdsh/dsh-channel-openclaw'
@@ -77,6 +89,9 @@
             startupTimeoutMs: 120000
             shutdownGraceMs: 10000
             diagnosticBytes: 262144
+
+        - id: channel-openclaw-invariant
+          name: '@clawdsh/dsh-channel-openclaw/invariant'
 
     # memory（Markdown 记忆事实源）+ embeddings-ark（语义召回后端）。
     # embeddings-ark 缺 ARK_API_KEY 时 boot 不受影响；provider 只在调用时解析凭据并 fail-loud。

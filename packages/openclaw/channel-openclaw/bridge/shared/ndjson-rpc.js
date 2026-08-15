@@ -22,6 +22,8 @@ export class NdjsonRpcClient {
   #connection
   #connecting
   #disposed = false
+  #disposePromise
+  #incomingTasks = new Set()
   #counter = 0
 
   /**
@@ -129,12 +131,15 @@ export class NdjsonRpcClient {
     await this.#send(this.#requireConnection(), { jsonrpc: '2.0', method, params })
   }
 
-  /** Permanently close the client and reject pending calls. */
+  /** Permanently close the client, cancel inbound handlers, and wait for them to settle. */
   dispose() {
-    if (this.#disposed) return
+    if (this.#disposePromise !== undefined) return this.#disposePromise
     this.#disposed = true
+    const cause = new Error('ClawDSH bridge client disposed')
     const connection = this.#connection
-    if (connection !== undefined) this.#fail(connection, new Error('ClawDSH bridge client disposed'))
+    if (connection !== undefined) this.#fail(connection, cause)
+    this.#disposePromise = this.#drainIncoming()
+    return this.#disposePromise
   }
 
   async #open() {
@@ -147,6 +152,7 @@ export class NdjsonRpcClient {
       buffered: Buffer.alloc(0),
       pending: new Map(),
       incoming: 0,
+      incomingControllers: new Set(),
       writeTail: Promise.resolve(),
       handshake: Promise.withResolvers(),
     }
@@ -248,9 +254,13 @@ export class NdjsonRpcClient {
         throw new Error('too many in-flight bridge notifications')
       }
       connection.incoming += 1
-      void Promise.resolve().then(() => sink(message.method, message.params))
+      const task = Promise.resolve().then(() => sink(message.method, message.params))
         .catch(error => this.#fail(connection, asError(error)))
-        .finally(() => { connection.incoming -= 1 })
+        .finally(() => {
+          connection.incoming -= 1
+          this.#incomingTasks.delete(task)
+        })
+      this.#incomingTasks.add(task)
       return
     }
     if (!validId(message.id)) throw new Error('invalid bridge JSON-RPC request id')
@@ -265,10 +275,16 @@ export class NdjsonRpcClient {
     }
     connection.incoming += 1
     const controller = new AbortController()
-    void Promise.resolve().then(() => handler(message.params, controller.signal)).then(
+    connection.incomingControllers.add(controller)
+    const task = Promise.resolve().then(() => handler(message.params, controller.signal)).then(
       result => this.#send(connection, { jsonrpc: '2.0', id: message.id, result: result ?? {} }),
       error => this.#replyError(connection, message.id, normalizeRpcError(error)),
-    ).catch(error => this.#fail(connection, asError(error))).finally(() => { connection.incoming -= 1 })
+    ).catch(error => this.#fail(connection, asError(error))).finally(() => {
+      connection.incoming -= 1
+      connection.incomingControllers.delete(controller)
+      this.#incomingTasks.delete(task)
+    })
+    this.#incomingTasks.add(task)
   }
 
   #receiveResponse(connection, message) {
@@ -329,11 +345,18 @@ export class NdjsonRpcClient {
   #fail(connection, cause) {
     if (connection.closed) return
     connection.closed = true
+    for (const controller of connection.incomingControllers) controller.abort(cause)
     connection.handshake.reject(cause)
     for (const pending of connection.pending.values()) pending.reject(cause)
     connection.pending.clear()
     if (!connection.socket.destroyed) connection.socket.destroy()
     if (this.#connection === connection) this.#connection = undefined
+  }
+
+  async #drainIncoming() {
+    while (this.#incomingTasks.size > 0) {
+      await Promise.allSettled([...this.#incomingTasks])
+    }
   }
 
   #requireConnection() {

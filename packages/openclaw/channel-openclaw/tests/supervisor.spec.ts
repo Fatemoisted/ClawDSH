@@ -55,6 +55,7 @@ interface Fixture {
   readonly provider: {
     readonly secrets: { token: string; startupNonce: string }
     firstHandshake: Promise<unknown>
+    readonly health: ReturnType<typeof vi.fn>
     readonly beginShutdown: ReturnType<typeof vi.fn>
     readonly dispose: ReturnType<typeof vi.fn>
   }
@@ -137,6 +138,7 @@ async function fixture(): Promise<Fixture> {
   const provider = {
     secrets: { token: 'runtime-token', startupNonce: 'runtime-nonce' },
     firstHandshake: Promise.resolve({ protocolVersion: 1 }),
+    health: vi.fn(async () => ({ status: 'ready' })),
     beginShutdown: vi.fn(),
     dispose: vi.fn(async () => {}),
   }
@@ -533,6 +535,30 @@ describe('managed Gateway supervision', () => {
     expect(timed.provider.dispose).toHaveBeenCalledOnce()
   })
 
+  it('waits past authentication for bridge recovery and fails closed if recovery degrades', async () => {
+    const recovered = await fixture()
+    recovered.provider.health
+      .mockResolvedValueOnce({ status: 'starting' })
+      .mockResolvedValueOnce({ status: 'ready' })
+    const runningGateway = handle('', { done: new Promise(() => {}) })
+    const supervisor = await OpenClawSupervisor.start(
+      contextWith(successfulHandles(runningGateway)).ctx,
+      recovered.config,
+    )
+    expect(recovered.provider.health).toHaveBeenCalledTimes(2)
+    await supervisor.dispose()
+
+    const failed = await fixture()
+    failed.provider.health.mockResolvedValue({ status: 'degraded' })
+    const failedGateway = handle('', { done: new Promise(() => {}) })
+    await expect(OpenClawSupervisor.start(
+      contextWith(successfulHandles(failedGateway)).ctx,
+      failed.config,
+    )).rejects.toThrow(/recovery did not reach ready/)
+    expect(failedGateway.terminate).toHaveBeenCalledOnce()
+    expect(failed.provider.dispose).toHaveBeenCalledOnce()
+  })
+
   it('surfaces incomplete cleanup and combines independent cleanup failures', async () => {
     const app = await fixture()
     app.provider.firstHandshake = new Promise(() => {})
@@ -561,5 +587,17 @@ describe('managed Gateway supervision', () => {
     const nonErrorSupervisor = await OpenClawSupervisor.start(contextWith(successfulHandles(cleanGateway)).ctx, nonError.config)
     nonError.provider.dispose.mockRejectedValueOnce('string cleanup failure')
     await expect(nonErrorSupervisor.dispose()).rejects.toEqual(new Error('string cleanup failure'))
+  })
+
+  it('bounds a Provider drain that ignores shutdown cancellation', async () => {
+    const app = await fixture()
+    app.provider.dispose.mockReturnValueOnce(new Promise<never>(() => {}))
+    const gateway = handle('', { done: new Promise(() => {}), exits: true })
+    const supervisor = await OpenClawSupervisor.start(
+      contextWith(successfulHandles(gateway)).ctx,
+      { ...app.config, shutdownGraceMs: 10 },
+    )
+
+    await expect(supervisor.dispose()).rejects.toThrow(/Provider cleanup did not complete within shutdownGraceMs/)
   })
 })

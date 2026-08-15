@@ -71,9 +71,12 @@ export const CHANNEL_BRIDGE_NOTIFICATIONS_V1 = {
 export type ChannelBridgeNotificationV1 =
   typeof CHANNEL_BRIDGE_NOTIFICATIONS_V1[keyof typeof CHANNEL_BRIDGE_NOTIFICATIONS_V1]
 
-/** Reject blank or whitespace-padded opaque wire identities before branding. */
+/** Reject blank, whitespace-padded, or NUL-bearing opaque wire identities before branding. */
 function opaqueId<T extends string>(factory: (value: string) => T): z.ZodType<T> {
-  return z.string().min(1).refine(value => value.trim() === value, 'must not have surrounding whitespace').transform(factory)
+  return z.string().min(1)
+    .refine(value => !value.includes('\0'), 'must not contain NUL')
+    .refine(value => value.trim() === value, 'must not have surrounding whitespace')
+    .transform(factory)
 }
 
 const gatewayInstanceIdSchema = opaqueId(GatewayInstanceId)
@@ -100,7 +103,9 @@ const channelToolCallIdSchema = opaqueId(ChannelToolCallId)
 const protocolVersionSchema = z.literal(CHANNEL_PROTOCOL_VERSION)
 const nonNegativeIntegerSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 const positiveIntegerSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
-const nonBlankSchema = z.string().min(1).refine(value => value.trim().length > 0, 'must contain a non-whitespace character')
+const plainStringSchema = z.string().refine(value => !value.includes('\0'), 'must not contain NUL')
+const nonBlankSchema = plainStringSchema.min(1)
+  .refine(value => value.trim().length > 0, 'must contain a non-whitespace character')
 const rfc3339Schema = z.string().regex(
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/,
   'must be an RFC 3339 timestamp',
@@ -179,7 +184,7 @@ const channelRouteV1Schema = z.object({
 
 const channelPrincipalV1Schema = z.object({
   senderId: channelSenderIdSchema,
-  displayName: z.string().optional(),
+  displayName: plainStringSchema.optional(),
   trust: z.enum(['owner', 'paired', 'allowlisted', 'admitted', 'group-allowlisted']),
 }).strict()
 
@@ -233,6 +238,27 @@ function validateMessageContent(
   }
 }
 
+/** Keep the route classification and admitted principal class mutually consistent. */
+function validateTurnRouteTrust(
+  value: {
+    readonly route: { readonly kind: 'direct' | 'group' }
+    readonly sender: { readonly trust: 'owner' | 'paired' | 'allowlisted' | 'admitted' | 'group-allowlisted' }
+  },
+  ctx: z.RefinementCtx,
+): void {
+  const isGroup = value.route.kind === 'group'
+  const hasGroupTrust = value.sender.trust === 'group-allowlisted'
+  if (isGroup !== hasGroupTrust) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['sender', 'trust'],
+      message: isGroup
+        ? 'group routes require group-allowlisted trust'
+        : 'direct routes forbid group-allowlisted trust',
+    })
+  }
+}
+
 /** Strict validator for one admitted inbound V1 turn. */
 export const channelTurnEnvelopeV1Schema = z.object({
   protocolVersion: protocolVersionSchema,
@@ -244,10 +270,12 @@ export const channelTurnEnvelopeV1Schema = z.object({
   wasMentioned: z.boolean().optional(),
   messageId: channelMessageIdSchema,
   replyTo: channelMessageReferenceV1Schema.optional(),
-  text: z.string(),
+  text: plainStringSchema,
   media: orderedMediaSchema,
   trace: channelTraceV1Schema.optional(),
-}).strict().superRefine(validateMessageContent) as unknown as z.ZodType<ChannelTurnEnvelopeV1>
+}).strict()
+  .superRefine(validateMessageContent)
+  .superRefine(validateTurnRouteTrust) as unknown as z.ZodType<ChannelTurnEnvelopeV1>
 
 const tokenUsageSchema = z.object({
   inputTokens: nonNegativeIntegerSchema,
@@ -274,7 +302,7 @@ const completedResultSchema = z.object({
   ...turnResultBase,
   status: z.literal('completed'),
   sessionId: sessionIdSchema,
-  text: z.string(),
+  text: plainStringSchema,
   media: orderedMediaSchema,
   usage: tokenUsageSchema.optional(),
 }).strict().superRefine(validateMessageContent)
@@ -359,7 +387,7 @@ const actionBase = {
 const sendActionSchema = z.object({
   ...actionBase,
   kind: z.literal('send'),
-  text: z.string(),
+  text: plainStringSchema,
   media: orderedMediaSchema,
   replyTo: channelMessageIdSchema.optional(),
 }).strict().superRefine(validateMessageContent)
@@ -368,7 +396,7 @@ const editActionSchema = z.object({
   ...actionBase,
   kind: z.literal('edit'),
   messageId: channelMessageIdSchema,
-  text: z.string(),
+  text: plainStringSchema,
   media: orderedMediaSchema,
 }).strict().superRefine(validateMessageContent)
 
@@ -407,7 +435,7 @@ const directorySelfActionSchema = z.object({
 
 const directoryListBase = {
   ...actionBase,
-  query: z.string().optional(),
+  query: plainStringSchema.optional(),
   limit: positiveIntegerSchema.optional(),
   source: z.enum(['cached', 'live']),
 }
@@ -520,8 +548,8 @@ export const channelActionDeliveryReceiptV1Schema = channelDeliveryReceiptV1Sche
 const channelDirectoryEntryV1Schema = z.object({
   kind: z.enum(['user', 'group', 'channel']),
   id: channelDirectoryEntryIdSchema,
-  name: z.string().optional(),
-  handle: z.string().optional(),
+  name: plainStringSchema.optional(),
+  handle: plainStringSchema.optional(),
   rank: z.number().optional(),
 }).strict()
 
@@ -536,14 +564,14 @@ const channelResolveMatchV1Schema = z.discriminatedUnion('resolved', [
   z.object({
     input: nonBlankSchema,
     resolved: z.literal(false),
-    note: z.string().optional(),
+    note: plainStringSchema.optional(),
   }).strict(),
   z.object({
     input: nonBlankSchema,
     resolved: z.literal(true),
     id: channelDirectoryEntryIdSchema,
-    name: z.string().optional(),
-    note: z.string().optional(),
+    name: plainStringSchema.optional(),
+    note: plainStringSchema.optional(),
   }).strict(),
 ])
 
@@ -596,7 +624,7 @@ const toolNotificationSchema = z.object({
   toolCallId: channelToolCallIdSchema,
   name: nonBlankSchema,
   phase: z.enum(['started', 'finished']),
-  summary: z.string().optional(),
+  summary: plainStringSchema.optional(),
 }).strict()
 
 const statusNotificationSchema = z.object({

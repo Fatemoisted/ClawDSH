@@ -19,7 +19,9 @@ test('publish workflow is fixed to public npm, Node 24, OIDC, and a safe dry-run
   assert.equal((workflow.match(/persist-credentials: false/g) ?? []).length, 2)
   assert.equal((workflow.match(/actions\/checkout@v6/g) ?? []).length, 2)
   assert.equal((workflow.match(/actions\/setup-node@v6/g) ?? []).length, 2)
-  assert.match(workflow, /node-version: 24/g)
+  assert.match(workflow, /node-version: 24\.19\.0/)
+  assert.match(workflow, /npm@10\.9\.7 ci --ignore-scripts --prefix packages\/openclaw\/channel-openclaw\/runtime/)
+  assert.match(workflow, /assembled-smoke\.ts/)
   assert.match(workflow, /NODE_OPTIONS: --max-old-space-size=4096/)
   assert.match(workflow, /--registry https:\/\/registry\.npmjs\.org\//)
   assert.match(workflow, /--tag next/g)
@@ -31,6 +33,9 @@ test('publish workflow is fixed to public npm, Node 24, OIDC, and a safe dry-run
   assert.equal((smokeWorkflow.match(/persist-credentials: false/g) ?? []).length, 1)
   assert.match(smokeWorkflow, /actions\/checkout@v6/)
   assert.match(smokeWorkflow, /actions\/setup-node@v6/)
+  assert.match(smokeWorkflow, /node-version: 24\.19\.0/)
+  assert.match(smokeWorkflow, /npm@10\.9\.7 ci --ignore-scripts --prefix packages\/openclaw\/channel-openclaw\/runtime/)
+  assert.match(smokeWorkflow, /assembled-smoke\.ts/)
 })
 
 test('workflow spells exactly the canonical 13-package topological order', () => {

@@ -96,10 +96,14 @@ describe('ClawDSH installed profile identity', () => {
   it('always mounts the communication plane while keeping the OpenClaw Gateway disabled', () => {
     const entry = loaderEntry(read(join(profileSource, 'cordis.patch.yml')), 'clawdsh-communication-plane')
     expect(entry).not.toMatch(/^      disabled:/m)
+    expect(entry).toMatch(/name: '@deepseek-ai\/dsh-invariants'/)
     expect(entry).toMatch(/name: '@clawdsh\/dsh-channel'/)
+    expect(entry).toMatch(/name: '@clawdsh\/dsh-channel\/invariant'/)
     expect(entry).toMatch(/ownerPreset: clawdsh/)
     expect(entry).toMatch(/safePreset: clawdsh-messaging-safe/)
+    expect(entry).toMatch(/name: '@clawdsh\/dsh-channel-agent\/invariant'/)
     expect(entry).toMatch(/name: '@clawdsh\/dsh-channel-openclaw'/)
+    expect(entry).toMatch(/name: '@clawdsh\/dsh-channel-openclaw\/invariant'/)
     expect(entry).toMatch(/- id: channel-openclaw[\s\S]*?config:\n            enabled: false/)
     const stagingRoot = new RegExp(
       String.raw`stagingRoot: !!js process\.env\.CLAWDSH_OPENCLAW_STAGING_ROOT `

@@ -52,7 +52,7 @@ platform
 | Provider → Gateway | `turn.progress` | 可选协商的文本、推理、工具或状态进度 |
 | Gateway → Provider | `delivery.report` | 可选协商的最终回合投递更新 |
 
-handshake 必须匹配配置的 Gateway instance、启动 nonce、production 或 canary host lock、Node engine、AgentHarness generation 与完整能力列表。严格 schema 拒绝未知字段、畸形 opaque id、不连续媒体序号、无效路径，以及不一致的动作或回执 subject。本地端点只接受一个已认证 peer；断开连接会把 provider health 降级，但不会静默重跑正在执行的 Agent 回合。
+handshake 必须匹配配置的 Gateway instance、启动 nonce、production 或 canary host lock、Node engine、AgentHarness generation 与完整能力列表。严格 schema 拒绝未知字段、含 NUL 的字符串、畸形 opaque id、不连续媒体序号、无效路径、不一致的 route/trust 组合，以及不一致的动作或回执 subject。本地端点只接受一个已认证 peer，ready 还必须等待持久 route 恢复。临时 detach 会拒绝 socket 拥有的等待，但允许已准入 handler 持久化终态结果；shutdown 会在 storage 关闭前中止并排空活动及已 detach handler，progress 也绝不会进入替代 peer。
 
 锁定的 stable 与 canary host 没有公开 hook 可把最终 AgentHarness 回答与平台投递关联起来，因此当前 bridge 不协商 `delivery.report` extension。其本地 `health.get` 能证明已认证 bridge 与 host 身份，但无法通过公开聚合 host API 枚举真实账号连接状态。两个缺失 host seam 都会阻止认证；协议支持并不表示当前 adapter 能提供对应事实。所需 OpenClaw host 契约在 `docs/upstream-proposal/openclaw-agent-harness-channel-seams.zh.md` 中提议。
 
@@ -80,7 +80,7 @@ handshake 必须匹配配置的 Gateway instance、启动 nonce、production 或
 
 ## Host track 与目录
 
-Production 锁定 OpenClaw `v2026.7.1-2` / commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`，并校验 npm tarball 与解包文件树。其公开聊天目录包含 27 项：1 个 core、2 个 bundled、21 个 repo-official 与 3 个 external，约定简写为 **24+3**。精确列表与逐包完整性在 `tools/openclaw-channel-host/channels.production.json`。
+Production 锁定 OpenClaw `v2026.7.1-2` / commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`，并校验 npm tarball、解包文件树、依赖 lock，以及经评审的 Darwin arm64 与 Linux x64 安装运行时摘要。其公开聊天目录包含 27 项：1 个 core、2 个 bundled、21 个 repo-official 与 3 个 external，约定简写为 **24+3**。精确列表与逐包完整性在 `tools/openclaw-channel-host/channels.production.json`。
 
 Canary 锁定 source commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`；其 31 项目录是审计输入，不是生产兼容性承诺。因为 canary lock 没有构建后的 host tree，managed execution 必须失败，不能推断产物。
 
@@ -88,7 +88,7 @@ Canary 锁定 source commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0`；其 31 
 
 唯一有效的推进是 `cataloged → installable → certified → enabled`，定义见 ADR-0008。批准目录建立 catalog 来源；校验稳定 artifact 且通过兼容 host 装配后可建立 installability。External 包还要求许可证、平台条款和安全审查全部通过。认证还要求精确发布装配、安全检查、投递行为、无密钥装配 transcript，以及需要凭证的平台 live smoke。启用还要求交付 profile 的明确选择。
 
-当前实现证据只建立 `cataloged`。交付 profile 以 default-disabled group 包含 sidecar 组合，且默认不启动 legacy adapter；另行保留的 legacy 包不构成 sidecar 证据。本次变更没有运行 Telegram 或 Feishu live transport smoke。上述最终投递、聚合账号健康、stable 入站媒体、Windows ACL、external 治理和自有装配 snapshot 门禁仍未完成。上游 snapshot runner 不发现 `packages/openclaw/`，而修改上游 `examples/` 超出自有范围。在 downstream-event seam 不可用期间，resume coverage 还必须证明只持久化已知 Session event name。
+当前实现证据只建立 `cataloged`。交付 profile 始终挂载 sidecar 组合及其 invariant companion，同时保持 Gateway setting 关闭；它不启动 legacy adapter，另行保留的 legacy 包也不构成 sidecar 证据。自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，贯穿锁定 Gateway、stable bridge 与 DSH Agent，并在 Linux x64 CI 中运行；经评审的 Darwin arm64 assembly 也已在本地通过。当前没有运行带凭证的 Telegram 或 Feishu transport smoke。最终投递、聚合账号健康、stable 入站媒体、Windows ACL 与 external 治理门禁仍未完成。在 downstream-event seam 不可用期间，resume coverage 还必须证明只持久化已知 Session event name。
 
 ## 替换门禁
 

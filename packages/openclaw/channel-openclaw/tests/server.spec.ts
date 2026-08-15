@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:net'
+import { createServer, Server, Socket } from 'node:net'
 import { spawn } from 'node:child_process'
 import { chmod, lstat, mkdir, stat, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -68,6 +68,10 @@ describe('authenticated local Provider lifecycle', () => {
     const app = await setup({ authenticate: false })
     expect((await stat(app.config.endpoint)).mode & 0o777).toBe(0o600)
     expect(await app.provider.health()).toMatchObject({ status: 'starting', accounts: [], diagnostics: [] })
+    app.provider.notifyProgress({
+      kind: 'status', turnId: 'turn-1' as never, runId: 'run-1' as never, sequence: 0, status: 'running',
+    })
+    expect(app.client.notifications).toHaveLength(0)
     await app.client.authenticate(
       app.provider.secrets.token,
       bridgeHandshake(app.provider.secrets.startupNonce),
@@ -89,6 +93,198 @@ describe('authenticated local Provider lifecycle', () => {
     await firstDispose
     expect(app.media.closes).toBe(1)
     await expect(lstat(app.config.endpoint)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('aborts and drains an admitted turn before Provider disposal completes', async () => {
+    const app = await setup()
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const dispatchClose = Promise.withResolvers<undefined>()
+    let signal: AbortSignal | undefined
+    let completed = 0
+    app.channels.runTurn.mockImplementationOnce(async (_request, execution) => {
+      signal = (execution as { signal: AbortSignal }).signal
+      entered.resolve(undefined)
+      await release.promise
+      completed += 1
+      return {
+        protocolVersion: 1,
+        turnId: 'turn-1',
+        runId: 'run-1',
+        replayId: 'replay-drained',
+        status: 'silent',
+        sessionId: 'channel-session-1',
+      }
+    })
+    const response = app.client.request('turn.run', turn() as never)
+    void response.catch(() => {})
+    await entered.promise
+
+    const connection = Reflect.get(app.provider, 'connection') as NdjsonConnection
+    const closeReceivers = Reflect.get(connection, 'closeReceivers') as Array<(error?: Error) => void>
+    const delayedReceivers = closeReceivers.splice(0)
+    closeReceivers.push((error) => {
+      void dispatchClose.promise.then(() => {
+        for (const receiver of delayedReceivers) receiver(error)
+      })
+    })
+
+    let disposed = false
+    const disposal = app.provider.dispose().then(() => { disposed = true })
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    expect(signal?.aborted).toBe(true)
+    expect(disposed).toBe(false)
+    expect(app.media.closes).toBe(0)
+    dispatchClose.resolve(undefined)
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    expect(disposed).toBe(false)
+    expect(app.media.closes).toBe(0)
+    release.resolve(undefined)
+    await disposal
+    expect(completed).toBe(1)
+    expect(app.media.closes).toBe(1)
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    expect(completed).toBe(1)
+  })
+
+  it('retains the newest peer drain and waits for its matching settlement', async () => {
+    const app = await setup({ authenticate: false })
+    const trackPeer = Reflect.get(app.provider, 'trackPeer') as (
+      peer: object,
+      drain: Promise<void>,
+    ) => Promise<void>
+    const drainPeers = Reflect.get(app.provider, 'drainPeers') as () => Promise<void>
+    const peer = {}
+    const superseded = Promise.withResolvers<undefined>()
+    const current = Promise.withResolvers<undefined>()
+    const supersededDrain = trackPeer.call(app.provider, peer, superseded.promise)
+    const currentDrain = trackPeer.call(app.provider, peer, current.promise)
+
+    let drained = false
+    const allDrained = drainPeers.call(app.provider).then(() => { drained = true })
+    superseded.resolve(undefined)
+    await supersededDrain
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    expect(Reflect.get(app.provider, 'peerDrains')).toEqual(new Map([[peer, current.promise]]))
+    expect(drained).toBe(false)
+
+    current.resolve(undefined)
+    await currentDrain
+    await allDrained
+    expect(Reflect.get(app.provider, 'peerDrains')).toEqual(new Map())
+    expect(drained).toBe(true)
+  })
+
+  it('removes only the matching rejected peer drain', async () => {
+    const app = await setup({ authenticate: false })
+    const trackPeer = Reflect.get(app.provider, 'trackPeer') as (
+      peer: object,
+      drain: Promise<void>,
+    ) => Promise<void>
+    const peer = {}
+    const superseded = Promise.withResolvers<undefined>()
+    const current = Promise.withResolvers<undefined>()
+    const supersededDrain = trackPeer.call(app.provider, peer, superseded.promise)
+    const currentDrain = trackPeer.call(app.provider, peer, current.promise)
+
+    superseded.reject(new Error('superseded drain failed'))
+    await expect(supersededDrain).rejects.toThrow(/superseded drain failed/)
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    expect(Reflect.get(app.provider, 'peerDrains')).toEqual(new Map([[peer, current.promise]]))
+
+    current.reject(new Error('current drain failed'))
+    await expect(currentDrain).rejects.toThrow(/current drain failed/)
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    expect(Reflect.get(app.provider, 'peerDrains')).toEqual(new Map())
+  })
+
+  it('surfaces an owned peer drain failure after releasing the durable ledger', async () => {
+    const app = await setup()
+    const rejectedDrain = Promise.reject('owned peer drain failed')
+    Reflect.set(app.provider, 'peer', { close: () => rejectedDrain })
+
+    await expect(app.provider.dispose()).rejects.toThrow(/owned peer drain failed/)
+    expect(app.media.closes).toBe(1)
+  })
+
+  it('reports stopping when the authenticated transport disconnects during shutdown', async () => {
+    const app = await setup()
+    app.provider.beginShutdown()
+    app.client.close()
+    await app.client.waitForClose()
+    await vi.waitFor(async () => {
+      await expect(app.provider.health()).resolves.toMatchObject({ status: 'stopping' })
+    })
+    await app.provider.dispose()
+  })
+
+  it('lets an admitted turn finish after transport loss and replays it after reconnect', async () => {
+    const app = await setup()
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const finished = Promise.withResolvers<undefined>()
+    let signal: AbortSignal | undefined
+    let notify: ((notification: Record<string, unknown>) => void) | undefined
+    let durableResult: {
+      readonly protocolVersion: number
+      readonly turnId: string
+      readonly runId: string
+      readonly replayId: string
+      readonly status: string
+      readonly sessionId: string
+      readonly text: string
+    } | undefined
+    let executions = 0
+    app.channels.runTurn.mockImplementation(async (_request, execution) => {
+      if (durableResult !== undefined) return durableResult
+      executions += 1
+      const admitted = execution as {
+        signal: AbortSignal
+        notify: (notification: Record<string, unknown>) => void
+      }
+      signal = admitted.signal
+      notify = admitted.notify
+      admitted.notify({ kind: 'text.delta', turnId: 'turn-1', runId: 'run-1', sequence: 0, text: 'before' })
+      entered.resolve(undefined)
+      await release.promise
+      durableResult = {
+        protocolVersion: 1,
+        turnId: 'turn-1',
+        runId: 'run-1',
+        replayId: 'replay-after-disconnect',
+        status: 'completed',
+        sessionId: 'channel-session-1',
+        text: 'completed after transport loss',
+      }
+      finished.resolve(undefined)
+      return durableResult
+    })
+    const abandonedResponse = app.client.request('turn.run', turn() as never)
+    void abandonedResponse.catch(() => {})
+    await entered.promise
+    await app.client.waitFor(frame => frame.method === 'turn.progress')
+
+    app.client.close()
+    await app.client.waitForClose()
+    await vi.waitFor(() => { expect(Reflect.get(app.provider, 'peer')).toBeUndefined() })
+    expect(signal?.aborted).toBe(false)
+
+    const reconnect = new BridgeClient()
+    clients.push(reconnect)
+    await reconnect.connect(app.config.endpoint)
+    await reconnect.authenticate(app.provider.secrets.token, bridgeHandshake(app.provider.secrets.startupNonce))
+    notify?.({ kind: 'text.delta', turnId: 'turn-1', runId: 'run-1', sequence: 1, text: 'after' })
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    expect(reconnect.notifications).not.toContainEqual(expect.objectContaining({ method: 'turn.progress' }))
+    release.resolve(undefined)
+    await finished.promise
+    await expect(reconnect.request('turn.run', turn() as never)).resolves.toMatchObject({
+      status: 'completed',
+      replayId: 'replay-after-disconnect',
+      text: 'completed after transport loss',
+    })
+    expect(executions).toBe(1)
+    expect(app.channels.runTurn).toHaveBeenCalledTimes(2)
   })
 
   it('rejects an unauthenticated peer without exposing the exact cause, then accepts a valid reconnect', async () => {
@@ -137,7 +333,10 @@ describe('authenticated local Provider lifecycle', () => {
     clear.mockRestore()
   })
 
-  it.each([new Error('ack write failed'), 'ack write failed'])('closes if the handshake acknowledgement cannot be sent', async (failure) => {
+  it.each([
+    new Error('EACCES /Users/operator/state; token sk-secret'),
+    'EACCES /Users/operator/state; token sk-secret',
+  ])('closes and sanitizes health if the handshake acknowledgement cannot be sent', async (failure) => {
     vi.spyOn(NdjsonConnection.prototype, 'send').mockRejectedValueOnce(failure)
     const app = await setup({ authenticate: false })
     app.client.send({
@@ -146,6 +345,11 @@ describe('authenticated local Provider lifecycle', () => {
       handshake: bridgeHandshake(app.provider.secrets.startupNonce),
     })
     await app.client.waitForClose()
+    const health = await app.provider.health()
+    expect(health).toMatchObject({
+      status: 'degraded', diagnostics: [{ message: 'Gateway bridge disconnected unexpectedly.' }],
+    })
+    expect(JSON.stringify(health)).not.toMatch(/\/Users\/operator|sk-secret/)
   })
 
   it('rejects a malformed handshake envelope before token comparison', async () => {
@@ -164,6 +368,20 @@ describe('authenticated local Provider lifecycle', () => {
     await expect(OpenClawChannelProvider.create(relative.ctx, { ...windows.config, endpoint: 'relative.sock' }))
       .rejects.toThrow(/absolute Unix socket/)
     expect(relative.media.closes).toBe(1)
+  })
+
+  it('closes storage after an asynchronous listener failure', async () => {
+    const fixture = await providerConfig()
+    roots.push(fixture.root)
+    const context = providerContext()
+    vi.spyOn(Server.prototype, 'listen').mockImplementationOnce(function (this: Server) {
+      queueMicrotask(() => { this.emit('error', new Error('asynchronous listen failure')) })
+      return this
+    })
+
+    await expect(OpenClawChannelProvider.create(context.ctx, fixture.config))
+      .rejects.toThrow(/asynchronous listen failure/)
+    expect(context.media.closes).toBe(1)
   })
 
   it('rejects public socket parents and non-socket endpoint collisions', async () => {
@@ -208,6 +426,66 @@ describe('authenticated local Provider lifecycle', () => {
     await expect(OpenClawChannelProvider.create(context.ctx, activeFixture.config))
       .rejects.toThrow(/endpoint is already active/)
     expect((await lstat(activeFixture.config.endpoint)).isSocket()).toBe(true)
+    expect(context.media.closes).toBe(1)
+  })
+
+  it('rejects a stale-socket probe error after ignoring its later connect event', async () => {
+    const fixture = await providerConfig()
+    roots.push(fixture.root)
+    const active = createServer()
+    extraServers.push(active)
+    await new Promise<void>((resolve, reject) => {
+      active.once('error', reject)
+      active.listen(fixture.config.endpoint, resolve)
+    })
+    vi.spyOn(Socket.prototype, 'connect').mockImplementationOnce(function (this: Socket) {
+      queueMicrotask(() => {
+        this.emit('error', Object.assign(new Error('probe denied'), { code: 'EACCES' }))
+        this.emit('connect')
+      })
+      return this
+    })
+    const context = providerContext()
+
+    await expect(OpenClawChannelProvider.create(context.ctx, fixture.config)).rejects.toThrow(/probe denied/)
+    expect(context.media.closes).toBe(1)
+  })
+
+  it('accepts a stale socket that disappears while it is being probed', async () => {
+    const fixture = await providerConfig()
+    roots.push(fixture.root)
+    const active = createServer()
+    extraServers.push(active)
+    await new Promise<void>((resolve, reject) => {
+      active.once('error', reject)
+      active.listen(fixture.config.endpoint, resolve)
+    })
+    vi.spyOn(Socket.prototype, 'connect').mockImplementationOnce(function (this: Socket) {
+      queueMicrotask(() => {
+        this.emit('error', Object.assign(new Error('probe target disappeared'), { code: 'ENOENT' }))
+      })
+      return this
+    })
+    const context = providerContext()
+
+    const provider = await OpenClawChannelProvider.create(context.ctx, fixture.config)
+    providers.push(provider)
+    expect((await lstat(fixture.config.endpoint)).isSocket()).toBe(true)
+  })
+
+  it('fails closed when a stale-socket probe does not settle before its deadline', async () => {
+    const fixture = await providerConfig({ handshakeTimeoutMs: 10 })
+    roots.push(fixture.root)
+    const active = createServer()
+    extraServers.push(active)
+    await new Promise<void>((resolve, reject) => {
+      active.once('error', reject)
+      active.listen(fixture.config.endpoint, resolve)
+    })
+    vi.spyOn(Socket.prototype, 'connect').mockImplementationOnce(function (this: Socket) { return this })
+    const context = providerContext()
+
+    await expect(OpenClawChannelProvider.create(context.ctx, fixture.config)).rejects.toThrow(/probe timed out/)
     expect(context.media.closes).toBe(1)
   })
 
@@ -384,7 +662,7 @@ describe('bridge-to-DSH request routing', () => {
     await expect(app.client.request('turn.cancel', cancelRequest() as never)).resolves.toEqual({})
     await expect(app.client.request('session.reset', resetRequest() as never)).resolves.toMatchObject({ protocolVersion: 1 })
     await expect(app.client.request('session.close', closeRequest() as never)).resolves.toEqual({})
-    await expect(app.client.request('health.get', {})).resolves.toMatchObject({ status: 'ready' })
+    await expect(app.client.request('health.get', {})).resolves.toMatchObject({ status: 'starting' })
     expect(app.channels.cancel).toHaveBeenCalledOnce()
     expect(app.channels.reset).toHaveBeenCalledOnce()
     expect(app.channels.close).toHaveBeenCalledOnce()
@@ -548,7 +826,7 @@ describe('DSH-to-bridge actions and receipts', () => {
     expect(app.media.actions.get('action-1')).toMatchObject({ phase: 'needs-recovery' })
     await expect(app.provider.health()).resolves.toMatchObject({
       status: 'degraded',
-      diagnostics: [{ message: 'Gateway RPC request health.get timed out' }],
+      diagnostics: [{ message: 'Gateway health probe failed.' }],
     })
   })
 
@@ -677,7 +955,7 @@ describe('DSH-to-bridge actions and receipts', () => {
     const app = await setup()
     Reflect.set(app.provider, 'peer', { request: async () => { throw 'string failure' } })
     await expect(app.provider.health()).resolves.toMatchObject({
-      status: 'degraded', diagnostics: [{ message: 'string failure' }],
+      status: 'degraded', diagnostics: [{ message: 'Gateway health probe failed.' }],
     })
   })
 

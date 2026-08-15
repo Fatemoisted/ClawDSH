@@ -17,6 +17,12 @@
       "architecture": "arm64",
       "fileCount": 31942,
       "sha512": "71c4b7b37c79dfa37efb2297c52315786130c5b44ca0fa0469a96e09334f5fbbd027988aac5aa559a7a003a3a002201bbf0231ea27dec30d9817bcb13a40cfb6"
+    },
+    {
+      "platform": "linux",
+      "architecture": "x64",
+      "fileCount": 31941,
+      "sha512": "9f2794054de6052b4a8e834c40f3652d17a95b2847289f32cc82c974146e244ca3dddb0cb058c0c395f613570b3516f18171fe663cc283efa0f0cd703c557f82"
     }
   ]
 }

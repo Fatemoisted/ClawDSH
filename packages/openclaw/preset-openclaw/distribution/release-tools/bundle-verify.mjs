@@ -31,6 +31,8 @@ export const FEATURE_PACKAGES = Object.freeze([
 ])
 /** Restricted messaging preset distributed as its own exact package. */
 export const SAFE_PRESET_PACKAGE = '@clawdsh/dsh-preset-messaging-safe'
+/** Harness invariant registry mounted with the Channel capability. */
+export const INVARIANT_REGISTRY_PACKAGE = '@deepseek-ai/dsh-invariants'
 
 const LEGACY_CHANNEL_PACKAGES = Object.freeze([
   '@clawdsh/dsh-channel-core',
@@ -38,12 +40,16 @@ const LEGACY_CHANNEL_PACKAGES = Object.freeze([
   '@clawdsh/dsh-channel-telegram',
 ])
 const REQUIRED_PATCH_PACKAGES = Object.freeze([
+  INVARIANT_REGISTRY_PACKAGE,
   '@clawdsh/dsh-soul/settings-host',
   '@clawdsh/dsh-activity',
   BUNDLE_NAME,
   '@clawdsh/dsh-channel',
+  '@clawdsh/dsh-channel/invariant',
   '@clawdsh/dsh-channel-agent',
+  '@clawdsh/dsh-channel-agent/invariant',
   '@clawdsh/dsh-channel-openclaw',
+  '@clawdsh/dsh-channel-openclaw/invariant',
   '@clawdsh/dsh-memory',
   '@clawdsh/dsh-embeddings-ark',
   '@clawdsh/dsh-skills-hub',
@@ -223,6 +229,9 @@ function validatePackageManifest(value) {
     if (dependencies[name] !== BUNDLE_VERSION) {
       throw new TypeError(`bundle dependency ${name} must be exactly ${BUNDLE_VERSION}`)
     }
+  }
+  if (dependencies[INVARIANT_REGISTRY_PACKAGE] !== '0.1.0-rc.6') {
+    throw new TypeError(`bundle dependency ${INVARIANT_REGISTRY_PACKAGE} must be exactly 0.1.0-rc.6`)
   }
   for (const name of LEGACY_CHANNEL_PACKAGES) {
     if (Object.hasOwn(dependencies, name)) throw new TypeError(`legacy dependency ${name} must not ship in the bundle`)

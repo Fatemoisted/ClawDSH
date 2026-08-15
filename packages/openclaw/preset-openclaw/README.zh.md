@@ -64,6 +64,8 @@ Profile 始终按以下顺序挂载完整 communication seam：
 2. `@clawdsh/dsh-channel-agent`，durable Agent Driver 与 route-scoped `message` tool；
 3. `@clawdsh/dsh-channel-openclaw`，authenticated IPC Provider 与 locked Gateway supervisor。
 
+同一个始终挂载的通信组包含按包过滤的 invariant registry，以及 Service Definition、Agent 和 Provider 的 invariant companion。因此，启用后的部署会校验恢复的 Channel 来源信息和每个 seam 角色拥有的运行时关系。
+
 Channel Protocol 始终提供 Service Definition，Agent Bridge 始终注册自身 network-inert Driver。OpenClaw Gateway 保持 mounted，其经过校验的 `enabled` setting 默认为 false，因此不执行 artifact check、socket binding、process launch 或 Provider registration。旧进程内 Telegram 与 Feishu package 不在 active profile 中，external extension selection 默认为空。OpenClaw 仍是 platform credential 的唯一 owner；本 profile 不读取或复制这些凭证。绝不能让 legacy adapter 与 OpenClaw 通信平面连接同一 platform account。
 
 Provider 配置、artifact check、admission default 与 runtime limitation 见 [channel-openclaw README](../channel-openclaw/README.md)。受检支持 catalog 采用保守语义：存在于 OpenClaw catalog 不表示渠道 installable、certified 或 enabled。[ADR-0008](../../../docs/adr/0008-openclaw-channel-plane.md)拥有架构与替换条件。

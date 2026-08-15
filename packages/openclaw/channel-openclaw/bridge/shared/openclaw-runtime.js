@@ -11,6 +11,7 @@ import {
   validateSessionClose,
   validateSessionReset,
   validateSessionResetResult,
+  validateTurnEnvelope,
   validateTurnNotification,
   validateTurnResult,
 } from './protocol-v1.js'
@@ -26,6 +27,8 @@ const CAPABILITIES = Object.freeze({
   notifications: NOTIFICATIONS,
   extensions: Object.freeze([]),
 })
+const PUBLIC_BRIDGE_FAILURE = '[ClawDSH bridge CHANNEL_BRIDGE_FAILED] The authenticated local ClawDSH communication bridge is unavailable.'
+const PROCESS_SHARED_BRIDGES = Symbol.for('clawdsh.channel-openclaw.process-shared-bridges.v1')
 
 /** Manifest-backed bridge runtime defaults; every value remains operator-configurable. */
 export const BRIDGE_CONFIG_DEFAULTS = Object.freeze({
@@ -136,30 +139,170 @@ export function createOpenClawBridge(api, options) {
         timeoutMs: options.config.controlTimeoutMs,
       })
     },
-    dispose: () => { resources?.client.dispose() },
+    dispose: async () => { await resources?.client.dispose() },
   }
   return {
     harness,
+    failAttempt: async (params, error) => {
+      const result = await failedAttempt(params, undefined, error, options.transcript)
+      return options.generation === 'v2' ? { ...result, terminal: { kind: 'ok' } } : result
+    },
     get handshake() { return ensureResources().environment.handshake },
     capabilities: CAPABILITIES,
     start: async () => {
       const current = ensureResources()
-      await current.client.connect()
-      await recoverAllRouteTransitions({
-        routes: current.routes,
-        routeTransitions: current.routeTransitions,
-        routeControls: current.routeControls,
-        routeOperations: current.routeOperations,
-        client: current.client,
-        timeoutMs: options.config.controlTimeoutMs,
-      })
+      try {
+        await current.client.connect()
+        await recoverAllRouteTransitions({
+          routes: current.routes,
+          routeTransitions: current.routeTransitions,
+          routeControls: current.routeControls,
+          routeOperations: current.routeOperations,
+          client: current.client,
+          timeoutMs: options.config.controlTimeoutMs,
+        })
+        current.lifecycle.status = 'ready'
+      } catch (error) {
+        current.lifecycle.status = 'degraded'
+        await current.client.dispose()
+        throw error
+      }
     },
-    dispose: () => { resources?.client.dispose() },
+    dispose: async () => { await resources?.client.dispose() },
   }
+}
+
+/**
+ * Share the one authenticated transport across repeated OpenClaw plugin registry instances.
+ * OpenClaw can register the process-wide AgentHarness from a different plugin instance than the
+ * startup service. Every matching service instance holds a lease; the last lease owns disposal.
+ */
+export function createProcessSharedOpenClawBridge(api, options) {
+  const state = processSharedBridgeState(options.generation)
+  const lease = Symbol(`clawdsh-bridge-${options.generation}`)
+  let identity
+  let started = false
+  const resolveIdentity = () => {
+    identity ??= processSharedBridgeIdentity(options)
+    return identity
+  }
+  const activeBridge = () => {
+    const active = state.active
+    return active !== undefined && active.identity === resolveIdentity() ? active.bridge : undefined
+  }
+  const harness = {
+    id: HARNESS_ID,
+    label: 'ClawDSH local Agent',
+    supports: context => supports(context, options),
+    runAttempt: params => {
+      try {
+        const active = activeBridge()
+        if (active !== undefined) return active.harness.runAttempt(params)
+        return failAttemptFor(params, new Error('the process-shared ClawDSH bridge is not active'), options)
+      } catch (error) {
+        return failAttemptFor(params, error, options)
+      }
+    },
+    reset: params => {
+      const active = activeBridge()
+      if (active === undefined) throw new Error('the process-shared ClawDSH bridge is not active')
+      return active.harness.reset(params)
+    },
+    // The startup service owns the shared connection lease and its final disposal.
+    dispose: () => {},
+  }
+  return {
+    harness,
+    get handshake() {
+      const active = activeBridge()
+      if (active === undefined) throw new Error('the process-shared ClawDSH bridge is not active')
+      return active.handshake
+    },
+    capabilities: CAPABILITIES,
+    start: () => serializeProcessSharedBridge(state, async () => {
+      if (started) return
+      const candidateIdentity = resolveIdentity()
+      if (state.active !== undefined) {
+        if (state.active.identity !== candidateIdentity) {
+          throw new Error('ClawDSH bridge configuration conflicts with the active process transport')
+        }
+        state.active.leases.add(lease)
+        started = true
+        return
+      }
+      const candidate = createOpenClawBridge(api, options)
+      await candidate.start()
+      state.active = { identity: candidateIdentity, bridge: candidate, leases: new Set([lease]) }
+      started = true
+    }),
+    dispose: () => serializeProcessSharedBridge(state, async () => {
+      if (!started) return
+      started = false
+      const active = state.active
+      if (active === undefined || !active.leases.delete(lease)) {
+        throw new Error('ClawDSH bridge process lease is inconsistent')
+      }
+      if (active.leases.size !== 0) return
+      state.active = undefined
+      await active.bridge.dispose()
+    }),
+  }
+}
+
+async function failAttemptFor(params, error, options) {
+  const result = await failedAttempt(params, undefined, error, options.transcript)
+  return options.generation === 'v2' ? { ...result, terminal: { kind: 'ok' } } : result
+}
+
+function processSharedBridgeIdentity(options) {
+  const environment = readBridgeEnvironment(options.generation, options.env)
+  return digest(JSON.stringify([
+    options.generation,
+    options.config.controlTimeoutMs,
+    options.config.routeStateMaxEntries,
+    options.config.deliveryStateMaxEntries,
+    environment.endpoint,
+    environment.token,
+    environment.stagingRoot,
+    environment.maxFrameBytes,
+    environment.maxInFlight,
+    environment.maxMediaBytes,
+    environment.handshake,
+  ]))
+}
+
+function processSharedBridgeState(generation) {
+  const root = globalThis
+  root[PROCESS_SHARED_BRIDGES] ??= new Map()
+  const registry = root[PROCESS_SHARED_BRIDGES]
+  if (!(registry instanceof Map)) throw new Error('ClawDSH process bridge registry is invalid')
+  let state = registry.get(generation)
+  if (state === undefined) {
+    state = { active: undefined, operation: Promise.resolve() }
+    registry.set(generation, state)
+  }
+  return state
+}
+
+function serializeProcessSharedBridge(state, operation) {
+  const current = state.operation.then(operation, operation)
+  state.operation = current.then(() => {}, () => {})
+  return current
+}
+
+function currentHostConfig(api) {
+  const current = api.runtime?.config?.current
+  if (typeof current !== 'function') throw new Error('ClawDSH bridge runtime config getter is unavailable')
+  const config = current()
+  if (config === null || typeof config !== 'object' || Array.isArray(config)) {
+    throw new Error('ClawDSH bridge runtime config is invalid')
+  }
+  return config
 }
 
 function createBridgeResources(api, options) {
   const environment = readBridgeEnvironment(options.generation, options.env)
+  const lifecycle = { status: 'starting' }
   const media = new StagedMediaGuard(environment.stagingRoot, environment.maxMediaBytes)
   const routes = createLazySyncKeyedStore(api, {
     namespace: `clawdsh-bridge-routes-${options.generation}`,
@@ -191,11 +334,16 @@ function createBridgeResources(api, options) {
     maxInFlight: environment.maxInFlight,
     requestTimeoutMs: options.config.controlTimeoutMs,
     handlers: {
-      'channel.action': params => executeAction(api, media, actions, environment.handshake, params),
-      'channel.reconcile': params => reconcileAction(actions, environment.handshake, params),
+      'channel.action': (params, signal) => executeAction(
+        api, media, actions, environment.handshake, params, signal,
+      ),
+      'channel.reconcile': (params, signal) => {
+        signal.throwIfAborted()
+        return reconcileAction(actions, environment.handshake, params)
+      },
       'health.get': params => {
         validateEmptyParams(params)
-        return localHealth(environment.handshake)
+        return localHealth(environment.handshake, lifecycle.status)
       },
     },
     onNotification: async (method, params) => {
@@ -211,6 +359,7 @@ function createBridgeResources(api, options) {
   })
   return {
     environment,
+    lifecycle,
     media,
     routes,
     routeTransitions,
@@ -299,8 +448,7 @@ async function runAttempt(context) {
   let envelope
   try {
     const staged = await inboundMedia(params, options, media)
-    envelope = { ...envelopeBase, media: staged }
-    if (text.length === 0 && staged.length === 0) throw new Error('OpenClaw turn contains no text or staged media')
+    envelope = validateTurnEnvelope({ ...envelopeBase, media: staged })
   } catch (error) {
     return await failedAttempt(params, envelopeBase, error, options.transcript)
   }
@@ -553,7 +701,8 @@ function assertSameRoute(candidate, current) {
   return current
 }
 
-async function executeAction(api, media, ledger, handshake, candidate) {
+async function executeAction(api, media, ledger, handshake, candidate, signal) {
+  signal.throwIfAborted()
   const { action, ledgerKey, fingerprint } = actionIdentity(handshake, candidate)
   const existing = ledger.lookup(ledgerKey)
   if (existing !== undefined) {
@@ -566,7 +715,10 @@ async function executeAction(api, media, ledger, handshake, candidate) {
   if (!ledger.registerIfAbsent(ledgerKey, { state: 'running', actionId: action.actionId, fingerprint })) {
     throw new RpcMethodError(-32010, 'channel action is already running')
   }
-  const receipt = validateActionResult(await dispatchAction(api, media, action, handshake.gatewayInstanceId))
+  const hostConfig = currentHostConfig(api)
+  const receipt = validateActionResult(await dispatchAction(
+    api, hostConfig, media, action, handshake.gatewayInstanceId, signal,
+  ))
   ledger.register(ledgerKey, { state: 'completed', actionId: action.actionId, fingerprint, result: receipt })
   return receipt
 }
@@ -597,19 +749,22 @@ function actionIdentity(handshake, candidate) {
   }
 }
 
-async function dispatchAction(api, media, action, gatewayInstanceId) {
+async function dispatchAction(api, hostConfig, media, action, gatewayInstanceId, signal) {
   const deliveryId = `delivery-${digest(`${gatewayInstanceId}\0${action.actionId}`)}`
   let dispatched = false
   try {
+    signal.throwIfAborted()
     const adapter = await api.runtime.channel.outbound.loadAdapter(action.target.channel)
+    signal.throwIfAborted()
     if (adapter === undefined) throw new RpcMethodError(-32601, `OpenClaw channel ${action.target.channel} has no outbound adapter`)
-    const to = resolveTarget(adapter, api.config, action)
+    const to = resolveTarget(adapter, hostConfig, action)
     let result
     if (action.kind === 'poll') {
       if (typeof adapter.sendPoll !== 'function') throw new RpcMethodError(-32601, `channel ${action.target.channel} does not support polls`)
+      signal.throwIfAborted()
       dispatched = true
       result = await adapter.sendPoll({
-        cfg: api.config,
+        cfg: hostConfig,
         to,
         poll: {
           question: action.question,
@@ -620,7 +775,7 @@ async function dispatchAction(api, media, action, gatewayInstanceId) {
         threadId: action.target.thread,
       })
     } else {
-      result = await dispatchSend(api, media, adapter, action, to, () => { dispatched = true })
+      result = await dispatchSend(hostConfig, media, adapter, action, to, signal, () => { dispatched = true })
     }
     const messageId = requiredString(result?.messageId, 'OpenClaw platform message id')
     return {
@@ -650,17 +805,20 @@ async function dispatchAction(api, media, action, gatewayInstanceId) {
   }
 }
 
-async function dispatchSend(api, media, adapter, action, to, markDispatched) {
+async function dispatchSend(hostConfig, media, adapter, action, to, signal, markDispatched) {
+  signal.throwIfAborted()
   const verified = await media.verifyReferences(action.media)
+  signal.throwIfAborted()
   const root = await media.root()
   const allowed = new Map(verified.map(item => [item.absolutePath, item.bytes]))
   const readAuthorized = async path => {
+    signal.throwIfAborted()
     const bytes = allowed.get(path)
     if (bytes === undefined) throw new Error('OpenClaw requested an unverified media path')
     return bytes
   }
   const common = {
-    cfg: api.config,
+    cfg: hostConfig,
     to,
     text: action.text,
     accountId: action.target.account,
@@ -674,17 +832,20 @@ async function dispatchSend(api, media, adapter, action, to, markDispatched) {
   }
   if (verified.length === 0) {
     if (typeof adapter.sendText !== 'function') throw new RpcMethodError(-32601, `channel ${action.target.channel} does not support text send`)
+    signal.throwIfAborted()
     markDispatched()
     return await adapter.sendText(common)
   }
   if (verified.length === 1) {
     if (typeof adapter.sendMedia !== 'function') throw new RpcMethodError(-32601, `channel ${action.target.channel} does not support media send`)
+    signal.throwIfAborted()
     markDispatched()
     return await adapter.sendMedia({ ...common, mediaUrl: verified[0].absolutePath })
   }
   if (typeof adapter.sendPayload !== 'function') {
     throw new RpcMethodError(-32601, `channel ${action.target.channel} does not support atomic multi-media send`)
   }
+  signal.throwIfAborted()
   markDispatched()
   return await adapter.sendPayload({
     ...common,
@@ -759,10 +920,8 @@ async function attemptFromTurnResult(params, envelope, result, media, transcript
   })
 }
 
-async function failedAttempt(params, envelope, error, transcript) {
-  const code = error instanceof RpcMethodError ? `RPC_${error.code}` : 'CHANNEL_BRIDGE_FAILED'
-  const text = `[ClawDSH bridge ${code}] ${safeFailureMessage(error)}`
-  const assistant = assistantMessage(params, text)
+async function failedAttempt(params, envelope, _error, transcript) {
+  const assistant = assistantMessage(params, PUBLIC_BRIDGE_FAILURE)
   const user = envelope?.route === undefined ? undefined : userMessage(params, envelope)
   let assistantOwned = false
   if (transcript !== undefined && user !== undefined) {
@@ -895,10 +1054,10 @@ async function projectProgress(params, notification) {
   })
 }
 
-function localHealth(handshake) {
+function localHealth(handshake, status) {
   return validateHealth({
     protocolVersion: 1,
-    status: 'ready',
+    status,
     checkedAt: new Date().toISOString(),
     handshake,
     accounts: [],
@@ -924,7 +1083,12 @@ function normalizedUsage(usage) {
 function principalFor(params, routeKind) {
   const senderId = params.senderId ?? params.channelContext?.sender?.id
   if (!nonEmpty(senderId)) {
-    if (params.senderIsOwner === true) return { senderId: 'openclaw-owner', trust: 'owner' }
+    if (params.senderIsOwner === true) {
+      return {
+        senderId: 'openclaw-owner',
+        trust: routeKind === 'group' ? 'group-allowlisted' : 'owner',
+      }
+    }
     throw new Error('OpenClaw did not provide an admitted sender identity')
   }
   const displayName = params.senderName ?? params.senderUsername
@@ -932,7 +1096,7 @@ function principalFor(params, routeKind) {
     senderId,
     ...(nonEmpty(displayName) ? { displayName } : {}),
     // V1 proves that OpenClaw admitted this DM, but does not expose whether pairing or an allowlist did so.
-    trust: params.senderIsOwner === true ? 'owner' : routeKind === 'group' ? 'group-allowlisted' : 'admitted',
+    trust: routeKind === 'group' ? 'group-allowlisted' : params.senderIsOwner === true ? 'owner' : 'admitted',
   }
 }
 
@@ -973,11 +1137,6 @@ function routeKey(route) {
 
 function positiveAttemptTimeout(value) {
   return Number.isSafeInteger(value) && value > 0 ? value : 1
-}
-
-function safeFailureMessage(error) {
-  if (error instanceof RpcMethodError) return error.message.replace(/[\r\n]+/g, ' ').slice(0, 500)
-  return 'The authenticated local ClawDSH communication bridge is unavailable.'
 }
 
 function digest(value) {
