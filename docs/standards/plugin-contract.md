@@ -57,3 +57,12 @@ When porting an OpenClaw feature to dsh, the order is fixed as **look at the ups
 3. **Prefer reusing the SDKs/dependencies the upstream has proven**: adopt the libraries the upstream already de-risked (Feishu `@larksuiteoapi/node-sdk`, Telegram `grammy`) first, and **never hand-roll the low-level protocol** — unless the upstream has no corresponding SDK and hand-writing would cut substantial code. This is both "prefer maintained dependencies over hand-rolling" and avoiding repeating the pitfalls the upstream already hit.
 
 Motivation: OpenClaw's channel integration has a large amount of non-obvious ceremony (permissions, long connection, event format, idempotency), and hand-rolling it is error-prone; reading the upstream implementation first inherits these already-proven decisions, then trims them into a minimal Cordis surface.
+
+## 9. Harness reuse principle (contracts first, source when needed)
+
+The OpenClaw implementation establishes provider behavior; the Harness side uses a different reading order:
+
+1. Start with the [Harness architecture](../architecture.md), owning [subsystem page](../subsystems/README.md), generated [graph index](../graph-atlas.md), package README, and the [ClawDSH reuse map](../matrix/harness-reuse.md).
+2. Reuse documented `ctx.*` services, events, public types, utilities, and existing providers through their contracts. Do not import or copy a concrete Harness provider to inherit its implementation.
+3. Inspect the owning Harness source only for an internal bug, security/concurrency/performance behavior, an undocumented contract, a missing seam, or an upstream breaking change. If the missing contract affects future integration, document it in the same change.
+4. When no existing seam fits, follow section 5 and stop at an ADR instead of building a private parallel core. [ADR-0006](../adr/0006-harness-contract-first.md) owns the rationale.

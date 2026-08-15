@@ -1,10 +1,71 @@
 # ClawDSH
 
-> **OpenClaw 的个人助手功能集，重建于 DeepSeek Harness (dsh) 的 Cordis 插件底盘之上。**
->
-> 项目目的与实施方案：[docs/specs/roadmap.md](docs/specs/roadmap.md) · 架构决策：[docs/adr/](docs/adr/) · 功能对齐矩阵：[docs/matrix/parity.md](docs/matrix/parity.md)
->
-> 本仓库跟踪上游 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（git 远程 `upstream`），上游代码只读；自有代码仅位于 `packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal}/`、`tools/`、`.github/workflows/clawdsh-*`。
+English | [中文](README.zh.md)
+
+> **OpenClaw's personal-assistant capabilities, rebuilt as composable plugins on the DeepSeek Harness (`dsh`) Cordis foundation.**
+
+ClawDSH keeps the Harness runtime intact and adds a separately owned plugin layer. Product code lives in [`packages/openclaw/`](packages/openclaw/README.md), assembly lives in [`tools/openclaw-preset-openclaw/`](tools/openclaw-preset-openclaw/README.md), and project decisions live under `docs/{adr,specs,matrix,standards,journal}/`. The upstream `vendor/`, `packages/*` other than `openclaw/`, `apps/`, `website/`, and upstream documentation remain read-only.
+
+## Quick start from a source checkout
+
+Prerequisites are Node.js 22.19 or later within the 22.x line, or Node.js 24 or later. The repository pins pnpm 11.7.0. Run these commands from the repository root:
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run build
+tools/link-openclaw.sh
+export FEISHU_APP_ID=cli_xxx
+export FEISHU_APP_SECRET=xxx
+export DEEPSEEK_API_KEY=sk_xxx
+pnpm dsh --profile openclaw
+```
+
+The installed `openclaw` profile is a resident Feishu channel daemon, not the Web UI or a one-shot headless runner. It uses `$DSH_HOME` or `~/.dsh` by default; use the same `DSH_HOME` for both `tools/link-openclaw.sh` and `pnpm dsh`. Telegram, Discord, and automation are installed but disabled in the default profile. The link script is the pre-publication development path and refreshes the installed profile from the current checkout.
+
+This keyless check validates profile composition without connecting to Feishu, then runs the ClawDSH package tests:
+
+```bash
+FEISHU_APP_ID=cli-smoke FEISHU_APP_SECRET=smoke \
+  pnpm dsh --profile openclaw --dump-config
+pnpm run test:openclaw
+```
+
+`--dump-config` proves only that the composition resolves. Platform permissions, credentials, and network connectivity still require a deployed end-to-end check.
+
+## Harness contracts first
+
+Ordinary ClawDSH development starts from Harness contracts and existing components, not a fresh traversal of implementation source. Use this reading order:
+
+| Need | Authoritative entry |
+|---|---|
+| Runtime composition, turn flow, sessions, and extension points | [Harness architecture](docs/architecture.md) |
+| Complete package inventory, dependency graph, and package-group overview | [Harness module entry](docs/matrix/harness-reuse.md#harness-module-entry) |
+| Service, event, and public type contracts | [Subsystem reference](docs/subsystems/README.md) |
+| Dependency, capability, event, tool, and configuration graphs | [Documentation graph index](docs/graph-atlas.md) |
+| How each ClawDSH package reuses Harness | [Harness reuse map](docs/matrix/harness-reuse.md) |
+| ClawDSH package configuration and limitations | [Owned package roster](packages/openclaw/README.md) |
+
+Consume documented `ctx.*` services, events, and public types; do not import or copy a concrete Harness provider. Read owning source only when diagnosing an internal bug, security/concurrency/performance behavior, an undocumented contract, a missing seam, or an upstream breaking change. A missing contract discovered that way must be added to the owning documentation or an ADR. The binding rule is in the [plugin contract](docs/standards/plugin-contract.md), with rationale in [ADR-0006](docs/adr/0006-harness-contract-first.md).
+
+## Project references
+
+- [Purpose and roadmap](docs/specs/roadmap.md)
+- [OpenClaw feature alignment](docs/matrix/parity.md)
+- [Architecture decisions](docs/adr/)
+- [Development standards](docs/standards/)
+- [OpenClaw profile and credentials](tools/openclaw-preset-openclaw/README.md)
+
+## Development checks
+
+Documentation and package changes should run the narrow owning checks before a push:
+
+```bash
+pnpm run test:openclaw
+pnpm exec tsc -p packages/openclaw/tsconfig.check.json
+pnpm run doc-sync
+pnpm run lint
+```
 
 ---
 

@@ -1,6 +1,6 @@
 # Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write packages/openclaw/channel-core/README.md
-README.md: ec8d599eda773976956041a45503dc53f196d263
-README.zh.md: c00804eb9164b8a4992cdedf802e4ff2b5611061
+#   pnpm run verify-translation-pairing --write docs/adr/0006-harness-contract-first.md
+0006-harness-contract-first.md: fd7e3e4003283d142cb3c4db6839a6f6eb9d9884
+0006-harness-contract-first.zh.md: 55106bb7190e6777ba2cc3c4b008a1bc3369c4ae

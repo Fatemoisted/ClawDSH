@@ -11,13 +11,13 @@ English | [中文](README.zh.md)
 2. **example soul** (`souls/assistant.md`);
 3. **profile template** (`profile/`) — copying it to `$DSH_HOME/profiles/openclaw/` makes it the assembly base of `--profile openclaw` (bundles: `dsh-base`, the resident daemon; no `dsh-headless`, which is the one-shot task runner).
 
-**Spec**: docs/specs/roadmap.md (phase 0/2 deliverables) · **Status**: locally assembled, e2e-verified, and release-ready; npm publication has not been executed
+**Spec**: docs/specs/roadmap.md (phase 0/2 deliverables) · **Status**: locally assembled with keyless coverage and a prior Feishu text e2e; npm publication has not been executed
 
 ## Verified assembly
 
 - ✅ (phase 0) soul row mount semantics in agent scope — covered by 10 contract tests in `../../packages/openclaw/soul/tests/soul.spec.ts`;
 - ✅ (phase 0) profile parsing and layering — `pnpm dsh --profile openclaw --dump-config` resolves once `DSH_HOME` points at a directory containing this template profile;
-- ✅ channel-row wiring — `profile/cordis.patch.yml` `insert`s `channel-core`, Telegram, Feishu, and Discord; `channel-core` + Feishu are enabled, while Telegram and Discord stay `disabled: true` until their Harness credentials are configured;
+- ✅ channel-row wiring — `profile/cordis.patch.yml` `insert`s `channel-core`, Telegram, Feishu, and Discord; `channel-core` + Feishu are enabled, while Telegram and Discord stay `disabled: true` until explicitly configured;
 - ✅ (phase 2) Feishu real e2e — official SDK `LarkChannel` WebSocket inbound → `channel-core` durable conversation/topic turn → DeepSeek reply → SDK outbound, user confirmed receipt in Feishu;
 - ✅ (phase 2 catch-up) memory-row wiring — `profile/cordis.patch.yml` `insert`s `memory` (root defaults to `dshHomePath('memory')`) + `embeddings-ark` (**enabled**: missing ARK_API_KEY is invisible at boot, only fails loud on a `memory_search` call; key in root `.env` or `$DSH_HOME/.env`);
 - ✅ (phase 2 wrap-up) soul file path resolved relative to the preset directory — relative `source` resolves against the mounted tree's `ctx.baseUrl`; `agent.cordis.yml` now uses `source: ./souls/assistant.md`;
@@ -29,18 +29,24 @@ English | [中文](README.zh.md)
 - ⏳ (phase 3) headless one-shot task shape mounting the openclaw preset (the Feishu daemon already verifies the preset+agent composition; headless preset selection wiring deferred to phase 3);
 - ⏳ actual npm publication — no `@clawdsh/*` tarball has been deliberately published from this worktree yet, so the symlink path remains the local-development transition.
 
+## Current deployment limits
+
+- The default profile is a resident Feishu daemon. It does not start the Web UI or mount the OpenClaw preset into the headless one-shot runner.
+- `tools/link-openclaw.sh` refreshes the installed profile and creates symlinks bound to the current checkout; use the same `DSH_HOME` when linking and running.
+- Provider-specific credential, lifecycle, and deployed-E2E limits are maintained by the [Telegram](../../packages/openclaw/channel-telegram/README.md), [Discord](../../packages/openclaw/channel-discord/README.md#known-limitations-and-deferred-work), and [Feishu](../../packages/openclaw/channel-feishu/README.md) package READMEs. Automation remains disabled by default; review its [package limitations](../../packages/openclaw/automation/README.md#known-limitations-and-deferred-work) before enabling rules.
+
 ## Usage (Feishu daemon, local development)
 
 ```bash
-# 1. Build and refresh profile + agent preset + local package links
+# Build and refresh the profile, agent preset, and local package links.
 tools/link-openclaw.sh
 
-# 2. 凭证走环境变量（不落盘；ARK_API_KEY 放根 .env 或 ~/.dsh/.env，永不入仓库）
+# Supply credentials through the environment; never commit them.
 export FEISHU_APP_ID=cli_xxx
 export FEISHU_APP_SECRET=xxx
 export DEEPSEEK_API_KEY=sk-xxx
 
-# 3. 起 daemon（常驻长连接，等飞书消息）
+# Start the resident channel daemon.
 pnpm dsh --profile openclaw
 ```
 

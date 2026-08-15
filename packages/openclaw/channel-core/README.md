@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-**Purpose**: the channel gateway seam — ClawDSH's **only newly added seam**. Provides the `ctx.channels` service: registers channel adapters (inbound message → agent session, outbound reply → channel push), and is responsible for session-channel binding/routing.
+**Purpose**: ClawDSH's channel-domain capability seam. It provides the `ctx.channels` service, registers channel adapters (inbound message → agent session, outbound reply → channel push), and owns session-channel binding and routing.
 
 **OpenClaw correspondence**: the message-ingestion layer of the Gateway (the shared skeleton for all channels — WhatsApp/Telegram/Email/Web Chat and so on).
 

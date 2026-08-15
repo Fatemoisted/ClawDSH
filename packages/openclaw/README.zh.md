@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-本目录是 ClawDSH **唯一允许自由改写代码的地方**（上游纪律见根 `AGENTS.md`）。
+本目录是 ClawDSH **唯一允许自由改写产品代码的地方**（上游纪律见根 `AGENTS.md`）。[Harness 复用地图](../../docs/matrix/harness-reuse.md)记录这些包如何使用现有服务、事件、库和平台 SDK。
 
 ## 目录布局
 
@@ -23,20 +23,22 @@
 
 ## 包清单
 
-| 包 | 定位 | OpenClaw 对应 | dsh 接缝 | 状态 |
-|---|---|---|---|---|
-| `channel-core/` | 持久渠道网关 | 渠道 Gateway | **新增** `ctx.channels` + Harness agents/presets/persistence/timer | **implemented**（可等待持久化、确定性恢复、FIFO、旧地址兼容、`groupMode`/结构化 mention + ack 策略 ✅） |
-| `channel-telegram/` | Telegram 渠道 | 渠道适配器 | `ctx.channels` + grammY | **implemented**（command/mention/caption/topic/引用/reaction、Unicode-safe 4096 分片 ✅；线上 e2e 待凭证） |
-| `channel-discord/` | Discord 渠道 | OpenClaw `src/discord/` | `ctx.channels` + Harness credentials/timer + discord.js | **implemented**（私信/服务器/thread 映射、原生引用/reaction、安全 2000-unit 分片、先排空再销毁的生命周期 ✅；线上 e2e 待凭证） |
-| `channel-feishu/` | 飞书渠道（**发起人第一优先**） | OpenClaw `extensions/feishu` | `ctx.channels` + 官方 SDK `LarkChannel` | **implemented**（富消息归一化、身份退避、topic-safe 引用、失败握手清理 ✅；此前文本 e2e 已过） |
-| `soul/` | 人格 / Soul | Soul 系统 | system-prompt 装配 | **implemented**（阶段 0 ✅ + 阶段 2 深读定稿 ✅） |
-| `memory/` | 记忆（Markdown 事实源 + 语义召回） | Memory（v2026.1.15） | Harness `ctx.fs` + sandbox policy + tools/system prompt + embeddings | **implemented**（安全 append、配置化召回默认、缺失 root 启动、持久 flush 周期 ✅） |
-| `embeddings/` | 文本嵌入 seam（Service Definition） | memory 的 embeddings 后端选一 | **新增** `ctx.embeddings`（ADR-0003） | **implemented**（阶段 2 补漏 ✅） |
-| `embeddings-ark/` | 火山方舟 Ark 文本嵌入 provider | openai-remote 分支位 | `ctx.embeddings` | **implemented**（阶段 2 补漏 ✅，e2e 待凭证） |
-| `skills-hub/` | ClawHub 兼容技能加载 | Skills/ClawHub | Harness `ctx.skills` provider | **implemented**（阶段 3 ✅） |
-| `automation/` | 定时持久 Agent 回合 | Cron/Automation | Harness agents/sessions/persistence/model selection | **implemented**（阶段 3 ✅；配置声明规则） |
+| 包 | 定位 | OpenClaw 对应 | 集成边界 |
+|---|---|---|---|
+| [`channel-core/`](channel-core/README.md) | 持久渠道网关 | 渠道 Gateway | ClawDSH `ctx.channels`；Harness agents/presets/persistence/timer |
+| [`channel-telegram/`](channel-telegram/README.md) | Telegram 渠道 | 渠道适配器 | ClawDSH `ctx.channels`；Harness timer；grammY |
+| [`channel-discord/`](channel-discord/README.md) | Discord 渠道 | OpenClaw `src/discord/` | ClawDSH `ctx.channels`；Harness credentials/timer；discord.js |
+| [`channel-feishu/`](channel-feishu/README.md) | 飞书渠道（**发起人第一优先**） | OpenClaw `extensions/feishu` | ClawDSH `ctx.channels`；Harness timer；官方 `LarkChannel` |
+| [`soul/`](soul/README.md) | 人格 / Soul | Soul 系统 | Harness system-prompt 装配与作用域 |
+| [`memory/`](memory/README.md) | 记忆（Markdown 事实源 + 语义召回） | Memory（v2026.1.15） | Harness fs/sandbox/tools/system prompt；可选 ClawDSH embeddings 与 Harness LLM 生命周期 |
+| [`embeddings/`](embeddings/README.md) | 文本嵌入 Service Definition | memory 的 embeddings 后端选一 | ClawDSH `ctx.embeddings`（ADR-0003）；Harness Cordis service 基类 |
+| [`embeddings-ark/`](embeddings-ark/README.md) | 火山方舟 Ark 文本嵌入 provider | openai-remote 分支位 | ClawDSH `ctx.embeddings`；可选 Harness credentials/启动环境 |
+| [`skills-hub/`](skills-hub/README.md) | ClawHub 兼容技能加载 | Skills/ClawHub | Harness `ctx.skills` provider 约定 |
+| [`automation/`](automation/README.md) | 定时持久 Agent 回合 | Cron/Automation | Harness agents/sessions/model selection 与可选 persistence；croner/Node timer |
 
 渠道列表不止 Telegram 和 Discord：WhatsApp、Email、Web Chat 等按同一模板逐个新增（每个渠道一个包，互不阻塞）。
+
+各链接包 README 负责其配置、失败行为和已知限制。[Harness 复用地图](../../docs/matrix/harness-reuse.md)负责跨包依赖视图；[功能矩阵](../../docs/matrix/parity.md)负责完成状态。
 
 ## 发布状态
 

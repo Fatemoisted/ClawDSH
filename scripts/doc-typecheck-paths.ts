@@ -1,3 +1,5 @@
+import { posix } from 'node:path'
+
 /** Map one workspace source alias target to its declaration-build target. */
 export function builtDeclarationPath(candidate: string): string {
   // Two workspace path forms exist: whole-package entries end in /src, subpath
@@ -19,4 +21,9 @@ export function builtDeclarationPath(candidate: string): string {
     return `${sourceDir[1]}/lib/types/${sourceDir[2]}`
   }
   throw new Error(`doc-typecheck: cannot map workspace source path to built declarations: ${candidate}`)
+}
+
+/** Resolve one aggregate's project reference from a temp project one directory below the repo root. */
+export function temporaryProjectReferencePath(configPath: string, referencePath: string): string {
+  return posix.join('..', posix.dirname(configPath), referencePath)
 }

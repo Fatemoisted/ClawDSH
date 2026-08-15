@@ -1,10 +1,71 @@
 # ClawDSH
 
-> **OpenClaw 的个人助手功能集，重建于 DeepSeek Harness (dsh) 的 Cordis 插件底盘之上。**
->
-> 项目目的与实施方案：[docs/specs/roadmap.md](docs/specs/roadmap.md) · 架构决策：[docs/adr/](docs/adr/) · 功能对齐矩阵：[docs/matrix/parity.md](docs/matrix/parity.md)
->
-> 本仓库跟踪上游 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（git 远程 `upstream`），上游代码只读；自有代码仅位于 `packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal}/`、`tools/`、`.github/workflows/clawdsh-*`。
+[English](README.md) | 中文
+
+> **OpenClaw 的个人助手功能集，作为可组合插件重建在 DeepSeek Harness（`dsh`）的 Cordis 底盘之上。**
+
+ClawDSH 保持 Harness 运行时不变，并增加独立归属的插件层。产品代码位于 [`packages/openclaw/`](packages/openclaw/README.md)，组装配置位于 [`tools/openclaw-preset-openclaw/`](tools/openclaw-preset-openclaw/README.md)，项目决策位于 `docs/{adr,specs,matrix,standards,journal}/`。上游 `vendor/`、`packages/*`（`openclaw/` 除外）、`apps/`、`website/` 及上游文档保持只读。
+
+## 从源码 checkout 快速启动
+
+环境要求为 Node.js 22.19 或更高的 22.x 版本，或 Node.js 24 及以上；仓库固定使用 pnpm 11.7.0。请在仓库根目录运行：
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run build
+tools/link-openclaw.sh
+export FEISHU_APP_ID=cli_xxx
+export FEISHU_APP_SECRET=xxx
+export DEEPSEEK_API_KEY=sk_xxx
+pnpm dsh --profile openclaw
+```
+
+安装后的 `openclaw` profile 是飞书渠道常驻 daemon，不是 Web UI 或一次性 headless runner。它使用 `$DSH_HOME`，默认值为 `~/.dsh`；`tools/link-openclaw.sh` 与 `pnpm dsh` 必须使用同一个 `DSH_HOME`。默认 profile 已安装但禁用了 Telegram、Discord 与 automation。链接脚本是发布前的开发路径，每次运行都会用当前 checkout 刷新已安装的 profile。
+
+以下无密钥检查先验证 profile 组装且不连接飞书，再运行 ClawDSH 包测试：
+
+```bash
+FEISHU_APP_ID=cli-smoke FEISHU_APP_SECRET=smoke \
+  pnpm dsh --profile openclaw --dump-config
+pnpm run test:openclaw
+```
+
+`--dump-config` 只证明组合能够解析；平台权限、凭证和网络连通性仍需部署后的端到端检查。
+
+## Harness 契约优先
+
+日常 ClawDSH 开发从 Harness 约定和现有组件开始，不重新通读实现源码。阅读顺序如下：
+
+| 需求 | 权威入口 |
+|---|---|
+| 运行时组合、轮次流程、会话与扩展点 | [Harness 架构](docs/architecture.md) |
+| 完整包目录、依赖图与包组概览 | [Harness 模块入口](docs/matrix/harness-reuse.md#harness-module-entry) |
+| 服务、事件与公开类型约定 | [子系统参考](docs/subsystems/README.md) |
+| 依赖、能力、事件、工具与配置图 | [文档关系图索引](docs/graph-atlas.md) |
+| 每个 ClawDSH 包如何复用 Harness | [Harness 复用地图](docs/matrix/harness-reuse.md) |
+| ClawDSH 包配置与限制 | [自有包清单](packages/openclaw/README.md) |
+
+开发只消费已记录的 `ctx.*` 服务、事件和公开类型，不导入或复制具体 Harness provider。仅在诊断内部 BUG、安全/并发/性能行为、未记录约定、缺失 seam 或上游破坏性变更时阅读所属源码；由此发现的缺失约定必须补入所属文档或 ADR。强制规则见[插件契约](docs/standards/plugin-contract.md)，决策理由见 [ADR-0006](docs/adr/0006-harness-contract-first.md)。
+
+## 项目参考
+
+- [项目目的与路线图](docs/specs/roadmap.md)
+- [OpenClaw 功能对齐](docs/matrix/parity.md)
+- [架构决策](docs/adr/)
+- [开发规范](docs/standards/)
+- [OpenClaw profile 与凭证](tools/openclaw-preset-openclaw/README.md)
+
+## 开发检查
+
+文档或包变更应在推送前运行范围最窄的所属检查：
+
+```bash
+pnpm run test:openclaw
+pnpm exec tsc -p packages/openclaw/tsconfig.check.json
+pnpm run doc-sync
+pnpm run lint
+```
 
 ---
 

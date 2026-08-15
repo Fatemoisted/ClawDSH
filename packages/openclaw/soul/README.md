@@ -69,7 +69,7 @@ The soul text (from `source` file or inline `text`) is added as an ordered syste
 
 #### Token effect
 
-Fixed per mounted scope: the soul's own tokens appear on every request an agent in that scope makes, and none for agents outside it. Empty text contributes nothing.
+Fixed per mounted scope: the soul's own tokens appear on every request an agent in that scope makes, and none for agents outside it. Empty text fails the mount, so every successful mount contributes a non-empty section.
 
 #### KV Cache effect
 

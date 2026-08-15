@@ -57,3 +57,12 @@
 3. **优先复用上游已证明的 SDK/依赖**：上游踩过坑的库（飞书 `@larksuiteoapi/node-sdk`、Telegram `grammy`）优先采用，**禁止手搓底层协议**——除非上游无对应 SDK 且手写能显著删代码。这既是「prefer maintained dependencies over hand-rolling」，也避免重蹈上游踩过的坑。
 
 动机：OpenClaw 的渠道接入有大量非显而易见的繁琐程序（权限、长连接、事件格式、幂等），手搓极易出错；先看上游实现能继承这些已验证的决策，再裁剪成 Cordis 的最小面。
+
+## 9. Harness 复用原则（契约优先，源码按需）
+
+OpenClaw 实现用于确认 provider 行为；Harness 一侧采用不同的阅读顺序：
+
+1. 先读 [Harness 架构](../architecture.md)、所属[子系统页面](../subsystems/README.md)、生成式[关系图索引](../graph-atlas.md)、包 README 和 [ClawDSH 复用地图](../matrix/harness-reuse.md)。
+2. 通过约定复用已记录的 `ctx.*` 服务、事件、公开类型、工具库和现有 provider；禁止为继承实现而导入或复制具体 Harness provider。
+3. 仅在处理内部 BUG、安全/并发/性能行为、未记录约定、缺失 seam 或上游破坏性变更时检查所属 Harness 源码。缺失约定会影响后续集成时，同一变更必须补齐文档。
+4. 没有合适的既有 seam 时，遵循第 5 节并停在 ADR，不建设私有平行核心。决策理由由 [ADR-0006](../adr/0006-harness-contract-first.md)负责。

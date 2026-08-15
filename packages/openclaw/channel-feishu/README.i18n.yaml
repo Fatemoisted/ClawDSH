@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/openclaw/channel-feishu/README.md
-README.md: 692bf97d51f6211d936e68cdd8932ebd52db5fc9
-README.zh.md: c62e6dbfba1bdeeeda47f3af82b9d260e16bf13c
+README.md: 6ad1c35d3c6e6f32f49ac24b75f73c3de637bbb0
+README.zh.md: 0551d190fe7eb12840ec23a3e89b6b150c3de155

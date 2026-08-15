@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-**定位**：渠道网关 seam——ClawDSH 的**唯一新增 seam**。提供 `ctx.channels` 服务：注册渠道适配器（入站消息→agent 会话、出站回复→渠道推送），并负责会话与渠道的绑定/路由。
+**定位**：ClawDSH 渠道域的能力 seam。它提供 `ctx.channels` 服务，注册渠道适配器（入站消息 → agent 会话、出站回复 → 渠道推送），并负责会话与渠道的绑定和路由。
 
 **OpenClaw 对应**：Gateway 的消息接入层（WhatsApp/Telegram/Email/Web Chat 等全部渠道的公共骨架）。
 

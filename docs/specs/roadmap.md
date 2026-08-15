@@ -16,9 +16,10 @@ dsh's Cordis architecture (everything is a plugin: plugins declare dependencies 
 
 1. **Upstream read-only**: dsh upstream code (`vendor/`, `packages/*` (except openclaw/), `apps/`, `website/`) untouched by a single line; all customization goes through plugins, profile, patch.
 2. **Upstream-first**: when a seam is missing, first raise a PR upstream, bridge locally with a patch, and delete the patch after upstream merges (avoiding a fork's death).
-3. **Port the feature category, not the PR**: of OpenClaw's tens of thousands of PRs, most are bugfix/refactor/duplicate features; we want 20~40 feature domains.
-4. **Vertical slice first**: each phase must have "something runnable", no big-and-complete fantasy.
-5. **Anti-OpenClaw-disease**: any PR must link a spec + update the matrix + pass contract tests before merging (see `docs/standards/pr-policy.md`).
+3. **Harness contracts first**: ordinary development uses documented services, events, public types, generated references, and the [reuse map](../matrix/harness-reuse.md); owning source is read only for defects, missing contracts/seams, or breaking upstream changes (ADR-0006).
+4. **Port the feature category, not the PR**: of OpenClaw's tens of thousands of PRs, most are bugfix/refactor/duplicate features; we want 20~40 feature domains.
+5. **Vertical slice first**: each phase must have "something runnable", no big-and-complete fantasy.
+6. **Anti-OpenClaw-disease**: any PR must link a spec + update the matrix + pass contract tests before merging (see `docs/standards/pr-policy.md`).
 
 ## 3. Implementation phases
 
@@ -61,7 +62,7 @@ dsh's Cordis architecture (everything is a plugin: plugins declare dependencies 
 
 ## 5. Open items
 
-- [ ] OpenClaw baseline commit (Phase 1 first task)
+- [x] OpenClaw baseline commit (`v2026.1.5`, `197b8f7c3b`)
 - [x] Soul Spike conclusion (✅ feasible, continue)
 - [ ] Whether the `ctx.channels` seam is accepted by dsh upstream (affects patch-layer thickness)
 - [x] Private remote repo creation (Fatemoisted/ClawDSH, completed 2026-08-14)

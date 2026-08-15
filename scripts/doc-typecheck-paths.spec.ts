@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { builtDeclarationPath } from './doc-typecheck-paths.ts'
+import { builtDeclarationPath, temporaryProjectReferencePath } from './doc-typecheck-paths.ts'
 
 describe('builtDeclarationPath', () => {
   it('maps package source directories and exact entry files to built declarations', () => {
@@ -13,5 +13,14 @@ describe('builtDeclarationPath', () => {
   it('rejects aliases without a supported source target', () => {
     expect(() => builtDeclarationPath('./packages/runtime-diagnostics/invariants/source/index.ts'))
       .toThrow('cannot map workspace source path')
+  })
+})
+
+describe('temporaryProjectReferencePath', () => {
+  it('keeps aggregate references relative to the one-level-down temporary project', () => {
+    expect(temporaryProjectReferencePath('tsconfig.host.json', './packages/core/session'))
+      .toBe('../packages/core/session')
+    expect(temporaryProjectReferencePath('packages/openclaw/tsconfig.json', './embeddings'))
+      .toBe('../packages/openclaw/embeddings')
   })
 })

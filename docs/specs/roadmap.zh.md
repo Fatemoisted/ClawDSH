@@ -16,9 +16,10 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 
 1. **上游只读**：dsh 上游代码（`vendor/`、`packages/*`（openclaw/ 除外）、`apps/`、`website/`）一行不改；一切定制走插件、profile、patch。
 2. **Upstream-first**：缺接缝时先向上游提 PR，本地用 patch 过渡，上游合并后删 patch（避免分叉死亡）。
-3. **移植对象是功能类别，不是 PR**：OpenClaw 上万 PR 里绝大多数是 bugfix/重构/重复功能，我们要的是 20~40 个功能域。
-4. **垂直切片优先**：每个阶段都要有"能跑起来的东西"，不做大而全的空想。
-5. **反 OpenClaw 病**：任何 PR 必须链接规格 + 更新矩阵 + 过契约测试才可合入（见 `docs/standards/pr-policy.md`）。
+3. **Harness 约定优先**：日常开发使用已记录的服务、事件、公开类型、生成式参考和[复用地图](../matrix/harness-reuse.md)；仅在缺陷、缺失约定/seam 或上游破坏性变更时阅读所属源码（ADR-0006）。
+4. **移植对象是功能类别，不是 PR**：OpenClaw 上万 PR 里绝大多数是 bugfix/重构/重复功能，我们要的是 20~40 个功能域。
+5. **垂直切片优先**：每个阶段都要有"能跑起来的东西"，不做大而全的空想。
+6. **反 OpenClaw 病**：任何 PR 必须链接规格 + 更新矩阵 + 过契约测试才可合入（见 `docs/standards/pr-policy.md`）。
 
 ## 三、实施阶段
 
@@ -61,7 +62,7 @@ dsh 的 Cordis 架构（everything is a plugin：插件用 `inject` 声明依赖
 
 ## 五、待定事项
 
-- [ ] OpenClaw 基线 commit（阶段 1 首个任务）
+- [x] OpenClaw 基线 commit（`v2026.1.5`，`197b8f7c3b`）
 - [x] Soul Spike 结论（✅ 可行，继续）
 - [ ] `ctx.channels` seam 是否被 dsh 上游接受（影响 patch 层厚度）
 - [x] 私有远程仓库创建（Fatemoisted/ClawDSH，2026-08-14 完成）

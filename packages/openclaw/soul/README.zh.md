@@ -69,7 +69,7 @@ The soul text (from `source` file or inline `text`) is added as an ordered syste
 
 #### Token effect
 
-Fixed per mounted scope: the soul's own tokens appear on every request an agent in that scope makes, and none for agents outside it. Empty text contributes nothing.
+在每个已挂载作用域内固定：soul 自身 token 会进入该作用域中 agent 的每次请求，不进入作用域外 agent 的请求。空文本会使挂载失败，因此每次成功挂载都贡献非空段落。
 
 #### KV Cache effect
 

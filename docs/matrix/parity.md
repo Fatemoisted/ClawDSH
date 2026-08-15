@@ -34,11 +34,11 @@ English | [中文](parity.zh.md)
 | Session tracing / replay / forking | — (dsh-native) | Trajectory view / replay | Reuse | — | directly usable |
 | Tool execution (bash/file/browser…) | `src/agents/*-tools.ts` | `ctx.tools` / `ctx.shell` / `ctx.fs` / `ctx.web` | Reuse | — | directly usable |
 | Skills (Skill) | top-level `skills/` | `ctx.skills` (provider merge) | Plugin | `skills-hub` | **implemented** (Phase 3 ✅) |
-| Scheduling / automation | `src/cron/` | own unref'd croner timer + `agent.followup`/`whenIdle`/`sessions.flush` turn bridge (`ctx.schedule` rejected: session-local + 300s floor + tools-only API) | Plugin | `automation` | **implemented** (Phase 3 ✅) |
+| Scheduling / automation | `src/cron/` | own unref'd croner timer + `agent.followup`/`whenIdle`/`sessions.flush` turn bridge (`ctx.schedule` rejected: session-local + 300s floor + tools-only API) | Plugin | `automation` | **implemented with a known limitation** ([package details](../../packages/openclaw/automation/README.md#known-limitations-and-deferred-work)) |
 | Persona (Soul) | `src/agents/system-prompt.ts` first line + workspace six files (AGENTS/SOUL/TOOLS/IDENTITY/USER/BOOTSTRAP.md) | system-prompt assembly (persona first line / soul append / complete section / tool guidance band) + channel presentation (IDENTITY ✅) | Plugin | `soul` | **implemented** (Phase 0 ✅ + Phase 2 deep-read finalization ✅) |
 | Memory | baseline absent → reference v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`, `memory-tool.ts` | Harness `ctx.fs`/sandbox + tools/system prompt + embeddings | Plugin | `memory` + `embeddings` + `embeddings-ark` | **implemented** (three tools, configured defaults, missing-root startup, durable flush cycle ✅) |
 | **Channel gateway (Gateway)** | `src/gateway/` | **none** | **new seam** | `channel-core` | **implemented** (awaited durability, deterministic resume/preset/FIFO, legacy thread-only compatibility, `groupMode`/structured-mention policy ✅) |
-| Channel: Telegram | `src/telegram/` | `ctx.channels` | Plugin | `channel-telegram` | **implemented** (commands/mentions/captions/topics/replies/reactions, Unicode-safe 4096 splitting, lifecycle catches ✅) |
+| Channel: Telegram | `src/telegram/` | `ctx.channels` | Plugin | `channel-telegram` | **implemented with deferred integration work** ([package details](../../packages/openclaw/channel-telegram/README.md)) |
 | Channel: Discord | `src/discord/` | `ctx.channels` | Plugin | `channel-discord` | **implemented** (Harness credentials/timer, DM/guild/thread normalization, mention gating, native replies/reactions, safe 2000-unit splitting, drain-first lifecycle ✅; credentialed live e2e pending) |
 | Channel: iMessage / Signal / Slack | `src/imessage/` etc. | `ctx.channels` | Plugin | per-package later | Deferred (Phase 3) |
 | Channel: WhatsApp | reference v2026.1.15 `src/whatsapp/` | `ctx.channels` | Plugin | per-package later | Deferred (Phase 3) |
@@ -61,7 +61,7 @@ English | [中文](parity.zh.md)
 
 | Feature domain | Source | dsh seam | Classification | Landing package | Status |
 |---|---|---|---|---|---|
-| Channel: Feishu (Lark) | OpenClaw `extensions/feishu` (since v2026.2.12; introducing commit `0223416c61`) | `ctx.channels` + official SDK 1.73 `LarkChannel` | Plugin | `channel-feishu` | **implemented** (normalized rich messages, identity backoff, topic-safe 3500 replies, failed-handshake cleanup, reactions ✅) |
+| Channel: Feishu (Lark) | OpenClaw `extensions/feishu` (since v2026.2.12; introducing commit `0223416c61`) | `ctx.channels` + official SDK 1.73 `LarkChannel` | Plugin | `channel-feishu` | **implemented with deferred integration work** ([package details](../../packages/openclaw/channel-feishu/README.md#known-limitations-and-deferred-work)) |
 
 WeChat family not in the matrix (not implemented), decision record in `docs/specs/feature-channel-wechat.md`.
 

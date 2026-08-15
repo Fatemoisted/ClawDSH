@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-**Positioning**: scheduled agent turns — config-declared rules ("post a digest at 9 every day") drive one ordinary agent turn per occurrence in a dedicated durable session (`automation:<id>`, resumed across restarts). OpenClaw-cron semantics: at-least-once, no automatic retries, in-flight dedup, missed occurrences skipped, one-shot `at` rules guarded durably against re-firing.
+**Positioning**: scheduled agent turns — config-declared rules ("post a digest at 9 every day") drive one ordinary agent turn per occurrence in a dedicated durable session (`automation:<id>`, resumed across restarts). The scheduler provides at-least-once execution, in-flight deduplication, skipped missed occurrences, and a durable success guard for one-shot `at` rules. The known failed-`at` retry defect is documented below.
 
 **OpenClaw counterpart**: Cron (`v2026.1.5` `src/cron/`): `cron`/`at`/`every` schedules via the croner library OpenClaw pins, one dedicated session per job, `[cron:<jobId> <name>] <message>` framing, a single re-arming timer for the earliest occurrence.
 
@@ -13,7 +13,7 @@ English | [中文](README.zh.md)
 
 **Why not `ctx.schedule`**: its `every` floor is 300s, delivery is strictly session-local, runtimes attach only to live root agents created after plugin load, and records are creatable only through the agent-facing tools — minute-granularity cron, cold start, and one dedicated durable session per rule are inexpressible on it (`ctx.jobs` is an in-memory work tracker, not a scheduler). See the [cron-mapping Agent Note](../../../.agents/notes/implemented/architecture/2026-08-14-openclaw-cron-mapping.md).
 
-**Spec**: docs/specs/feature-automation.md · **Status**: implemented (Phase 3 ✅)
+**Spec**: docs/specs/feature-automation.md · **Status**: implemented (Phase 3); failed one-shot `at` execution remains unsafe until the retry defect below is fixed
 
 ## Usage
 
@@ -41,7 +41,7 @@ Rule ids must match `[a-zA-Z0-9_-]+` (they land in persisted session names). Inv
 - **Config is the durable store**: rules live in cordis.yml, so no job-store file, no CRUD tools, no new storage seam (runtime-editable rules are deferred);
 - **One re-arming unref'd timer**: armed to the earliest occurrence across rules; on wake, due rules run sequentially, then the timer re-arms (OpenClaw's scheduler shape);
 - **Per-rule session lifecycle**: resume-or-create keeps the session log (and thus the run history) across restarts; the rule fires immediately at mount for `every` rules (OpenClaw's "first run at/after the anchor");
-- **Failure semantics**: a `started` record lands before the turn (at-least-once); the `turn/end` reason decides `ok` vs `error` (loop-contained adapter failures still surface as `error`); failures log and the next occurrence still fires.
+- **Failure semantics**: a `started` record lands before the turn (at-least-once); the `turn/end` reason decides `ok` vs `error` (loop-contained adapter failures still surface as `error`). Cron and `every` failures advance to their next scheduled occurrence; the one-shot `at` exception is listed under known limitations.
 
 ## Changelog
 
@@ -73,7 +73,7 @@ Append-only: the framed message lands mid-log like any turn input; no system-pro
 
 - **No channel delivery**: OpenClaw's `deliver` (post the reply to a channel) is not ported; replies stay in the rule's session log;
 - **No main-session summary**: OpenClaw's `main` target (`System:` lines injected into the main session) is not ported — the openclaw profile has no main-session wiring yet;
-- **No automatic retries**: failures record an `error` run and the next occurrence proceeds (OpenClaw-isomorphic);
+- **Failed one-shot `at` loop**: after an `at` turn records `error`, the rule remains incomplete with its deadline in the past, so the timer re-arms at 0 ms and can rapidly repeat model calls. Do not enable `at` rules until this is fixed; cron and `every` rules still advance normally;
 - **No runtime-editable rules**: rules are config-declared; OpenClaw's job store + `cron.add/remove/…` tools and CLI are deferred until a consumer needs runtime edits;
 - **`at` once-guard needs the session artifact**: if the persisted session log is deleted, a past one-shot re-fires once (at-least-once semantics);
 - **`every` re-anchors at mount**: each boot fires once immediately, then runs on the anchor grid (OpenClaw's anchor semantics, no catch-up of missed ticks).

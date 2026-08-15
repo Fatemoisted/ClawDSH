@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process'
 import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import ts from 'typescript'
-import { builtDeclarationPath } from './doc-typecheck-paths.ts'
+import { builtDeclarationPath, temporaryProjectReferencePath } from './doc-typecheck-paths.ts'
 import { markdownFences } from './markdown.ts'
 import { partitionPairedMarkdownDerivatives } from './paired-markdown-derivatives.ts'
 import { isArchivedAgentNotePath } from './repo-files.ts'
@@ -136,23 +136,27 @@ function formatDiagnostics(diagnostics: readonly ts.Diagnostic[], blocks: Block[
 }
 
 /**
- * Reuse the Host aggregate references from a temp project one directory below
- * root. Generated Client API examples opt out because their declarations do
- * not exist until Host tsdown has run.
+ * Reuse the Host and OpenClaw aggregate references from a temp project one
+ * directory below root. OpenClaw remains a separate aggregate, but its public
+ * documentation examples need the same project-reference redirects as Host
+ * packages. Generated Client API examples opt out because their declarations
+ * do not exist until Host tsdown has run.
  */
 function workspaceReferences(): { path: string }[] {
-  const file = join(root, 'tsconfig.host.json')
-  // Parse with TypeScript's own JSONC reader: a regex comment stripper corrupts the `/*/` path
-  // candidate in the workspace wildcard.
-  const result = ts.readConfigFile(file, path => readFileSync(path, 'utf8'))
-  if (result.error) {
-    throw new Error(`doc-typecheck: cannot read ${file}: ${ts.flattenDiagnosticMessageText(result.error.messageText, '\n')}`)
-  }
-  // `config` is typed `any` by the TS API; narrow it to the one field read here.
-  const { references } = result.config as { references: { path: string }[] }
-  return references.map(({ path }) => ({
-    path: path.startsWith('./') ? `../${path.slice(2)}` : `../${path}`,
-  }))
+  return ['tsconfig.host.json', 'packages/openclaw/tsconfig.json'].flatMap((configPath) => {
+    const file = join(root, configPath)
+    // Parse with TypeScript's own JSONC reader: a regex comment stripper corrupts the `/*/` path
+    // candidate in the workspace wildcard.
+    const result = ts.readConfigFile(file, path => readFileSync(path, 'utf8'))
+    if (result.error) {
+      throw new Error(`doc-typecheck: cannot read ${file}: ${ts.flattenDiagnosticMessageText(result.error.messageText, '\n')}`)
+    }
+    // `config` is typed `any` by the TS API; narrow it to the one field read here.
+    const { references } = result.config as { references: { path: string }[] }
+    return references.map(({ path }) => ({
+      path: temporaryProjectReferencePath(configPath, path),
+    }))
+  })
 }
 
 /** The standalone temp project used when no coordinated build owns declaration freshness. */

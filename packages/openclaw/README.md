@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-This directory is the **only place ClawDSH may freely rewrite code** (upstream discipline is in the root `AGENTS.md`).
+This directory is the **only place ClawDSH may freely rewrite product code** (upstream discipline is in the root `AGENTS.md`). The [Harness reuse map](../../docs/matrix/harness-reuse.md) records how these packages use existing services, events, libraries, and platform SDKs.
 
 ## Directory layout
 
@@ -23,20 +23,22 @@ Every directory here is a **publishable npm package**: the workspace-constraints
 
 ## Package roster
 
-| Package | Positioning | OpenClaw counterpart | dsh seam | Status |
-|---|---|---|---|---|
-| `channel-core/` | durable channel gateway | channel Gateway | **new** `ctx.channels` + Harness agents/presets/persistence/timer | **implemented** (awaited durability, deterministic resume, FIFO, legacy address compatibility, `groupMode`/structured-mention + ack policy ✅) |
-| `channel-telegram/` | Telegram channel | channel adapter | `ctx.channels` + grammY | **implemented** (commands/mentions/captions/topics/replies/reactions, Unicode-safe 4096 splitting ✅; live e2e needs credentials) |
-| `channel-discord/` | Discord channel | OpenClaw `src/discord/` | `ctx.channels` + Harness credentials/timer + discord.js | **implemented** (DM/guild/thread mapping, native replies/reactions, safe 2000-unit splitting, drain-first lifecycle ✅; live e2e needs credentials) |
-| `channel-feishu/` | Feishu channel (**initiator first priority**) | OpenClaw `extensions/feishu` | `ctx.channels` + official SDK `LarkChannel` | **implemented** (rich normalization, identity backoff, topic-safe replies, failed-handshake cleanup ✅; prior text e2e passed) |
-| `soul/` | persona / Soul | Soul system | system-prompt assembly | **implemented** (phase 0 ✅ + phase 2 deep-read finalized ✅) |
-| `memory/` | memory (Markdown fact source + semantic recall) | Memory (v2026.1.15) | Harness `ctx.fs` + sandbox policy + tools/system prompt + embeddings | **implemented** (safe append, configured recall defaults, missing-root startup, durable flush cycle ✅) |
-| `embeddings/` | text-embedding seam (Service Definition) | choose one of memory's embeddings backends | **new** `ctx.embeddings` (ADR-0003) | **implemented** (phase 2 gap-fill ✅) |
-| `embeddings-ark/` | Volcano Ark text-embedding provider | openai-remote branch slot | `ctx.embeddings` | **implemented** (phase 2 gap-fill ✅, e2e pending credentials) |
-| `skills-hub/` | ClawHub-compatible skill loading | Skills/ClawHub | Harness `ctx.skills` provider | **implemented** (phase 3 ✅) |
-| `automation/` | scheduled durable agent turns | Cron/Automation | Harness agents/sessions/persistence/model selection | **implemented** (phase 3 ✅; config-declared rules) |
+| Package | Positioning | OpenClaw counterpart | Integration boundary |
+|---|---|---|---|
+| [`channel-core/`](channel-core/README.md) | durable channel gateway | channel Gateway | ClawDSH `ctx.channels`; Harness agents/presets/persistence/timer |
+| [`channel-telegram/`](channel-telegram/README.md) | Telegram channel | channel adapter | ClawDSH `ctx.channels`; Harness timer; grammY |
+| [`channel-discord/`](channel-discord/README.md) | Discord channel | OpenClaw `src/discord/` | ClawDSH `ctx.channels`; Harness credentials/timer; discord.js |
+| [`channel-feishu/`](channel-feishu/README.md) | Feishu channel (**initiator first priority**) | OpenClaw `extensions/feishu` | ClawDSH `ctx.channels`; Harness timer; official `LarkChannel` |
+| [`soul/`](soul/README.md) | persona / Soul | Soul system | Harness system-prompt assembly and scope |
+| [`memory/`](memory/README.md) | memory (Markdown fact source + semantic recall) | Memory (v2026.1.15) | Harness fs/sandbox/tools/system prompt; optional ClawDSH embeddings and Harness LLM lifecycle |
+| [`embeddings/`](embeddings/README.md) | text-embedding Service Definition | choose one of memory's embeddings backends | ClawDSH `ctx.embeddings` (ADR-0003); Harness Cordis service base |
+| [`embeddings-ark/`](embeddings-ark/README.md) | Volcano Ark text-embedding provider | openai-remote branch slot | ClawDSH `ctx.embeddings`; optional Harness credentials/launch environment |
+| [`skills-hub/`](skills-hub/README.md) | ClawHub-compatible skill loading | Skills/ClawHub | Harness `ctx.skills` provider contract |
+| [`automation/`](automation/README.md) | scheduled durable agent turns | Cron/Automation | Harness agents/sessions/model selection and optional persistence; croner/Node timer |
 
 The channel list is not limited to Telegram and Discord: WhatsApp, Email, Web Chat, and others are added one by one following the same template (one package per channel, mutually non-blocking).
+
+Each linked package README owns its configuration, failure behavior, and known limitations. The [Harness reuse map](../../docs/matrix/harness-reuse.md) is the cross-package dependency view; the [feature matrix](../../docs/matrix/parity.md) owns completion status.
 
 ## Release status
 

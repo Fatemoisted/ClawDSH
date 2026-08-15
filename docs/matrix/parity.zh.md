@@ -34,11 +34,11 @@
 | 会话追溯 / 回放 / 分叉 | —（dsh 原生） | Trajectory 视图 / replay | 复用 | — | 直接可用 |
 | 工具执行（bash/文件/浏览器…） | `src/agents/*-tools.ts` | `ctx.tools` / `ctx.shell` / `ctx.fs` / `ctx.web` | 复用 | — | 直接可用 |
 | 技能（Skill） | 顶层 `skills/` | `ctx.skills`（provider 合并） | 插件 | `skills-hub` | **implemented**（阶段 3 ✅） |
-| 定时 / 自动化 | `src/cron/` | 自有 unref'd croner timer + `agent.followup`/`whenIdle`/`sessions.flush` 回合桥（`ctx.schedule` 否决：session-local + 300s 下限 + 仅工具面 API） | 插件 | `automation` | **implemented**（阶段 3 ✅） |
+| 定时 / 自动化 | `src/cron/` | 自有 unref'd croner timer + `agent.followup`/`whenIdle`/`sessions.flush` 回合桥（`ctx.schedule` 否决：session-local + 300s 下限 + 仅工具面 API） | 插件 | `automation` | **implemented，存在已知限制**（[包详情](../../packages/openclaw/automation/README.md#known-limitations-and-deferred-work)） |
 | 人格（Soul） | `src/agents/system-prompt.ts` 首行 + workspace 六文件（AGENTS/SOUL/TOOLS/IDENTITY/USER/BOOTSTRAP.md） | system-prompt 装配（persona 首行 / soul append / complete 段 / 工具指引带）+ 渠道呈现（IDENTITY ✅） | 插件 | `soul` | **implemented**（阶段 0 ✅ + 阶段 2 深读定稿 ✅） |
 | 记忆（Memory） | 基线无 → 参考 v2026.1.15 `src/memory/` + `src/agents/memory-search.ts`、`memory-tool.ts` | Harness `ctx.fs`/sandbox + tools/system prompt + embeddings | 插件 | `memory` + `embeddings` + `embeddings-ark` | **implemented**（三工具、配置默认、缺失 root 启动、持久 flush 周期 ✅） |
 | **渠道网关（Gateway）** | `src/gateway/` | **无** | **新 seam** | `channel-core` | **implemented**（可等待持久化、确定性恢复/preset/FIFO、legacy thread-only 兼容、`groupMode`/结构化 mention 策略 ✅） |
-| 渠道：Telegram | `src/telegram/` | `ctx.channels` | 插件 | `channel-telegram` | **implemented**（command/mention/caption/topic/引用/reaction、Unicode-safe 4096 分片、生命周期 catch ✅） |
+| 渠道：Telegram | `src/telegram/` | `ctx.channels` | 插件 | `channel-telegram` | **已实现，仍有集成收尾**（[包详情](../../packages/openclaw/channel-telegram/README.md)） |
 | 渠道：Discord | `src/discord/` | `ctx.channels` | 插件 | `channel-discord` | **implemented**（Harness credentials/timer、私信/服务器/thread 归一化、mention 门控、原生引用/reaction、安全 2000-unit 分片、先排空再销毁的生命周期 ✅；带凭证线上 e2e 待完成） |
 | 渠道：iMessage / Signal / Slack | `src/imessage/` 等 | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
 | 渠道：WhatsApp | 参考 v2026.1.15 `src/whatsapp/` | `ctx.channels` | 插件 | 后续逐包 | 暂缓（阶段 3） |
@@ -61,7 +61,7 @@
 
 | 功能域 | 出处 | dsh 接缝 | 分类 | 落地包 | 状态 |
 |---|---|---|---|---|---|
-| 渠道：飞书（Lark） | OpenClaw `extensions/feishu`（v2026.2.12 起；引入提交 `0223416c61`） | `ctx.channels` + 官方 SDK 1.73 `LarkChannel` | 插件 | `channel-feishu` | **implemented**（富消息归一化、身份退避、topic-safe 3500 引用、失败握手清理、reaction ✅） |
+| 渠道：飞书（Lark） | OpenClaw `extensions/feishu`（v2026.2.12 起；引入提交 `0223416c61`） | `ctx.channels` + 官方 SDK 1.73 `LarkChannel` | 插件 | `channel-feishu` | **implemented，仍有集成工作**（[包详情](../../packages/openclaw/channel-feishu/README.md#known-limitations-and-deferred-work)） |
 
 微信系不落矩阵（不实现），决策记录见 `docs/specs/feature-channel-wechat.md`。
 

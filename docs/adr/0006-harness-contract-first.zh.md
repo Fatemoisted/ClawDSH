@@ -1,0 +1,34 @@
+# ADR-0006: Harness 契约优先复用
+
+[English](0006-harness-contract-first.md) | 中文
+
+- **状态**：已接受（2026-08-15）
+- **日期**：2026-08-15
+- **依赖**：ADR-0001（上游隔离）
+
+## Context
+
+ClawDSH 是 DeepSeek Harness 之上的增量插件层。Harness 已经记录运行时组合、包组、子系统 API、事件、能力 seam、生成目录与依赖图。每项 ClawDSH 功能都重新通读 Harness 实现源码会重复探索工作、诱导代码依赖具体 provider，并让评审依赖未记录的知识。
+
+完全禁止阅读 Harness 源码同样不安全。公开文档无法描述全部内部失败、生命周期竞态、安全条件、性能属性或上游破坏性变更；已记录约定缺失或疑似错误时，仍需要检查源码。
+
+## Decision
+
+1. **Harness 文档是默认开发接口。** 日常 ClawDSH 开发依次从 `docs/architecture.md`、`packages/README.md`、所属 `docs/subsystems/` 页面、生成目录/关系图和所属包 README 开始。
+2. **ClawDSH 只记录自己的集成视图。** `docs/matrix/harness-reuse.md` 把每个自有包映射到其复用的 Harness 服务、事件、库和平台组件；它链接上游所属参考，不复制上游包或 API 目录。
+3. **自有插件依赖公开约定。** 插件消费已记录的 `ctx.*` 服务、事件、公开类型和维护中的 SDK，不为复用实现而导入或复制具体 Harness provider。
+4. **阅读源码是明确例外。** 仅在诊断 Harness 内部 BUG、安全/并发/性能行为、未记录约定、缺失 seam 或上游破坏性变更时检查所属源码。若缺失约定会影响后续集成，同一变更必须把它补入所属 ClawDSH 地图、规格或 ADR。
+5. **缺失能力沿用既有 ADR 流程。** 功能先使用现有 Harness seam；没有合适 seam 时，开发停在 ADR，并遵循 `docs/standards/plugin-contract.md` 的准入规则，不以私有复制 Harness 内部实现的方式绕过缺口。
+
+## Consequences
+
+- 日常功能开发无需遍历全部上游源码即可选择已经验证的 Harness 组件。
+- 评审可以针对稳定的服务/事件约定和 ClawDSH 复用地图核验依赖。
+- 详细真源继续由生成式 Harness 参考承担，避免在根 README 维护第二份手写目录。
+- 缺陷与未记录行为仍需源码级调查；本决策改变默认路径，不限制可用证据。
+
+## Alternatives
+
+- **把全部 Harness 模块复制进 ClawDSH README（否决）**：手工重复数百个包和 API 会持续漂移，也违反仓库“一项事实一个归属”的文档规则。
+- **永远不读 Harness 源码（否决）**：只靠摘要无法可靠处理生命周期、安全、并发、性能与缺陷诊断。
+- **每项功能都先探索源码（否决）**：这会忽视现有约定文档，并让具体实现细节意外成为集成接口。
