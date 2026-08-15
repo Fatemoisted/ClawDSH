@@ -11,12 +11,20 @@ describe('immutable OpenClaw host locks', () => {
       commitSha: '0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c',
       packageVersion: '2026.7.1-2',
       agentHarness: 'v1',
-      runtimeTrees: [{
-        platform: 'darwin',
-        architecture: 'arm64',
-        fileCount: 31_942,
-        sha512: '71c4b7b37c79dfa37efb2297c52315786130c5b44ca0fa0469a96e09334f5fbbd027988aac5aa559a7a003a3a002201bbf0231ea27dec30d9817bcb13a40cfb6',
-      }],
+      runtimeTrees: [
+        {
+          platform: 'darwin',
+          architecture: 'arm64',
+          fileCount: 31_942,
+          sha512: '71c4b7b37c79dfa37efb2297c52315786130c5b44ca0fa0469a96e09334f5fbbd027988aac5aa559a7a003a3a002201bbf0231ea27dec30d9817bcb13a40cfb6',
+        },
+        {
+          platform: 'linux',
+          architecture: 'x64',
+          fileCount: 31_941,
+          sha512: '9f2794054de6052b4a8e834c40f3652d17a95b2847289f32cc82c974146e244ca3dddb0cb058c0c395f613570b3516f18171fe663cc283efa0f0cd703c557f82',
+        },
+      ],
       tree: { fileCount: 8550 },
     })
     expect(CANARY_OPENCLAW_LOCK).toMatchObject({

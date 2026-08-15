@@ -1,6 +1,7 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   environmentNames,
@@ -37,6 +38,27 @@ describe('OpenClaw channel migration inventory', () => {
     expect(() => parseArguments([])).toThrow('at least one')
     expect(() => parseArguments(['--other'])).toThrow('unknown argument')
     expect(() => parseArguments(['--input'])).toThrow('requires a path')
+  })
+
+  it('mounts the sidecar and its invariant companions while the Gateway remains disabled', async () => {
+    const profile = await readFile(fileURLToPath(new URL(
+      '../packages/openclaw/preset-openclaw/profile/cordis.patch.yml',
+      import.meta.url,
+    )), 'utf8')
+    expect(profile).toContain("- id: clawdsh-communication-plane")
+    expect(profile).not.toContain("disabled: !!js process.env.CLAWDSH_OPENCLAW_CHANNELS_ENABLED")
+    expect(profile).toMatch(/- id: channel-openclaw[\s\S]*?config:\n            enabled: false/)
+    for (const packageName of [
+      '@deepseek-ai/dsh-invariants',
+      '@clawdsh/dsh-channel',
+      '@clawdsh/dsh-channel/invariant',
+      '@clawdsh/dsh-channel-agent',
+      '@clawdsh/dsh-channel-agent/invariant',
+      '@clawdsh/dsh-channel-openclaw',
+      '@clawdsh/dsh-channel-openclaw/invariant',
+    ]) {
+      expect(profile.match(new RegExp(`name: '${packageName.replaceAll('/', '\\/')}'`, 'g'))).toHaveLength(1)
+    }
   })
 })
 

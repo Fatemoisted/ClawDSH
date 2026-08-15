@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
@@ -30,8 +30,7 @@ import { OpenClawSupervisor, type OpenClawSupervisorConfig } from '../src/index.
 
 const FINAL_TEXT = 'clawdsh-assembled-final-7c2b'
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
-const RUNTIME_ROOT = join(REPOSITORY_ROOT, 'packages/openclaw/channel-openclaw/runtime')
-const HOST_ROOT = join(RUNTIME_ROOT, 'node_modules/openclaw')
+const RUNTIME_SOURCE_ROOT = join(REPOSITORY_ROOT, 'packages/openclaw/channel-openclaw/runtime')
 const BRIDGE_ROOT = join(REPOSITORY_ROOT, 'packages/openclaw/channel-openclaw/bridge/stable-v1')
 
 class TestSettings extends SettingsProvider {
@@ -85,8 +84,30 @@ async function availablePort(): Promise<number> {
   return address.port
 }
 
+/** Materialize the same runtime tree that the public installer publishes. */
+async function materializeInstalledRuntime(root: string): Promise<{
+  readonly runtimeRoot: string
+  readonly hostRoot: string
+}> {
+  const runtimeRoot = join(root, 'runtime')
+  await mkdir(runtimeRoot, { mode: 0o700 })
+  await Promise.all([
+    copyFile(join(RUNTIME_SOURCE_ROOT, 'package.json'), join(runtimeRoot, 'package.json')),
+    copyFile(join(RUNTIME_SOURCE_ROOT, 'package-lock.json'), join(runtimeRoot, 'package-lock.json')),
+    cp(join(RUNTIME_SOURCE_ROOT, 'node_modules'), join(runtimeRoot, 'node_modules'), {
+      recursive: true,
+      verbatimSymlinks: true,
+    }),
+  ])
+  return { runtimeRoot, hostRoot: join(runtimeRoot, 'node_modules/openclaw') }
+}
+
 /** Build the sole-provider, no-fallback config accepted by both local validation layers. */
-function openClawConfig(stateDir: string, gatewayPort: number): Record<string, unknown> {
+function openClawConfig(
+  stateDir: string,
+  gatewayPort: number,
+  channels: Readonly<Record<string, unknown>> = {},
+): Record<string, unknown> {
   return {
     models: {
       mode: 'replace',
@@ -153,7 +174,46 @@ function openClawConfig(stateDir: string, gatewayPort: number): Record<string, u
       useAccessGroups: true,
     },
     tools: { elevated: { enabled: false } },
-    channels: {},
+    channels,
+  }
+}
+
+/** Prove the locked stable host accepts credential-free policy-complete pilot Channel configs. */
+async function validatePilotChannelConfigs(
+  ctx: Context,
+  stateDir: string,
+  gatewayPort: number,
+  hostRoot: string,
+): Promise<void> {
+  const variants: ReadonlyArray<readonly [string, Readonly<Record<string, unknown>>]> = [
+    ['telegram', {
+      telegram: {
+        enabled: true,
+        configWrites: false,
+        dmPolicy: 'pairing',
+        groupPolicy: 'allowlist',
+        groups: { '*': { requireMention: true } },
+      },
+    }],
+    ['feishu', {
+      feishu: {
+        enabled: true,
+        configWrites: false,
+        dmPolicy: 'pairing',
+        groupPolicy: 'allowlist',
+        requireMention: true,
+      },
+    }],
+  ]
+  for (const [name, channels] of variants) {
+    const path = join(stateDir, `openclaw-${name}-validate.json`)
+    await writeFile(path, `${JSON.stringify(openClawConfig(stateDir, gatewayPort, channels), null, 2)}\n`, { mode: 0o600 })
+    const validation = await runOpenClaw(ctx, path, stateDir, hostRoot, ['config', 'validate', '--json'])
+    assert.equal(
+      validation.exitCode,
+      0,
+      `locked OpenClaw rejected the credential-free ${name} policy config: ${validation.stderr}\n${validation.stdout}`,
+    )
   }
 }
 
@@ -225,6 +285,7 @@ async function runOpenClaw(
   ctx: Context,
   configPath: string,
   stateDir: string,
+  hostRoot: string,
   arguments_: readonly string[],
 ): Promise<CliOutcome> {
   const controller = new AbortController()
@@ -235,10 +296,10 @@ async function runOpenClaw(
   const handle = ctx.subprocess.spawn({
     argv: [
       process.execPath,
-      join(HOST_ROOT, 'openclaw.mjs'),
+      join(hostRoot, 'openclaw.mjs'),
       ...arguments_,
     ],
-    cwd: HOST_ROOT,
+    cwd: hostRoot,
     stdio: {
       stdin: 'ignore',
       stdout: { maxBytes: 4 * 1024 * 1024 },
@@ -270,10 +331,11 @@ function runAgent(
   ctx: Context,
   configPath: string,
   stateDir: string,
+  hostRoot: string,
   target: string,
   message: string,
 ): Promise<CliOutcome> {
-  return runOpenClaw(ctx, configPath, stateDir, [
+  return runOpenClaw(ctx, configPath, stateDir, hostRoot, [
     'agent',
     '--to', target,
     '--channel', 'sms',
@@ -305,20 +367,23 @@ async function main(): Promise<void> {
   await chmod(root, 0o700)
   const stateDir = join(root, 'state')
   await mkdir(stateDir, { mode: 0o700 })
+  await mkdir(join(stateDir, 'staging'), { mode: 0o700 })
   const configPath = join(stateDir, 'openclaw.json')
   const gatewayPort = await availablePort()
   await writeFile(configPath, `${JSON.stringify(openClawConfig(stateDir, gatewayPort), null, 2)}\n`, { mode: 0o600 })
+  const { runtimeRoot, hostRoot } = await materializeInstalledRuntime(root)
 
   const app = await mountDsh(root)
   let supervisor: OpenClawSupervisor | undefined
   let unregisterProvider: (() => void) | undefined
   try {
+    await validatePilotChannelConfigs(app.ctx, stateDir, gatewayPort, hostRoot)
     const config: OpenClawSupervisorConfig = {
       track: 'production',
       gatewayInstanceId: 'assembled-gateway',
       artifactPath: resolve(artifactPath),
-      runtimeRoot: RUNTIME_ROOT,
-      hostRoot: HOST_ROOT,
+      runtimeRoot,
+      hostRoot,
       extensions: [],
       nodePath: process.execPath,
       configPath,
@@ -335,7 +400,7 @@ async function main(): Promise<void> {
       shutdownGraceMs: 5_000,
       diagnosticBytes: 4 * 1024 * 1024,
     }
-    const validation = await runOpenClaw(app.ctx, configPath, stateDir, ['config', 'validate', '--json'])
+    const validation = await runOpenClaw(app.ctx, configPath, stateDir, hostRoot, ['config', 'validate', '--json'])
     assert.equal(
       validation.exitCode,
       0,
@@ -349,6 +414,7 @@ async function main(): Promise<void> {
       app.ctx,
       configPath,
       stateDir,
+      hostRoot,
       '+15555550123',
       'Return the assembled smoke marker.',
     ), 'completed Gateway request')
@@ -371,6 +437,7 @@ async function main(): Promise<void> {
       app.ctx,
       configPath,
       stateDir,
+      hostRoot,
       '+15555550124',
       'This must fail through the disconnected ClawDSH bridge.',
     ), 'disconnected Gateway request')

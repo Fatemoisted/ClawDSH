@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.19.0
           cache: pnpm
 
       - name: Install
@@ -69,7 +69,7 @@ jobs:
 
       - name: ClawDSH communication-plane gates
         run: |
-          npm ci --ignore-scripts --prefix packages/openclaw/channel-openclaw/runtime
+          npx --yes npm@10.9.7 ci --ignore-scripts --prefix packages/openclaw/channel-openclaw/runtime
           pnpm exec vitest run packages/openclaw/channel/tests packages/openclaw/channel-agent/tests packages/openclaw/channel-openclaw/tests packages/openclaw/preset-clawdsh-messaging-safe/tests
           node --test packages/openclaw/channel-openclaw/bridge/test/*.test.mjs
           node packages/openclaw/channel-openclaw/bridge/verify.mjs
@@ -79,6 +79,13 @@ jobs:
           pnpm exec tsx tools/openclaw-channel-host/generate-parity.ts --check
           pnpm exec vitest run --config tools/openclaw-channel-migration.vitest.config.ts
           pnpm run verify-translation-pairing
+
+      - name: Assembled OpenClaw Gateway smoke
+        run: |
+          artifact_dir="$RUNNER_TEMP/clawdsh-openclaw-artifact"
+          mkdir -p "$artifact_dir"
+          npx --yes npm@10.9.7 pack --silent --ignore-scripts --pack-destination "$artifact_dir" openclaw@2026.7.1-2 >/dev/null
+          pnpm exec tsx packages/openclaw/channel-openclaw/tests/assembled-smoke.ts "$artifact_dir/openclaw-2026.7.1-2.tgz"
 
       - name: ClawDSH distribution release-tool tests
         run: node --test packages/openclaw/preset-openclaw/distribution/release-tools/*.test.mjs

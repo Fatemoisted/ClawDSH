@@ -59,7 +59,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.19.0
           cache: pnpm
 
       - name: Require npm trusted-publishing support
@@ -72,6 +72,16 @@ jobs:
         run: |
           pnpm run typecheck
           pnpm run build
+
+      - name: Install locked OpenClaw runtime
+        run: npx --yes npm@10.9.7 ci --ignore-scripts --prefix packages/openclaw/channel-openclaw/runtime
+
+      - name: Assembled OpenClaw Gateway smoke
+        run: |
+          artifact_dir="$RUNNER_TEMP/clawdsh-openclaw-artifact"
+          mkdir -p "$artifact_dir"
+          npx --yes npm@10.9.7 pack --silent --ignore-scripts --pack-destination "$artifact_dir" openclaw@2026.7.1-2 >/dev/null
+          pnpm exec tsx packages/openclaw/channel-openclaw/tests/assembled-smoke.ts "$artifact_dir/openclaw-2026.7.1-2.tgz"
 
       - name: Build the nested product shell
         run: |
