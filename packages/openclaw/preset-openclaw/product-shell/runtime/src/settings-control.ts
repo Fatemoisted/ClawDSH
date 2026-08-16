@@ -56,6 +56,10 @@ type SettingsControlResult = RpcResult<
   | ClawdshCredentialResponse
 >
 
+type CredentialMutation =
+  | { readonly kind: 'set'; readonly value: string }
+  | { readonly kind: 'unset' }
+
 const GATEWAY_NAMESPACE = 'clawdsh-channel-openclaw'
 
 function settingsRejected(namespace: string): RpcResult<never> {
@@ -606,7 +610,7 @@ export class ClawdshSettingsControl {
         actual: current.revision,
       })
     }
-    try {
+    return this.applySettingsMutation(request.namespace, async () => {
       const user = request.operations.reduce(
         (section, operation) => applyPathOperation(section, operation),
         plainRecord(current.user),
@@ -617,17 +621,7 @@ export class ClawdshSettingsControl {
         ? { op: 'set', path: operation.path, value: operation.value }
         : { op: 'unset', path: operation.path })
       await settings.mutate(settingsNamespace(request.namespace), operations, request.expectedRevision)
-      const descriptor = this.namespaceDescriptor(request.namespace)
-      if (descriptor === undefined) return settingsRejected(request.namespace)
-      const value: ClawdshSettingsNamespaceResponse = {
-        version: CLAWDSH_PROTOCOL_VERSION,
-        namespace: descriptor,
-      }
-      return { ok: true, value: jsonBoundary(value, parseClawdshSettingsNamespaceResponse) }
-    } catch (error) {
-      if (isSettingsConflict(error)) return settingsConflict(request.namespace, error)
-      return settingsRejected(request.namespace)
-    }
+    })
   }
 
   private async resetSettings(payload: unknown): Promise<SettingsControlResult> {
@@ -648,20 +642,30 @@ export class ClawdshSettingsControl {
         actual: current.revision,
       })
     }
-    try {
+    return this.applySettingsMutation(request.namespace, async () => {
       const desired = resolveResetCandidate(current)
       await this.validateGatewayDesired(request.namespace, desired)
       await settings.replace(settingsNamespace(request.namespace), {}, request.expectedRevision)
-      const descriptor = this.namespaceDescriptor(request.namespace)
-      if (descriptor === undefined) return settingsRejected(request.namespace)
+    })
+  }
+
+  /** Settle one validated namespace mutation through the common response boundary. */
+  private async applySettingsMutation(
+    namespace: string,
+    mutate: () => Promise<void>,
+  ): Promise<SettingsControlResult> {
+    try {
+      await mutate()
+      const descriptor = this.namespaceDescriptor(namespace)
+      if (descriptor === undefined) return settingsRejected(namespace)
       const value: ClawdshSettingsNamespaceResponse = {
         version: CLAWDSH_PROTOCOL_VERSION,
         namespace: descriptor,
       }
       return { ok: true, value: jsonBoundary(value, parseClawdshSettingsNamespaceResponse) }
     } catch (error) {
-      if (isSettingsConflict(error)) return settingsConflict(request.namespace, error)
-      return settingsRejected(request.namespace)
+      if (isSettingsConflict(error)) return settingsConflict(namespace, error)
+      return settingsRejected(namespace)
     }
   }
 
@@ -719,6 +723,30 @@ export class ClawdshSettingsControl {
     }
   }
 
+  /** Apply one allowlisted credential mutation and return only its secret-free descriptor. */
+  private async applyCredentialMutation(
+    id: string,
+    mutation: CredentialMutation,
+  ): Promise<SettingsControlResult> {
+    const manifest = CREDENTIAL_MANIFEST.find(entry => entry.id === id)
+    const credentials = this.credentials()
+    if (manifest === undefined || credentials === undefined) return credentialRejected(id)
+    try {
+      const ref = credentialRef(manifest.ref)
+      if (mutation.kind === 'set') await credentials.set(ref, mutation.value)
+      else await credentials.unset(ref)
+      const descriptor = await this.credentialDescriptor(id)
+      if (descriptor === undefined) return credentialRejected(id)
+      const value: ClawdshCredentialResponse = {
+        version: CLAWDSH_PROTOCOL_VERSION,
+        credential: descriptor,
+      }
+      return { ok: true, value: jsonBoundary(value, parseClawdshCredentialResponse) }
+    } catch {
+      return credentialRejected(id)
+    }
+  }
+
   private async setCredential(payload: unknown): Promise<SettingsControlResult> {
     let request
     try {
@@ -726,21 +754,7 @@ export class ClawdshSettingsControl {
     } catch {
       return badRequest()
     }
-    const manifest = CREDENTIAL_MANIFEST.find(entry => entry.id === request.id)
-    const credentials = this.credentials()
-    if (manifest === undefined || credentials === undefined) return credentialRejected(request.id)
-    try {
-      await credentials.set(credentialRef(manifest.ref), request.value)
-      const descriptor = await this.credentialDescriptor(request.id)
-      if (descriptor === undefined) return credentialRejected(request.id)
-      const value: ClawdshCredentialResponse = {
-        version: CLAWDSH_PROTOCOL_VERSION,
-        credential: descriptor,
-      }
-      return { ok: true, value: jsonBoundary(value, parseClawdshCredentialResponse) }
-    } catch {
-      return credentialRejected(request.id)
-    }
+    return this.applyCredentialMutation(request.id, { kind: 'set', value: request.value })
   }
 
   private async unsetCredential(payload: unknown): Promise<SettingsControlResult> {
@@ -750,20 +764,6 @@ export class ClawdshSettingsControl {
     } catch {
       return badRequest()
     }
-    const manifest = CREDENTIAL_MANIFEST.find(entry => entry.id === request.id)
-    const credentials = this.credentials()
-    if (manifest === undefined || credentials === undefined) return credentialRejected(request.id)
-    try {
-      await credentials.unset(credentialRef(manifest.ref))
-      const descriptor = await this.credentialDescriptor(request.id)
-      if (descriptor === undefined) return credentialRejected(request.id)
-      const value: ClawdshCredentialResponse = {
-        version: CLAWDSH_PROTOCOL_VERSION,
-        credential: descriptor,
-      }
-      return { ok: true, value: jsonBoundary(value, parseClawdshCredentialResponse) }
-    } catch {
-      return credentialRejected(request.id)
-    }
+    return this.applyCredentialMutation(request.id, { kind: 'unset' })
   }
 }

@@ -247,16 +247,31 @@ function isWorkStatus(value: unknown): value is 'started' | 'succeeded' | 'faile
   return value === 'started' || value === 'succeeded' || value === 'failed'
 }
 
-function isCanonicalTimestamp(value: string): boolean {
+/**
+ * Test whether a timestamp is the canonical ISO representation accepted by Activity boundaries.
+ * @param value - Timestamp text to validate.
+ * @returns Whether parsing and serializing the value is lossless.
+ */
+export function isCanonicalTimestamp(value: string): boolean {
   const parsed = Date.parse(value)
   return Number.isFinite(parsed) && new Date(parsed).toISOString() === value
 }
 
-function isNonNegativeSafeInteger(value: unknown): value is number {
+/**
+ * Test whether an unknown value is a non-negative safe integer.
+ * @param value - Candidate sequence or count.
+ * @returns Whether the value can safely cross an Activity JSON boundary.
+ */
+export function isNonNegativeSafeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 }
 
-function isSafeLabel(value: unknown): value is string {
+/**
+ * Test whether an unknown value is a bounded, trimmed, control-free Activity label.
+ * @param value - Candidate adapter, skill, or rule label.
+ * @returns Whether the label is safe to retain in an Activity record.
+ */
+export function isSafeLabel(value: unknown): value is string {
   return typeof value === 'string'
     && value.length > 0
     && value === value.trim()

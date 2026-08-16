@@ -175,6 +175,11 @@ export class ClawdshWebEntry {
 
   private assertEntriesActive(): void {
     const ctx = this.requireContext()
+    // The standalone product build intentionally consumes the published Harness
+    // rc.6 surface. It reuses that surface's STATE_LABELS, but rc.6 exposes no
+    // activation-sweep helper; keep the fail-loud sweep local until a published
+    // Harness release makes the whole operation reusable.
+    /* jscpd:ignore-start */
     const failures: string[] = []
     for (const entry of ctx.loader.entries()) {
       const name = entry.options.name
@@ -191,6 +196,7 @@ export class ClawdshWebEntry {
         failures.push(`${name}: ${state}`)
       }
     }
+    /* jscpd:ignore-end */
     if (failures.length > 0) {
       throw new Error(`ClawDSH browser: ${String(failures.length)} Loader entries did not activate\n${failures.join('\n')}`)
     }

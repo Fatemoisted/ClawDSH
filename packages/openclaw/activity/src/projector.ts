@@ -2,7 +2,12 @@
 
 import { createHash } from 'node:crypto'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { createActivityRecord } from './records.ts'
+import {
+  createActivityRecord,
+  isCanonicalTimestamp,
+  isNonNegativeSafeInteger,
+  isSafeLabel,
+} from './records.ts'
 import type {
   ClawdshActivityHistoryProjection,
   ClawdshActivityKind,
@@ -34,8 +39,6 @@ type TrackedToolCall =
     readonly start: EventView
   }
   | { readonly kind: 'skill.invoked'; readonly callId: string; readonly skill: string; readonly start: EventView }
-
-const CONTROL_PATTERN = /[\u0000-\u001f\u007f]/
 
 /**
  * Project standard and already-registered plugin Session events into sanitized Activity records.
@@ -349,23 +352,6 @@ function toolResultText(message: Record<string, unknown> | undefined): string | 
   if (result === undefined || !Array.isArray(result.content) || result.content.length !== 1) return undefined
   const text = asRecord(result.content[0])
   return text?.type === 'text' && typeof text.text === 'string' ? text.text : undefined
-}
-
-function isNonNegativeSafeInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
-}
-
-function isSafeLabel(value: unknown): value is string {
-  return typeof value === 'string'
-    && value.length > 0
-    && value === value.trim()
-    && !CONTROL_PATTERN.test(value)
-    && Buffer.byteLength(value, 'utf8') <= 256
-}
-
-function isCanonicalTimestamp(value: string): boolean {
-  const parsed = Date.parse(value)
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

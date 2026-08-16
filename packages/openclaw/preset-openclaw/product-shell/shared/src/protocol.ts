@@ -639,6 +639,11 @@ const ACTIVITY_KINDS = [
   'automation.run',
 ] as const satisfies readonly ClawdshActivityKind[]
 
+// This JSON wire boundary deliberately restates the Activity package's canonical
+// values. Importing runtime construction tables here would couple the browser
+// protocol parser to a Host-only plugin and stop it independently rejecting a
+// category or summary that was changed in transit.
+/* jscpd:ignore-start */
 const ACTIVITY_CATEGORY_BY_KIND: Readonly<Record<ClawdshActivityKind, ClawdshActivityCategory>> = {
   'prompt.contribution': 'prompt',
   'memory.search': 'memory',
@@ -668,6 +673,7 @@ const ACTIVITY_SUMMARY_BY_KIND: Readonly<Record<ClawdshActivityKind, string>> = 
   'skill.invoked': 'Skill invocation activity recorded',
   'automation.run': 'Automation run activity recorded',
 }
+/* jscpd:ignore-end */
 
 function parseActivityRecord(value: unknown): void {
   const record = exactRecord(

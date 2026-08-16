@@ -126,6 +126,35 @@ describe('ClawDSH settings memory store', () => {
     expect(window.dispatchEvent(unload)).toBe(true)
   })
 
+  it('does not issue namespace or credential writes after plugin disposal', async () => {
+    const mutateSetting = vi.fn(controlFixture().mutateSetting)
+    const resetSettings = vi.fn(controlFixture().resetSettings)
+    const setCredential = vi.fn(controlFixture().setCredential)
+    const unsetCredential = vi.fn(controlFixture().unsetCredential)
+    const store = new ClawdshSettingsStore(controlFixture({
+      mutateSetting,
+      resetSettings,
+      setCredential,
+      unsetCredential,
+    }), true)
+    await store.ensureLoaded()
+    const namespace = store.getSnapshot().namespaces[0]!.descriptor.namespace
+    const credential = store.getSnapshot().credentials[0]!.descriptor.id
+    store.setNamespaceDraft(namespace, { enabled: false })
+    store.setCredentialSecret(credential, 'dispose-write-canary')
+    store.dispose()
+
+    await store.saveNamespace(namespace)
+    await store.resetNamespace(namespace)
+    await store.saveCredential(credential)
+    await store.unsetCredential(credential)
+
+    expect(mutateSetting).not.toHaveBeenCalled()
+    expect(resetSettings).not.toHaveBeenCalled()
+    expect(setCredential).not.toHaveBeenCalled()
+    expect(unsetCredential).not.toHaveBeenCalled()
+  })
+
   it('does not call loopback control from a remote browser', async () => {
     const loadSettings = vi.fn(async () => SETTINGS_FIXTURE)
     const store = new ClawdshSettingsStore(controlFixture({ loadSettings }), false)

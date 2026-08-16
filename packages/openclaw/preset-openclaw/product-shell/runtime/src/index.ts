@@ -50,6 +50,11 @@ const LEGACY_PRODUCT_PATHS = [
 const LOOPBACK_HOST = '127.0.0.1'
 const COMMUNICATION_PLANE_ID = 'clawdsh-communication-plane'
 
+// FiberState is a cross-package const enum, so no runtime value exists to
+// import. This private product package and the public plugin-inventory package
+// own different protocol projections; coupling their release artifacts solely
+// to share this numeric mirror would invert that ownership boundary.
+/* jscpd:ignore-start */
 const FIBER_STATE = {
   PENDING: 0 as FiberState.PENDING,
   LOADING: 1 as FiberState.LOADING,
@@ -67,6 +72,7 @@ const FIBER_PHASE = {
   [FIBER_STATE.DISPOSED]: null,
   [FIBER_STATE.UNLOADING]: 'unloading',
 } as const satisfies Record<FiberState, ClawdshFiberPhase>
+/* jscpd:ignore-end */
 
 const FIBER_LOADER_STATE = {
   [FIBER_STATE.PENDING]: 'starting',

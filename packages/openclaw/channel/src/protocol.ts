@@ -36,6 +36,7 @@ import type {
   ChannelDeliveryReceiptV1,
   ChannelDeliveryReportV1,
   ChannelHealthV1,
+  ChannelRouteV1,
   ChannelSessionCloseV1,
   ChannelSessionResetResultV1,
   ChannelSessionResetV1,
@@ -70,6 +71,78 @@ export const CHANNEL_BRIDGE_NOTIFICATIONS_V1 = {
 /** One notification name accepted by a V1 bridge router. */
 export type ChannelBridgeNotificationV1 =
   typeof CHANNEL_BRIDGE_NOTIFICATIONS_V1[keyof typeof CHANNEL_BRIDGE_NOTIFICATIONS_V1]
+
+/**
+ * Compare every field that identifies one authenticated channel route.
+ * @param left - First complete route identity.
+ * @param right - Second complete route identity.
+ * @returns Whether both values address the same route generation.
+ */
+export function sameChannelRoute(left: ChannelRouteV1, right: ChannelRouteV1): boolean {
+  return left.gatewayInstanceId === right.gatewayInstanceId
+    && left.openclawSessionKey === right.openclawSessionKey
+    && left.generation === right.generation
+    && left.channel === right.channel
+    && left.account === right.account
+    && left.conversation === right.conversation
+    && left.thread === right.thread
+    && left.kind === right.kind
+}
+
+/**
+ * Require a delivery receipt to advance attempts, status, and learned platform identity.
+ * @param previous - Last receipt committed for the delivery.
+ * @param next - Candidate replacement receipt.
+ * @returns Whether the candidate is a monotonic successor.
+ */
+export function deliveryReceiptAdvances(
+  previous: ChannelDeliveryReceiptV1,
+  next: ChannelDeliveryReceiptV1,
+): boolean {
+  const terminal = previous.status === 'confirmed'
+    || previous.status === 'ambiguous'
+    || previous.status === 'dead-letter'
+  if (terminal || next.attempt < previous.attempt) return false
+  if (previous.platformMessageId !== undefined && next.platformMessageId !== previous.platformMessageId) return false
+  if (previous.status === 'retrying') {
+    if (next.status === 'accepted') return false
+    if (next.status === 'retrying' && next.attempt <= previous.attempt) return false
+  }
+  return true
+}
+
+/**
+ * Serialize a lossless JSON value with lexicographically sorted object keys.
+ * @param value - JSON-compatible value used as protocol identity input.
+ * @param diagnosticOwner - Package label retained in invalid-value diagnostics.
+ * @param undefinedValuePolicy - Whether legacy Server identity may encode an own-property `undefined`.
+ * @returns Deterministic JSON text for the complete value.
+ */
+export function canonicalChannelJson(
+  value: unknown,
+  diagnosticOwner = 'channel',
+  undefinedValuePolicy: 'reject' | 'literal' = 'reject',
+): string {
+  if (value === undefined && undefinedValuePolicy === 'literal') return 'undefined'
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value)
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new Error(`${diagnosticOwner}: canonical identity value contains a non-finite number`)
+    }
+    return JSON.stringify(value)
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(item => canonicalChannelJson(item, diagnosticOwner, undefinedValuePolicy)).join(',')}]`
+  }
+  if (typeof value !== 'object' || (Object.getPrototypeOf(value) !== Object.prototype
+    && Object.getPrototypeOf(value) !== null)) {
+    throw new Error(`${diagnosticOwner}: canonical identity value is not plain JSON`)
+  }
+  const entries = Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
+  return `{${entries.map(([key, item]) => (
+    `${JSON.stringify(key)}:${canonicalChannelJson(item, diagnosticOwner, undefinedValuePolicy)}`
+  )).join(',')}}`
+}
 
 /** Reject blank, whitespace-padded, or NUL-bearing opaque wire identities before branding. */
 function opaqueId<T extends string>(factory: (value: string) => T): z.ZodType<T> {

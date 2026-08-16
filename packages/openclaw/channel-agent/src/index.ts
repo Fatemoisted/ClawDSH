@@ -10,6 +10,8 @@ import z from '@deepseek-ai/schemastery'
 import {
   ChannelReplayId,
   ChannelToolCallId,
+  deliveryReceiptAdvances,
+  sameChannelRoute,
   type ChannelDeliveryReportV1,
   type ChannelDeliveryReceiptV1,
   type ChannelDriverV1,
@@ -484,7 +486,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       if (record.delivery.deliveryId !== report.receipt.deliveryId) {
         throw new Error('channel-agent: delivery identity changed for one final turn')
       }
-      if (!deliveryAdvances(record.delivery, report.receipt)) {
+      if (!deliveryReceiptAdvances(record.delivery, report.receipt)) {
         throw new Error('channel-agent: delivery report regressed durable delivery state')
       }
     }
@@ -839,7 +841,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       throw new Error(`channel-agent: ${operation} does not name the current route generation`)
     }
     const binding = this.bindings.get(bindingKey(route))
-    if (binding !== undefined && !sameRoute(binding.route, route)) {
+    if (binding !== undefined && !sameChannelRoute(binding.route, route)) {
       throw new Error(`channel-agent: ${operation} route conflicts with the durable account binding`)
     }
   }
@@ -917,7 +919,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       const preset = this.presetFor(turn)
       const found = this.bindings.get(key)
       if (found !== undefined) {
-        if (found.state !== 'active' || !sameRoute(found.route, turn.route)) {
+        if (found.state !== 'active' || !sameChannelRoute(found.route, turn.route)) {
           throw new Error('channel-agent: route binding is closed or conflicts with persisted account identity')
         }
         if (found.preset !== preset) {
@@ -1060,7 +1062,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
   /** Cancel every active Agent run bound to one exact route generation. */
   private cancelRoute(route: ChannelRouteV1): void {
     for (const active of this.active.values()) {
-      if (sameRoute(active.turn.route, route)) active.agent.cancel({ kind: 'user' })
+      if (sameChannelRoute(active.turn.route, route)) active.agent.cancel({ kind: 'user' })
     }
   }
 
@@ -1127,18 +1129,6 @@ function replayIdFor(turn: ChannelTurnEnvelopeV1): ReturnType<typeof ChannelRepl
     .update('\0')
     .update(turn.turnId)
     .digest('hex'))
-}
-
-/** Compare the complete route identity; no account/conversation may alias one binding. */
-function sameRoute(left: ChannelRouteV1, right: ChannelRouteV1): boolean {
-  return left.gatewayInstanceId === right.gatewayInstanceId
-    && left.openclawSessionKey === right.openclawSessionKey
-    && left.generation === right.generation
-    && left.channel === right.channel
-    && left.account === right.account
-    && left.conversation === right.conversation
-    && left.thread === right.thread
-    && left.kind === right.kind
 }
 
 /** Derive one final result from the exact user message's owning turn. */
@@ -1359,22 +1349,6 @@ function deliveryActivityStatus(
       throw new Error(`channel-agent: unknown delivery status ${String(exhaustive)}`)
     }
   }
-}
-
-/** Whether a platform delivery state permits no later transition. */
-function isTerminalDelivery(receipt: ChannelDeliveryReceiptV1): boolean {
-  return receipt.status === 'confirmed' || receipt.status === 'ambiguous' || receipt.status === 'dead-letter'
-}
-
-/** Require monotonic receipt attempts, status, and learned platform identity. */
-function deliveryAdvances(previous: ChannelDeliveryReceiptV1, next: ChannelDeliveryReceiptV1): boolean {
-  if (isTerminalDelivery(previous) || next.attempt < previous.attempt) return false
-  if (previous.platformMessageId !== undefined && next.platformMessageId !== previous.platformMessageId) return false
-  if (previous.status === 'retrying') {
-    if (next.status === 'accepted') return false
-    if (next.status === 'retrying' && next.attempt <= previous.attempt) return false
-  }
-  return true
 }
 
 /** Progress is optional presentation; listener failure cannot change the Agent result. */

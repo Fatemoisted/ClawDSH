@@ -421,6 +421,34 @@ export class ClawdshSettingsStore {
     }
   }
 
+  /** Run one optimistic namespace write through the shared settlement contract. */
+  private async updateNamespace(
+    namespace: string,
+    status: 'saving' | 'resetting',
+    update: () => Promise<ClawdshSettingsNamespaceDescriptor>,
+    conflictMessage: string,
+    failureMessage: string,
+  ): Promise<void> {
+    if (this.disposed) return
+    this.setNamespaceSave(namespace, { status })
+    try {
+      const descriptor = await update()
+      if (this.disposed) return
+      if (descriptor.namespace !== namespace) {
+        throw new TypeError('settings response namespace mismatch')
+      }
+      this.replaceNamespace(descriptor)
+      await this.refreshCapabilities()
+    } catch (reason) {
+      if (this.disposed) return
+      if (reason instanceof ClawdshControlError && reason.code === 'settings-conflict') {
+        this.setNamespaceSave(namespace, { status: 'conflict', message: conflictMessage })
+      } else {
+        this.setNamespaceSave(namespace, { status: 'failed', message: failureMessage })
+      }
+    }
+  }
+
   /** Save one namespace with its loaded optimistic revision. */
   async saveNamespace(namespace: string): Promise<void> {
     const item = this.snapshot.namespaces.find(candidate => candidate.descriptor.namespace === namespace)
@@ -434,61 +462,35 @@ export class ClawdshSettingsStore {
       return
     }
     if (validation !== undefined || operations.length === 0) return
-    this.setNamespaceSave(namespace, { status: 'saving' })
-    try {
-      const response = await this.control.mutateSetting({
+    await this.updateNamespace(
+      namespace,
+      'saving',
+      async () => (await this.control.mutateSetting({
         version: 1,
         namespace,
         expectedRevision: item.descriptor.desiredRevision,
         operations,
-      })
-      if (this.disposed) return
-      if (response.namespace.namespace !== namespace) {
-        throw new TypeError('settings response namespace mismatch')
-      }
-      this.replaceNamespace(response.namespace)
-      await this.refreshCapabilities()
-    } catch (reason) {
-      if (this.disposed) return
-      if (reason instanceof ClawdshControlError && reason.code === 'settings-conflict') {
-        this.setNamespaceSave(namespace, {
-          status: 'conflict',
-          message: '设置已在其他页面或外部编辑器中更新。当前草稿未丢失；重新加载后才能继续保存。',
-        })
-      } else {
-        this.setNamespaceSave(namespace, { status: 'failed', message: '设置保存失败，请重试。' })
-      }
-    }
+      })).namespace,
+      '设置已在其他页面或外部编辑器中更新。当前草稿未丢失；重新加载后才能继续保存。',
+      '设置保存失败，请重试。',
+    )
   }
 
   /** Reset one namespace's user layer using optimistic conflict protection. */
   async resetNamespace(namespace: string): Promise<void> {
     const item = this.snapshot.namespaces.find(candidate => candidate.descriptor.namespace === namespace)
     if (item === undefined || item.save.status !== 'idle') return
-    this.setNamespaceSave(namespace, { status: 'resetting' })
-    try {
-      const response = await this.control.resetSettings({
+    await this.updateNamespace(
+      namespace,
+      'resetting',
+      async () => (await this.control.resetSettings({
         version: 1,
         namespace,
         expectedRevision: item.descriptor.desiredRevision,
-      })
-      if (this.disposed) return
-      if (response.namespace.namespace !== namespace) {
-        throw new TypeError('settings response namespace mismatch')
-      }
-      this.replaceNamespace(response.namespace)
-      await this.refreshCapabilities()
-    } catch (reason) {
-      if (this.disposed) return
-      if (reason instanceof ClawdshControlError && reason.code === 'settings-conflict') {
-        this.setNamespaceSave(namespace, {
-          status: 'conflict',
-          message: '设置已发生变化；重新加载后才能重置。',
-        })
-      } else {
-        this.setNamespaceSave(namespace, { status: 'failed', message: '设置重置失败，请重试。' })
-      }
-    }
+      })).namespace,
+      '设置已发生变化；重新加载后才能重置。',
+      '设置重置失败，请重试。',
+    )
   }
 
   /** Reload one conflicted namespace, discarding that namespace's stale draft. */
@@ -517,41 +519,51 @@ export class ClawdshSettingsStore {
     })
   }
 
+  /** Run one write-only credential request and erase its private draft on settlement. */
+  private async updateCredential(
+    id: string,
+    item: ClawdshCredentialDraftState,
+    update: () => Promise<ClawdshCredentialDescriptor>,
+    failureMessage: string,
+  ): Promise<void> {
+    if (this.disposed) return
+    this.setCredentialState(id, { descriptor: item.descriptor, busy: true })
+    try {
+      const descriptor = await update()
+      if (this.disposed) return
+      if (descriptor.id !== id) throw new TypeError('credential response id mismatch')
+      this.secrets.delete(id)
+      this.setCredentialState(id, { descriptor, busy: false })
+    } catch {
+      if (this.disposed) return
+      this.secrets.delete(id)
+      this.setCredentialState(id, { descriptor: item.descriptor, busy: false, error: failureMessage })
+    }
+  }
+
   /** Save a write-only credential and clear its draft after either outcome. */
   async saveCredential(id: string): Promise<void> {
     const item = this.snapshot.credentials.find(candidate => candidate.descriptor.id === id)
     const value = this.secrets.get(id) ?? ''
     if (item === undefined || item.busy || !item.descriptor.writable || value === '') return
-    this.setCredentialState(id, { descriptor: item.descriptor, busy: true })
-    try {
-      const response = await this.control.setCredential(id, value)
-      if (this.disposed) return
-      if (response.credential.id !== id) throw new TypeError('credential response id mismatch')
-      this.secrets.delete(id)
-      this.setCredentialState(id, { descriptor: response.credential, busy: false })
-    } catch {
-      if (this.disposed) return
-      this.secrets.delete(id)
-      this.setCredentialState(id, { descriptor: item.descriptor, busy: false, error: '凭据保存失败，请重试。' })
-    }
+    await this.updateCredential(
+      id,
+      item,
+      async () => (await this.control.setCredential(id, value)).credential,
+      '凭据保存失败，请重试。',
+    )
   }
 
   /** Remove one credential and clear any unsaved replacement value. */
   async unsetCredential(id: string): Promise<void> {
     const item = this.snapshot.credentials.find(candidate => candidate.descriptor.id === id)
     if (item === undefined || item.busy || !item.descriptor.writable) return
-    this.setCredentialState(id, { descriptor: item.descriptor, busy: true })
-    try {
-      const response = await this.control.unsetCredential(id)
-      if (this.disposed) return
-      if (response.credential.id !== id) throw new TypeError('credential response id mismatch')
-      this.secrets.delete(id)
-      this.setCredentialState(id, { descriptor: response.credential, busy: false })
-    } catch {
-      if (this.disposed) return
-      this.secrets.delete(id)
-      this.setCredentialState(id, { descriptor: item.descriptor, busy: false, error: '凭据移除失败，请重试。' })
-    }
+    await this.updateCredential(
+      id,
+      item,
+      async () => (await this.control.unsetCredential(id)).credential,
+      '凭据移除失败，请重试。',
+    )
   }
 
   /** Persist one disclosure's open state across native section unmounts. */

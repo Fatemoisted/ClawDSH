@@ -372,9 +372,11 @@ describe('channel-agent durable identities', () => {
       .toBe('{"a":{"c":false,"d":2},"z":[true,null,"x"]}')
     expect(canonicalJson(Object.assign(Object.create(null), { b: 1, a: 0 })))
       .toBe('{"a":0,"b":1}')
-    expect(() => canonicalJson(Number.POSITIVE_INFINITY)).toThrow(/non-finite/)
-    expect(() => canonicalJson(new Date())).toThrow(/plain JSON/)
-    expect(() => canonicalJson(undefined)).toThrow(/plain JSON/)
+    expect(() => canonicalJson(Number.POSITIVE_INFINITY)).toThrow(
+      'channel-agent: canonical identity value contains a non-finite number',
+    )
+    expect(() => canonicalJson(new Date())).toThrow('channel-agent: canonical identity value is not plain JSON')
+    expect(() => canonicalJson(undefined)).toThrow('channel-agent: canonical identity value is not plain JSON')
   })
 
   it('derives stable, scope-separated binding, generation, ledger, and Session identities', () => {

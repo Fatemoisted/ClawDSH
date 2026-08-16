@@ -9,6 +9,7 @@ import {
   ChannelThreadId,
   GatewayInstanceId,
   OpenClawSessionKey,
+  canonicalChannelJson,
   channelDeliveryReceiptV1Schema,
   channelSessionCloseV1Schema,
   channelSessionResetResultV1Schema,
@@ -26,6 +27,25 @@ import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 
 const safeTimestampSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 const digestSchema = z.string().regex(/^[a-f0-9]{64}$/)
+
+/**
+ * Serialize channel-agent identity input while preserving its diagnostic namespace.
+ * @param value - Lossless JSON value to encode.
+ * @returns Deterministic JSON text for the complete value.
+ */
+export function canonicalJson(value: unknown): string {
+  return canonicalChannelJson(value, 'channel-agent')
+}
+
+/** Report an impossible durable record chronology. */
+function validateRecordChronology(
+  record: { readonly createdAt: number; readonly updatedAt: number },
+  ctx: z.RefinementCtx,
+): void {
+  if (record.updatedAt < record.createdAt) {
+    ctx.addIssue({ code: 'custom', path: ['updatedAt'], message: 'must not precede createdAt' })
+  }
+}
 
 /** Conservative effect metadata used only when reading a legacy V2 terminal ledger row. */
 export const UNKNOWN_TURN_EFFECTS: ChannelTurnEffectsV1 = Object.freeze({
@@ -73,9 +93,7 @@ export const channelSessionBindingRecordSchema = z.object({
   createdAt: safeTimestampSchema,
   updatedAt: safeTimestampSchema,
 }).strict().superRefine((record, ctx) => {
-  if (record.updatedAt < record.createdAt) {
-    ctx.addIssue({ code: 'custom', path: ['updatedAt'], message: 'must not precede createdAt' })
-  }
+  validateRecordChronology(record, ctx)
   if (record.sessionId !== sessionIdFor(record.route)) {
     ctx.addIssue({ code: 'custom', path: ['sessionId'], message: 'must match the deterministic route binding' })
   }
@@ -168,9 +186,7 @@ const channelLedgerRecordV2Schema = z.object({
   createdAt: safeTimestampSchema,
   updatedAt: safeTimestampSchema,
 }).strict().superRefine((record, ctx) => {
-  if (record.updatedAt < record.createdAt) {
-    ctx.addIssue({ code: 'custom', path: ['updatedAt'], message: 'must not precede createdAt' })
-  }
+  validateRecordChronology(record, ctx)
   if (digestJson(record.envelope) !== record.envelopeDigest) {
     ctx.addIssue({ code: 'custom', path: ['envelopeDigest'], message: 'must match the stored envelope' })
   }
@@ -243,26 +259,6 @@ export const channelAgentDomainSpec = defineDomain({
     ledger: domainTable<string, ChannelLedgerRecord>(channelLedgerRecordSchema),
   },
 })
-
-/**
- * Canonical JSON text with lexicographically sorted object keys.
- * @param value - Lossless JSON value to encode.
- * @returns Deterministic JSON text for the complete value.
- */
-export function canonicalJson(value: unknown): string {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value)
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) throw new Error('channel-agent: canonical identity value contains a non-finite number')
-    return JSON.stringify(value)
-  }
-  if (Array.isArray(value)) return `[${value.map(item => canonicalJson(item)).join(',')}]`
-  if (typeof value !== 'object' || (Object.getPrototypeOf(value) !== Object.prototype
-    && Object.getPrototypeOf(value) !== null)) {
-    throw new Error('channel-agent: canonical identity value is not plain JSON')
-  }
-  const entries = Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
-  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(',')}}`
-}
 
 /**
  * SHA-256 of a lossless JSON value, used only for identity and equality.

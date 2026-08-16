@@ -27,6 +27,14 @@ interface ActivityFrameProps {
   readonly technical: ReactNode
 }
 
+interface ActivityRecordFrameProps extends ActivityRecordCardProps {
+  readonly title: string
+  readonly mark: string
+  readonly status?: ClawdshActivityStatus | undefined
+  readonly children?: ReactNode
+  readonly technical?: ReactNode
+}
+
 const CATEGORY_LABEL: Readonly<Record<ClawdshActivityCategory, string>> = {
   prompt: '身份与上下文',
   memory: '记忆',
@@ -102,6 +110,30 @@ function BaseTechnicalDetails({ record }: ActivityRecordCardProps): ReactNode {
   )
 }
 
+function ActivityRecordFrame({
+  record,
+  title,
+  mark,
+  status,
+  children,
+  technical,
+}: ActivityRecordFrameProps): ReactNode {
+  return (
+    <ActivityFrame
+      category={record.category}
+      kind={record.kind}
+      title={title}
+      mark={mark}
+      timestamp={record.timestamp}
+      seq={Number(record.metadata.seq)}
+      status={status}
+      technical={technical ?? <BaseTechnicalDetails record={record} />}
+    >
+      {children}
+    </ActivityFrame>
+  )
+}
+
 function ContextPreparationCard({ item }: { readonly item: ActivityContextItem }): ReactNode {
   const soul = item.records.find(record => record.metadata.producer === 'soul')
   const memory = item.records.find(record => record.metadata.producer === 'memory')
@@ -144,18 +176,14 @@ function WorkCard({ record, title, mark, description }: ActivityRecordCardProps 
   readonly description: string
 }): ReactNode {
   return (
-    <ActivityFrame
-      category={record.category}
-      kind={record.kind}
+    <ActivityRecordFrame
+      record={record}
       title={record.status === 'failed' ? `${title}失败` : title}
       mark={mark}
-      timestamp={record.timestamp}
-      seq={Number(record.metadata.seq)}
       status={record.status}
-      technical={<BaseTechnicalDetails record={record} />}
     >
       <p className={css.recordDescription}>{description}</p>
-    </ActivityFrame>
+    </ActivityRecordFrame>
   )
 }
 
@@ -255,40 +283,40 @@ function MemoryFlushCard({ record }: ActivityRecordCardProps): ReactNode {
       ? '已向 Agent 发出记忆整理请求，但没有记录到完成结果；这不代表记忆已经写入。'
       : 'Agent 已处理记忆整理请求；这仍不代表一定写入了新的记忆。'
   return (
-    <ActivityFrame
-      category={record.category}
-      kind={record.kind}
+    <ActivityRecordFrame
+      record={record}
       title={record.status === 'failed' ? '记忆整理请求失败' : '发起记忆整理'}
       mark="记"
-      timestamp={record.timestamp}
-      seq={Number(record.metadata.seq)}
       status={record.status}
-      technical={<BaseTechnicalDetails record={record} />}
     >
       <p className={css.recordDescription}>{description}</p>
-    </ActivityFrame>
+    </ActivityRecordFrame>
+  )
+}
+
+function ChannelDetails({ record, includeMention = false }: ActivityRecordCardProps & {
+  readonly includeMention?: boolean
+}): ReactNode {
+  return (
+    <dl className={css.metadata}>
+      <Detail label="平台" value={record.metadata.adapter} />
+      <Detail label="会话类型" value={record.metadata.conversation === 'group' ? '群聊' : '私聊'} />
+      {!includeMention || record.metadata.mention === null ? null : (
+        <Detail label="提及助手" value={record.metadata.mention ? '是' : '否'} />
+      )}
+    </dl>
   )
 }
 
 function ChannelReceivedCard({ record }: ActivityRecordCardProps): ReactNode {
   return (
-    <ActivityFrame
-      category={record.category}
-      kind={record.kind}
+    <ActivityRecordFrame
+      record={record}
       title="收到外部消息"
       mark="信"
-      timestamp={record.timestamp}
-      seq={Number(record.metadata.seq)}
-      technical={<BaseTechnicalDetails record={record} />}
     >
-      <dl className={css.metadata}>
-        <Detail label="平台" value={record.metadata.adapter} />
-        <Detail label="会话类型" value={record.metadata.conversation === 'group' ? '群聊' : '私聊'} />
-        {record.metadata.mention === null ? null : (
-          <Detail label="提及助手" value={record.metadata.mention ? '是' : '否'} />
-        )}
-      </dl>
-    </ActivityFrame>
+      <ChannelDetails record={record} includeMention />
+    </ActivityRecordFrame>
   )
 }
 
@@ -308,38 +336,27 @@ function ChannelDeliveryCard({ record }: ActivityRecordCardProps): ReactNode {
         ? '记录到发送操作已开始，但没有记录到平台确认结果。'
         : '旧记录没有保存可确认的发送结果。'
   return (
-    <ActivityFrame
-      category={record.category}
-      kind={record.kind}
+    <ActivityRecordFrame
+      record={record}
       title={title}
       mark="信"
-      timestamp={record.timestamp}
-      seq={Number(record.metadata.seq)}
       status={record.status}
-      technical={<BaseTechnicalDetails record={record} />}
     >
-      <dl className={css.metadata}>
-        <Detail label="平台" value={record.metadata.adapter} />
-        <Detail label="会话类型" value={record.metadata.conversation === 'group' ? '群聊' : '私聊'} />
-      </dl>
+      <ChannelDetails record={record} />
       <p className={css.recordDescription}>{description}</p>
-    </ActivityFrame>
+    </ActivityRecordFrame>
   )
 }
 
 function SkillCatalogCard({ record }: ActivityRecordCardProps): ReactNode {
   return (
-    <ActivityFrame
-      category={record.category}
-      kind={record.kind}
+    <ActivityRecordFrame
+      record={record}
       title="已准备可用技能目录"
       mark="技"
-      timestamp={record.timestamp}
-      seq={Number(record.metadata.seq)}
-      technical={<BaseTechnicalDetails record={record} />}
     >
       <p className={css.recordDescription}>本轮向 Agent 提供了 {record.metadata.count} 项可选技能；这不代表调用了技能。</p>
-    </ActivityFrame>
+    </ActivityRecordFrame>
   )
 }
 
@@ -353,20 +370,16 @@ function NamedSkillCard({ record, invoked }: ActivityRecordCardProps & { readonl
         : 'Agent 已完成这次技能调用；记录不会展示调用参数或结果。'
     : '已向 Agent 提供这项技能的使用说明；载入说明不等于已经调用技能。'
   return (
-    <ActivityFrame
-      category={record.category}
-      kind={record.kind}
+    <ActivityRecordFrame
+      record={record}
       title={invoked
         ? record.status === 'failed' ? `调用 ${skill} 技能失败` : `调用 ${skill} 技能`
         : `已载入 ${skill} 技能说明`}
       mark="技"
-      timestamp={record.timestamp}
-      seq={Number(record.metadata.seq)}
       status={record.status}
-      technical={<BaseTechnicalDetails record={record} />}
     >
       <p className={css.recordDescription}>{description}</p>
-    </ActivityFrame>
+    </ActivityRecordFrame>
   )
 }
 
@@ -377,13 +390,10 @@ function AutomationRunCard({ record }: ActivityRecordCardProps): ReactNode {
       ? '记录到定时任务已开始，但没有记录到完成结果。'
       : '这次定时任务已完成；结果保存在该任务自己的对话中。'
   return (
-    <ActivityFrame
-      category={record.category}
-      kind={record.kind}
+    <ActivityRecordFrame
+      record={record}
       title={record.status === 'failed' ? '定时任务运行失败' : '运行定时任务'}
       mark="时"
-      timestamp={record.timestamp}
-      seq={Number(record.metadata.seq)}
       status={record.status}
       technical={(
         <>
@@ -398,7 +408,7 @@ function AutomationRunCard({ record }: ActivityRecordCardProps): ReactNode {
         <Detail label="计划时间" value={formatTimestamp(String(record.metadata.scheduledAt))} />
       </dl>
       <p className={css.recordDescription}>{description}</p>
-    </ActivityFrame>
+    </ActivityRecordFrame>
   )
 }
 
