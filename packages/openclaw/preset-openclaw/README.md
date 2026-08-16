@@ -68,11 +68,25 @@ The same always-mounted communication group includes a package-filtered invarian
 
 Channel Protocol always provides the Service Definition, and Agent Bridge always registers its network-inert Driver. OpenClaw Gateway remains mounted with its validated `enabled` setting false, so it performs no artifact check, socket binding, process launch, or Provider registration. ClawDSH ships no direct platform-adapter implementation; Telegram, Feishu, Discord, and every other platform can run only through this OpenClaw communication plane. External extension selection defaults to empty, and the installer starts from `channels: {}`. OpenClaw remains the only owner of platform credentials; this profile neither reads nor copies them.
 
+An admitted Channel input remains a durable `user/message` with `source.kind: channel`. The ClawDSH product renderer presents that record as an ordinary human message in WebUI while retaining its complete sanitized Channel provenance; other non-user sources keep the standard collapsed context presentation.
+
 The Provider's configuration, artifact checks, admission defaults, and runtime limitations are documented in the [channel-openclaw README](../channel-openclaw/README.md). The checked support catalog is conservative: presence in OpenClaw's catalog does not mean a channel is installable, certified, or enabled. [ADR-0008](../../../docs/adr/0008-openclaw-channel-plane.md) owns the architecture and replacement conditions.
 
 ### Managed Gateway deployment
 
-The OpenClaw release artifact and checked npm runtime must be assembled before startup. The Provider never downloads, installs, or updates them at runtime.
+The WebUI can run without the Gateway. Enabling the Gateway requires a compatible Node runtime, the verified OpenClaw release artifact, the checked npm runtime tree, an isolated state directory, and a fail-closed OpenClaw configuration. The Provider never downloads, installs, or updates these assets at runtime.
+
+WebUI and Gateway may share the same Homebrew Node `24.19.0`; the default profile uses the WebUI process executable for both. The managed installer invokes npm `10.9.7` only as the deterministic runtime-assembly tool, so it does not require a second Node installation. Prepare and verify the managed assets before enabling the Gateway in Settings:
+
+```bash
+clawdsh init
+clawdsh channel install
+clawdsh channel doctor
+```
+
+`channel install` creates the verified artifact, runtime, isolated state directories, and a credential-free OpenClaw configuration. Add platform accounts and credentials only to that OpenClaw configuration, then enable the Gateway and restart ClawDSH. A source deployment must provision the same assets at the paths below; set `CLAWDSH_OPENCLAW_NODE_PATH` only when intentionally selecting a different compatible Node executable.
+
+DM pairing grants ingress but does not grant the owner preset. The managed configuration disables runtime config writes, so declare each human operator explicitly in `commands.ownerAllowFrom`, using a Channel-qualified native id such as `feishu:<open_id>`. After adding or changing an owner, restart ClawDSH and send `/new` in that conversation so the new route generation selects the owner `clawdsh` preset with its full dsh tools, including Web search. Paired senders absent from this list deliberately remain on `clawdsh-messaging-safe`.
 
 ```bash
 export CLAWDSH_OPENCLAW_TRACK=production
@@ -80,7 +94,6 @@ export CLAWDSH_OPENCLAW_GATEWAY_INSTANCE_ID=personal-gateway
 export CLAWDSH_OPENCLAW_ARTIFACT_PATH=/srv/clawdsh/openclaw/openclaw-2026.7.1-2.tgz
 export CLAWDSH_OPENCLAW_RUNTIME_ROOT=/srv/clawdsh/openclaw/runtime
 export CLAWDSH_OPENCLAW_HOST_ROOT=/srv/clawdsh/openclaw/runtime/node_modules/openclaw
-export CLAWDSH_OPENCLAW_NODE_PATH=/srv/clawdsh/node/bin/node
 export CLAWDSH_OPENCLAW_STATE_DIR=/srv/clawdsh/openclaw/state
 export CLAWDSH_OPENCLAW_CONFIG_PATH=/srv/clawdsh/openclaw/state/openclaw.json
 export CLAWDSH_OPENCLAW_STAGING_ROOT=/srv/clawdsh/openclaw/state/staging
@@ -92,6 +105,8 @@ pnpm dsh --profile clawdsh
 ```
 
 Keep platform credentials in OpenClaw's isolated state and account setup. Keep model and tool credentials in dsh credential sources. The IPC bearer token and startup nonce are generated per launch and are not operator configuration.
+
+Source deployments with separately verified external Channel plugins pass their exact lock list through `CLAWDSH_OPENCLAW_EXTENSIONS_JSON`; omission remains an empty list and rejects every external plugin. The corresponding isolated npm project and OpenClaw installed-plugin index record must already match that lock before startup.
 
 To inventory legacy adapter references and credential names without copying secret values, run:
 
@@ -109,7 +124,7 @@ Optional business plugins remain mounted and expose their Config schemas. Valida
 
 ## Product shell
 
-[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md) and the [local GUI spec](../../../docs/specs/feature-gui-web.md) define the product shell. `/clawdsh/` renders one native dsh application without a second sidebar; `/` retains native dsh Web as Harness Advanced. The native Settings panel opens with ClawDSH first, and each selected Session exposes Conversation, Trajectory, and `ClawDSH 记录`. ClawDSH Settings groups five user features, preserves in-memory drafts across section changes, protects dirty navigation, keeps credentials private and transient, explains that Automation is optional scheduled work stored in dedicated conversations, and leaves Automation and OpenClaw Gateway safely disabled by default. The records tab follows the Slot-provided Session, merges standard history with bounded sidecars, and renders privacy-safe Chinese explanations for identity/context, Memory, external messages, Skills, and scheduled tasks. It groups one request's context preparation, distinguishes actual Memory mutation from no-op, reloads after completed turns, retains a manual reload for later sidecar facts, and uses snapshot-bound pagination; Session sequence and fixed kinds stay in folded technical details. Unknown product paths render an explicit not-found page instead of falling through to Harness; the two former subpaths redirect to `/clawdsh/` for one compatibility cycle.
+[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md) and the [local GUI spec](../../../docs/specs/feature-gui-web.md) define the product shell. `/clawdsh/` renders one native dsh application without a second sidebar; `/` retains native dsh Web as Harness Advanced. The native Settings panel opens with ClawDSH first, and each selected Session exposes Conversation, Trajectory, and `ClawDSH 记录`. ClawDSH Settings groups five user features, preserves in-memory drafts across section changes, protects dirty navigation, keeps credentials private and transient, explains that Automation is optional scheduled work stored in dedicated conversations and returned to an owner-authenticated origin Channel when applicable, and leaves Automation and OpenClaw Gateway safely disabled by default. Automation changes apply live, and Channel status reports an authenticated Gateway–Bridge handshake without inventing hidden per-account state. The records tab follows the Slot-provided Session, merges standard history with bounded sidecars, and renders privacy-safe Chinese explanations for identity/context, Memory, external messages, Skills, and scheduled tasks. It groups one request's context preparation, distinguishes actual Memory mutation from no-op, reloads after completed turns, retains a manual reload for later sidecar facts, and uses snapshot-bound pagination; Session sequence and fixed kinds stay in folded technical details. Unknown product paths render an explicit not-found page instead of falling through to Harness; the two former subpaths redirect to `/clawdsh/` for one compatibility cycle.
 
 The profile suppresses the native `dsh web:` readiness line and mounts `@clawdsh/dsh-product-runtime`. After the Loader settles, that runtime prints `clawdsh web: http://127.0.0.1:<port>/clawdsh/`, owns the product static routes, and leaves the stock fallback at `/` unchanged. The nested browser build writes assets into `product-shell/runtime/web/`; neither nested package enters the root workspace or Client aggregate.
 

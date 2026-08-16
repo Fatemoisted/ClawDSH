@@ -19,6 +19,12 @@
       "path": "../../core/session"
     },
     {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../channel"
+    },
+    {
       "path": "../../settings/settings"
     },
     {

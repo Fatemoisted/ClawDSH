@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-16-automation-composed-discoverable-sessions.md
-2026-08-16-automation-composed-discoverable-sessions.md: 86ef87bcdfcac58c32a778c8581b719b27f4ae0e
-2026-08-16-automation-composed-discoverable-sessions.zh.md: 78dc07df26b562255f2baf07a4b4ab508c71daae
+2026-08-16-automation-composed-discoverable-sessions.md: 7b6d884cf2ef4476af105619be84cb86c1ad5e6e
+2026-08-16-automation-composed-discoverable-sessions.zh.md: a9ff458bfce873a67f7145e1d71966156a9de2e2

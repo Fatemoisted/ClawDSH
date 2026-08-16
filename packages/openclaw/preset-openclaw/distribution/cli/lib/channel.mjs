@@ -59,11 +59,26 @@ function scrubbedEnvironment() {
 /** Assemble the checked runtime with lifecycle scripts disabled. */
 /** @param {string} cwd @returns {void} */
 export function defaultRuntimeRunner(cwd) {
-  const outcome = spawnSync('npm', [
-    'ci', '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org/',
-  ], { cwd, env: scrubbedEnvironment(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const invocation = checkedRuntimeNpmInvocation()
+  const outcome = spawnSync(invocation.command, invocation.args, {
+    cwd,
+    env: scrubbedEnvironment(),
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
   if (outcome.status !== 0 || outcome.signal !== null) {
     throw new Error(`locked OpenClaw runtime assembly failed (exit ${String(outcome.status)}, signal ${String(outcome.signal)})`)
+  }
+}
+
+/** Resolve the npm executable and arguments that reproduce the checked runtime tree. @returns {{command: string, args: string[]}} */
+export function checkedRuntimeNpmInvocation() {
+  return {
+    command: 'npx',
+    args: [
+      '--yes', 'npm@10.9.7', 'ci', '--ignore-scripts', '--no-audit', '--no-fund',
+      '--registry=https://registry.npmjs.org/',
+    ],
   }
 }
 

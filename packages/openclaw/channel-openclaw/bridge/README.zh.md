@@ -10,9 +10,11 @@
 - `canary-v2/index.ts` 适配审计快照 `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0` 的 AgentHarness V2 API。
 - `canary-v2/provider-policy-api.js` 是由宿主加载的 provider route policy。OpenClaw 只会从经宿主校验的官方外部安装中加载这份公共制品；普通的不可信安装会在 harness 运行前因 route 选择失败而终止。
 
-注册和插件检查保持惰性：两个入口都不会在注册时读取 supervisor 环境、打开 socket、打开状态或读取 staging root。它们各自注册一个 OpenClaw 后台 service；service 只会在真实 Gateway 中运行，并且只有在已认证握手与持久 route-transition 恢复全部完成后才报告 ready。后续 Agent turn、健康查询和出站 action 会复用这条连接。握手或恢复失败时 ClawDSH supervisor 不会进入 ready，也不会转而调用 OpenClaw 模型。
+Manifest 明确不会在无条件 Gateway 启动时激活，而是声明更窄的 `clawdsh` AgentHarness 激活。配置了 `agentRuntime.id: "clawdsh"` 的 Gateway 会在 Agent runtime 启动规划期间加载插件，随后由一个后台 service 租约持有已认证 transport。注册和插件检查仍无副作用：两个入口都不会在注册时读取 supervisor 环境、打开 socket、打开状态或读取 staging root。Service 只有在已认证握手与持久 route-transition 恢复全部完成后才报告 ready。后续 Agent turn、健康查询和出站 action 会复用这条连接。握手或恢复失败时 ClawDSH supervisor 不会进入 ready，也不会转而调用 OpenClaw 模型。
 
-OpenClaw 可能通过不同插件 registry 实例创建启动 service 与进程级 AgentHarness。因此两个适配器会租用一条进程共享 transport，并以 AgentHarness 代际及完整不可变 bridge 环境、握手和 bridge 配置的摘要作为身份。身份不匹配的实例会在打开第二条 socket 前使 service 启动失败。最后一个匹配租约会关闭并排空该 transport；后续首个租约会创建全新的 bridge 与连接，因此 Gateway service 重启不会复用已释放状态。
+OpenClaw 可能通过不同的转换模块 loader 分别求值启动 service 与进程级 AgentHarness。因此一个原生 CommonJS singleton 持有进程内租约 registry，而不依赖任一转换模块的 global object。两个适配器会租用一条 transport，并以 AgentHarness 代际及完整不可变 bridge 环境、握手和 bridge 配置的摘要作为身份。身份不匹配的实例会在打开第二条 socket 前使 service 启动失败。最后一个匹配 service 租约会停止准入新 attempt，但会把 transport dispose 推迟到所有已准入 AgentHarness attempt 结束；后续首个租约会创建全新的 bridge 与连接，因此 Gateway service 重启既不会复用已释放状态，也不会截断较慢的回答。
+
+纯展示 progress 会在分配 sequence number 前忽略仅含空白的 text 和 reasoning chunk，因为 wire protocol 只接受非空白 delta。最终回答仍是权威结果，不会从 progress stream 派生。
 
 ## IPC
 
@@ -42,13 +44,13 @@ Bridge 会发送 `turn.run`、`turn.cancel`、`session.reset` 和 `session.close
 
 稳定宿主的公共出站 adapter 方法不接受 `AbortSignal`。关闭 signal 可以在 adapter 派发前中止校验、授权与对账；平台 adapter 调用一旦开始，bridge shutdown 就会等待它结束，并把确认不明的结果记录为 `ambiguous`，而不会声称已取消或重新发送。
 
-平台入站使用 OpenClaw 的稳定平台 message id 生成 DSH 幂等键。缺少平台 message id 的 Gateway `agent` request 使用带命名空间的稳定 OpenClaw run id；两种身份都不存在时会在 DSH 执行前失败。系统会在 `turn.run` 前校验完整生成的 envelope，包括拒绝 NUL、media 顺序以及 route/principal trust 一致性。
+平台入站使用 OpenClaw 的稳定平台 message id 生成 DSH 幂等键。缺少平台 message id 的 Gateway `agent` request 使用带命名空间的稳定 OpenClaw run id；两种身份都不存在时会在 DSH 执行前失败。当 OpenClaw 用该精确 message id 为 transcript 文本添加前缀时，bridge 只移除匹配的最外层 `[message_id: ...]` 行；对于私聊，它还会移除精确匹配的 sender 前缀，同时保留消息正文内部由用户输入的相同文本。Message 与 sender 身份继续保存在已校验的 envelope provenance 中，不会进入用户可见或模型可见文本。系统会在 `turn.run` 前校验完整生成的 envelope，包括拒绝 NUL、media 顺序以及 route/principal trust 一致性。
 
 `edit`、`delete`、`react`、`typing`、全部 `directory.*` 操作和 `resolve` 在协议中合法，但会明确返回 JSON-RPC method-not-supported 错误。Bridge 不声明 `delivery.report`，因为两个锁定 track 的 OpenClaw 都没有暴露可关联最终投递的公共 hook。
 
 稳定版 V1 AgentHarness 没有暴露可安全使用的已 materialize 入站媒体事实。遇到图像或媒体 turn 时它会拒绝，而不是丢弃媒体或信任不受限路径。V2 只接受配置 staging root 下的本地 materialized fact，并检查 realpath 包含关系、无符号链接、普通文件类型、字节数和 SHA-256；远程 URL 会被拒绝。
 
-对于非 owner 私聊，稳定版 V1 只能证明 OpenClaw 已准入发送者，不能暴露 pairing 还是 allowlist 授权了该准入。Bridge 记录保守的 `admitted` class，而不虚构更具体的安全事实。Owner 私聊保留 `owner`；所有群组都投影为 `group-allowlisted`，包括 owner 发起的群组消息，因此 Agent consumer 始终为群组选择安全 preset。
+对于非 owner 私聊，稳定版 V1 只能证明 OpenClaw 已准入发送者，不能暴露 pairing 还是 allowlist 授权了该准入。Bridge 记录保守的 `admitted` class，而不虚构更具体的安全事实。Pairing 本身不是 owner 授权；operator 必须出现在 OpenClaw 显式的 `commands.ownerAllowFrom` 配置中。Owner 私聊保留 `owner`；所有群组都投影为 `group-allowlisted`，包括 owner 发起的群组消息，因此 Agent consumer 始终为群组选择安全 preset。
 
 合成 provider 只包含 `clawdsh/local`，把 `agentRuntime.id` 固定为 `clawdsh`，且没有 model fallback 列表。Harness 只接受该精确 provider、model 和 runtime。V2 还要求 route 没有 transport override，且 runtime policy 明确兼容 `clawdsh`；不支持的决策不会提供 OpenClaw fallback runtime。
 

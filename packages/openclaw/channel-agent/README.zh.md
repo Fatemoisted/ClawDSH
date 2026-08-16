@@ -34,7 +34,7 @@ DSH Settings 服务存在时，该插件会把现有 schema 注册到 `clawdsh-c
 
 持久化绑定键是 `(gatewayInstanceId, openclawSessionKey, generation)`。它对应的 SessionId 是确定性的；存储的绑定还包含 channel、account、conversation、可选 thread、会话类型、选定 preset 和生命周期状态。同一键若携带不同平台坐标，或在 owner 与安全准入类别之间变化，系统会快速失败，不会让会话混用或扩大权限。
 
-首个接受的 generation 会成为该网关／会话谱系的当前值。`session.reset` 会退役精确匹配的当前 generation，并且只接受严格更大的 generation；`session.close` 会退役精确指定的 generation。两个操作都会先取消匹配的实时工作，再释放本包持有的 agent 句柄。generation 的提交会原子记录精确控制请求和 reset acknowledgement，因此 bridge 在 acknowledgement 丢失后重试时会回放已经完成的控制，不会再次使 successor 失效。陈旧或已关闭的 generation 不能进入模型，包括此前处于 `accepted` 的轮次重试。
+首个接受的 generation 会成为该网关／会话谱系的当前值。`session.reset` 会退役精确匹配的当前 generation，并且只接受严格更大的 generation；它会取消并排空匹配的实时工作，但保留已空闲的 agent 句柄，使历史 Session 继续显示在 Host 中。`session.close` 会退役精确指定的 generation，取消匹配的实时工作并释放本包持有的 agent 句柄。generation 的提交会原子记录精确控制请求和 reset acknowledgement，因此 bridge 在 acknowledgement 丢失后重试时会回放已经完成的控制，不会再次使 successor 失效。陈旧或已关闭的 generation 不能进入模型，包括此前处于 `accepted` 的轮次重试。
 
 owner 直接消息使用 `ownerPreset`。其他所有已准入轮次使用 `safePreset`；owner 发起的群组仍属于群组，不能继承 owner 权限。未知或与 route 不一致的 admission class 会在 Agent 执行前失败，并再次被 live/restored Session invariant 拒绝。空的继承工具 allowlist 会移除 shell、文件系统和其他部署级全局工具，不受 owner preset 暴露内容影响。作用域本地工具有意不受该限制，因此经过审计的安全 preset 可以贡献自己的工具，本包也始终可以加入绑定到当前路由的 `message` 工具。
 

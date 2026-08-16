@@ -4,6 +4,8 @@ Status: implemented
 
 [English](2026-08-16-automation-composed-discoverable-sessions.md) | 中文
 
+**部分已被取代。** Session 组合、可发现性、调度时序与生命周期保证仍然有效。重启时生效的编辑与缺少渠道投递已被 [Agent 管理的 Automation](../feature/2026-08-17-agent-managed-automation.md) 取代。
+
 ## 问题
 
 [初始 cron 映射](../architecture/2026-08-14-openclaw-cron-mapping.md)正确选择了调度器所有权，但每条规则的执行 agent 组合不完整，其会话也难以找到。定时回合只选择 model，没有挂载配置的 ClawDSH preset，因此可能缺少交互式 ClawDSH 对话具备的 Soul、Memory、Skills 及其他能力。新建会话还缺少 `cwd`、`agentPreset`、可读标题与 workspace 归属，所以即使运行已存在于持久化中，结果也不会出现在正常会话列表里。
@@ -16,7 +18,7 @@ Automation 在既有 agent、session 与 model-selection 服务之外必需 `age
 
 会话发布使用可选 Host 服务，不让通用 headless Automation 依赖 Web 产品。安装了 `sessionTitle` 时，没有已有标题的会话会命名为 `自动任务 · <name-or-id>`。安装了 `workspaceRegistry` 时，不可变的 `session.header.cwd` 必须解析到已注册 workspace；会话 flush 后会关联至该 workspace。新 Session 使用当前 Config 值；续接 Session 保留并使用自己已记录的值发布。已安装的发布服务若不能完成工作，初始化会被拒绝；服务缺席时则省略对应增强。
 
-浏览器用 `crypto.randomUUID()` 加固定 `rule-` 前缀生成每个新规则 id。删除规则后再新建不会重用位置 id，因此不会意外续接已删除规则的持久 Session。可见 editor 把这些对象称为「自动任务」，并解释任务由调度时间和执行指令组成，需要显式开启并重启，结果保存在带标题的独立对话中。
+浏览器用 `crypto.randomUUID()` 加固定 `rule-` 前缀生成每个新规则 id。删除规则后再新建不会重用位置 id，因此不会意外续接已删除规则的持久 Session。可见 editor 把这些对象称为「自动任务」，说明任务由调度时间和执行指令组成且会立即应用，并说明 owner-channel 任务还会把最终回复返回原会话。
 
 不同调度种类具有不同的终态语义。`every` 在挂载后等待一个完整间隔，然后在每次运行完成后，从本进程最初的锚点网格中选择下一个严格晚于当前时间的触发点。`cron` 也在完成后计算下一次触发。两者都会跳过长时间运行期间错过的边界。`at` 只尝试一次：同一规则和时间戳的持久 `ok` 或 `error` 会跨重启构成终态；当前 runtime 在任一结果后都会把规则标为完成。
 
@@ -44,7 +46,7 @@ Automation 在既有 agent、session 与 model-selection 服务之外必需 `age
 
 启用 Automation 后，如果配置的 preset 不可用、会话取得失败，或已安装的发布服务无法发布会话，现在会让产品初始化失败。这是有意的：规则集只完成了部分初始化时，不会启动 timer。Web 组合中配置的 `cwd` 必须属于已注册 workspace。
 
-调度器不提供重试、渠道投递或主会话摘要。Cron 与 interval 失败会等待下一次已声明的触发；one-shot 失败保持终态。终态持久化失败时，`at` 规则只在当前进程中保持终态，重启后仍可能再次运行，因为持久 guard 未能写入。
+调度器不提供重试或主会话摘要。后续管理层提供 owner-bound 原渠道投递；Cron 与 interval 失败会等待下一次已声明的触发，one-shot 失败（包括投递失败）保持终态。终态持久化失败时，`at` 规则只在当前进程中保持终态，重启后仍可能再次运行，因为持久 guard 未能写入。
 
 ## 验证
 

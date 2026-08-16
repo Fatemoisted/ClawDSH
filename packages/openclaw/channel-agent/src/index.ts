@@ -403,7 +403,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       const key = generationKey(request.route)
       this.cancelRoute(request.route)
       const previous = this.bindings.get(bindingKey(request.route))
-      await this.releaseBinding(previous)
+      await this.quiesceBinding(previous)
       if (previous !== undefined) {
         await this.bindings.put(bindingKey(request.route), { ...previous, state: 'closed', updatedAt: Date.now() })
       }
@@ -758,12 +758,12 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       let notification: ChannelTurnNotificationV1 | undefined
       if (event.type === 'assistant/chunk') {
         const chunk = event.data.chunk
-        if (chunk.type === 'text-delta' && chunk.text !== '') {
+        if (chunk.type === 'text-delta' && chunk.text.trim() !== '') {
           notification = {
             kind: 'text.delta', turnId: turn.turnId, runId: turn.runId,
             sequence: nextSequence(), text: chunk.text,
           }
-        } else if (chunk.type === 'reasoning-delta' && chunk.text !== '') {
+        } else if (chunk.type === 'reasoning-delta' && chunk.text.trim() !== '') {
           notification = {
             kind: 'reasoning.delta', turnId: turn.turnId, runId: turn.runId,
             sequence: nextSequence(), text: chunk.text,
@@ -1063,7 +1063,15 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
     await this.releaseHandle(binding.sessionId, handle)
   }
 
-  /** Dispose one still-owned handle exactly once across reset, close, and stale acquisition cleanup. */
+  /** Wait for a retired generation to stop without removing its historical Session from the host. */
+  private async quiesceBinding(binding: ChannelSessionBindingRecord | undefined): Promise<void> {
+    if (binding === undefined) return
+    const handle = this.handles.get(binding.sessionId)
+    if (handle === undefined) return
+    await handle.agent.whenIdle()
+  }
+
+  /** Dispose one still-owned handle exactly once across close and stale acquisition cleanup. */
   private async releaseHandle(sessionId: SessionId, handle: AgentHandle): Promise<void> {
     /* v8 ignore next -- route-turn serialization leaves only one stale cleanup owner; retain identity defense for lifecycle changes. */
     if (this.handles.get(sessionId) !== handle) return

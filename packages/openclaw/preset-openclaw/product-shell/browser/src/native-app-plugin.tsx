@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { createSlotRenderer } from '@deepseek-ai/dsh-client-web-react'
@@ -7,6 +7,8 @@ import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { createClawdshContextMessageNodeView } from './channel-message-view.tsx'
 import { createClawdshControlClient } from './control-client.ts'
 import { registerHarnessAdvancedAction } from './harness-advanced-action.tsx'
 import css from './ProductShell.module.css'
@@ -52,6 +54,47 @@ export function createNativeAppPlugin(buildRenderApp: typeof BuildRenderApp) {
       registerHarnessAdvancedAction(ctx)
       registerClawdshSettings(ctx, registrationOptions)
       registerClawdshRecords(ctx, registrationOptions)
+      ctx.slots.inject('conversation.chat.node', () => {
+        let standardContext: unknown
+        let standardUser: unknown
+        let disposeOverride: (() => void) | undefined
+        const reconcile = (): void => {
+          const entries = ctx.slots.entries('conversation.chat.node')
+          const nextContext = entries.find(entry => (
+            entry.options.key === 'context' && (entry.options.priority ?? 0) === 0
+          ))?.component
+          const nextUser = entries.find(entry => (
+            entry.options.key === 'user' && (entry.options.priority ?? 0) === 0
+          ))?.component
+          if (nextContext === undefined || nextUser === undefined) {
+            disposeOverride?.()
+            disposeOverride = undefined
+            standardContext = undefined
+            standardUser = undefined
+            return
+          }
+          if (disposeOverride !== undefined && nextContext === standardContext && nextUser === standardUser) return
+          disposeOverride?.()
+          standardContext = nextContext
+          standardUser = nextUser
+          const ChannelMessageView = createClawdshContextMessageNodeView({
+            context: nextContext as ComponentType<ChatNodeViewProps<'context'>>,
+            user: nextUser as ComponentType<ChatNodeViewProps<'user' | 'steering'>>,
+          })
+          disposeOverride = ctx.slots.register({
+            name: 'conversation.chat.node',
+            key: 'context',
+            priority: -1,
+            locale: 'conversation',
+          }, ChannelMessageView)
+        }
+        const unsubscribe = ctx.slots.subscribe('conversation.chat.node', reconcile)
+        reconcile()
+        return () => {
+          unsubscribe()
+          disposeOverride?.()
+        }
+      })
       // The product entry has one fixed Agent composition identity; internal
       // channel and legacy presets remain available only in Harness Advanced.
       ctx.slots.inject('conversation.hero.agentPreset', () => ctx.slots.register({

@@ -29,7 +29,7 @@ Profile 依赖安装固定使用公共 npm registry，并禁用生命周期脚�
 
 ## Channel runtime
 
-`init` 不会下载 OpenClaw。`channel install` 是唯一的受管获取路径：它先要求当前 Node 可执行文件满足已锁定 Gateway engine，再只接受已检查的 production 产物，校验 SHA-512 和每个 tar 条目，在禁用脚本的情况下按已检查的 runtime lock 完成装配，校验已安装包集合与 Host 文件树，并且只在配置不存在时创建无凭据、失败关闭的配置。Canary 证据仅用于审计，不能进入此安装路径。
+`init` 不会下载 OpenClaw。`channel install` 是唯一的受管获取路径：它先要求当前 Node 可执行文件满足已锁定 Gateway engine，再只接受已检查的 production 产物，校验 SHA-512 和每个 tar 条目，使用 npm `10.9.7` 并禁用脚本，按已检查的 runtime lock 完成装配，校验已安装包集合与 Host 文件树，并且只在配置不存在时创建无凭据、失败关闭的配置。WebUI 与 Gateway 默认使用同一个 Node 可执行文件；npm pin 是 assembly 工具，不是第二套 Node。Canary 证据仅用于审计，不能进入此安装路径。
 
 Channel 安装器保留已有的 OpenClaw 配置和状态。平台凭据始终归 OpenClaw 所有，绝不进入 ClawDSH 管理标记或命令输出。`channel doctor` 会校验 production 产物、runtime、bridge、当前 Node engine 以及 Provider 所有的完整 fail-closed 配置策略，但不会选择、返回或记录凭据字段。
 

@@ -266,6 +266,27 @@ test('repeated OpenClaw registries share one authenticated transport until the l
   assert.equal(connections, 1)
 })
 
+test('separate ESM evaluations share the native process transport registry', async t => {
+  const fixture = await gatewayFixture(t)
+  let connections = 0
+  fixture.server.on('connection', () => { connections += 1 })
+  const firstRuntime = await import(`../shared/openclaw-runtime.js?registry=first-${Date.now()}`)
+  const secondRuntime = await import(`../shared/openclaw-runtime.js?registry=second-${Date.now()}`)
+  const options = {
+    generation: 'v1',
+    env: bridgeEnv(fixture.endpoint, fixture.directory),
+    config: { controlTimeoutMs: 2000, routeStateMaxEntries: 100, deliveryStateMaxEntries: 100 },
+  }
+  const first = firstRuntime.createProcessSharedOpenClawBridge(mockApi(), options)
+  const second = secondRuntime.createProcessSharedOpenClawBridge(mockApi(), options)
+  t.after(async () => { await Promise.allSettled([first.dispose(), second.dispose()]) })
+
+  await first.start()
+  await second.start()
+  assert.equal(connections, 1)
+  assert.deepEqual((await second.harness.runAttempt(attemptParams())).assistantTexts, ['DSH answer'])
+})
+
 test('one process-shared registry creates a fresh transport after stop and restart', async t => {
   const fixture = await gatewayFixture(t)
   let connections = 0
@@ -289,6 +310,33 @@ test('one process-shared registry creates a fresh transport after stop and resta
   })).assistantTexts, ['DSH answer'])
   assert.equal(connections, 2)
   assert.equal(fixture.openSocketCount(), 1)
+})
+
+test('the last service lease waits for an in-flight AgentHarness attempt', async t => {
+  const fixture = await gatewayFixture(t)
+  const bridge = createProcessSharedOpenClawBridge(mockApi(), {
+    generation: 'v1',
+    env: bridgeEnv(fixture.endpoint, fixture.directory),
+    config: { controlTimeoutMs: 2000, routeStateMaxEntries: 100, deliveryStateMaxEntries: 100 },
+  })
+  t.after(async () => { await bridge.dispose() })
+  await bridge.start()
+
+  const gate = fixture.holdNextTurn()
+  const attempt = bridge.harness.runAttempt(attemptParams())
+  await gate.entered.promise
+
+  let stopped = false
+  const stopping = bridge.dispose().then(() => { stopped = true })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(stopped, false)
+  assert.equal(fixture.openSocketCount(), 1)
+
+  gate.release.resolve()
+  assert.deepEqual((await attempt).assistantTexts, ['DSH answer'])
+  await stopping
+  await fixture.waitForNoSockets()
+  assert.equal(fixture.openSocketCount(), 0)
 })
 
 test('a live bridge resolves the current runtime config for every channel action', async t => {
@@ -701,6 +749,33 @@ test('OpenClaw runtime context never replaces the current user transcript body',
   assert.equal(fixture.turn.text, 'persisted current message')
 })
 
+test('exact OpenClaw transport decoration stays in provenance instead of message text', async t => {
+  const fixture = await gatewayFixture(t)
+  const bridge = createOpenClawBridge(mockApi(), {
+    generation: 'v1',
+    env: bridgeEnv(fixture.endpoint, fixture.directory),
+    config: { controlTimeoutMs: 2000, routeStateMaxEntries: 100, deliveryStateMaxEntries: 100 },
+  })
+  t.after(async () => { await bridge.dispose() })
+
+  await bridge.harness.runAttempt({
+    ...attemptParams(),
+    messageChannel: 'feishu',
+    prompt: '[message_id: message-42]\nUser: hello DSH',
+  })
+  assert.equal(fixture.turn.text, 'hello DSH')
+  assert.equal(fixture.turn.messageId, 'message-42')
+  assert.deepEqual(fixture.turn.sender, { senderId: 'user-42', displayName: 'User', trust: 'owner' })
+
+  await bridge.harness.runAttempt({
+    ...attemptParams(),
+    messageChannel: 'feishu',
+    currentMessageId: 'message-43',
+    prompt: '[message_id: message-43]\nUser: [message_id: message-43]\nUser: authored body',
+  })
+  assert.equal(fixture.turn.text, '[message_id: message-43]\nUser: authored body')
+})
+
 test('a send failure after adapter dispatch is ambiguous and is never resent', async t => {
   const fixture = await gatewayFixture(t)
   const api = mockApi()
@@ -912,35 +987,44 @@ async function gatewayFixture(t) {
           socket.write(`${JSON.stringify({ kind: 'handshake-ack', protocolVersion: 1 })}\n`)
         } else if (frame.method === 'turn.run') {
           state.turn = frame.params
-          if (state.turnFailure?.kind === 'rpc') {
-            socket.write(`${JSON.stringify({
-              jsonrpc: '2.0',
-              id: frame.id,
-              error: { code: -32000, message: state.turnFailure.message },
-            })}\n`)
-          } else {
-            const result = state.turnFailure?.kind === 'result'
-              ? {
-                  protocolVersion: 1,
-                  turnId: frame.params.turnId,
-                  runId: frame.params.runId,
-                  replayId: 'replay-test',
-                  effects: state.turnEffects,
-                  status: 'failed',
-                  error: { code: 'DSH_FAILURE', message: state.turnFailure.message, retryable: false },
-                }
-              : {
-                  protocolVersion: 1,
-                  turnId: frame.params.turnId,
-                  runId: frame.params.runId,
-                  replayId: 'replay-test',
-                  effects: state.turnEffects,
-                  status: 'completed',
-                  sessionId: 'dsh-session',
-                  text: 'DSH answer',
-                  media: [],
-                }
-            socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result })}\n`)
+          const respond = () => {
+            if (state.turnFailure?.kind === 'rpc') {
+              socket.write(`${JSON.stringify({
+                jsonrpc: '2.0',
+                id: frame.id,
+                error: { code: -32000, message: state.turnFailure.message },
+              })}\n`)
+            } else {
+              const result = state.turnFailure?.kind === 'result'
+                ? {
+                    protocolVersion: 1,
+                    turnId: frame.params.turnId,
+                    runId: frame.params.runId,
+                    replayId: 'replay-test',
+                    effects: state.turnEffects,
+                    status: 'failed',
+                    error: { code: 'DSH_FAILURE', message: state.turnFailure.message, retryable: false },
+                  }
+                : {
+                    protocolVersion: 1,
+                    turnId: frame.params.turnId,
+                    runId: frame.params.runId,
+                    replayId: 'replay-test',
+                    effects: state.turnEffects,
+                    status: 'completed',
+                    sessionId: 'dsh-session',
+                    text: 'DSH answer',
+                    media: [],
+                  }
+              socket.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result })}\n`)
+            }
+          }
+          if (state.turnGate === undefined) respond()
+          else {
+            const gate = state.turnGate
+            state.turnGate = undefined
+            gate.entered.resolve()
+            void gate.release.promise.then(respond)
           }
         } else if (frame.method === 'session.reset') {
           state.reset = frame.params
@@ -997,6 +1081,11 @@ async function gatewayFixture(t) {
     requestBridge,
     setTurnFailure: failure => { state.turnFailure = failure },
     setTurnEffects: effects => { state.turnEffects = effects },
+    holdNextTurn: () => {
+      const gate = { entered: Promise.withResolvers(), release: Promise.withResolvers() }
+      state.turnGate = gate
+      return gate
+    },
     failNextReset: message => { state.resetFailure = message },
     openSocketCount: () => sockets.size,
     waitForNoSockets: async () => {

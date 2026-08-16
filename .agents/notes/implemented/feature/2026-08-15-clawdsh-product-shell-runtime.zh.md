@@ -26,7 +26,7 @@ Status: implemented
 
 产品控制 channel 是 `/clawdsh-rpc`，使用 Connection 的 loopback-only authority。它的基础只读 method 是 `bootstrap/get` 与 `capabilities/list`；Settings 决策在同一 protocol 上增加严格的 versioned setting 与 credential method。Response 只包含 JSON data，绝不返回 live Cordis object 或 secret value。配置的 trusted host 不能使用产品控制 channel。
 
-能力总览把 Loader 组装与产品支持证据分开。Loader entry 映射为 `disabled`、`starting`、`active`、`failed` 或 `misconfigured`；锁定渠道独立映射为 `cataloged`、`installable`、`certified` 或 `enabled`。Channels 把 Channel Protocol、Agent Bridge 与 OpenClaw Gateway Provider 显示为组件，飞书、Telegram 与其他锁定 entry 则作为 catalog item 嵌套在 Gateway 下。Legacy channel plugin 只在 raw Loader inventory 中可见，不参与产品健康状态。
+能力总览把 Loader 组装与产品支持证据分开。Loader entry 映射为 `disabled`、`starting`、`active`、`failed` 或 `misconfigured`；锁定渠道独立映射为 `cataloged`、`installable`、`certified` 或 `enabled`。Channels 把 Channel Protocol、Agent Bridge 与 OpenClaw Gateway Provider 显示为组件，飞书、Telegram 与其他锁定 entry 则作为 catalog item 嵌套在 Gateway 下。Loopback response 还会投影经过净化的实时 `ctx.channels.health()` 证据：Provider lifecycle、是否存在 authenticated Bridge handshake，以及已暴露 account 的 channel 与 status；不会暴露 account id、Gateway id、路径或 diagnostic。Legacy channel plugin 只在 raw Loader inventory 中可见，不参与产品健康状态。
 
 语义 Activity 通过独立所有的 `@clawdsh/dsh-activity` Host service 与 `activity/list` 控制 method 组合。Activity route 跟随当前 Session 并呈现其限制隐私的 page，Raw Trajectory 则留在 Harness 高级。可编辑 Settings 同样在能力总览旁组装，并由独立的 validation、revision、credential 与 lifecycle 决策所有。
 
@@ -54,7 +54,7 @@ Activity package、控制面与 browser test 覆盖语义 projection、sidecar d
 
 ## Consequences
 
-ClawDSH 在不修改上游 GUI 代码的情况下获得稳定的本地产品入口与导航，用户仍可使用完整 Harness 对话与 raw 诊断。能力总览准确呈现所有权与 runtime 证据，不会把运行中的 Gateway 宣称成任何平台账号已经 certified。
+ClawDSH 在不修改上游 GUI 代码的情况下获得稳定的本地产品入口与导航，用户仍可使用完整 Harness 对话与 raw 诊断。实时 handshake 证明本地 Gateway–Bridge 已认证连接时，能力总览会据实报告；它只计数明确报告 ready 的 account，并在 OpenClaw 隐藏逐账号状态时说明这一点，不会从运行中的进程推断平台已就绪。
 
 嵌套项目有独立的 install、typecheck、test 与 build lifecycle，因为它有意处于根 Client aggregate 之外。开发安装在 runtime 与 browser artifact 构建前会失败。产品页与 Harness 高级页可能保留不同的临时 browser state，尽管两者共享持久 Host Session。
 

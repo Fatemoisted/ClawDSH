@@ -571,6 +571,29 @@ describe('channel Agent turn execution', () => {
     expect(result).not.toHaveProperty('usage')
   })
 
+  it('does not emit whitespace-only text or reasoning progress', async () => {
+    const app = await harness([[
+      { type: 'block-start', index: 0, blockType: 'reasoning' },
+      { type: 'reasoning-delta', index: 0, text: ' \n' },
+      { type: 'block-end', index: 0, block: { type: 'reasoning', text: ' \n' } },
+      { type: 'block-start', index: 1, blockType: 'text' },
+      { type: 'text-delta', index: 1, text: ' ' },
+      { type: 'text-delta', index: 1, text: 'reply' },
+      { type: 'block-end', index: 1, block: { type: 'text', text: ' reply' } },
+      { type: 'usage', usage: { inputTokens: 2, outputTokens: 1 } },
+      { type: 'finish', reason: { kind: 'stop' } },
+    ]])
+    const notifications: ChannelTurnNotificationV1[] = []
+
+    const result = await app.ctx.channels.runTurn(turn(), execution(notifications))
+
+    expect(result).toMatchObject({ status: 'completed', text: ' reply' })
+    expect(notifications.filter(item => item.kind === 'text.delta' || item.kind === 'reasoning.delta'))
+      .toEqual([expect.objectContaining({ kind: 'text.delta', text: 'reply' })])
+    expect(notifications.map(item => item.sequence))
+      .toEqual(notifications.map((_item, index) => index))
+  })
+
   it('uses deterministic isolated Sessions across route identities and reuses one exact route', async () => {
     const app = await harness([textResponse('one'), textResponse('two'), textResponse('three')])
     const base = turn()
@@ -1140,7 +1163,7 @@ describe('channel Agent turn execution', () => {
 })
 
 describe('channel session and ledger lifecycle', () => {
-  it('resets to a newer generation, retires the old Session, and closes the successor', async () => {
+  it('resets to a newer generation, retains the old Session, and closes the successor', async () => {
     const app = await harness([textResponse('first'), textResponse('second')])
     const base = turn()
     const first = await app.ctx.channels.runTurn(base, execution())
@@ -1149,6 +1172,7 @@ describe('channel session and ledger lifecycle', () => {
     }))
     expect(reset.previousSessionId).toBe(first.sessionId)
     expect(reset.route.generation).toBe(1)
+    expect(app.ctx.agents.get(sessionIdFor(base.route))).toBeDefined()
     expect(await app.ctx.channels.reset(channelSessionResetV1Schema.parse({
       protocolVersion: 1, route: base.route, nextGeneration: 1, reason: 'reset',
     }))).toEqual(reset)
@@ -1160,12 +1184,15 @@ describe('channel session and ledger lifecycle', () => {
     })
     const second = await app.ctx.channels.runTurn(successor, execution())
     expect(second.sessionId).not.toBe(first.sessionId)
+    expect(app.ctx.agents.get(sessionIdFor(base.route))).toBeDefined()
     await app.ctx.channels.close(channelSessionCloseV1Schema.parse({
       protocolVersion: 1, route: successor.route, reason: 'gateway',
     }))
     await expect(app.ctx.channels.close(channelSessionCloseV1Schema.parse({
       protocolVersion: 1, route: successor.route, reason: 'gateway',
     }))).resolves.toBeUndefined()
+    expect(app.ctx.agents.get(sessionIdFor(base.route))).toBeDefined()
+    expect(app.ctx.agents.get(sessionIdFor(successor.route))).toBeUndefined()
     expect((await app.ctx.channels.runTurn(turn({
       ...successor,
       idempotencyKey: 'closed', turnId: 'closed', runId: 'closed', messageId: 'closed',

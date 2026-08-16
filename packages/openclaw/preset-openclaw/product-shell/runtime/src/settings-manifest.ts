@@ -163,7 +163,7 @@ export const SETTINGS_MANIFEST: readonly ClawdshSettingsManifestEntry[] = [
     label: 'Automation',
     description: '配置自动化开关和原子保存的规则集合。',
     editor: 'automation-rules',
-    effectTime: 'restart',
+    effectTime: 'live',
     fields: [
       editable(['enabled'], '启用自动运行'),
       managed(['preset'], 'Agent Preset', '固定为 clawdsh，确保自动任务拥有完整的 ClawDSH 能力。'),

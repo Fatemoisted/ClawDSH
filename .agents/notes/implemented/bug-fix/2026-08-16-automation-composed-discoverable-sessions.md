@@ -4,6 +4,8 @@ Status: implemented
 
 English | [中文](2026-08-16-automation-composed-discoverable-sessions.zh.md)
 
+**Superseded in part.** Session composition, discoverability, schedule timing, and lifecycle guarantees remain current. Restart-applied editing and the absence of channel delivery are replaced by [Agent-managed Automation](../feature/2026-08-17-agent-managed-automation.md).
+
 ## Problem
 
 The [initial cron mapping](../architecture/2026-08-14-openclaw-cron-mapping.md) chose the correct scheduler ownership but left each rule's execution agent under-composed and its session hard to find. A scheduled turn selected a model without mounting the configured ClawDSH preset, so it could lack Soul, Memory, Skills, and other capabilities available in an interactive ClawDSH conversation. A newly created session also lacked `cwd`, `agentPreset`, a readable title, and workspace membership, which kept the result out of the normal session list even though the run existed in persistence.
@@ -16,7 +18,7 @@ Automation requires `agentPresets` beside the existing agent, session, and model
 
 Session publication uses optional host services without making generic headless Automation depend on the Web product. When `sessionTitle` is installed, a session without an existing title becomes `自动任务 · <name-or-id>`. When `workspaceRegistry` is installed, the immutable `session.header.cwd` must resolve to a registered workspace and the session is attached there after a session flush. New Sessions receive the current Config value; resumed Sessions retain and publish through their recorded value. An installed publication service that cannot complete its work rejects initialization; an absent service leaves that enrichment out.
 
-The browser creates each new rule id from `crypto.randomUUID()` with a fixed `rule-` prefix. Deleting a rule and later adding another cannot reuse a positional id and therefore cannot accidentally resume the deleted rule's durable Session. The visible editor calls the objects “自动任务” and explains that a task combines a schedule with an instruction, requires explicit enable plus restart, and stores its result in a dedicated titled conversation.
+The browser creates each new rule id from `crypto.randomUUID()` with a fixed `rule-` prefix. Deleting a rule and later adding another cannot reuse a positional id and therefore cannot accidentally resume the deleted rule's durable Session. The visible editor calls the objects “自动任务”, explains that a task combines a schedule with an instruction and applies immediately, and states that an owner-channel task also returns its final reply to the origin conversation.
 
 The schedule kinds have distinct terminal semantics. `every` waits one complete interval after mount, then selects the next strictly future point on the original process anchor grid after each run completes. `cron` also computes its next occurrence after completion. Both skip boundaries missed by a long run. `at` makes exactly one attempt: a persisted `ok` or `error` for the same rule and timestamp is terminal across restarts, and the current runtime marks the rule complete after either outcome.
 
@@ -44,7 +46,7 @@ Scheduled turns now use the complete configured preset and, in the Web host, app
 
 Enabling Automation can now fail product initialization when the configured preset is unavailable, session acquisition fails, or an installed publication service cannot publish the session. This is intentional: no timer starts with a partially initialized rule set. A configured `cwd` in a Web composition must belong to a registered workspace.
 
-The scheduler does not provide retries, channel delivery, or main-session summaries. Cron and interval failures wait for their next declared occurrence; one-shot failures remain terminal. If terminal persistence fails, an `at` rule stays terminal only for the current process and can run again after restart because the durable guard could not be written.
+The scheduler does not provide retries or main-session summaries. Owner-bound origin-channel delivery is provided by the later management layer; Cron and interval failures wait for their next declared occurrence, and one-shot failures, including delivery failures, remain terminal. If terminal persistence fails, an `at` rule stays terminal only for the current process and can run again after restart because the durable guard could not be written.
 
 ## Verification
 

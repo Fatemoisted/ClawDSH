@@ -9,13 +9,13 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry, { type AgentHandle } from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { type Agent, type AgentHandle } from '@deepseek-ai/dsh-agent'
 import AgentDefaultModelConfig from '@deepseek-ai/dsh-agent-default-model'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { CallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { LlmAdapter } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SessionPersistenceJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -140,6 +140,28 @@ async function settle(): Promise<void> {
 }
 
 const NOW = '2026-08-05T09:00:00.000Z'
+const testToolSignal = new AbortController().signal
+let toolCall = 0
+
+function ownerAgent(source: Record<string, unknown> = { kind: 'user' }): Agent {
+  const session = Session.create(SessionId(`owner-${String(++toolCall)}`))
+  session.append('turn/start', { turn: 1 })
+  session.append('user/message', createUserMessage({
+    content: [{ type: 'text', text: 'create the requested reminder' }],
+    source: source as never,
+  }), { surfaceOp: 'append' })
+  return { id: session.id, session } as unknown as Agent
+}
+
+function callAutomation(ctx: Context, args: unknown, agent: Agent) {
+  return ctx.tools.execute({
+    signal: testToolSignal,
+    callId: CallId(`automation-${String(++toolCall)}`),
+    name: 'automation',
+    arguments: args,
+    agent,
+  })
+}
 
 const contexts: Context[] = []
 const tempDirs: string[] = []
@@ -171,10 +193,10 @@ function runRecords(ctx: Context, id: string) {
 
 describe('automation row', () => {
   it('declares preset composition and Settings as required plugin dependencies', () => {
-    expect(Automation.inject).toEqual(['agents', 'agentPresets', 'sessions', 'agentDefaultModel', 'settings'])
+    expect(Automation.inject).toEqual(['agents', 'agentPresets', 'sessions', 'agentDefaultModel', 'settings', 'tools'])
   })
 
-  it('does not create a runtime, timer, or session while the restart setting is disabled', async () => {
+  it('does not create a runtime, timer, or session while disabled and applies enablement live', async () => {
     const adapter = new ScriptedAdapter([textReply('must not run')])
     const ctx = await harness(adapter, undefined, { 'clawdsh-automation': { enabled: false } })
     contexts.push(ctx)
@@ -186,12 +208,179 @@ describe('automation row', () => {
     expect(agentFor(ctx, 'disabled')).toBeUndefined()
     expect(adapter.requests).toHaveLength(0)
     expect(ctx.settings.describe().find(entry => entry.ns === Automation.AUTOMATION_SETTINGS_NAMESPACE))
-      .toMatchObject({ applies: 'restart', value: { enabled: false } })
+      .toMatchObject({ applies: 'live', value: { enabled: false } })
 
     await ctx.settings.update(Automation.AUTOMATION_SETTINGS_NAMESPACE, { enabled: true })
     await settle()
-    expect(agentFor(ctx, 'disabled')).toBeUndefined()
+    expect(agentFor(ctx, 'disabled')).toBeDefined()
     expect(adapter.requests).toHaveLength(0)
+    expect(ctx.settings.describe().find(entry => entry.ns === Automation.AUTOMATION_SETTINGS_NAMESPACE)?.value)
+      .toMatchObject({ enabled: true })
+  })
+
+  it('exposes one explicit Automation tool that creates, lists, updates, and removes live rules', async () => {
+    const adapter = new ScriptedAdapter([textReply('reminder complete')])
+    const store: Record<string, unknown> = {}
+    const ctx = await harness(adapter, undefined, store)
+    contexts.push(ctx)
+    await ctx.plugin(Automation, { enabled: false, rules: [] })
+    const schema = ctx.tools.schemas().find(item => item.name === 'automation')
+    expect(schema?.description).toContain('never substitute Bash, Batch, jobs, sleep, or a background process')
+
+    const agent = ownerAgent()
+    const added = await callAutomation(ctx, {
+      action: 'add',
+      name: 'three seconds',
+      message: 'return the reminder',
+      after_seconds: 3,
+    }, agent)
+    expect(added.isError).toBe(false)
+    const settings = ctx.settings.describe().find(entry => entry.ns === Automation.AUTOMATION_SETTINGS_NAMESPACE)
+    const rules = (settings?.value as Automation.Config).rules ?? []
+    expect(rules).toHaveLength(1)
+    expect(rules[0]).toMatchObject({ name: 'three seconds', message: 'return the reminder', enabled: true })
+    expect(rules[0]?.delivery).toBeUndefined()
+    expect(agentFor(ctx, rules[0]!.id)).toBeDefined()
+
+    const listed = await callAutomation(ctx, { action: 'list' }, agent)
+    expect(listed.isError).toBe(false)
+    expect(listed.value).toMatchObject({ enabled: true, tasks: [{ delivery: 'session' }] })
+
+    const updated = await callAutomation(ctx, {
+      action: 'update', id: rules[0]!.id, message: 'updated reminder', enabled: false,
+    }, agent)
+    expect(updated.isError).toBe(false)
+    expect(ctx.settings.describe().find(entry => entry.ns === Automation.AUTOMATION_SETTINGS_NAMESPACE)?.value)
+      .toMatchObject({ enabled: false })
+    expect(agentFor(ctx, rules[0]!.id)).toBeUndefined()
+
+    const removed = await callAutomation(ctx, { action: 'remove', id: rules[0]!.id }, agent)
+    expect(removed.isError).toBe(false)
+    expect(removed.value).toMatchObject({ enabled: false, tasks: [] })
+    expect(store['clawdsh-automation']).toMatchObject({ enabled: false, rules: [] })
+  })
+
+  it('captures an owner channel route privately and sends the scheduled final answer back to it', async () => {
+    const adapter = new ScriptedAdapter([textReply('飞书提醒已完成')])
+    const action = vi.fn(async (_action: unknown) => ({ status: 'accepted' }))
+    const ctx = await harness(adapter)
+    contexts.push(ctx)
+    ctx.provide('channels', { action } as never)
+    await ctx.plugin(Automation, { enabled: false, rules: [] })
+    const agent = ownerAgent({
+      kind: 'channel',
+      trust: 'owner',
+      gatewayInstanceId: 'gateway-1',
+      channel: 'feishu',
+      account: 'bot-account',
+      conversation: 'chat-1',
+      thread: 'thread-1',
+    })
+
+    const added = await callAutomation(ctx, {
+      action: 'add',
+      message: '三秒后提醒我',
+      after_seconds: 3,
+    }, agent)
+    expect(added.isError).toBe(false)
+    const rule = (ctx.settings.describe().find(entry => entry.ns === Automation.AUTOMATION_SETTINGS_NAMESPACE)
+      ?.value as Automation.Config).rules?.[0]
+    expect(rule?.delivery).toEqual({
+      kind: 'channel',
+      gatewayInstanceId: 'gateway-1',
+      channel: 'feishu',
+      account: 'bot-account',
+      conversation: 'chat-1',
+      thread: 'thread-1',
+    })
+
+    await vi.advanceTimersByTimeAsync(3_000)
+    await settle()
+    expect(runRecords(ctx, rule!.id)).toEqual(['started', 'ok'])
+    expect(action).toHaveBeenCalledOnce()
+    expect(action.mock.calls[0]?.[0]).toMatchObject({
+      protocolVersion: 1,
+      kind: 'send',
+      text: '飞书提醒已完成',
+      media: [],
+      target: {
+        gatewayInstanceId: 'gateway-1',
+        channel: 'feishu',
+        account: 'bot-account',
+        conversation: 'chat-1',
+        thread: 'thread-1',
+      },
+    })
+    expect((action.mock.calls[0]?.[0] as { actionId: string }).actionId).toMatch(/^[a-f0-9]{64}$/)
+  })
+
+  it('keeps owner authority when context providers inject model-visible user messages', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    await ctx.plugin(Automation, { enabled: false, rules: [] })
+    const agent = ownerAgent({
+      kind: 'channel',
+      trust: 'owner',
+      gatewayInstanceId: 'gateway-1',
+      channel: 'feishu',
+      account: 'bot-account',
+      conversation: 'chat-1',
+    })
+    agent.session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'workspace instructions' }],
+      source: { kind: 'agent-instructions', form: 'instructions', changes: [] } as never,
+    }), { surfaceOp: 'append' })
+    agent.session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'available skills' }],
+      source: { kind: 'skill-catalog', form: 'catalog', entries: [] } as never,
+    }), { surfaceOp: 'append' })
+
+    const added = await callAutomation(ctx, {
+      action: 'add',
+      message: '三分钟后提醒我',
+      after_seconds: 180,
+    }, agent)
+
+    expect(added.isError).toBe(false)
+    expect((ctx.settings.describe().find(entry => entry.ns === Automation.AUTOMATION_SETTINGS_NAMESPACE)
+      ?.value as Automation.Config).rules?.[0]?.delivery).toMatchObject({
+      kind: 'channel',
+      gatewayInstanceId: 'gateway-1',
+      channel: 'feishu',
+      account: 'bot-account',
+      conversation: 'chat-1',
+    })
+  })
+
+  it('does not reuse owner authority from an earlier turn', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    await ctx.plugin(Automation, { enabled: false, rules: [] })
+    const agent = ownerAgent({
+      kind: 'channel',
+      trust: 'owner',
+      gatewayInstanceId: 'gateway-1',
+      channel: 'feishu',
+      account: 'bot-account',
+      conversation: 'chat-1',
+    })
+    agent.session.append('turn/end', { turn: 1, status: 'completed' } as never)
+    agent.session.append('turn/start', { turn: 2 })
+    agent.session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'scheduled continuation' }],
+      source: { kind: 'plugin', plugin: 'automation' },
+    }), { surfaceOp: 'append' })
+
+    const added = await callAutomation(ctx, {
+      action: 'add',
+      message: 'must not be created',
+      after_seconds: 180,
+    }, agent)
+
+    expect(added.isError).toBe(true)
+    expect(JSON.stringify(added.content)).toContain('active turn')
+    expect((ctx.settings.describe().find(entry => entry.ns === Automation.AUTOMATION_SETTINGS_NAMESPACE)
+      ?.value as Automation.Config).rules).toEqual([])
   })
 
   it('fails mount loudly on invalid rules, naming the rule', async () => {

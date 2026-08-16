@@ -73,8 +73,8 @@
             hostRoot: !!js process.env.CLAWDSH_OPENCLAW_HOST_ROOT || dshHomePath('clawdsh/channel/openclaw/runtime/node_modules/openclaw')
             runtimeRoot: !!js process.env.CLAWDSH_OPENCLAW_RUNTIME_ROOT || dshHomePath('clawdsh/channel/openclaw/runtime')
             # 分离安装的 Channel 必须逐项提供 pluginId/channelIds/packageName/version/integrity/projectTree；
-            # 默认空列表拒绝任何 stateDir/npm/projects 中的插件，运行时不自动安装。
-            extensions: []
+            # 独立安装流程输出的受检 JSON 在 Loader 阶段解析，缺失时仍以空列表拒绝未受检插件。
+            extensions: !!js JSON.parse(process.env.CLAWDSH_OPENCLAW_EXTENSIONS_JSON || '[]')
             nodePath: !!js process.env.CLAWDSH_OPENCLAW_NODE_PATH || process.execPath
             configPath: !!js process.env.CLAWDSH_OPENCLAW_CONFIG_PATH || dshHomePath('clawdsh/channel/openclaw/state/openclaw.json')
             stateDir: !!js process.env.CLAWDSH_OPENCLAW_STATE_DIR || dshHomePath('clawdsh/channel/openclaw/state')

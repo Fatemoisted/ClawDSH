@@ -6,8 +6,10 @@
 
 **OpenClaw 对应**：Cron（`v2026.1.5` `src/cron/`）：`cron`/`at`/`every` 三种调度（经 OpenClaw 锁定的 croner 库）、每 job 一个专属会话、`[cron:<jobId> <name>] <message>` 帧、单 re-arming timer 对准最早触发点。
 
-**接缝**（全部既有，无新增）：
+**Seam**：
 - `ctx.agents` / `ctx.agentPresets` / `ctx.sessions` / `ctx.agentDefaultModel`（声明 inject）：每项任务一个持久 agent，挂载配置的 ClawDSH preset 并跨重启续接；仅在无会话产物时，`ctx.agents.resume` 才回退到 `create`，回合使用 `followup → whenIdle → sessions.flush`；
+- `ctx.tools` / `ctx.settings`：model-visible 的 `automation` 工具在持久 `clawdsh-automation` 用户设置分区中创建、列出、更新及删除规则；已提交变更会立即替换不可变 scheduler runtime；
+- `ctx.get('channels')`（可选）：从 owner-authenticated 渠道消息创建的任务会私下保存该消息的持久 route，并把成功的定时回复发送回同一会话；
 - `ctx.get('sessionPersistence')`（可选读取）：会话产物；无持久服务时每进程重新开始；
 - `ctx.get('sessionTitle')` 与 `ctx.get('workspaceRegistry')`（可选读取）：安装时给自动任务会话设置可读标题，并把它加入配置 `cwd` 所属的工作区；服务已经安装却无法完成发布时，插件初始化会失败；
 - 会话日志即 run log：`automation/run` 记录（`started`/`ok`/`error` + `scheduledAt`）环绕每个已记录回合——无独立 run-log 产物。
@@ -16,9 +18,11 @@
 
 **规格**：docs/specs/feature-automation.md · **状态**：implemented（阶段 3 ✅）
 
-该行保持挂载并独占 `clawdsh-automation` 设置 namespace。业务层 `enabled` 默认 `false`；关闭时仍校验配置，但不会创建 runtime、timer 或 Automation Session。设置在重启时生效。
+该行保持挂载并独占 `clawdsh-automation` 设置 namespace。业务层 `enabled` 默认 `false`；关闭时仍校验配置，但不会创建 runtime、timer 或 Automation Session。设置与 Agent 工具变更会即时生效。
 
 ## 用法
+
+在 ClawDSH 对话中正常提出提醒或周期任务即可。Agent 会获得一个明确的 `automation` 工具，并且必须使用它，不能用 Bash、Batch、`jobs`、`sleep` 或后台进程代替。工具支持 `list`、`add`、`update` 与 `remove`；`add` 必须且只能使用 `after_seconds`、`at`、`every_seconds` 或 `cron` 之一（`cron` 可带 `time_zone`）。
 
 ```yaml
 - id: automation
@@ -44,16 +48,19 @@
 
 ## 设计说明
 
-- **Config 即持久 store**：规则写在 cordis.yml 里，无 job-store 文件、无 CRUD 工具、无新存储 seam（运行时编辑规则延后）；
+- **Settings 即持久 store**：组合 Config 提供 base，`clawdsh-automation` 用户设置分区保存工具与 UI 创建的规则；无需独立 job-store 文件；
+- **单一权威管理工具**：`automation` 负责 CRUD，并明确要求 model 不得用 Batch 或后台进程代替。变更必须来自直接人类输入，只有 owner-authenticated 渠道消息才能附带渠道投递；
+- **即时替换**：每次已提交设置修订都会先完整释放旧 scheduler，再创建新 runtime。产品 Settings 读取当前持久 `enabled` 值，不再读取重启时快照；替代失败仍会直接返回工具调用方；
 - **默认关闭**：schema 将 `enabled` 默认设为 false；关闭路径仍校验配置，但不创建 runtime、timer 或 Session；
 - **单 re-arming unref'd timer**：对准所有规则最早的触发点；醒来顺序执行到期规则后重新对准（OpenClaw 调度器形态）；
 - **每项任务的会话生命周期**：resume-or-create 让会话日志跨重启保留，且不会用新会话替代损坏的持久会话；新会话记录当前 `cwd` 与 `agentPreset`，续接会话保留已记录的 workspace，并在发布前挂载配置的 preset，因此该 preset 贡献的 Soul、Memory、Skills 等能力可用于定时回合；
 - **间隔语义**：`every` 任务先等待一个完整间隔；上一轮完成后才计算下一次触发，因此耗时任务不会造成追赶式连发；
-- **失败语义**：回合前先持久写入 `started`，随后依据真实 `turn/end` 只写一条终态记录。Cron 与间隔任务失败后等待下一次既定触发；`at` 尝试无论成功还是失败都会进入终态，不会成为隐式重试循环。
+- **失败语义**：回合前先持久写入 `started`，随后依据真实 `turn/end` 只写一条终态记录。配置了原渠道投递时，空回复、Provider 不可用或发送失败会让运行记为 `error`。Cron 与间隔任务失败后等待下一次既定触发；`at` 尝试无论成功还是失败都会进入终态，不会成为隐式重试循环。
 
 ## 变更日志
 
 - 0.1.0：首个版本（cron/at/every 规则、每规则持久会话、运行记录、once-guard；8 个契约测试，真组合 keyless）。
+- 0.1.0-rc.1：增加 Agent-facing CRUD 工具、即时设置协调、产品 Settings 中的当前持久启用状态与 owner-bound 原渠道投递。
 
 ## Model Experience
 
@@ -79,9 +86,9 @@ Append-only：帧消息与其他回合输入一样落在日志中段；无系统
 
 ## Known Limitations and Deferred Work
 
-- **无渠道投递**：OpenClaw 的 `deliver`（把回复投到渠道）未移植；回复留在规则的会话日志里；
+- **渠道投递绑定创建来源**：只有从 owner-authenticated 渠道消息创建的任务才会自动返回该准确会话。UI 与 Web 创建的任务仍留在专属 Automation Session，model 不能提供或改写原始 channel id；
 - **无主会话摘要**：OpenClaw 的 `main` 目标（`System:` 行注入主会话）未移植；不过，在 Host 安装标题与工作区服务时，自动任务会话会以 `自动任务 · <名称或 id>` 显示在所属工作区；
 - **无自动重试**：失败记为 `error`；cron/every 等待下一次既定触发，失败的 `at` 尝试保持终态（OpenClaw 同构）；
-- **无运行时编辑规则**：规则由 Config 声明；OpenClaw 的 job store + `cron.add/remove/…` 工具与 CLI 延后到有消费者需要运行时编辑时；
+- **无 Automation CLI**：Agent 与 Settings UI 已支持 runtime CRUD，但没有单独的命令行表面；
 - **`at` once-guard 依赖会话产物**：持久会话日志被删除后，过期的一次性规则会再触发一次（at-least-once 语义）；
 - **`every` 挂载时重新锚定**：每次启动都开始新的间隔并等待它结束；进程停机期间不会累积追赶任务。

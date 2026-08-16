@@ -328,6 +328,53 @@ function channels(input: ClawdshSettingsPresentationInput): ClawdshFeaturePresen
   const enabledChannels = Array.isArray(cap?.channels)
     ? cap.channels.filter(channel => channel?.support === 'enabled').length
     : 0
+  const runtime = cap.channelRuntime
+  const readyAccounts = runtime?.accounts.filter(account => account.status === 'ready').length ?? 0
+  if (readyAccounts > 0) {
+    return {
+      id: 'channels',
+      label: FEATURE_LABEL.channels,
+      primary: `已连接 ${String(readyAccounts)} 个平台账号`,
+      detail: 'Gateway、Bridge 与平台账号均报告就绪；真实收发仍可在 ClawDSH 记录中核对。',
+      tone: 'positive',
+      enabled: true,
+      mounted: mounted(gateway),
+      configured: enabledValue(descriptor),
+      verified: true,
+      configurationReminder: false,
+      restartNotice: restartNotice(descriptor, true),
+    }
+  }
+  if (runtime?.status === 'ready' && runtime.bridgeAuthenticated) {
+    return {
+      id: 'channels',
+      label: FEATURE_LABEL.channels,
+      primary: 'Gateway 与 Bridge 已认证连接',
+      detail: '本地 Bridge 已就绪；OpenClaw 当前未暴露逐账号连接状态，平台实际收发以 ClawDSH 记录为准。',
+      tone: 'positive',
+      enabled: true,
+      mounted: mounted(gateway),
+      configured: enabledValue(descriptor),
+      verified: true,
+      configurationReminder: false,
+      restartNotice: restartNotice(descriptor, true),
+    }
+  }
+  if (runtime?.status === 'degraded' || runtime?.status === 'failed') {
+    return {
+      id: 'channels',
+      label: FEATURE_LABEL.channels,
+      primary: 'Gateway 连接异常',
+      detail: 'Gateway 已启用，但当前通信健康检查未通过；请查看 ClawDSH 记录。',
+      tone: 'warning',
+      enabled: true,
+      mounted: mounted(gateway),
+      configured: enabledValue(descriptor),
+      verified: false,
+      configurationReminder: true,
+      restartNotice: restartNotice(descriptor, true),
+    }
+  }
   return {
     id: 'channels',
     label: FEATURE_LABEL.channels,

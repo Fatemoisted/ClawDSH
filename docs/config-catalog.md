@@ -29,10 +29,10 @@ Source: [`packages/openclaw/activity/src/index.ts:53`](../packages/openclaw/acti
 
 ## `@clawdsh/dsh-automation`
 
-Requires: `agents` · `agentPresets` · `sessions` · `agentDefaultModel` · `settings`
+Requires: `agents` · `agentPresets` · `sessions` · `agentDefaultModel` · `settings` · `tools`
 
 ```ts config-catalog
-/** Plugin config: the declared rule set. cordis.yml is the durable store — no separate storage seam. */
+/** Plugin config and resolved Settings value; the Settings user layer is the durable mutable store. */
 export interface Config {
   /** Whether any automation runtime, timer, or durable session may start. */
   enabled?: boolean
@@ -56,6 +56,8 @@ export interface AutomationRule {
   message: string
   /** Whether the rule participates; defaults to true. */
   enabled?: boolean
+  /** Optional owner-bound origin channel; never accepted as a model tool argument. */
+  delivery?: AutomationChannelDelivery
 }
 
 /** A 5-field cron schedule with an optional IANA timezone. */
@@ -83,9 +85,25 @@ export interface EverySchedule {
   /** Interval length in whole seconds (min 1); the first occurrence follows one full interval. */
   seconds: number
 }
+
+/** Private channel destination captured from an owner-authenticated inbound message. */
+export interface AutomationChannelDelivery {
+  /** Delivery discriminant. */
+  readonly kind: 'channel'
+  /** Gateway state lineage that admitted the creating message. */
+  readonly gatewayInstanceId: string
+  /** OpenClaw channel plugin identity. */
+  readonly channel: string
+  /** Platform account identity. */
+  readonly account: string
+  /** Platform conversation identity. */
+  readonly conversation: string
+  /** Platform thread identity when present. */
+  readonly thread?: string
+}
 ```
 
-Source: [`packages/openclaw/automation/src/index.ts:97`](../packages/openclaw/automation/src/index.ts)
+Source: [`packages/openclaw/automation/src/index.ts:125`](../packages/openclaw/automation/src/index.ts)
 
 <a id="clawdshdsh-channel-agent"></a>
 

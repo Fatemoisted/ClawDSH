@@ -26,7 +26,7 @@ Conversation keeps the complete public Harness root mounted. `ClawdshWebEntry` u
 
 The product-control channel is `/clawdsh-rpc` and uses Connection's loopback-only authority. Its base read methods are `bootstrap/get` and `capabilities/list`; the Settings decision adds exact versioned setting and credential methods on the same protocol. Responses contain JSON-only data and never return live Cordis objects or secret values. Configured trusted hosts cannot use the product-control channel.
 
-The capability overview separates Loader composition from product support evidence. Loader entries map to `disabled`, `starting`, `active`, `failed`, or `misconfigured`; locked channels map independently to `cataloged`, `installable`, `certified`, or `enabled`. Channels present Channel Protocol, Agent Bridge, and OpenClaw Gateway Provider as components, with Feishu, Telegram, and other locked entries nested under the Gateway as catalog items. Legacy channel plugins remain visible only in the raw Loader inventory and do not contribute to product health.
+The capability overview separates Loader composition from product support evidence. Loader entries map to `disabled`, `starting`, `active`, `failed`, or `misconfigured`; locked channels map independently to `cataloged`, `installable`, `certified`, or `enabled`. Channels present Channel Protocol, Agent Bridge, and OpenClaw Gateway Provider as components, with Feishu, Telegram, and other locked entries nested under the Gateway as catalog items. The loopback response also projects sanitized live `ctx.channels.health()` evidence: Provider lifecycle, whether an authenticated Bridge handshake exists, and channel plus status for exposed accounts, without account ids, Gateway ids, paths, or diagnostics. Legacy channel plugins remain visible only in the raw Loader inventory and do not contribute to product health.
 
 Semantic Activity composes through the separately owned `@clawdsh/dsh-activity` Host service and `activity/list` control method. The Activity route follows the current Session and renders its privacy-limited pages, while Raw Trajectory stays in Harness Advanced. Editable Settings likewise composes beside the capability overview under its separate validation, revision, credential, and lifecycle decision.
 
@@ -54,7 +54,7 @@ Activity package, control-plane, and browser tests cover semantic projection, si
 
 ## Consequences
 
-ClawDSH has a stable local product entry and navigation without changing upstream GUI code, while users retain the complete Harness conversation and raw diagnostics. The capability overview accurately presents ownership and runtime evidence without claiming that a running Gateway certifies any platform account.
+ClawDSH has a stable local product entry and navigation without changing upstream GUI code, while users retain the complete Harness conversation and raw diagnostics. The capability overview reports an authenticated local Gateway–Bridge connection when the live handshake proves it, counts only accounts explicitly reported ready, and states when OpenClaw withholds per-account state; it does not infer platform readiness from a running process.
 
 The nested project carries its own install, typecheck, test, and build lifecycle because it intentionally stays outside the root Client aggregate. Development installation fails until its runtime and browser artifacts have been built. Product and Harness Advanced pages may keep different ephemeral browser state even though they share durable Host Sessions.
 

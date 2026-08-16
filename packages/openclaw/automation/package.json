@@ -31,6 +31,7 @@
     "lib/types/**/*.d.ts"
   ],
   "peerDependencies": {
+    "@clawdsh/dsh-channel": "workspace:^",
     "@deepseek-ai/dsh-agent": "workspace:^",
     "@deepseek-ai/dsh-agent-default-model": "workspace:^",
     "@deepseek-ai/dsh-agent-presets": "workspace:^",
@@ -39,10 +40,14 @@
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-session-title": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",
+    "@deepseek-ai/dsh-tools": "workspace:^",
     "@deepseek-ai/dsh-workspace": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"
   },
   "peerDependenciesMeta": {
+    "@clawdsh/dsh-channel": {
+      "optional": true
+    },
     "@deepseek-ai/dsh-session-title": {
       "optional": true
     },
@@ -55,6 +60,7 @@
     "croner": "^9.1.0"
   },
   "devDependencies": {
+    "@clawdsh/dsh-channel": "workspace:^",
     "@deepseek-ai/dsh-agent": "workspace:^",
     "@deepseek-ai/dsh-agent-default-model": "workspace:^",
     "@deepseek-ai/dsh-agent-presets": "workspace:^",
@@ -63,6 +69,7 @@
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-session-title": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",
+    "@deepseek-ai/dsh-tools": "workspace:^",
     "@deepseek-ai/dsh-session-persistence-jsonl": "workspace:^",
     "@deepseek-ai/dsh-workspace": "workspace:^",
     "@deepseek-ai/cordis": "workspace:^"

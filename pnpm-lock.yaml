@@ -5538,6 +5538,9 @@ importers:
         specifier: ^9.1.0
         version: 9.1.0
     devDependencies:
+      '@clawdsh/dsh-channel':
+        specifier: workspace:^
+        version: link:../channel
       '@deepseek-ai/cordis':
         specifier: workspace:^
         version: link:../../../vendor/cordis
@@ -5568,6 +5571,9 @@ importers:
       '@deepseek-ai/dsh-settings':
         specifier: workspace:^
         version: link:../../settings/settings
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:^
+        version: link:../../core/tools
       '@deepseek-ai/dsh-workspace':
         specifier: workspace:^
         version: link:../../workspace/workspace

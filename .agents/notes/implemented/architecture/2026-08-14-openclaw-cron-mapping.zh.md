@@ -4,7 +4,7 @@ Status: implemented
 
 [English](2026-08-14-openclaw-cron-mapping.md) | 中文
 
-**部分已被取代。** 调度器所有权的决策仍然有效；preset 组合、会话可发现性、`every`/`at` 时序、终态运行持久化与生命周期失败行为由 [完整组合且可发现的 Automation 会话](../bug-fix/2026-08-16-automation-composed-discoverable-sessions.md) 负责。
+**部分已被取代。** 调度器所有权的决策仍然有效；preset 组合、会话可发现性、`every`/`at` 时序、终态运行持久化与生命周期失败行为由 [完整组合且可发现的 Automation 会话](../bug-fix/2026-08-16-automation-composed-discoverable-sessions.md) 负责，即时规则 CRUD 与原渠道投递由 [Agent 管理的 Automation](../feature/2026-08-17-agent-managed-automation.md) 负责。
 
 ## 问题
 
@@ -25,7 +25,7 @@ dsh 侧映射：
 
 | OpenClaw cron 组成部分 | dsh 对应落地 |
 |---|---|
-| Job store `cron/jobs.json` | Config 声明的 `rules` 数组（z schema）——cordis.yml 即持久 store；无新存储 seam、本批次无 CRUD 工具 |
+| Job store `cron/jobs.json` | `clawdsh-automation` Settings 分区在组合 Config 上保存 z-schema `rules` 数组；Agent 工具与 Settings UI 可修改它，无需独立 job-store 文件 |
 | `cron` 调度 | `croner` ^9.1.0（OpenClaw 验证过的同款库），挂载时校验 |
 | `every` / `at` 调度 | 同语义：anchor 间隔无追赶；一次性带持久 once-guard |
 | 单 re-arming timer | 一个 unref'd `setTimeout` 对准最早 `nextRunAt`（OpenClaw 调度器形态） |
@@ -34,7 +34,7 @@ dsh 侧映射：
 | Run log `cron/runs/<jobId>.jsonl` | 会话日志本身：回合前后 append `automation/run` 事件（`started`/`ok`/`error` + `scheduledAt`）——无独立产物 |
 | In-flight 去重 / 无重试 / 无追赶 | 同：每规则 WeakMap 去重、失败记日志并 re-arm、错过 tick 跳过 |
 | `main` 会话 `System:` 注入 | 本批次不移植——`clawdsh` profile 无主会话概念接线（Known Limitation） |
-| 渠道 `deliver` | 本批次不移植（Known Limitation） |
+| 渠道 `deliver` | 从持久 message provenance 派生 owner-authenticated 原 route，并通过 `channel.action` 接收最终文本；仍不支持任意改投 |
 
 为何不用 dsh 接缝：
 
@@ -45,7 +45,7 @@ dsh 侧映射：
 
 **挂在 `ctx.schedule` 上、限定 `at`/`every ≥300s` 的桥。** 否决：无法表达 cron、无法保证专属会话模型，attach 条件与 one-session-per-rule 冲突。
 
-**移植 OpenClaw 的 job store + CRUD 工具 + CLI。** 本批次否决：Config 声明的规则不需要新存储 seam 也不需要可变 store；带 agent 面 CRUD 工具的运行时可变 store 是后续表面，待有消费者需要运行时编辑规则时再评估。
+**移植 OpenClaw 的 job store + CRUD 工具 + CLI。** 独立 store 与 CLI 仍被否决。后续出现的 Agent 消费方现在由现有持久 Settings 分区上的单一 CRUD 工具满足，见 [Agent 管理的 Automation](../feature/2026-08-17-agent-managed-automation.md)。
 
 **用 schedule 包的 `runMaintenance` + `followup` 模式触发。** 部分复用：触发路径用同样的 `followup → whenIdle → sessions.flush` 惯用法（channel-agent 与 headless 已验证），但 `runMaintenance` 是 schedule 内部机制（agent 所有）；automation 直接驱动自己的 agent。
 
@@ -54,4 +54,4 @@ dsh 侧映射：
 - 矩阵行接缝格修正为：`own unref'd croner timer + agent.followup/whenIdle/sessions.flush turn bridge（ctx.schedule rejected: session-local + 300s floor + tools-only API）`。
 - `clawdsh` preset 以 disabled 挂载 automation（opt-in；配置错误的规则挂载时响亮失败并指名规则）。
 - `automation/run` 是 declaration merging 进 `SessionEventMap` 的会话事件；回合本身是普通已记录回合，「model-visible means logged」无需新机制即成立。
-- 渠道投递、主会话摘要、重试回到本 Note 重新论证，而非默认补结构。
+- Owner-bound 渠道投递已实现且不接受 model-authored route；任意投递、主会话摘要与重试仍不支持。

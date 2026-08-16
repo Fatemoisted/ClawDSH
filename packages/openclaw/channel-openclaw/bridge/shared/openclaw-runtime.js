@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { createLazySyncKeyedStore } from './durable-store.js'
 import { NdjsonRpcClient, RpcMethodError } from './ndjson-rpc.js'
 import { StagedMediaGuard } from './media.js'
+import processSharedBridgeState from './process-state.cjs'
 import {
   validateAction,
   validateActionResult,
@@ -41,7 +42,6 @@ const UNKNOWN_TURN_EFFECTS = Object.freeze({
   replaySafe: false,
 })
 const PUBLIC_BRIDGE_FAILURE = '[ClawDSH bridge CHANNEL_BRIDGE_FAILED] The authenticated local ClawDSH communication bridge is unavailable.'
-const PROCESS_SHARED_BRIDGES = Symbol.for('clawdsh.channel-openclaw.process-shared-bridges.v1')
 
 /** Manifest-backed bridge runtime defaults; every value remains operator-configurable. */
 export const BRIDGE_CONFIG_DEFAULTS = Object.freeze({
@@ -201,25 +201,19 @@ export function createProcessSharedOpenClawBridge(api, options) {
   }
   const activeBridge = () => {
     const active = state.active
-    return active !== undefined && active.identity === resolveIdentity() ? active.bridge : undefined
+    return active !== undefined && active.identity === resolveIdentity() && active.leases.size !== 0
+      ? active
+      : undefined
   }
   const harness = {
     id: HARNESS_ID,
     label: 'ClawDSH local Agent',
     supports: context => supports(context, options),
-    runAttempt: params => {
-      try {
-        const active = activeBridge()
-        if (active !== undefined) return active.harness.runAttempt(params)
-        return failAttemptFor(params, new Error('the process-shared ClawDSH bridge is not active'), options)
-      } catch (error) {
-        return failAttemptFor(params, error, options)
-      }
-    },
+    runAttempt: params => runProcessSharedAttempt({ state, activeBridge, params, options }),
     reset: params => {
       const active = activeBridge()
       if (active === undefined) throw new Error('the process-shared ClawDSH bridge is not active')
-      return active.harness.reset(params)
+      return active.bridge.harness.reset(params)
     },
     // The startup service owns the shared connection lease and its final disposal.
     dispose: () => {},
@@ -229,7 +223,7 @@ export function createProcessSharedOpenClawBridge(api, options) {
     get handshake() {
       const active = activeBridge()
       if (active === undefined) throw new Error('the process-shared ClawDSH bridge is not active')
-      return active.handshake
+      return active.bridge.handshake
     },
     capabilities: CAPABILITIES,
     start: () => serializeProcessSharedBridge(state, async () => {
@@ -245,21 +239,87 @@ export function createProcessSharedOpenClawBridge(api, options) {
       }
       const candidate = createOpenClawBridge(api, options)
       await candidate.start()
-      state.active = { identity: candidateIdentity, bridge: candidate, leases: new Set([lease]) }
+      state.active = {
+        identity: candidateIdentity,
+        bridge: candidate,
+        leases: new Set([lease]),
+        inFlightAttempts: 0,
+        stopWaiters: new Set(),
+      }
       started = true
     }),
-    dispose: () => serializeProcessSharedBridge(state, async () => {
-      if (!started) return
-      started = false
-      const active = state.active
-      if (active === undefined || !active.leases.delete(lease)) {
-        throw new Error('ClawDSH bridge process lease is inconsistent')
-      }
-      if (active.leases.size !== 0) return
-      state.active = undefined
-      await active.bridge.dispose()
-    }),
+    dispose: async () => {
+      const outcome = await serializeProcessSharedBridge(state, async () => {
+        if (!started) return {}
+        started = false
+        const active = state.active
+        if (active === undefined || !active.leases.delete(lease)) {
+          throw new Error('ClawDSH bridge process lease is inconsistent')
+        }
+        if (active.leases.size !== 0) return {}
+        if (active.inFlightAttempts !== 0) {
+          const waiter = createDeferred()
+          active.stopWaiters.add(waiter)
+          return { wait: waiter.promise }
+        }
+        state.active = undefined
+        await active.bridge.dispose()
+        return {}
+      })
+      await outcome.wait
+    },
   }
+}
+
+async function runProcessSharedAttempt({ state, activeBridge, params, options }) {
+  let active
+  try {
+    active = activeBridge()
+    if (active === undefined) {
+      return await failAttemptFor(params, new Error('the process-shared ClawDSH bridge is not active'), options)
+    }
+    active.inFlightAttempts += 1
+    return await active.bridge.harness.runAttempt(params)
+  } catch (error) {
+    return await failAttemptFor(params, error, options)
+  } finally {
+    if (active !== undefined) await releaseProcessSharedAttempt(state, active)
+  }
+}
+
+async function releaseProcessSharedAttempt(state, active) {
+  await serializeProcessSharedBridge(state, async () => {
+    active.inFlightAttempts -= 1
+    if (active.inFlightAttempts < 0) throw new Error('ClawDSH bridge attempt lease is inconsistent')
+    if (active.inFlightAttempts !== 0) return
+
+    let error
+    if (active.leases.size === 0) {
+      if (state.active !== active) throw new Error('ClawDSH bridge active transport is inconsistent')
+      state.active = undefined
+      try {
+        await active.bridge.dispose()
+      } catch (cause) {
+        error = cause
+      }
+    }
+    for (const waiter of active.stopWaiters) {
+      if (error === undefined) waiter.resolve()
+      else waiter.reject(error)
+    }
+    active.stopWaiters.clear()
+    if (error !== undefined) throw error
+  })
+}
+
+function createDeferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
 }
 
 async function failAttemptFor(params, error, options) {
@@ -282,19 +342,6 @@ function processSharedBridgeIdentity(options) {
     environment.maxMediaBytes,
     environment.handshake,
   ]))
-}
-
-function processSharedBridgeState(generation) {
-  const root = globalThis
-  root[PROCESS_SHARED_BRIDGES] ??= new Map()
-  const registry = root[PROCESS_SHARED_BRIDGES]
-  if (!(registry instanceof Map)) throw new Error('ClawDSH process bridge registry is invalid')
-  let state = registry.get(generation)
-  if (state === undefined) {
-    state = { active: undefined, operation: Promise.resolve() }
-    registry.set(generation, state)
-  }
-  return state
 }
 
 function serializeProcessSharedBridge(state, operation) {
@@ -435,7 +482,6 @@ async function runAttempt(context) {
     })
     return routeForAttempt(params, environment.handshake.gatewayInstanceId, routes)
   })
-  const text = promptText(params)
   const recorderMessage = params.userTurnTranscriptRecorder?.message
   const messageId = requiredString(
     params.currentMessageId === undefined || params.currentMessageId === null
@@ -443,6 +489,8 @@ async function runAttempt(context) {
       : String(params.currentMessageId),
     'OpenClaw stable inbound message or Gateway run id',
   )
+  const sender = principalFor(params, route.kind)
+  const text = promptText(params, messageId, sender, route.kind)
   const idempotencyKey = nonEmpty(recorderMessage?.idempotencyKey)
     ? recorderMessage.idempotencyKey
     : digest(`inbound\0${routeKey(route)}\0${messageId}`)
@@ -454,7 +502,7 @@ async function runAttempt(context) {
     turnId,
     runId,
     route,
-    sender: principalFor(params, route.kind),
+    sender,
     ...mentionProjection(params),
     messageId,
     ...replyProjection(params),
@@ -1152,9 +1200,17 @@ function threadProjection(params) {
   return thread === undefined || thread === null || String(thread).length === 0 ? {} : { thread: String(thread) }
 }
 
-function promptText(params) {
+function promptText(params, messageId, sender, routeKind) {
   const text = params.transcriptPrompt ?? params.prompt
-  return typeof text === 'string' ? text : ''
+  if (typeof text !== 'string') return ''
+  const messagePrefix = `[message_id: ${messageId}]\n`
+  if (!text.startsWith(messagePrefix)) return text
+  const body = text.slice(messagePrefix.length)
+  if (routeKind !== 'direct') return body
+  for (const label of [sender.displayName, sender.senderId]) {
+    if (nonEmpty(label) && body.startsWith(`${label}: `)) return body.slice(label.length + 2)
+  }
+  return body
 }
 
 function routeKey(route) {

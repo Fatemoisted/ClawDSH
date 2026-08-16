@@ -2,6 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer, type Server } from 'node:http'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -87,6 +88,69 @@ interface BrowserLike {
 interface BrowserLauncherLike {
   /** Launch Chromium; a channel is optional for local environments with no downloaded browser. */
   launch(options?: { channel?: string }): Promise<BrowserLike>
+}
+
+interface NativeProviderRequest {
+  /** OpenAI-compatible tool definitions sent to the local provider double. */
+  tools?: Array<{
+    function?: {
+      name?: string
+      description?: string
+      parameters?: Record<string, unknown>
+    }
+  }>
+}
+
+interface LocalProvider {
+  /** Bound local HTTP server. */
+  server: Server
+  /** Base URL accepted by the DeepSeek-compatible adapter. */
+  baseUrl: string
+  /** First model request that carries the assembled tool catalog. */
+  toolRequest: Promise<NativeProviderRequest>
+}
+
+async function startLocalProvider(): Promise<LocalProvider> {
+  let resolveToolRequest!: (request: NativeProviderRequest) => void
+  const toolRequest = new Promise<NativeProviderRequest>((resolve) => {
+    resolveToolRequest = resolve
+  })
+  let observedToolRequest = false
+  const server = createServer((request, response) => {
+    let body = ''
+    request.setEncoding('utf8')
+    request.on('data', (chunk: string) => { body += chunk })
+    request.on('end', () => {
+      const parsed = JSON.parse(body) as NativeProviderRequest
+      if (!observedToolRequest && (parsed.tools?.length ?? 0) > 0) {
+        observedToolRequest = true
+        resolveToolRequest(parsed)
+      }
+      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.end([
+        'data: {"choices":[{"delta":{"role":"assistant","content":null,"reasoning_content":""}}]}',
+        'data: {"choices":[{"delta":{"content":"done"}}]}',
+        'data: {"choices":[{"delta":{"content":""},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1}}',
+        'data: [DONE]',
+        '',
+      ].join('\n\n'))
+    })
+  })
+  await new Promise<void>(resolveListen => server.listen(0, '127.0.0.1', resolveListen))
+  const address = server.address()
+  if (address === null || typeof address === 'string') {
+    throw new Error('local model provider did not bind a TCP port')
+  }
+  return { server, baseUrl: `http://127.0.0.1:${String(address.port)}`, toolRequest }
+}
+
+function closeServer(server: Server): Promise<void> {
+  return new Promise((resolveClose, reject) => {
+    server.close((error) => {
+      if (error === undefined) resolveClose()
+      else reject(error)
+    })
+  })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -282,6 +346,9 @@ describe('ClawDSH isolated real profile browser entry', () => {
     const environment = keylessEnvironment(harnessHome, join(temporaryRoot, '.agents'))
     expect(externalCredentialNames.every(name => environment[name] === undefined)).toBe(true)
     expect(Object.keys(environment).some(name => name.startsWith('CLAWDSH_OPENCLAW_'))).toBe(false)
+    const localProvider = await startLocalProvider()
+    environment.DEEPSEEK_API_KEY = 'keyless-clawdsh-local-provider'
+    environment.DEEPSEEK_BASE_URL = localProvider.baseUrl
     let child: ChildProcess | undefined
     let browser: BrowserLike | undefined
 
@@ -419,6 +486,26 @@ describe('ClawDSH isolated real profile browser entry', () => {
         mode: 'queue',
         content: [{ type: 'text', text: 'ClawDSH real-profile UI fixture' }],
       })
+      const providerRequest = await Promise.race([
+        localProvider.toolRequest,
+        new Promise<never>((_resolve, reject) => {
+          setTimeout(() => { reject(new Error('local provider received no model-visible tool catalog in 10s')) }, 10_000).unref()
+        }),
+      ])
+      const automationTool = providerRequest.tools?.find(tool => tool.function?.name === 'automation')?.function
+      expect(automationTool?.description).toContain('never substitute Bash, Batch, jobs, sleep, or a background process')
+      const parameters = automationTool?.parameters as {
+        required?: unknown
+        properties?: Record<string, { enum?: unknown }>
+      } | undefined
+      const automationToolSnapshot = JSON.stringify({
+        name: automationTool?.name,
+        description: automationTool?.description,
+        required: parameters?.required,
+        actions: parameters?.properties?.action?.enum,
+        scheduleSelectors: ['after_seconds', 'at', 'every_seconds', 'cron']
+          .filter(field => parameters?.properties?.[field] !== undefined),
+      }, null, 2)
       await page.evaluate(({ sessionId }) => {
         localStorage.setItem('dsh.sessions.current', JSON.stringify({ sessionId }))
       }, created)
@@ -467,6 +554,8 @@ describe('ClawDSH isolated real profile browser entry', () => {
         settingsSectionSnapshot,
         '# Feature status',
         featureStatusSnapshot,
+        '# Model-visible Automation tool',
+        automationToolSnapshot,
         '# Conversation views',
         tablistSnapshot,
         '# ClawDSH records',
@@ -481,7 +570,11 @@ describe('ClawDSH isolated real profile browser entry', () => {
         try {
           if (child !== undefined) await stop(child)
         } finally {
-          rmSync(temporaryRoot, { recursive: true, force: true })
+          try {
+            await closeServer(localProvider.server)
+          } finally {
+            rmSync(temporaryRoot, { recursive: true, force: true })
+          }
         }
       }
     }

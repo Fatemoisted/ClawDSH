@@ -37,7 +37,7 @@ Production 渠道平面锁定 OpenClaw `v2026.7.1-2`、commit `0790d9f593ad30c94
 | Session tracing / replay / forking | dsh-native | Session projection 与 raw Trajectory | Reuse | — | 可直接使用 |
 | 工具执行 | early baseline Agent tools | `ctx.tools`、`ctx.shell`、`ctx.fs`、`ctx.web` | Reuse | — | 可直接使用 |
 | Skills | OpenClaw skills / ClawHub conventions | `ctx.skills` | Plugin | `skills-hub` | 已实现 |
-| 调度 / automation | early baseline cron | `ctx.agents`、`ctx.sessions` | Plugin | `automation` | 已实现；默认关闭 |
+| 调度 / automation | early baseline cron | `ctx.tools`、`ctx.settings`、`ctx.agents`、`ctx.sessions`、可选 `ctx.channels` | Plugin | `automation` | 已实现；默认关闭；Agent CRUD 与 owner-channel 回传即时生效 |
 | Persona | early baseline prompt/workspace identity | `ctx.systemPrompt` | Plugin | `soul` | 已实现 |
 | Memory | v2026.1.15 memory | `ctx.fs`、`ctx.tools`、`ctx.embeddings` | Plugin + 自有 embeddings seam | `memory`、`embeddings`、`embeddings-ark` | 已实现 |
 | Channel Service Definition | current Gateway integration | 自有 `ctx.channels` | New seam | `channel` | V1 已实现 |

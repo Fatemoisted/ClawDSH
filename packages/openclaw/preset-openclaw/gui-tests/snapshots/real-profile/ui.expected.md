@@ -39,6 +39,28 @@
       - text: 尚未设置
       - paragraph: 还没有创建自动任务；这不影响正常对话。
 
+# Model-visible Automation tool
+
+{
+  "name": "automation",
+  "description": "Create, list, update, or remove durable scheduled ClawDSH tasks. For reminders, future work, and recurring tasks, always use this tool; never substitute Bash, Batch, jobs, sleep, or a background process. A task created from an owner-authenticated channel returns its final answer to that same channel conversation.",
+  "required": [
+    "action"
+  ],
+  "actions": [
+    "list",
+    "add",
+    "update",
+    "remove"
+  ],
+  "scheduleSelectors": [
+    "after_seconds",
+    "at",
+    "every_seconds",
+    "cron"
+  ]
+}
+
 # Conversation views
 
 - tablist:

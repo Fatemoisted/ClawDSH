@@ -29,7 +29,7 @@ Profile dependency installation uses the public npm registry fixed in the CLI an
 
 ## Channel runtime
 
-`init` does not download OpenClaw. `channel install` is the only managed acquisition path: it first requires the running Node executable to satisfy the locked Gateway engine, accepts the checked production artifact, validates SHA-512 and every tar entry, assembles the checked runtime lock with scripts disabled, verifies the installed package set and host tree, and creates a credential-free fail-closed configuration only when none exists. Canary evidence is audit-only and cannot enter this installation path.
+`init` does not download OpenClaw. `channel install` is the only managed acquisition path: it first requires the running Node executable to satisfy the locked Gateway engine, accepts the checked production artifact, validates SHA-512 and every tar entry, assembles the checked runtime lock with npm `10.9.7` and scripts disabled, verifies the installed package set and host tree, and creates a credential-free fail-closed configuration only when none exists. WebUI and Gateway use that same Node executable by default; the npm pin is an assembly tool, not a second Node installation. Canary evidence is audit-only and cannot enter this installation path.
 
 The Channel installer preserves existing OpenClaw configuration and state. Platform credentials remain owned by OpenClaw and never enter the ClawDSH marker or command output. `channel doctor` verifies the production artifact, runtime, bridge, current Node engine, and the complete Provider-owned fail-closed configuration policy without selecting, returning, or logging credential fields.
 

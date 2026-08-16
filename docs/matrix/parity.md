@@ -37,7 +37,7 @@ The production channel plane is locked to OpenClaw `v2026.7.1-2`, commit `0790d9
 | Session tracing / replay / forking | dsh-native | Session projection and raw Trajectory | Reuse | — | directly usable |
 | Tool execution | early baseline Agent tools | `ctx.tools`, `ctx.shell`, `ctx.fs`, `ctx.web` | Reuse | — | directly usable |
 | Skills | OpenClaw skills / ClawHub conventions | `ctx.skills` | Plugin | `skills-hub` | implemented |
-| Scheduling / automation | early baseline cron | `ctx.agents`, `ctx.sessions` | Plugin | `automation` | implemented; disabled by default |
+| Scheduling / automation | early baseline cron | `ctx.tools`, `ctx.settings`, `ctx.agents`, `ctx.sessions`, optional `ctx.channels` | Plugin | `automation` | implemented; disabled by default; Agent CRUD and owner-channel return apply live |
 | Persona | early baseline prompt/workspace identity | `ctx.systemPrompt` | Plugin | `soul` | implemented |
 | Memory | v2026.1.15 memory | `ctx.fs`, `ctx.tools`, `ctx.embeddings` | Plugin + owned embeddings seam | `memory`, `embeddings`, `embeddings-ark` | implemented |
 | Channel Service Definition | current Gateway integration | owned `ctx.channels` | New seam | `channel` | V1 implemented |

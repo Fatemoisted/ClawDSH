@@ -170,6 +170,38 @@ describe('ClawDSH settings presentation', () => {
     })
   })
 
+  it('reports the authenticated local Gateway Bridge without claiming hidden per-account state', () => {
+    const input = defaults()
+    const channels = input.capabilities.capabilities.find(item => item.id === 'channels')!
+    const value = presentClawdshSettings({
+      ...input,
+      capabilities: {
+        ...input.capabilities,
+        capabilities: input.capabilities.capabilities.map(item => item.id === 'channels' ? {
+          ...channels,
+          state: 'active',
+          channelRuntime: {
+            status: 'ready',
+            bridgeAuthenticated: true,
+            accounts: [],
+          },
+          components: channels.components.map(item => item.id === 'openclaw-gateway-provider'
+            ? component(item.id, 'active')
+            : item),
+        } : item),
+      },
+    })
+
+    expect(value.features.find(feature => feature.id === 'channels')).toMatchObject({
+      primary: 'Gateway 与 Bridge 已认证连接',
+      enabled: true,
+      verified: true,
+      tone: 'positive',
+      configurationReminder: false,
+    })
+    expect(value.features.find(feature => feature.id === 'channels')?.detail).toContain('未暴露逐账号连接状态')
+  })
+
   it('degrades aggregate and required-component failures instead of reporting a feature as enabled', () => {
     const input = defaults()
     const soul = input.capabilities.capabilities.find(item => item.id === 'soul')!

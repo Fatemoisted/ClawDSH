@@ -57,7 +57,7 @@ Channels 包含三个组件：Channel Protocol（`@clawdsh/dsh-channel`）、Age
 
 Package 来源遵循固定映射：`@clawdsh/*` 属于 ClawDSH，`@deepseek-ai/*` 与 `cordis:*` 属于 Platform，其他来源全部属于 Community。
 
-干净安装时，Soul 显示「新会话启用」，Memory 显示「已启用」并在需要时提醒 Ark 配置，Skills Hub 显示「来源已启用」，Channels 显示「尚未连接平台」，Automation 显示「尚未设置」。Skills 状态只证明 ClawHub 兼容来源已参与，是否实际发现 Skill 会在目录扫描时验证。Ark Key 已配置只表示首次调用时验证。Gateway active 但没有 enabled-channel 信号时，会说明 Gateway 已启动但平台连接未验证。Automation 会区分无规则、保存了规则但关闭、已启用但没有可运行规则、正常运行与等待重启。总览计数只覆盖这五项功能。
+干净安装时，Soul 显示「新会话启用」，Memory 显示「已启用」并在需要时提醒 Ark 配置，Skills Hub 显示「来源已启用」，Channels 显示「尚未连接平台」，Automation 显示「尚未设置」。Skills 状态只证明 ClawHub 兼容来源已参与，是否实际发现 Skill 会在目录扫描时验证。Ark Key 已配置只表示首次调用时验证。Channel 状态会组合 Loader 状态与经过净化的 `ctx.channels.health()` 证据：已验证 handshake 显示「Gateway 与 Bridge 已认证连接」，ready account 会按 channel 计数且不暴露 account id，handshake 存在但 account 为空时则说明 OpenClaw 没有暴露逐账号状态。Automation 会区分无规则、保存了规则但关闭、已启用但没有可运行规则、正常运行与 Loader 组装失败。总览计数只覆盖这五项功能。
 
 ## Settings 语义
 
@@ -65,7 +65,7 @@ Package 来源遵循固定映射：`@clawdsh/*` 属于 ClawDSH，`@deepseek-ai/*
 
 每项能力注册自身已有 Config schema。值按 `schema default → profile base → user settings` 顺序解析。Reset 只移除 namespace 的 user layer。Mutation 携带 `expectedRevision` 与数量受限、非空且 path 不重复的 `set` 或 `unset` operation 集合；Host 原子校验并持久化完整集合。过期写入返回 `settings-conflict`，不 merge，也不 retry。Response 区分 `desiredRevision` 与 `runtimeRevision`，通过 desired/runtime value 计算 `restartRequired`，并把生效时间标为 `live`、`new-session`、`next-call` 或 `restart`。
 
-可选 business plugin 保留在 Loader 组装中，让 schema 持续可用。它们的 `enabled` 字段在 mount 时控制 effect：关闭的 Memory 不注册 prompt、tool、watcher 或 flush，关闭的 Skills Hub 不注册 provider，关闭的 Automation 不创建 timer、runtime 或 Automation Session。Soul 修改影响新 Session。Channel Agent 是必需能力，自身保持 network-inert。
+可选 business plugin 保留在 Loader 组装中，让 schema 持续可用。它们的 `enabled` 字段控制业务 effect：关闭的 Memory 不注册 prompt、tool、watcher 或 flush，关闭的 Skills Hub 不注册 provider，关闭的 Automation 不创建 timer、runtime 或 Automation Session，但保留管理工具。Automation 设置即时协调；Soul 修改影响新 Session。Channel Agent 是必需能力，自身保持 network-inert。
 
 OpenClaw Gateway 以 `enabled=false` 保持 mounted，此时不检查 artifact、不绑定 socket、不启动进程，也不注册 Provider。启用时会在持久化前运行 managed-deployment preflight，因此 preflight 失败会让值与 revision 保持不变。Deployment identity、path、extension 与 media limit 可见但只读。Gateway process 状态绝不表示 platform account 已 ready、certified 或 enabled。
 
@@ -73,7 +73,7 @@ Ark Embeddings 只使用固定 `ARK_API_KEY` credential reference，并在每次
 
 一个随 plugin 生命周期存在的内存 store 拥有加载、snapshot、namespace draft、credential draft、保存与冲突状态、展开状态和 dirty key。关闭 Settings、切换到其他原生 section 或重新打开面板都不会丢弃 draft。ClawDSH section 卸载后，dirty key 仍会维持页面卸载提醒；保存、重置、重新加载、显式清空与接受新值会清除对应 key。该 store 不写入 local storage 或 Session file。
 
-配置按功能分组，而不是按 raw namespace 平铺。Soul 只有一个标题；Memory 包含 Memory 行为、Ark 语义搜索与 Ark Key；Channels 包含 Agent Bridge 与 OpenClaw Gateway；Skills Hub 与 Automation 各有一个功能组。通用 editor 支持 schema 描述的 string、number、boolean、enum、nested object 与 string array。已有 Channel 与 Automation Session 保留创建时 `cwd`，因此它们的 workspace 由安装器管理。Automation 原子保存完整 `rules` 字段，为每个新增任务生成基于 UUID 的持久 id；Gateway 在持久化前运行 deployment preflight，optimistic revision conflict 会保留 draft，直到显式重新加载。
+配置按功能分组，而不是按 raw namespace 平铺。Soul 只有一个标题；Memory 包含 Memory 行为、Ark 语义搜索与 Ark Key；Channels 包含 Agent Bridge 与 OpenClaw Gateway；Skills Hub 与 Automation 各有一个功能组。通用 editor 支持 schema 描述的 string、number、boolean、enum、nested object 与 string array。已有 Channel 与 Automation Session 保留创建时 `cwd`，因此它们的 workspace 由安装器管理。Automation 原子保存完整 `rules` 字段，编辑时保留私有的原渠道 delivery metadata，为每个新增任务生成基于 UUID 的持久 id，并立即应用该修订；Gateway 在持久化前运行 deployment preflight，optimistic revision conflict 会保留 draft，直到显式重新加载。
 
 Credential value 只存在于 store 的私有 browser memory 与发出的写请求中。成功、失败、显式清空与 plugin dispose 都会擦除该值。Error、response、log、持久化 browser storage、Settings file、Session file 与 Activity sidecar 均不保留它；credential descriptor 始终不含 secret。
 

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-15-openclaw-channel-plane-bridge.md
-2026-08-15-openclaw-channel-plane-bridge.md: b18253f554ec0ea0956621c912a647e0e571a2f2
-2026-08-15-openclaw-channel-plane-bridge.zh.md: c5e6fb4d1de2b083b1314627bd86c04b16df4f9d
+2026-08-15-openclaw-channel-plane-bridge.md: 7b16632604db0ea3e9711ff5db15562c8741acec
+2026-08-15-openclaw-channel-plane-bridge.zh.md: add4bf9bdc719c14f1d7d4279b917fa4f9e45cf7

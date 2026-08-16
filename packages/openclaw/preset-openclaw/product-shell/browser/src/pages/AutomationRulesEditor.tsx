@@ -7,6 +7,7 @@ interface RuleRecord {
   readonly message: string
   readonly enabled: boolean
   readonly schedule: Record<string, unknown>
+  readonly delivery?: unknown
 }
 
 interface AutomationRulesEditorProps {
@@ -31,6 +32,7 @@ function rulesOf(value: unknown): RuleRecord[] {
       message: typeof row.message === 'string' ? row.message : '',
       enabled: row.enabled !== false,
       schedule,
+      ...(Object.hasOwn(row, 'delivery') ? { delivery: row.delivery } : {}),
     }
   })
 }
@@ -53,10 +55,10 @@ export function AutomationRulesEditor({ id, value, disabled, onChange }: Automat
   return (
     <div className={css.ruleEditor} id={id}>
       <p className={css.emptyValue}>
-        每个自动任务由“什么时候运行”和“让 ClawDSH 做什么”组成。保存后还需要开启自动运行并重启 ClawDSH 才会生效。
+        每个自动任务由“什么时候运行”和“让 ClawDSH 做什么”组成。保存后会立即应用，无需重启 ClawDSH。
       </p>
       <p className={css.emptyValue}>
-        它不是普通对话的必选项。任务完成后，结果保存在以“自动任务 · 任务名”命名的独立对话中，不会插入你当前的对话。
+        任务结果会保存在以“自动任务 · 任务名”命名的独立对话中；从飞书等渠道创建的任务还会把最终回复发送回原会话。
       </p>
       {rules.length === 0 ? (
         <p className={css.emptyValue}>

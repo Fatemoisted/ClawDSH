@@ -18,19 +18,21 @@ ClawDSH 现在通过严格认证的 V1 协议分离通信平面与 Agent 平面�
 
 Production 只接受 OpenClaw `v2026.7.1-2`、commit `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`，并同时锁定 NPM artifact、解包宿主文件树、已检查的 NPM 依赖 lock 与完整安装运行时字节。安装运行时摘要按 platform 和 architecture 区分；获批 assembly 是 Darwin arm64 与 Linux x64，两者都由已检查 lock 和 npm `10.9.7` 生成，其他组合会 fail closed，直到具备各自已评审的 lock。Canary 只接受 source commit `f1ced37ce5df8c7bc7f3b46c579e5ce181feaae0` 用于隔离审计与兼容工作；它没有锁定的构建 host，不能使用 managed execution。稳定目录是 1 个 core + 2 个 bundled + 21 个 repo-official + 3 个 external，即 **24+3**。QQ Bot 在该 lock 中是 repo-official；external 条目是 WeChat、Yuanbao 与 Zalo ClawBot。各轨道治理目录把每个 external 条目绑定到相同的精确包，并分别记录许可证声明、平台条款审查和安全审查；全部审查仍待完成，因此会阻止可安装性晋级。
 
-一个 opt-in 外部插件对应一个隔离 NPM 项目，而不是一个主 package。其 lock 覆盖项目 manifest、可见与隐藏 NPM lock、主插件、每个传递依赖文件和内部文件链接目标。可选的嵌套 `openclaw` peer 只能指向单独校验过的宿主；项目摘要仍包含该链接的存在性，而目标字节由宿主运行时 lock 负责。空 extension 列表保持为默认值，并拒绝每个未跟踪项目。
+一个 opt-in 外部插件对应一个隔离 NPM 项目，而不是一个主 package。其 lock 覆盖项目 manifest、可见与隐藏 NPM lock、主插件、每个传递依赖文件和内部文件链接目标。可选的嵌套 `openclaw` peer 只能指向单独校验过的宿主；项目摘要仍包含该链接的存在性，而目标字节由宿主运行时 lock 负责。预置流程还会把相同的精确 spec、规范路径、解析 identity、版本与 integrity 持久化到 OpenClaw installed-plugin index，而不把临时安装记录放进 `openclaw.json`。源码 profile 通过 `CLAWDSH_OPENCLAW_EXTENSIONS_JSON` 接收单独校验的 lock 列表；省略或空列表继续作为默认值，并拒绝每个未跟踪项目。
 
 ## 协议与所有权
 
 handshake 绑定 protocol version、Gateway state lineage、逐次启动 nonce、精确 tag、commit、artifact SHA-512、Node engine、AgentHarness generation、action、notification 与 extension。任一不匹配都会关闭 peer。POSIX endpoint ownership 通过私有 `0700` parent、`0600` socket 与 ephemeral token 强制。Windows 在 native named-pipe ACL seam 能提供同等授权前 fail closed。每个 Node 预检和 Gateway 还会收到用于删除继承 `NODE_*`、native-loader、OpenSSL 模块与配置、TLS 信任路径和 TLS 密钥日志变量的条目，使 ambient 进程设置无法替换 loader 或削弱已校验执行环境。
 
-Gateway 只有在认证和持久 route-transition 恢复都完成后才进入 ready。临时 transport detach 会拒绝 socket 拥有的等待和新调用，但允许已准入 handler 把结果写入持久 Agent 状态；progress 始终绑定已 detach peer。Provider 正式关闭会在 storage 关闭前中止并排空活动和已 detach peer 拥有的 handler。OpenClaw registry 实例使用不可变配置身份租用一条进程共享 transport；最后一个租约会排空 transport，使后续启动获得全新连接。
+Gateway 只有在认证和持久 route-transition 恢复都完成后才进入 ready。Bridge manifest 对无条件启动保持惰性，并声明更窄的 AgentHarness 激活；因此配置的 `clawdsh` runtime 会在 Agent runtime 启动规划期间加载它。OpenClaw 可能通过不同的转换模块 loader 分别求值 service 与进程级 harness，因此原生 CommonJS singleton 持有它们的进程内租约 registry，而不依赖转换模块的 global object。临时 transport detach 会拒绝 socket 拥有的等待和新调用，但允许已准入 handler 把结果写入持久 Agent 状态；progress 始终绑定已 detach peer。Provider 正式关闭会在 storage 关闭前中止并排空活动和已 detach peer 拥有的 handler。OpenClaw registry 实例使用不可变配置身份租用同一条 transport。最后一个 service 租约会停止新 attempt，但会等已准入的 AgentHarness attempt 结束后再排空 transport，因此较慢的回答不会被 registry teardown 截断，后续启动也会获得全新连接。纯展示 progress 会在分配 sequence number 前忽略仅含空白的 text 和 reasoning chunk，因为 bridge wire 只接受非空白 delta。
 
 入站操作是 `turn.run`、精确 `turn.cancel` 和 generation-aware `session.reset` / `session.close`。Provider 可查询 `health.get`；bridge 可协商 `turn.progress` 与 `delivery.report`。Agent 发起的 `channel.action` 覆盖消息、回应、投票、输入状态、目录与解析操作，但 capability negotiation 可缩窄集合，平台对支持情况保持权威。
 
 持久性区分重复传输与重复 Agent 执行。相同幂等请求会附着到 live run 或 replay terminal record。用不同内容复用 key 会失败。崩溃遗留的 running record 变成 `needs-recovery`，因为工具可能已产生副作用，自动重跑不安全。Reset 和 close 会先写入持久 bridge transition，再请求 DSH、commit 已确认 route 与 previous-Session control identity，最后删除 transition；启动和下一次 turn 会恢复任何中断的 transition。不确定平台 action 的重试使用内部只读 `channel.reconcile` request，并且只回放完全匹配的 terminal record；缺失或非终态 mutation 绝不会重新派发。Delivery receipt 同样持久且单调；`ambiguous` 是 operator/provider 对账状态，绝不是隐式重发许可。
 
-模型执行前，Driver 把 admission 与 idempotency commit 到持久 ledger。已知 `user/message` 包含完整、已净化的渠道 provenance。Owner 私聊可 mount owner preset；其他 sender 和 group 都 mount restricted preset，且 group 必须已经携带 OpenClaw group-allowlist admission。
+模型执行前，Driver 把 admission 与 idempotency commit 到持久 ledger。已知 `user/message` 包含完整、已净化的渠道 provenance。系统会从文本中移除精确匹配的 OpenClaw 外层 `[message_id: ...]` 行和精确匹配的私聊 sender 前缀，因为这些事实已经位于结构化 provenance 中；正文内匹配的用户输入仍会保留。Pairing 授予私聊入站权限，而不是 owner trust；只有显式 OpenClaw owner identity 才能 mount owner preset。其他 sender 和 group 都 mount restricted preset，且 group 必须已经携带 OpenClaw group-allowlist admission。
+
+`session.reset` 会推进 route generation，但在 Host 中保留已完全停稳的历史 Session；`session.close` 仍是释放其 live agent 句柄的操作。ClawDSH product renderer 会在 WebUI 中把 Channel source 的 `user/message` 显示为 human message，且不改变其持久 source；其他 non-user source 保留上游 context 展示。它的 shadow renderer 会订阅 Chat slot ledger，并且只在标准 context 与 user renderer 都存在后激活，因此并发 Loader 激活顺序不会让 override 在这些条目注册前永久退出。
 
 ## Session 日志
 
@@ -48,7 +50,7 @@ Gateway 只有在认证和持久 route-transition 恢复都完成后才进入 re
 
 支持只按 `cataloged → installable → certified → enabled` 推进。Cataloged 记录来源；installable 证明精确锁定装配以及逐 Channel 配置、capability probe 与无密钥 contract 证据；certified 还证明当前发布的装配、安全与投递行为、无密钥装配 transcript 和所需真实平台流量；enabled 是明确激活的交付 profile 决策。实现基础不会跳过这些门禁。
 
-当前 sidecar 没有任何单独 Channel 达到 installable、certified 或 enabled。Production profile 始终挂载完整 seam 及其 invariant companion，同时保持 Gateway setting 关闭。显式 TypeScript source mapping 使三个 companion specifier 在干净 checkout 中都保持 source plane 解析，public bundle 则精确锁定 `@deepseek-ai/dsh-invariants@0.1.0-rc.6`。自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，贯穿锁定 Gateway 与真实 DSH Agent，并在 Linux x64 CI 中运行；经评审的 Darwin arm64 assembly 也已通过。当前没有运行带凭证的 Telegram 或 Feishu live 流量。稳定版 V1 不能投影安全 staging 的入站媒体；锁定 host 既没有关联最终回答的 delivery hook，也没有聚合账号 health；external 审查仍待完成；persistence 与 resume evidence 还必须证明上述 known-event degradation。已取代的 direct-adapter package 与 `ctx.legacyChannels` registry 均不存在；迁移 inventory 与发布 denylist 只识别其名称，不加载第二套 runtime。
+当前 sidecar 没有任何单独 Channel 达到 installable、certified 或 enabled。Production profile 始终挂载完整 seam 及其 invariant companion，同时保持 Gateway setting 关闭。显式 TypeScript source mapping 使三个 companion specifier 在干净 checkout 中都保持 source plane 解析，public bundle 则精确锁定 `@deepseek-ai/dsh-invariants@0.1.0-rc.6`。自有无密钥冒烟测试会用真实稳定版 schema 校验安全的 Telegram 与 Feishu 配置，贯穿锁定 Gateway 与真实 DSH Agent，并在 Linux x64 CI 中运行；经评审的 Darwin arm64 assembly 也已通过。一次带凭证的本地 Feishu smoke 已覆盖入站与最终回答投递，但它不是发布认证证据。稳定版 V1 不能投影安全 staging 的入站媒体；锁定 host 既没有关联最终回答的 delivery hook，也没有聚合账号 health；external 审查仍待完成；persistence 与 resume evidence 还必须证明上述 known-event degradation。已取代的 direct-adapter package 与 `ctx.legacyChannels` registry 均不存在；迁移 inventory 与发布 denylist 只识别其名称，不加载第二套 runtime。
 
 ## 曾考虑的替代方案
 

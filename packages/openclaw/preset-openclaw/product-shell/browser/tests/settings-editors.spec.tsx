@@ -15,8 +15,8 @@ describe('ClawDSH specialized settings editors', () => {
     const onChange = vi.fn()
     render(<AutomationRulesEditor id="rules" value={[]} disabled={false} onChange={onChange} />)
 
-    expect(screen.getByText(/保存后还需要开启自动运行/)).toBeTruthy()
-    expect(screen.getByText(/结果保存在.*独立对话/)).toBeTruthy()
+    expect(screen.getByText(/保存后会立即应用/)).toBeTruthy()
+    expect(screen.getByText(/最终回复发送回原会话/)).toBeTruthy()
     expect(screen.getByText(/每天 9 点整理待办/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '添加自动任务' }))
     expect(onChange).toHaveBeenCalledWith([
@@ -28,6 +28,33 @@ describe('ClawDSH specialized settings editors', () => {
         message: '',
       },
     ])
+  })
+
+  it('preserves private origin-channel delivery metadata while editing a rule', () => {
+    const onChange = vi.fn()
+    const delivery = {
+      kind: 'channel',
+      gatewayInstanceId: 'gateway-1',
+      channel: 'feishu',
+      account: 'account-1',
+      conversation: 'chat-1',
+    }
+    render(<AutomationRulesEditor
+      id="rules"
+      value={[{
+        id: 'rule-1',
+        name: 'old',
+        enabled: true,
+        schedule: { kind: 'every', seconds: 60 },
+        message: 'work',
+        delivery,
+      }]}
+      disabled={false}
+      onChange={onChange}
+    />)
+
+    fireEvent.change(screen.getByRole('textbox', { name: '任务名称' }), { target: { value: 'new' } })
+    expect(onChange).toHaveBeenLastCalledWith([expect.objectContaining({ name: 'new', delivery })])
   })
 
   it('does not reuse a deleted rule\'s durable session id', () => {

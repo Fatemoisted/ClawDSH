@@ -100,6 +100,7 @@ describe('ClawDSH product runtime projections', () => {
       expect.objectContaining({ path: ['shutdownGraceMs'], access: 'editable', label: '关停等待时间' }),
     ]))
     const automation = SETTINGS_MANIFEST.find(entry => entry.namespace === 'clawdsh-automation')
+    expect(automation?.effectTime).toBe('live')
     expect(automation?.fields).toEqual(expect.arrayContaining([
       expect.objectContaining({ path: ['enabled'], access: 'editable', label: '启用自动运行' }),
       expect.objectContaining({ path: ['cwd'], access: 'managed', label: '自动任务工作目录' }),
@@ -241,6 +242,48 @@ describe('ClawDSH product runtime projections', () => {
     await expect(stateFor({ enabled: false, state: 'active' })).resolves.toBe('misconfigured')
     await expect(stateFor({ enabled: false, state: 'failed' })).resolves.toBe('misconfigured')
     await expect(stateFor({ enabled: true, state: 'certified' })).resolves.toBe('misconfigured')
+  })
+
+  it('projects live Automation settings and authenticated Channel health without account identities', async () => {
+    const health = vi.fn(async () => ({
+      status: 'ready',
+      handshake: { gatewayInstanceId: 'private-gateway-id' },
+      accounts: [
+        { channel: 'feishu', account: 'private-account-id', status: 'ready' },
+        { channel: 'telegram', account: 'private-account-id-2', status: 'degraded' },
+      ],
+    }))
+    const channelRuntime = await internals.channelRuntimeEvidence({
+      get: (name: string) => name === 'channels' ? { health } : undefined,
+    } as unknown as Context)
+    expect(channelRuntime).toEqual({
+      status: 'ready',
+      bridgeAuthenticated: true,
+      accounts: [
+        { channel: 'feishu', status: 'ready' },
+        { channel: 'telegram', status: 'degraded' },
+      ],
+    })
+    expect(JSON.stringify(channelRuntime)).not.toContain('private-')
+
+    const response = internals.capabilitiesResponse([
+      entry('clawdsh-communication-plane', 'cordis:group', 2, false, true),
+      entry('channel', '@clawdsh/dsh-channel', 2),
+      entry('channel-agent', '@clawdsh/dsh-channel-agent', 2),
+      entry('channel-openclaw', '@clawdsh/dsh-channel-openclaw', 2),
+      entry('automation', '@clawdsh/dsh-automation', 2),
+    ], 'active', 'active', {
+      soul: true,
+      memory: false,
+      skills: false,
+      automation: true,
+      activity: true,
+    }, channelRuntime)
+    expect(response.capabilities.find(item => item.id === 'channels')?.channelRuntime).toEqual(channelRuntime)
+    expect(response.capabilities.find(item => item.id === 'automation')).toMatchObject({
+      effectTime: 'live',
+      state: 'active',
+    })
   })
 
   it('reports absent required Channel children as disabled under the disabled parent group', () => {

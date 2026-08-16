@@ -65,7 +65,7 @@ OpenClaw JSON 必须用唯一的 `clawdsh/local` 替换模型注册表，只声�
 
 [`PRODUCTION_OPENCLAW_LOCK`](src/locks.ts) 标识 OpenClaw `v2026.7.1-2`、其解引用后的 commit、发布归档、package 版本、Node engine、已检查的运行时依赖 lock、解压后的宿主文件树，以及按 Node platform 与 architecture 区分的完整安装运行时摘要。包内的 [`runtime/package-lock.json`](runtime/package-lock.json) 是部署 assembly 输入：已安装依赖必须精确匹配其中适用于当前平台的必需集合，项目中的每个普通文件也必须匹配获批的平台摘要。内部文件符号链接按其逻辑路径、项目内规范目标和目标字节锁定；逃逸链接、非文件目标和未跟踪 package 都会导致校验失败。没有唯一精确 aggregate lock 的平台无法启动 production。
 
-系统不会在运行时安装或更新外部 Channel 插件。运维人员需要在 `stateDir/npm/projects/<project>` 下为每个配置 lock 预置一个私有 NPM 项目。该项目必须为 private，只请求一个锁定 package 的精确版本，并且已检查、隐藏和实际依赖集合彼此一致。系统会校验每个已安装 package 的名称与版本；`projectTree` 会锁定项目 manifest、两份 NPM lock、主插件和每个传递依赖的字节。内部文件符号链接会连同目标一起锁定。唯一允许的外部 package 符号链接，是嵌套的可选 `openclaw` peer，且它必须解析到单独校验过的宿主；`projectTree` 包含该链接的存在性，其目标字节则继续由宿主运行时 lock 负责。随后，OpenClaw 运行时检查必须报告精确的 package、版本、integrity、规范路径、启用状态、可信官方安装和锁定 Channel id，且不能出现 error 诊断。第三方所有权与许可证义务仍归单独安装的 package；参见[第三方声明](THIRD_PARTY_NOTICES.md)。
+系统不会在运行时安装或更新外部 Channel 插件。运维人员需要在 `stateDir/npm/projects/<project>` 下为每个配置 lock 预置一个私有 NPM 项目。该项目必须为 private，只请求一个锁定 package 的精确版本，并且已检查、隐藏和实际依赖集合彼此一致。系统会校验每个已安装 package 的名称与版本；`projectTree` 会锁定项目 manifest、两份 NPM lock、主插件和每个传递依赖的字节。内部文件符号链接会连同目标一起锁定。唯一允许的外部 package 符号链接，是嵌套的可选 `openclaw` peer，且它必须解析到单独校验过的宿主；`projectTree` 包含该链接的存在性，其目标字节则继续由宿主运行时 lock 负责。预置流程还必须把相同的 source、精确 spec、规范安装路径、解析后的 package identity、版本与 integrity 持久化到 OpenClaw installed-plugin index；`openclaw.json` 中的 `plugins.installs` 保持缺失或为空。随后，OpenClaw 运行时检查必须报告精确的 package、版本、integrity、规范路径、启用状态、可信官方安装和锁定 Channel id，且不能出现 error 诊断。第三方所有权与许可证义务仍归单独安装的 package；参见[第三方声明](THIRD_PARTY_NOTICES.md)。
 
 ## 本地 IPC 与生命周期
 

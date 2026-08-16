@@ -14,7 +14,7 @@ function sourceFiles(directory = SOURCE_ROOT): readonly string[] {
 }
 
 describe('ClawDSH browser public seams', () => {
-  it('uses only public package exports and the four approved Slot contributions', () => {
+  it('uses only public package exports and the five approved Slot contributions', () => {
     const source = [
       ...sourceFiles().map(path => readFileSync(path, 'utf8')),
       readFileSync(join(BROWSER_ROOT, 'vite.config.ts'), 'utf8'),
@@ -22,12 +22,13 @@ describe('ClawDSH browser public seams', () => {
     const packageImports = [...source.matchAll(/from\s+['"]([^'"]+)['"]/g)].map(match => match[1])
 
     expect(packageImports.filter(specifier => specifier?.startsWith('@') && specifier.includes('/src/'))).toEqual([])
-    expect(source.match(/ctx\.slots\.register\(/g)).toHaveLength(4)
+    expect(source.match(/ctx\.slots\.register\(/g)).toHaveLength(5)
     for (const name of [
       'conversation.hero.agentPreset',
       'sidebar.footer.action',
       'settings.section',
       'conversation.view',
+      'conversation.chat.node',
     ]) expect(source).toContain(`name: '${name}'`)
     expect(source).toContain('priority: -1')
     expect(source).not.toMatch(/packages\/client\/[^'"\s]+\/src\//)

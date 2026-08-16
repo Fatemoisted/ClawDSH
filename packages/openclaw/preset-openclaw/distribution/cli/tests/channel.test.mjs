@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'no
 import { join } from 'node:path'
 import test from 'node:test'
 import { inspectNpmTarball } from '../lib/archive.mjs'
-import { createChannelManager } from '../lib/channel.mjs'
+import { checkedRuntimeNpmInvocation, createChannelManager } from '../lib/channel.mjs'
 import { createInstaller } from '../lib/installer.mjs'
 import {
   copyArtifact,
@@ -28,6 +28,16 @@ function setup() {
   }).init()
   return { root, home, bundleRoot, channelFixture }
 }
+
+test('Channel assembly uses the npm release that produced the checked runtime tree', () => {
+  assert.deepEqual(checkedRuntimeNpmInvocation(), {
+    command: 'npx',
+    args: [
+      '--yes', 'npm@10.9.7', 'ci', '--ignore-scripts', '--no-audit', '--no-fund',
+      '--registry=https://registry.npmjs.org/',
+    ],
+  })
+})
 
 test('explicit Channel install verifies and publishes production assets idempotently', async () => {
   const fixture = setup()

@@ -6,8 +6,10 @@ English | [中文](README.zh.md)
 
 **OpenClaw counterpart**: Cron (`v2026.1.5` `src/cron/`): `cron`/`at`/`every` schedules via the croner library OpenClaw pins, one dedicated session per job, `[cron:<jobId> <name>] <message>` framing, a single re-arming timer for the earliest occurrence.
 
-**Seam** (all pre-existing, none added):
+**Seam**:
 - `ctx.agents` / `ctx.agentPresets` / `ctx.sessions` / `ctx.agentDefaultModel` (declared injects): one durable agent per rule, composed from the configured ClawDSH preset and resumed across restarts; `ctx.agents.resume` falls back to `create` only when no artifact exists, and turns use `followup → whenIdle → sessions.flush`;
+- `ctx.tools` / `ctx.settings`: the model-visible `automation` tool creates, lists, updates, and removes rules in the durable `clawdsh-automation` user-settings section; committed changes replace the immutable scheduler runtime immediately;
+- `ctx.get('channels')` (optional): a task created from an owner-authenticated channel message stores that message's durable route privately and sends the successful scheduled answer back to the same conversation;
 - `ctx.get('sessionPersistence')` (optional read): session artifacts; without a persistence service rules start fresh per process;
 - `ctx.get('sessionTitle')` and `ctx.get('workspaceRegistry')` (optional reads): when installed, a scheduled session receives a readable title and is attached to the workspace owning its configured `cwd`; an installed service that cannot complete this publication fails plugin initialization;
 - The session log is the run log: `automation/run` records (`started`/`ok`/`error` + `scheduledAt`) bookend each logged turn — no separate run-log artifact.
@@ -16,9 +18,11 @@ English | [中文](README.zh.md)
 
 **Spec**: docs/specs/feature-automation.md · **Status**: implemented (Phase 3 ✅)
 
-The row stays mounted and owns the `clawdsh-automation` settings namespace. Its business-level `enabled` defaults to `false`; while disabled it creates no runtime, timer, or automation session. Settings are restart-applied.
+The row stays mounted and owns the `clawdsh-automation` settings namespace. Its business-level `enabled` defaults to `false`; while disabled it creates no runtime, timer, or automation session. Settings and Agent tool changes apply live.
 
 ## Usage
+
+In a ClawDSH conversation, ask for a reminder or recurring task normally. The Agent receives one explicit `automation` tool and must use it instead of Bash, Batch, `jobs`, `sleep`, or a background process. The tool accepts `list`, `add`, `update`, and `remove`; `add` uses exactly one of `after_seconds`, `at`, `every_seconds`, or `cron` (plus optional `time_zone`).
 
 ```yaml
 - id: automation
@@ -44,16 +48,19 @@ Rule ids must match `[a-zA-Z0-9_-]+` (they land in persisted session names). The
 
 ## Design notes
 
-- **Config is the durable store**: rules live in cordis.yml, so no job-store file, no CRUD tools, no new storage seam (runtime-editable rules are deferred);
+- **Settings are the durable store**: composition Config supplies the base, while the `clawdsh-automation` user-settings section stores tool- and UI-authored rules; no separate job-store file is needed;
+- **One authoritative management tool**: `automation` handles CRUD and explicitly directs the model away from Batch and background-process substitutes. Mutations require a direct human input, and only an owner-authenticated channel message may attach channel delivery;
+- **Live replacement**: each committed settings revision disposes the previous scheduler completely before creating the next runtime. Product Settings reads the current durable `enabled` value instead of a restart-time snapshot, while a failed replacement remains visible to the tool caller;
 - **Disabled by default**: the schema defaults `enabled` to false, and the disabled path validates configuration but creates no runtime, timer, or session;
 - **One re-arming unref'd timer**: armed to the earliest occurrence across rules; on wake, due rules run sequentially, then the timer re-arms (OpenClaw's scheduler shape);
 - **Per-rule session lifecycle**: resume-or-create keeps the session log across restarts without replacing a corrupt persisted session; new sessions record current `cwd` and `agentPreset`, resumed sessions retain their recorded workspace, and the configured preset is mounted before publication, so its Soul, Memory, Skills, and other contributed capabilities are available to scheduled turns;
 - **Interval semantics**: an `every` rule first runs after one complete interval. The next occurrence is chosen after the prior run completes, so long runs do not trigger catch-up bursts;
-- **Failure semantics**: a durable `started` record lands before the turn; exactly one terminal record follows and requires an actual `turn/end`. Cron and interval failures wait for their next declared occurrence. An `at` attempt is terminal whether it succeeds or fails, so it is never an implicit retry loop.
+- **Failure semantics**: a durable `started` record lands before the turn; exactly one terminal record follows and requires an actual `turn/end`. When origin-channel delivery is configured, an empty answer, unavailable Provider, or failed send makes the run `error`. Cron and interval failures wait for their next declared occurrence. An `at` attempt is terminal whether it succeeds or fails, so it is never an implicit retry loop.
 
 ## Changelog
 
 - 0.1.0: first release (cron/at/every rules, per-rule durable sessions, run records, once-guard; 8 contract tests, real-composition keyless).
+- 0.1.0-rc.1: added the Agent-facing CRUD tool, live settings reconciliation, current durable enablement in Product Settings, and owner-bound origin-channel delivery.
 
 ## Model Experience
 
@@ -79,9 +86,9 @@ Append-only: the framed message lands mid-log like any turn input; no system-pro
 
 ## Known Limitations and Deferred Work
 
-- **No channel delivery**: OpenClaw's `deliver` (post the reply to a channel) is not ported; replies stay in the rule's session log;
+- **Channel delivery is origin-bound**: only a task created from an owner-authenticated channel message automatically returns to that exact conversation. UI- and Web-created tasks remain in the dedicated Automation session, and the model cannot supply or retarget raw channel ids;
 - **No main-session summary**: OpenClaw's `main` target (`System:` lines injected into the main session) is not ported; scheduled sessions are nevertheless visible in their workspace with the title `自动任务 · <name-or-id>` when the host's title and workspace services are installed;
 - **No automatic retries**: failures record an `error` run; cron/every wait for their next declared occurrence, while a failed `at` attempt remains terminal (OpenClaw-isomorphic);
-- **No runtime-editable rules**: rules are config-declared; OpenClaw's job store + `cron.add/remove/…` tools and CLI are deferred until a consumer needs runtime edits;
+- **No Automation CLI**: runtime CRUD is available to the Agent and Settings UI, but no separate command-line surface is provided;
 - **`at` once-guard needs the session artifact**: if the persisted session log is deleted, a past one-shot re-fires once (at-least-once semantics);
 - **`every` re-anchors at mount**: each boot begins a fresh interval and waits for it to elapse; process downtime does not create catch-up runs.

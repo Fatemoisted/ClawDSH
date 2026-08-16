@@ -24,6 +24,7 @@ import {
   type ClawdshCapabilitiesResponse,
   type ClawdshCapability,
   type ClawdshCapabilityComponent,
+  type ClawdshChannelRuntimeEvidence,
   type ClawdshFiberPhase,
   type ClawdshLoaderEntry,
   type ClawdshLoaderState,
@@ -192,7 +193,7 @@ const CAPABILITY_DEFINITIONS: readonly CapabilityDefinition[] = [
     label: 'Automation',
     description: 'Runs personal-assistant tasks from explicit schedules and rules.',
     dependencies: [],
-    effectTime: 'restart',
+    effectTime: 'live',
     required: false,
     stateComponentId: 'automation',
     components: [
@@ -340,6 +341,7 @@ interface ProductEvidence {
   readonly soulPreset: ClawdshLoaderState
   readonly channelPlane: ClawdshLoaderState
   readonly openClawGateway: ClawdshLoaderState
+  readonly channelRuntime?: ClawdshChannelRuntimeEvidence
   readonly enabled: RuntimeEnablement
 }
 
@@ -371,6 +373,10 @@ interface OpenClawControlSnapshot {
 
 interface OpenClawControl {
   readonly snapshot: () => OpenClawControlSnapshot | Promise<OpenClawControlSnapshot>
+}
+
+interface ChannelHealthControl {
+  readonly health: (signal?: AbortSignal) => unknown | Promise<unknown>
 }
 
 interface CompositionRow {
@@ -429,6 +435,54 @@ async function openClawGatewayState(ctx: Context): Promise<ClawdshLoaderState> {
     return 'misconfigured'
   } catch {
     return 'misconfigured'
+  }
+}
+
+const CHANNEL_RUNTIME_STATUSES = new Set([
+  'starting', 'ready', 'degraded', 'stopping', 'stopped', 'failed',
+])
+
+const CHANNEL_ACCOUNT_STATUSES = new Set([
+  'disabled', 'connecting', 'ready', 'degraded', 'failed',
+])
+
+async function channelRuntimeEvidence(
+  ctx: Context,
+  signal?: AbortSignal,
+): Promise<ClawdshChannelRuntimeEvidence> {
+  const channels = ctx.get('channels') as ChannelHealthControl | undefined
+  if (channels === undefined || typeof channels.health !== 'function') {
+    return { status: 'unavailable', bridgeAuthenticated: false, accounts: [] }
+  }
+  try {
+    const candidate: unknown = await channels.health(signal)
+    if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) {
+      return { status: 'unavailable', bridgeAuthenticated: false, accounts: [] }
+    }
+    const health = candidate as Record<string, unknown>
+    const status = typeof health.status === 'string' && CHANNEL_RUNTIME_STATUSES.has(health.status)
+      ? health.status as Exclude<ClawdshChannelRuntimeEvidence['status'], 'unavailable'>
+      : 'unavailable'
+    const accounts = Array.isArray(health.accounts)
+      ? health.accounts.flatMap((value): ClawdshChannelRuntimeEvidence['accounts'][number][] => {
+        if (typeof value !== 'object' || value === null || Array.isArray(value)) return []
+        const account = value as Record<string, unknown>
+        if (typeof account.channel !== 'string'
+          || typeof account.status !== 'string'
+          || !CHANNEL_ACCOUNT_STATUSES.has(account.status)) return []
+        return [{
+          channel: account.channel,
+          status: account.status as ClawdshChannelRuntimeEvidence['accounts'][number]['status'],
+        }]
+      })
+      : []
+    return {
+      status,
+      bridgeAuthenticated: typeof health.handshake === 'object' && health.handshake !== null,
+      accounts,
+    }
+  } catch {
+    return { status: 'unavailable', bridgeAuthenticated: false, accounts: [] }
   }
 }
 
@@ -498,7 +552,13 @@ function capabilityView(
     state,
     components,
   }
-  return definition.channels === undefined ? common : { ...common, channels: definition.channels }
+  return definition.channels === undefined
+    ? common
+    : {
+      ...common,
+      channels: definition.channels,
+      ...(evidence.channelRuntime === undefined ? {} : { channelRuntime: evidence.channelRuntime }),
+    }
 }
 
 function capabilitiesResponse(
@@ -506,6 +566,7 @@ function capabilitiesResponse(
   soulPreset: ClawdshLoaderState,
   openClawGateway: ClawdshLoaderState = 'misconfigured',
   enabled: RuntimeEnablement = DEFAULT_RUNTIME_ENABLEMENT,
+  channelRuntime?: ClawdshChannelRuntimeEvidence,
 ): ClawdshCapabilitiesResponse {
   const allEntries = [...entries]
   const inventory = loaderInventory(allEntries)
@@ -513,6 +574,7 @@ function capabilitiesResponse(
     soulPreset,
     channelPlane: communicationPlaneState(allEntries),
     openClawGateway,
+    ...(channelRuntime === undefined ? {} : { channelRuntime }),
     enabled,
   }
   return jsonBoundary({
@@ -628,14 +690,20 @@ function registerRpc(
       const enabled: RuntimeEnablement = {
         ...evidence.enabled,
         soul: settingsControl.desiredEnabled('clawdsh-soul'),
+        automation: settingsControl.desiredEnabled('clawdsh-automation'),
       }
+      const [gateway, channelRuntime] = await Promise.all([
+        openClawGatewayState(ctx),
+        channelRuntimeEvidence(ctx, signal),
+      ])
       return {
         ok: true,
         value: capabilitiesResponse(
           entries,
           evidence.soulPreset,
-          await openClawGatewayState(ctx),
+          gateway,
           enabled,
+          channelRuntime,
         ),
       }
     }
@@ -691,6 +759,7 @@ export const internals = {
   assetPath,
   bootstrapResponse,
   capabilitiesResponse,
+  channelRuntimeEvidence,
   hasManagedSoul,
   openClawGatewayState,
   pluginOrigin,

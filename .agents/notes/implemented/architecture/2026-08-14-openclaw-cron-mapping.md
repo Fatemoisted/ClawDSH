@@ -4,7 +4,7 @@ Status: implemented
 
 English | [中文](2026-08-14-openclaw-cron-mapping.zh.md)
 
-**Superseded in part.** The scheduler ownership decision remains current; preset composition, session discoverability, `every`/`at` timing, terminal run persistence, and lifecycle failure behavior are owned by [Composed and discoverable Automation sessions](../bug-fix/2026-08-16-automation-composed-discoverable-sessions.md).
+**Superseded in part.** The scheduler ownership decision remains current; preset composition, session discoverability, `every`/`at` timing, terminal run persistence, and lifecycle failure behavior are owned by [Composed and discoverable Automation sessions](../bug-fix/2026-08-16-automation-composed-discoverable-sessions.md), while live rule CRUD and origin-channel delivery are owned by [Agent-managed Automation](../feature/2026-08-17-agent-managed-automation.md).
 
 ## Problem
 
@@ -25,7 +25,7 @@ The dsh mapping:
 
 | OpenClaw cron part | dsh realization |
 |---|---|
-| Job store `cron/jobs.json` | Config-declared `rules` array (z schema) — the cordis.yml is the durable store; no new storage seam, no CRUD tools in this batch |
+| Job store `cron/jobs.json` | The `clawdsh-automation` Settings section stores the z-schema `rules` array over composition Config; the Agent tool and Settings UI mutate it without a separate job-store file |
 | `cron` schedule | `croner` ^9.1.0 (the exact library OpenClaw proves), validated at mount |
 | `every` / `at` schedules | Same semantics: anchor-based interval with no catch-up; one-shot with a durable once-guard |
 | Single re-arming timer | One unref'd `setTimeout` to the earliest `nextRunAt` (OpenClaw's scheduler shape) |
@@ -34,7 +34,7 @@ The dsh mapping:
 | Run log `cron/runs/<jobId>.jsonl` | The session log itself: `automation/run` events (`started`/`ok`/`error` + `scheduledAt`) around the logged turn — no separate artifact |
 | In-flight dedup / no retries / no catch-up | Same: per-rule WeakMap dedup, failures logged and re-armed, missed ticks skipped |
 | `main` session `System:` injection | Not ported in this batch — no main-session concept is wired in the `clawdsh` profile (Known Limitation) |
-| Channel `deliver` | Not ported in this batch (Known Limitation) |
+| Channel `deliver` | Owner-authenticated origin routes are derived from durable message provenance and receive the final text through `channel.action`; arbitrary retargeting remains unsupported |
 
 Why not the dsh seams:
 
@@ -45,7 +45,7 @@ Why not the dsh seams:
 
 **A bridge over `ctx.schedule` restricted to `at`/`every ≥300s`.** Rejected: cannot express cron, cannot guarantee the dedicated-session model, and the attach condition fights one-session-per-rule.
 
-**Port the OpenClaw job store + CRUD tools + CLI.** Rejected for this batch: config-declared rules need no new storage seam and no mutable store; a runtime-mutable store with agent-facing CRUD tools is a later surface, revisitable when a consumer needs runtime-editable rules.
+**Port the OpenClaw job store + CRUD tools + CLI.** The separate store and CLI remain rejected. The later Agent consumer is now served by a single CRUD tool over the existing durable Settings section, as recorded in [Agent-managed Automation](../feature/2026-08-17-agent-managed-automation.md).
 
 **Use `runMaintenance` + `followup` (the schedule package's pattern) for firing.** Partially reused: the fire path uses the same `followup → whenIdle → sessions.flush` idiom channel-agent and headless prove, but `runMaintenance` is schedule-internal (agent-owned); automation drives its own agents directly.
 
@@ -54,4 +54,4 @@ Why not the dsh seams:
 - The matrix row's seam cell is corrected to `own unref'd croner timer + agent.followup/whenIdle/sessions.flush turn bridge（ctx.schedule rejected: session-local + 300s floor + tools-only API）`.
 - The `clawdsh` preset mounts `automation` disabled (opt-in; a misconfigured rule fails mount loudly naming the rule).
 - `automation/run` is a session event declaration-merged into `SessionEventMap`; the turn itself is a normal logged turn, so "model-visible means logged" holds without a new mechanism.
-- Channel delivery, main-session summaries, and retries revisit this note rather than assuming structure.
+- Owner-bound channel delivery is implemented without model-authored routes; arbitrary delivery, main-session summaries, and retries remain unsupported.

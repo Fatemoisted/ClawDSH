@@ -112,6 +112,7 @@ describe('ClawDSH installed profile identity', () => {
     )
     expect(entry.match(stagingRoot)).toHaveLength(2)
     expect(entry).toMatch(/gatewayInstanceId: !!js process\.env\.CLAWDSH_OPENCLAW_GATEWAY_INSTANCE_ID \|\| 'clawdsh-managed'/)
+    expect(entry).toMatch(/extensions: !!js JSON\.parse\(process\.env\.CLAWDSH_OPENCLAW_EXTENSIONS_JSON \|\| '\[\]'\)/)
     expect(entry).not.toMatch(/dsh-channel-(?:feishu|telegram|core)/)
   })
 

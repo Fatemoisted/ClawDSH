@@ -94,6 +94,19 @@ export interface ClawdshChannelCatalogEntry {
   readonly support: ClawdshSupportState
 }
 
+/** Sanitized live communication-plane evidence; account identities are deliberately omitted. */
+export interface ClawdshChannelRuntimeEvidence {
+  /** Provider and supervised Gateway lifecycle state. */
+  readonly status: 'unavailable' | 'starting' | 'ready' | 'degraded' | 'stopping' | 'stopped' | 'failed'
+  /** Whether the local Gateway completed the authenticated Bridge handshake. */
+  readonly bridgeAuthenticated: boolean
+  /** Per-channel connection states when the locked Gateway exposes them. */
+  readonly accounts: readonly {
+    readonly channel: string
+    readonly status: 'disabled' | 'connecting' | 'ready' | 'degraded' | 'failed'
+  }[]
+}
+
 /** Product capability with explicit dependencies and runtime evidence. */
 export interface ClawdshCapability {
   readonly id: string
@@ -105,6 +118,7 @@ export interface ClawdshCapability {
   readonly state: ClawdshLoaderState
   readonly components: readonly ClawdshCapabilityComponent[]
   readonly channels?: readonly ClawdshChannelCatalogEntry[]
+  readonly channelRuntime?: ClawdshChannelRuntimeEvidence
 }
 
 /** Read-only capability and Loader projection. */
@@ -564,9 +578,12 @@ function parseCredentialDescriptor(value: unknown): void {
 function parseCapability(value: unknown): void {
   const record = exactRecord(
     value,
-    ['id', 'label', 'description', 'dependencies', 'effectTime', 'required', 'state', 'components', 'channels'],
+    [
+      'id', 'label', 'description', 'dependencies', 'effectTime', 'required', 'state', 'components',
+      'channels', 'channelRuntime',
+    ],
     'capability',
-    ['channels'],
+    ['channels', 'channelRuntime'],
   )
   stringField(record.id, 'capability.id')
   stringField(record.label, 'capability.label')
@@ -580,6 +597,31 @@ function parseCapability(value: unknown): void {
   if (record.channels !== undefined) {
     if (!Array.isArray(record.channels)) throw new TypeError('capability.channels must be an array')
     for (const channel of record.channels) parseChannel(channel)
+  }
+  if (record.channelRuntime !== undefined) parseChannelRuntime(record.channelRuntime)
+}
+
+function parseChannelRuntime(value: unknown): void {
+  const record = exactRecord(
+    value,
+    ['status', 'bridgeAuthenticated', 'accounts'],
+    'channel runtime evidence',
+  )
+  enumField(
+    record.status,
+    ['unavailable', 'starting', 'ready', 'degraded', 'stopping', 'stopped', 'failed'],
+    'channel runtime status',
+  )
+  booleanField(record.bridgeAuthenticated, 'channel runtime bridgeAuthenticated')
+  if (!Array.isArray(record.accounts)) throw new TypeError('channel runtime accounts must be an array')
+  for (const candidate of record.accounts) {
+    const account = exactRecord(candidate, ['channel', 'status'], 'channel runtime account')
+    stringField(account.channel, 'channel runtime account.channel')
+    enumField(
+      account.status,
+      ['disabled', 'connecting', 'ready', 'degraded', 'failed'],
+      'channel runtime account.status',
+    )
   }
 }
 
