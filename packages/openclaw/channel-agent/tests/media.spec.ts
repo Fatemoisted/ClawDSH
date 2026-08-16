@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { link, mkdtemp, mkdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { link, mkdtemp, mkdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -20,12 +20,29 @@ const raceHooks = vi.hoisted((): {
   beforeRealpath: ((path: string) => Promise<void>) | undefined
   beforeOpen: (() => Promise<void>) | undefined
   afterRead: (() => Promise<void>) | undefined
-} => ({ beforeRealpath: undefined, beforeOpen: undefined, afterRead: undefined }))
+  changedLstatIdentityPath: string | undefined
+} => ({
+  beforeRealpath: undefined,
+  beforeOpen: undefined,
+  afterRead: undefined,
+  changedLstatIdentityPath: undefined,
+}))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   return {
     ...actual,
+    lstat: async (...args: Parameters<typeof actual.lstat>) => {
+      const info = await actual.lstat(...args)
+      const path = args[0]
+      if (typeof path !== 'string' || path !== raceHooks.changedLstatIdentityPath) return info
+      return new Proxy(info, {
+        get(target, property, receiver) {
+          if (property === 'ino') return Number.MAX_SAFE_INTEGER
+          return Reflect.get(target, property, receiver) as unknown
+        },
+      })
+    },
     realpath: async (...args: Parameters<typeof actual.realpath>) => {
       const path = args[0]
       if (typeof path === 'string' && raceHooks.beforeRealpath !== undefined) {
@@ -64,6 +81,7 @@ afterEach(async () => {
   raceHooks.beforeRealpath = undefined
   raceHooks.beforeOpen = undefined
   raceHooks.afterRead = undefined
+  raceHooks.changedLstatIdentityPath = undefined
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
 
@@ -235,8 +253,9 @@ describe('staged channel media intake', () => {
     await mkdir(join(staging, 'nested'))
     await writeFile(join(staging, 'nested/image.png'), data)
     await writeFile(join(outside, 'image.png'), data)
+    const inspectedImage = join(await realpath(staging), 'nested', 'image.png')
     raceHooks.beforeRealpath = async (path) => {
-      if (!path.endsWith('/nested/image.png')) return
+      if (path !== inspectedImage) return
       raceHooks.beforeRealpath = undefined
       await rename(join(staging, 'nested'), join(staging, 'original'))
       await symlink(outside, join(staging, 'nested'), 'dir')
@@ -266,10 +285,9 @@ describe('staged channel media intake', () => {
     const data = Buffer.from('stable-file-changing-parent')
     await mkdir(join(staging, 'nested'))
     await writeFile(join(staging, 'nested/image.png'), data)
+    const inspectedParent = join(await realpath(staging), 'nested')
     raceHooks.afterRead = async () => {
-      await rename(join(staging, 'nested'), join(staging, 'original'))
-      await mkdir(join(staging, 'nested'))
-      await link(join(staging, 'original/image.png'), join(staging, 'nested/image.png'))
+      raceHooks.changedLstatIdentityPath = inspectedParent
     }
 
     await expect(importStagedImages(store().service, staging, [staged('nested/image.png', data)], 100))

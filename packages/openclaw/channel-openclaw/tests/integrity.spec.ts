@@ -393,7 +393,9 @@ describe('checked runtime dependency installation', () => {
       .resolves.toBeUndefined()
   })
 
-  it('rejects changed dependency bytes and platforms without one exact aggregate lock', async () => {
+  // This case materializes and hashes four dependency trees. Windows CI's
+  // filesystem can exceed Vitest's 5-second default, so keep extra time local.
+  it('rejects changed dependency bytes and platforms without one exact aggregate lock', { timeout: 15_000 }, async () => {
     const changed = await runtimeFixture()
     const dependencyPath = Object.keys(changed.checkedLock.packages)
       .find(path => path !== '' && path !== 'node_modules/openclaw') as string

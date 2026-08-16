@@ -235,7 +235,10 @@ describe('runtime inspection contract', () => {
   })
 })
 
-describe('managed Gateway supervision', () => {
+// Managed deployment requires POSIX 0700 directory semantics. Keep the pure
+// runtime-inspection contract above native on Windows while the production
+// supervisor remains fail-closed until a Windows ACL seam exists.
+describe.skipIf(process.platform === 'win32')('managed Gateway supervision', () => {
   it('exposes structural and read-only deployment preflight before configuration is persisted', async () => {
     const app = await fixture()
     expect(() => { validateOpenClawConfig(app.config) }).not.toThrow()

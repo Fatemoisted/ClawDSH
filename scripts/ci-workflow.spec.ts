@@ -200,6 +200,25 @@ describe('CI workflow', () => {
     expect(config).not.toContain('packages/lsp/lsp-stdio/src/instance.ts')
   })
 
+  it('excludes only the POSIX OpenClaw IPC seam from native Windows coverage', () => {
+    const config = readFileSync(resolve(root, 'vitest.config.ts'), 'utf8')
+    const supervisorSpec = readFileSync(
+      resolve(root, 'packages/openclaw/channel-openclaw/tests/supervisor.spec.ts'),
+      'utf8',
+    )
+
+    expect(config).toContain("'packages/openclaw/channel-openclaw/tests/server.spec.ts'")
+    expect(config).toContain("'packages/openclaw/channel-openclaw/tests/server-probe.spec.ts'")
+    expect(config).not.toContain("'packages/openclaw/channel-openclaw/tests/supervisor.spec.ts'")
+    expect(config).toContain("'packages/openclaw/channel-openclaw/src/server.ts'")
+    expect(config).toContain("'packages/openclaw/channel-openclaw/src/supervisor.ts'")
+    expect(config).not.toContain("'packages/openclaw/channel-openclaw/src/**/*.ts'")
+    expect(supervisorSpec).toContain(
+      "describe.skipIf(process.platform === 'win32')('managed Gateway supervision'",
+    )
+    expect(supervisorSpec).toContain("describe('runtime inspection contract'")
+  })
+
   it('requires one release-shaped Python runtime target on every pull request', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml')
     const pythonRuntime = workflowJob(workflow, 'python-runtime')

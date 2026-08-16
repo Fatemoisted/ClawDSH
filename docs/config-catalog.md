@@ -111,7 +111,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/openclaw/channel-agent/src/index.ts:105`](../packages/openclaw/channel-agent/src/index.ts)
+Source: [`packages/openclaw/channel-agent/src/index.ts:107`](../packages/openclaw/channel-agent/src/index.ts)
 
 <a id="clawdshdsh-channel-openclaw"></a>
 

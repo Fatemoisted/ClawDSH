@@ -42,11 +42,26 @@ const windowsUnsupportedTests = process.platform === 'win32'
       'packages/subprocess/subprocess-local/tests/process-inspector.spec.ts',
       'packages/subprocess/subprocess-local/tests/spawn.spec.ts',
       'packages/subprocess/subprocess-local/tests/terminal.spec.ts',
+      // The OpenClaw Provider intentionally fails closed on Windows until a
+      // native named-pipe ACL seam exists. These suites exercise POSIX IPC,
+      // not Windows security.
+      'packages/openclaw/channel-openclaw/tests/server.spec.ts',
+      'packages/openclaw/channel-openclaw/tests/server-probe.spec.ts',
     ]
   : []
 
 const windowsUnsupportedCoveragePackages = process.platform === 'win32'
   ? [...windowsUnsupportedPackages, 'packages/subprocess/*']
+  : []
+
+// Keep cross-platform Channel verification under native Windows coverage,
+// excluding only the POSIX IPC and supervision sources whose production
+// contracts reject Windows until native peer and directory ACL seams exist.
+const windowsUnsupportedCoverageSources = process.platform === 'win32'
+  ? [
+      'packages/openclaw/channel-openclaw/src/server.ts',
+      'packages/openclaw/channel-openclaw/src/supervisor.ts',
+    ]
   : []
 
 // Windows-only packages: their sources execute exclusively on win32 (koffi
@@ -262,6 +277,7 @@ export default defineConfig({
         'packages/interaction/commands/src/invariant.ts',
         'packages/session/session-projection/src/index.ts',
         ...windowsUnsupportedCoveragePackages.map(path => `${path}/src/**/*.ts`),
+        ...windowsUnsupportedCoverageSources,
         ...windowsOnlyCoverageExclusions,
         ...windowsRunnerCoverageExclusions,
         ...pwshCoverageExclusions,
