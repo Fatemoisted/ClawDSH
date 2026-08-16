@@ -18,6 +18,7 @@ import {
   channelTurnCancelV1Schema,
   channelTurnEnvelopeV1Schema,
   deliveryReceiptAdvances,
+  serializeKeyedOperation,
   type ChannelActionV1,
   type ChannelActionResultV1,
   type ChannelBridgeHandshakeV1,
@@ -54,6 +55,11 @@ export interface ChannelIpcConfig {
   readonly handshakeTimeoutMs: number
 }
 
+interface InFlightAction {
+  readonly digest: string
+  readonly promise: Promise<ChannelActionResultV1>
+}
+
 /** Per-startup secrets injected only into the supervised bridge process. */
 export interface ChannelIpcSecrets {
   /** Ephemeral bearer token compared in constant time during handshake. */
@@ -82,6 +88,8 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
   private connection: NdjsonConnection | undefined
   private peer: JsonRpcPeer | undefined
   private readonly peerDrains = new Map<JsonRpcPeer, Promise<void>>()
+  private readonly actionOperations = new Map<string, InFlightAction>()
+  private readonly deliveryOperations = new Map<string, Promise<void>>()
   private handshake: ChannelBridgeHandshakeV1 | undefined
   private lifecycle: ChannelHealthV1['status'] = 'starting'
   private diagnostic: string | undefined
@@ -145,42 +153,71 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
     if ((action.kind === 'send' || action.kind === 'edit') && action.media.length > 0) {
       throw new Error('channel-openclaw: outbound media awaits a DSH staging writer and is not simulated')
     }
-    const mutation = isMutation(action)
+    if (!isMutation(action)) return await this.dispatchAction(action, 'channel.action', signal)
     const key = action.actionId
     const digest = digestJson(action)
+    const inFlight = this.actionOperations.get(key)
+    if (inFlight !== undefined) {
+      if (inFlight.digest !== digest) throw new Error('channel-openclaw: action id was reused with different input')
+      throw new Error('channel-openclaw: action is already running; concurrent dispatch is forbidden')
+    }
+    // Reserve synchronously before the first durable await so a same-key call
+    // cannot also observe an absent row and dispatch a duplicate mutation.
+    const operation = Promise.resolve().then(() => this.executeMutation(action, key, digest, signal))
+    this.actionOperations.set(key, { digest, promise: operation })
+    void operation.finally(() => {
+      this.actionOperations.delete(key)
+    }).catch((_actionFailureReturnedToCaller: unknown) => {
+      // The caller owns the original rejection; this observes finally()'s derived branch only.
+    })
+    return await operation
+  }
+
+  /** Execute one mutation after its action-id reservation is visible. */
+  private async executeMutation(
+    action: ChannelActionV1,
+    key: string,
+    digest: string,
+    signal?: AbortSignal,
+  ): Promise<ChannelActionResultV1> {
+    signal?.throwIfAborted()
+    const previous = this.actions.get(key)
     let reconcile = false
-    if (mutation) {
-      const previous = this.actions.get(key)
-      if (previous !== undefined) {
-        if (previous.digest !== digest) throw new Error('channel-openclaw: action id was reused with different input')
-        if (previous.phase === 'completed') return previous.result
-        if (previous.phase === 'running') {
-          throw new Error('channel-openclaw: action is already running; concurrent dispatch is forbidden')
-        }
-        reconcile = true
-      } else {
-        await this.actions.put(key, { digest, action, phase: 'running', updatedAt: Date.now() })
+    if (previous !== undefined) {
+      if (previous.digest !== digest) throw new Error('channel-openclaw: action id was reused with different input')
+      if (previous.phase === 'completed') return previous.result
+      if (previous.phase === 'running') {
+        throw new Error('channel-openclaw: action is already running; concurrent dispatch is forbidden')
       }
+      reconcile = true
+    } else {
+      await this.actions.put(key, { digest, action, phase: 'running', updatedAt: Date.now() })
     }
     try {
       const method = reconcile ? 'channel.reconcile' : 'channel.action'
-      const raw = await this.requirePeer().request(method, action as unknown as JsonObject, signal)
-      const result = channelActionResultV1Schema.parse(raw)
-      const actionId = 'subject' in result ? result.subject.actionId : result.actionId
-      if (actionId !== action.actionId) {
-        throw new Error('channel-openclaw: action result does not match the request')
-      }
-      if ('subject' in result) await this.persistReceipt(result)
-      if (mutation) {
-        await this.actions.put(key, { digest, action, phase: 'completed', result, updatedAt: Date.now() })
-      }
+      const result = await this.dispatchAction(action, method, signal)
+      await this.actions.put(key, { digest, action, phase: 'completed', result, updatedAt: Date.now() })
       return result
     } catch (error) {
-      if (mutation) {
-        await this.actions.put(key, { digest, action, phase: 'needs-recovery', updatedAt: Date.now() })
-      }
+      await this.actions.put(key, { digest, action, phase: 'needs-recovery', updatedAt: Date.now() })
       throw error
     }
+  }
+
+  /** Dispatch one authorized action and validate its exact result identity. */
+  private async dispatchAction(
+    action: ChannelActionV1,
+    method: 'channel.action' | 'channel.reconcile',
+    signal?: AbortSignal,
+  ): Promise<ChannelActionResultV1> {
+    const raw = await this.requirePeer().request(method, action as unknown as JsonObject, signal)
+    const result = channelActionResultV1Schema.parse(raw)
+    const actionId = 'subject' in result ? result.subject.actionId : result.actionId
+    if (actionId !== action.actionId) {
+      throw new Error('channel-openclaw: action result does not match the request')
+    }
+    if ('subject' in result) await this.persistReceipt(result)
+    return result
   }
 
   /** Query bridge account health, degrading to a local diagnostic on transport failure. */
@@ -252,6 +289,7 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
     } catch (error) {
       failures.push(errorMessageError(error))
     }
+    await this.drainOperations()
     try {
       await this.serverClose
     } catch (error) {
@@ -297,6 +335,16 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
   private async drainPeers(): Promise<void> {
     while (this.peerDrains.size > 0) {
       await Promise.all([...this.peerDrains.values()])
+    }
+  }
+
+  /** Await every keyed action and receipt operation admitted before shutdown. */
+  private async drainOperations(): Promise<void> {
+    while (this.actionOperations.size > 0 || this.deliveryOperations.size > 0) {
+      await Promise.allSettled([
+        ...[...this.actionOperations.values()].map(entry => entry.promise),
+        ...this.deliveryOperations.values(),
+      ])
     }
   }
 
@@ -446,19 +494,21 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
     void peer.notify('turn.progress', notification as unknown as JsonObject).catch(() => {})
   }
 
-  private async persistReceipt(receipt: ChannelDeliveryReceiptV1): Promise<void> {
+  private persistReceipt(receipt: ChannelDeliveryReceiptV1): Promise<void> {
     const key = receipt.deliveryId
-    const previous = this.deliveries.get(key)
-    if (previous !== undefined) {
-      if (JSON.stringify(previous.receipt.subject) !== JSON.stringify(receipt.subject)) {
-        throw new Error('channel-openclaw: delivery id was reused for another subject')
+    return serializeKeyedOperation(this.deliveryOperations, key, async () => {
+      const previous = this.deliveries.get(key)
+      if (previous !== undefined) {
+        if (JSON.stringify(previous.receipt.subject) !== JSON.stringify(receipt.subject)) {
+          throw new Error('channel-openclaw: delivery id was reused for another subject')
+        }
+        if (JSON.stringify(previous.receipt) === JSON.stringify(receipt)) return
+        if (!deliveryReceiptAdvances(previous.receipt, receipt)) {
+          throw new Error('channel-openclaw: delivery receipt regressed after a durable state')
+        }
       }
-      if (JSON.stringify(previous.receipt) === JSON.stringify(receipt)) return
-      if (!deliveryReceiptAdvances(previous.receipt, receipt)) {
-        throw new Error('channel-openclaw: delivery receipt regressed after a durable state')
-      }
-    }
-    await this.deliveries.put(key, { receipt, updatedAt: Date.now() })
+      await this.deliveries.put(key, { receipt, updatedAt: Date.now() })
+    })
   }
 
   private assertGateway(gatewayInstanceId: string): void {

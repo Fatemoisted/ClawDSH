@@ -156,8 +156,14 @@ const TEXT_OUTPUT = {
 
 const MEMORY_SEARCH_PARAMETERS = {
   query: { type: 'string', required: true, description: 'Semantic query over MEMORY.md and memory/*.md.' },
-  maxResults: { type: 'integer', description: 'Maximum hits returned. Defaults to 6.' },
-  minScore: { type: 'number', description: 'Minimum cosine similarity (0-1). Defaults to 0.35.' },
+  maxResults: {
+    type: 'integer',
+    description: 'Maximum hits returned. Defaults to the configured memory limit (6 unless overridden).',
+  },
+  minScore: {
+    type: 'number',
+    description: 'Minimum cosine similarity (-1 to 1). Defaults to the configured threshold (0.35 unless overridden).',
+  },
 } as const
 
 const MEMORY_GET_PARAMETERS = {
@@ -271,7 +277,7 @@ export function apply(ctx: Context, config: Config): void {
             'memory_search requires a ctx.embeddings provider (load @clawdsh/dsh-embeddings-ark)',
           )
         }
-        const parsed = parseSearchArgs(args)
+        const parsed = parseSearchArgs(args, resolved)
         try {
           const hits = await (await index()).search(
             parsed.query, embeddings, parsed.maxResults, parsed.minScore, resolved.snippetChars, exec.signal,
@@ -731,7 +737,10 @@ function sanitizeStorageError(tool: 'memory_search' | 'memory_get', error: FsErr
   return new FsError(`${tool}: storage operation failed (${error.code})`, error.code)
 }
 
-function parseSearchArgs(args: unknown): { query: string; maxResults: number; minScore: number } {
+function parseSearchArgs(
+  args: unknown,
+  defaults: Pick<ResolvedConfig, 'maxResults' | 'minScore'>,
+): { query: string; maxResults: number; minScore: number } {
   if (typeof args !== 'object' || args === null) throw new TypeError('memory_search: invalid arguments')
   const record = args as Record<string, unknown>
   const query = record.query
@@ -740,8 +749,8 @@ function parseSearchArgs(args: unknown): { query: string; maxResults: number; mi
   if (typeof query !== 'string' || query.length === 0) throw new TypeError('memory_search: query must be a non-empty string')
   return {
     query,
-    maxResults: maxResults === undefined ? DEFAULT_MAX_RESULTS : boundedInt(maxResults, 'maxResults'),
-    minScore: minScore === undefined ? DEFAULT_MIN_SCORE : boundedNumber(minScore, 'minScore'),
+    maxResults: maxResults === undefined ? defaults.maxResults : boundedInt(maxResults, 'maxResults'),
+    minScore: minScore === undefined ? defaults.minScore : boundedNumber(minScore, 'minScore'),
   }
 }
 

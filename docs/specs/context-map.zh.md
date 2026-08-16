@@ -57,9 +57,9 @@ dsh runtime 是 plugin tree。Service、event 与 registration 都是随 plugin 
 
 ### ClawDSH 产品壳
 
-本地 GUI 是公开 dsh Web runtime 之上的 ClawDSH 产品，不是另一个 dsh agent preset。`/clawdsh/` 拥有产品导航——对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级——而 `/` 保留原生 dsh Web GUI。「对话」复用公开 client module graph、Loader、Slot renderer 与完整 `buildRenderApp()` root。`preset-openclaw/product-shell/` 下的嵌套非 workspace build 拥有外层 shell、静态路由、Host runtime、shared DTO 与 `/clawdsh-rpc` Connection channel。
+本地 GUI 是公开 dsh Web runtime 之上的 ClawDSH 产品，不是另一个 dsh agent preset。`/clawdsh/` 渲染一棵完整的原生 dsh Web 应用：Harness 拥有侧边栏、Session 导航、对话、Settings 外壳与 Trajectory，ClawDSH 只通过现有公开 `conversation.hero.agentPreset`、`sidebar.footer.action`、`settings.section` 和 `conversation.view` Slot 贡献内容。`/` 将未修改的 dsh Web GUI 保留为 Harness 高级。产品入口复用公开 client module graph、Loader、Slot renderer，并在最小容器中仅挂载一棵完整 `buildRenderApp()` root；不再添加外层导航或第二个 router。`preset-openclaw/product-shell/` 下的嵌套非 workspace build 拥有该最小 root、Slot 贡献、静态路由、Host runtime、shared DTO 与 `/clawdsh-rpc` Connection channel。
 
-Loopback-authorized 控制 channel 实现 `bootstrap/get`、`capabilities/list`、Settings describe/mutate/reset、不含 secret 的 dsh credential describe/set/unset，以及 `activity/list`。Settings 保持 capability 与 Loader 证据只读，同时只通过 optimistic revision 暴露 manifest allowlist 中的 Config 字段。Activity 跟随当前 Session，并把隐私安全的 standard-history 事实与有界 sidecar 合并；数据缺失或损坏只让该视图降级。该组装不注册新的 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、上游 generated file 或上游 GUI source。`dsh --profile web` 保持纯 Harness 入口。
+Loopback-authorized 控制 channel 实现 `bootstrap/get`、`capabilities/list`、Settings describe/mutate/reset、不含 secret 的 dsh credential describe/set/unset，以及 `activity/list`。Settings 保持 capability 与 Loader 证据只读，同时只通过 optimistic revision 暴露 manifest allowlist 中的 Config 字段。Activity 跟随当前 Session，并把隐私安全的 standard-history 事实与有界 sidecar 合并；数据缺失或损坏只让该视图降级。该组装不定义新的 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、上游 generated file 或上游 GUI source。`dsh --profile web` 保持纯 Harness 入口。
 
 ### Profile layering 与 identity
 

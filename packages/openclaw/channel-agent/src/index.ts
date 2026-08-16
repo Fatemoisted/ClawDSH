@@ -12,6 +12,7 @@ import {
   ChannelToolCallId,
   deliveryReceiptAdvances,
   sameChannelRoute,
+  serializeKeyedOperation,
   type ChannelDeliveryReportV1,
   type ChannelDeliveryReceiptV1,
   type ChannelDriverV1,
@@ -231,6 +232,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
   private readonly turnOperations = new Map<string, Promise<void>>()
   private readonly lineageEpochs = new Map<string, number>()
   private readonly lineageOperations = new Map<string, Promise<void>>()
+  private readonly deliveryOperations = new Map<string, Promise<void>>()
   private disposed = false
   private disposePromise: Promise<void> | undefined
 
@@ -297,6 +299,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       ...this.acquiring.values(),
       ...this.turnOperations.values(),
       ...this.lineageOperations.values(),
+      ...this.deliveryOperations.values(),
     ]
     const turns = await withinShutdownGrace(Promise.allSettled(pending), this.config.shutdownGraceMs)
     for (const turn of turns) {
@@ -477,23 +480,32 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
     const match = matches[0]
     if (match === undefined) throw new Error('channel-agent: delivery report names an unknown turn')
     if (matches.length !== 1) throw new Error('channel-agent: delivery report turn/run identity is ambiguous')
-    const [key, record] = match
-    if (record.result === undefined || record.sessionId === undefined) {
-      throw new Error('channel-agent: delivery report arrived before a durable turn result')
-    }
-    if (record.delivery !== undefined) {
-      if (JSON.stringify(record.delivery) === JSON.stringify(report.receipt)) return
-      if (record.delivery.deliveryId !== report.receipt.deliveryId) {
-        throw new Error('channel-agent: delivery identity changed for one final turn')
+    const [key] = match
+    await serializeKeyedOperation(this.deliveryOperations, key, async () => {
+      signal?.throwIfAborted()
+      const record = this.ledger.get(key)
+      if (record === undefined
+        || record.envelope.turnId !== subject.turnId
+        || record.envelope.runId !== subject.runId) {
+        throw new Error('channel-agent: delivery report names an unknown turn')
       }
-      if (!deliveryReceiptAdvances(record.delivery, report.receipt)) {
-        throw new Error('channel-agent: delivery report regressed durable delivery state')
+      if (record.result === undefined || record.sessionId === undefined) {
+        throw new Error('channel-agent: delivery report arrived before a durable turn result')
       }
-    }
-    const phase = deliveryPhase(report.receipt)
-    const committed = { ...record, phase, delivery: report.receipt, updatedAt: Date.now() }
-    await this.ledger.put(key, committed)
-    this.recordDeliveryActivity(committed)
+      if (record.delivery !== undefined) {
+        if (JSON.stringify(record.delivery) === JSON.stringify(report.receipt)) return
+        if (record.delivery.deliveryId !== report.receipt.deliveryId) {
+          throw new Error('channel-agent: delivery identity changed for one final turn')
+        }
+        if (!deliveryReceiptAdvances(record.delivery, report.receipt)) {
+          throw new Error('channel-agent: delivery report regressed durable delivery state')
+        }
+      }
+      const phase = deliveryPhase(report.receipt)
+      const committed = { ...record, phase, delivery: report.receipt, updatedAt: Date.now() }
+      await this.ledger.put(key, committed)
+      this.recordDeliveryActivity(committed)
+    })
   }
 
   /** Project a committed receipt without retaining provider identities or errors in Activity. */

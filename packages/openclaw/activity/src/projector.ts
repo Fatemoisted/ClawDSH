@@ -292,7 +292,9 @@ function eventRecord(
     || event.seq < 0
     || !Number.isSafeInteger(event.time)
     || event.time < 0) return undefined
-  const timestamp = new Date(event.time).toISOString()
+  const date = new Date(event.time)
+  if (!Number.isFinite(date.getTime())) return undefined
+  const timestamp = date.toISOString()
   const id = `history:${createHash('sha256')
     .update(`${sessionId}\u0000${String(event.seq)}\u0000${kind}\u0000${status ?? ''}`)
     .digest('hex')}`

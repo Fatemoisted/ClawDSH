@@ -4,6 +4,8 @@
 >
 > 项目目的与实施方案：[docs/specs/roadmap.md](docs/specs/roadmap.md) · 架构决策：[docs/adr/](docs/adr/) · 功能对齐矩阵：[docs/matrix/parity.md](docs/matrix/parity.md)
 >
+> Harness 复用指南：[Harness 上下文与复用地图](docs/specs/context-map.zh.md)（[English](docs/specs/context-map.md)）汇总 ClawDSH 直接复用的 dsh 接缝，以及多数功能开发无需重复阅读的上游源码。
+>
 > 本仓库跟踪上游 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（git 远程 `upstream`），上游代码只读；自有代码仅位于 `packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal}/`、`tools/`、`.github/workflows/clawdsh-*`。
 
 ---
