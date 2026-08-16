@@ -19,12 +19,23 @@ import {
   type ChannelSessionCloseV1,
   type ChannelSessionResetV1,
   type ChannelTurnEnvelopeV1,
+  type ChannelTurnEffectsV1,
 } from '@clawdsh/dsh-channel'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 
 const safeTimestampSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 const digestSchema = z.string().regex(/^[a-f0-9]{64}$/)
+
+/** Conservative effect metadata used only when reading a legacy V2 terminal ledger row. */
+export const UNKNOWN_TURN_EFFECTS: ChannelTurnEffectsV1 = Object.freeze({
+  hadPotentialSideEffects: true,
+  replaySafe: false,
+  didSendViaMessagingTool: false,
+  messagingToolSentTexts: Object.freeze([]),
+  messagingToolSentMediaUrls: Object.freeze([]),
+  messagingToolSentTargets: Object.freeze([]),
+})
 
 /** Reject blank or padded opaque ids before restoring their brands. */
 function opaqueId<T extends string>(factory: (value: string) => T): z.ZodType<T> {
@@ -146,8 +157,7 @@ const ledgerPhaseSchema = z.enum([
   'needs-recovery',
 ])
 
-/** Durable schema for one idempotent inbound turn and its delivery state. */
-export const channelLedgerRecordSchema = z.object({
+const channelLedgerRecordV2Schema = z.object({
   envelopeDigest: digestSchema,
   envelope: channelTurnEnvelopeV1Schema,
   phase: ledgerPhaseSchema,
@@ -205,6 +215,20 @@ export const channelLedgerRecordSchema = z.object({
     }
   }
 })
+
+/** Add fail-closed effects to terminal rows written before V2 gained explicit effect evidence. */
+function normalizeLegacyLedgerRecord(value: unknown): unknown {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return value
+  const record = value as Record<string, unknown>
+  const result = record.result
+  if (result === null || typeof result !== 'object' || Array.isArray(result) || Object.hasOwn(result, 'effects')) {
+    return value
+  }
+  return { ...record, result: { ...result, effects: UNKNOWN_TURN_EFFECTS } }
+}
+
+/** Durable schema for one idempotent inbound turn and its delivery state. */
+export const channelLedgerRecordSchema = z.preprocess(normalizeLegacyLedgerRecord, channelLedgerRecordV2Schema)
 
 /** Durable execution/delivery state for one idempotent inbound turn. */
 export type ChannelLedgerRecord = z.infer<typeof channelLedgerRecordSchema>

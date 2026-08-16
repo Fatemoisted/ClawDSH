@@ -58,11 +58,17 @@ interface PageLike {
     pageFunction: (argument: Argument) => Result | Promise<Result>,
     argument: Argument,
   ): Promise<Result>
+  /** Resize the browser viewport for responsive layout assertions. */
+  setViewportSize(viewport: { width: number; height: number }): Promise<void>
 }
 
 interface BrowserLike {
-  /** Open a page with deterministic locale and viewport. */
-  newPage(options: { viewport: { width: number; height: number }; locale: string }): Promise<PageLike>
+  /** Open a page with deterministic locale, timezone, and viewport. */
+  newPage(options: {
+    viewport: { width: number; height: number }
+    locale: string
+    timezoneId: string
+  }): Promise<PageLike>
   /** Close the browser and its pages. */
   close(): Promise<void>
 }
@@ -276,7 +282,11 @@ describe('ClawDSH isolated real profile browser entry', () => {
       const chromium = await chromiumLauncher()
       const channel = process.env.DSH_PLAYWRIGHT_CHANNEL
       browser = await chromium.launch(channel === undefined || channel === '' ? {} : { channel })
-      const page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: 'zh-CN' })
+      const page = await browser.newPage({
+        viewport: { width: 1680, height: 1000 },
+        locale: 'zh-CN',
+        timezoneId: 'Asia/Shanghai',
+      })
       await page.goto(ready.productUrl, { waitUntil: 'load' })
 
       const conversationLink = page.getByRole('link', { name: '对话', exact: true })
@@ -356,6 +366,19 @@ describe('ClawDSH isolated real profile browser entry', () => {
       expect(await page.locator('[data-origin="ClawDSH"]').count()).toBeGreaterThan(0)
       expect(await page.locator('[data-origin="Platform"]').count()).toBeGreaterThan(0)
       const overviewSnapshot = (await overview.ariaSnapshot()).trim()
+      for (const width of [320, 375]) {
+        await page.setViewportSize({ width, height: 800 })
+        const horizontalOverflow = await page.evaluate(() => {
+          const productPage = document.querySelector<HTMLElement>('[data-clawdsh-product-page]')
+          if (productPage === null) throw new Error('ClawDSH product page scroll container is missing')
+          return productPage.scrollWidth - productPage.clientWidth
+        }, undefined)
+        expect(horizontalOverflow).toBeLessThanOrEqual(0)
+        for (const destination of [conversationLink, settingsLink, activityLink, advancedLink]) {
+          expect((await destination.ariaSnapshot()).trim()).not.toBe('')
+        }
+      }
+      await page.setViewportSize({ width: 1680, height: 1000 })
 
       await activityLink.click()
       const activity = page.getByRole('heading', { name: 'ClawDSH 活动', exact: true })

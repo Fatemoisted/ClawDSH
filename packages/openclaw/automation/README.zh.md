@@ -45,7 +45,7 @@
 - **默认关闭**：schema 将 `enabled` 默认设为 false；关闭路径仍校验配置，但不创建 runtime、timer 或 Session；
 - **单 re-arming unref'd timer**：对准所有规则最早的触发点；醒来顺序执行到期规则后重新对准（OpenClaw 调度器形态）；
 - **每规则会话生命周期**：resume-or-create 使会话日志（即运行历史）跨重启保留；`every` 规则挂载时立即触发一次（OpenClaw「first run at/after the anchor」）；
-- **失败语义**：回合前先落 `started` 记录（at-least-once）；`turn/end` reason 决定 `ok` 还是 `error`（被 loop 遏制的 adapter 失败仍呈现为 `error`）；失败记日志，下一次触发照常。
+- **失败语义**：回合前先落 `started` 记录（at-least-once）；只有 `completed` 与 `max-tokens` 终态记为 `ok`；`error`、`blocked`、`aborted` 及其他非成功终态都记为 `error`。Cron/every 失败后仍等待下一次正常触发；一次性 `at` 失败后在当前挂载期保持休眠（不会 0ms 循环重试），但不会被写成持久成功，之后显式重新挂载时仍可恢复。
 
 ## 变更日志
 
@@ -77,7 +77,7 @@ Append-only：帧消息与其他回合输入一样落在日志中段；无系统
 
 - **无渠道投递**：OpenClaw 的 `deliver`（把回复投到渠道）未移植；回复留在规则的会话日志里；
 - **无主会话摘要**：OpenClaw 的 `main` 目标（`System:` 行注入主会话）未移植——`clawdsh` profile 尚无主会话接线；
-- **无自动重试**：失败记 `error` 运行，下一次触发照常（OpenClaw 同构）；
+- **无自动重试**：失败记 `error` 运行；cron/every 等待下一次计划触发，失败的 `at` 规则休眠到之后重新挂载（OpenClaw 同构）；
 - **无运行时编辑规则**：规则由 Config 声明；OpenClaw 的 job store + `cron.add/remove/…` 工具与 CLI 延后到有消费者需要运行时编辑时；
 - **`at` once-guard 依赖会话产物**：持久会话日志被删除后，过期的一次性规则会再触发一次（at-least-once 语义）；
 - **`every` 挂载时重新锚定**：每次启动立即触发一次，随后按 anchor 网格运行（OpenClaw 的 anchor 语义，不追赶错过的 tick）。

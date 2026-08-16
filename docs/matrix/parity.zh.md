@@ -2,7 +2,7 @@
 
 [English](parity.md) | 中文
 
-> 本矩阵是 ClawDSH 的状态权威。每个 OpenClaw 派生领域或 ClawDSH 原生产品领域只在此拥有一项分类和当前状态。精确 OpenClaw 渠道产物与名录元数据仍由 `tools/openclaw-channel-host/*.json` 拥有；本页只投影其已批准含义。
+> 本矩阵是 ClawDSH 的状态权威。每个 OpenClaw 派生领域或 ClawDSH 原生产品领域只在此拥有一项分类和当前状态。精确 OpenClaw 渠道产物与名录元数据仍由 `tools/openclaw-channel-host/*.json` 拥有；本页只投影其已批准含义。[Harness 上下文与复用地图](../specs/context-map.md)是现有 dsh seam 与可跳过上游源码的一次读完指南。
 
 ## 分类
 
@@ -63,16 +63,16 @@ Stable public chat catalog 含 27 个条目：**1 core + 2 bundled + 21 reposito
 |---|---:|---|---|
 | Core + bundled + repository-official | 24 | **cataloged** | 精确 stable host source 与逐条目来源已锁定；逐渠道装配与认证未完成 |
 | External | 3 | **cataloged** | WeChat、Yuanbao 与 Zalo ClawBot 有精确包身份；仍需外部审查及相同的装配和认证要求 |
-| 旧 Telegram 适配器 | 1 | **installable** | 本地包存在；没有当前带凭证 live smoke 建立认证或启用状态 |
-| 旧 Feishu 适配器 | 1 | **installable** | 本地包存在；历史 smoke 不建立当前发布的认证或启用状态 |
 
 Catalog 来源不是运行时支持声明。只有兼容的锁定 host 与 bridge composition 完成装配，已校验 npm integrity 才能使渠道达到 installable。Canary catalog 含 31 个条目，但仍只是 cataloged 审计输入。
+
+Canonical runtime 只有一条实现路径：`ctx.channels → channel-agent → channel-openclaw`。Production host 把 Telegram 记录为 bundled，并记录精确的 repository-official 产物 `@openclaw/feishu@2026.7.1` 与 `@openclaw/discord@2026.7.1`。但交付 profile 仍把 Provider 设为 `enabled: false`、把 `extensions` 设为空数组，安装器则创建 `channels: {}`。因此 `support.production.json` 中三者均保持 `cataloged`，没有 installability、certification 或 enablement 证据。Telegram 可由锁定的 bundled host 准入；飞书与 Discord 还要求匹配的精确 extension lock。Admission validation 是安全门，不证明平台已经安装、连接、认证或启用。ClawDSH 不交付第二套直连平台 adapter 实现。
 
 ## 中国平台投影
 
 | 平台 | 已批准 OpenClaw 来源 | 当前支持状态 | 限制 |
 |---|---|---|---|
-| Feishu / Lark | production repository-official extension | sidecar **cataloged**；旧包 **installable** | 两条路径都未 certified 或 enabled |
+| Feishu / Lark | production repository-official extension | **cataloged** | 已记录精确 artifact，但交付 extension list 为空，且没有 installability、certification 或 enablement 证据 |
 | QQ Bot | production repository-official extension | **cataloged** | 不属于三个 production external plugin |
 | WeChat | production external `@tencent-weixin/openclaw-weixin@2.4.6` | **cataloged** | 外部审查与认证未完成 |
 | Yuanbao | production external `openclaw-plugin-yuanbao@2.15.0` | **cataloged** | 外部审查与认证未完成 |

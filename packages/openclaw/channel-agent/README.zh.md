@@ -76,6 +76,8 @@ Wire 上的终态失败只暴露本包拥有且长度受限的诊断。模型、
 
 工具向模型暴露 JSON 前，会严格校验结果 variant 和精确 action id。resolve 结果还必须保持输入数量与顺序。查询结果不能伪装成变更成功，delivery receipt 也不能伪装成目录或解析结果。
 
+每个终态 turn result 都从精确归属 turn 的持久化 tool-call 与 tool-result 事件派生重放证据。目录与解析调用保持 replay-safe；所有变更调用和无法分类的工具调用都视为潜在副作用。`didSendViaMessagingTool` 在 `message.send` 得到 confirmed、accepted、retrying 或 ambiguous 结果时为 true；有效 send 缺少可分类结果时也会 fail closed 为 true。若 receipt 明确为派发前 `dead-letter`，或参数校验显然失败，则保持 false。sent text、media URL 与 target 是更强的已提交证据，只有经过校验的 `confirmed` receipt 才会填充。
+
 ## Model Experience
 
 ### 已准入渠道输入

@@ -123,7 +123,7 @@ function openClawConfig(
             name: 'ClawDSH local agent',
             api: 'openai-responses',
             reasoning: true,
-            input: ['text', 'image'],
+            input: ['text'],
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
             contextWindow: 200_000,
             maxTokens: 32_768,
@@ -162,6 +162,7 @@ function openClawConfig(
       port: gatewayPort,
       auth: { mode: 'none' },
     },
+    session: { dmScope: 'per-account-channel-peer' },
     commands: {
       bash: false,
       config: false,

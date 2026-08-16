@@ -274,6 +274,7 @@ export async function verifyFailClosedConfig(
   if (!isAbsolute(configPath) || !isAbsolute(bridgeRoot) || !isAbsolute(stateDir)) {
     throw new Error('channel-openclaw: configPath, bridgeRoot, and stateDir must be absolute')
   }
+  await requireContainedOrdinaryConfig(configPath, stateDir)
   let parsed: unknown
   try {
     parsed = JSON.parse(await readFile(configPath, 'utf8')) as unknown
@@ -294,6 +295,9 @@ export async function verifyFailClosedConfig(
     || providerModels[0].id !== 'local' || !isRecord(providerModels[0].agentRuntime)
     || providerModels[0].agentRuntime.id !== 'clawdsh') {
     throw new Error('channel-openclaw: clawdsh/local must be the sole provider model and select the clawdsh AgentHarness')
+  }
+  if (!sameStringSet(providerModels[0].input, ['text'])) {
+    throw new Error('channel-openclaw: clawdsh/local must advertise only the text input supported by AgentHarness v1')
   }
   const agents = requireRecord(parsed.agents, 'agents')
   const defaults = requireRecord(agents.defaults, 'agents.defaults')
@@ -347,8 +351,36 @@ export async function verifyFailClosedConfig(
   if (gateway.mode !== 'local' || gateway.bind !== 'loopback') {
     throw new Error('channel-openclaw: Gateway must use local mode and loopback binding')
   }
+  const session = requireRecord(parsed.session, 'session')
+  if (session.dmScope !== 'per-account-channel-peer') {
+    throw new Error('channel-openclaw: session.dmScope must be per-account-channel-peer')
+  }
   verifyManagementPolicy(parsed)
-  verifyChannelAdmissionPolicies(parsed.channels)
+  verifyChannelAdmissionPolicies(parsed.channels, extensions)
+}
+
+/** Reject a config file or state root that reaches outside the managed state tree. */
+async function requireContainedOrdinaryConfig(configPath: string, stateDir: string): Promise<void> {
+  const stateInfo = await lstat(stateDir)
+  if (!stateInfo.isDirectory() || stateInfo.isSymbolicLink()) {
+    throw new Error('channel-openclaw: stateDir must be an ordinary directory')
+  }
+  const configInfo = await lstat(configPath)
+  if (!configInfo.isFile() || configInfo.isSymbolicLink()) {
+    throw new Error('channel-openclaw: configPath must be an ordinary non-symlink file')
+  }
+  const lexicalRelative = relative(resolve(stateDir), resolve(configPath))
+  if (lexicalRelative === '' || lexicalRelative === '..' || lexicalRelative.startsWith(`..${sep}`)
+    || isAbsolute(lexicalRelative)) {
+    throw new Error('channel-openclaw: configPath must be inside stateDir')
+  }
+  const canonicalState = await realpath(stateDir)
+  const canonicalConfig = await realpath(configPath)
+  const canonicalRelative = relative(canonicalState, canonicalConfig)
+  if (canonicalRelative === '' || canonicalRelative === '..' || canonicalRelative.startsWith(`..${sep}`)
+    || isAbsolute(canonicalRelative)) {
+    throw new Error('channel-openclaw: configPath escapes stateDir')
+  }
 }
 
 /** Keep OpenClaw's channel management surface while disabling model/tool escape paths. */
@@ -383,16 +415,17 @@ function verifyElevatedDisabled(value: unknown, path: string): void {
 }
 
 /** Reject channel config that weakens the managed deployment's admission defaults. */
-function verifyChannelAdmissionPolicies(value: unknown): void {
+function verifyChannelAdmissionPolicies(value: unknown, extensions: readonly OpenClawExtensionLock[]): void {
   const channels = requireRecord(value, 'channels')
+  const extensionChannels = new Set(extensions.flatMap(extension => extension.channelIds))
   for (const [channel, candidate] of Object.entries(channels)) {
     const channelConfig = requireRecord(candidate, `channels.${channel}`)
-    verifyManagedChannelAdmission(channel, channelConfig, `channels.${channel}`)
+    verifyManagedChannelAdmission(channel, channelConfig, `channels.${channel}`, extensionChannels)
     if (channelConfig.accounts !== undefined) {
       const accounts = requireRecord(channelConfig.accounts, `channels.${channel}.accounts`)
       for (const [account, accountCandidate] of Object.entries(accounts)) {
         const accountConfig = requireRecord(accountCandidate, `channels.${channel}.accounts.${account}`)
-        verifyManagedChannelAdmission(channel, accountConfig, `channels.${channel}.accounts.${account}`)
+        verifyManagedChannelAdmission(channel, accountConfig, `channels.${channel}.accounts.${account}`, extensionChannels)
       }
     }
   }
@@ -426,14 +459,20 @@ function verifyChannelAdmissionPolicies(value: unknown): void {
   visit(channels, 'channels')
 }
 
-/** Admit only the two version-locked verticals; every other catalog entry remains explicitly disabled. */
-function verifyManagedChannelAdmission(channel: string, value: Record<string, unknown>, path: string): void {
+/** Admit bundled Telegram or a Feishu/Discord channel registered by an exact extension lock. */
+function verifyManagedChannelAdmission(
+  channel: string,
+  value: Record<string, unknown>,
+  path: string,
+  extensionChannels: ReadonlySet<string>,
+): void {
   if (value.enabled !== true && value.enabled !== false) {
     throw new Error(`channel-openclaw: ${path}.enabled must be explicit`)
   }
   if (!value.enabled) return
-  if (channel !== 'telegram' && channel !== 'feishu') {
-    throw new Error(`channel-openclaw: ${path} must remain disabled until its locked admission validator is implemented`)
+  if (channel !== 'telegram'
+    && !((channel === 'feishu' || channel === 'discord') && extensionChannels.has(channel))) {
+    throw new Error(`channel-openclaw: ${path} must remain disabled until its matching locked extension is installed`)
   }
   if (value.configWrites !== false) throw new Error(`channel-openclaw: ${path}.configWrites must be false`)
   if (value.dmPolicy !== 'pairing' && value.dmPolicy !== 'allowlist' && value.dmPolicy !== 'disabled') {
@@ -445,6 +484,16 @@ function verifyManagedChannelAdmission(channel: string, value: Record<string, un
   if (channel === 'feishu') {
     if (value.requireMention !== true) {
       throw new Error(`channel-openclaw: ${path}.requireMention must explicitly be true`)
+    }
+    return
+  }
+  if (channel === 'discord' && value.groupPolicy === 'allowlist') {
+    const guilds = requireRecord(value.guilds, `${path}.guilds`)
+    for (const [guild, candidate] of Object.entries(guilds)) {
+      const guildConfig = requireRecord(candidate, `${path}.guilds.${guild}`)
+      if (guildConfig.requireMention !== true) {
+        throw new Error(`channel-openclaw: ${path}.guilds.${guild}.requireMention must explicitly be true`)
+      }
     }
     return
   }

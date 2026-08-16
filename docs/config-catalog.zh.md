@@ -83,7 +83,7 @@ export interface EverySchedule {
 }
 ```
 
-来源： [`packages/openclaw/automation/src/index.ts:93`](../packages/openclaw/automation/src/index.ts)
+来源： [`packages/openclaw/automation/src/index.ts:94`](../packages/openclaw/automation/src/index.ts)
 
 <a id="clawdshdsh-channel-agent"></a>
 
@@ -109,7 +109,7 @@ export interface Config {
 }
 ```
 
-来源： [`packages/openclaw/channel-agent/src/index.ts:85`](../packages/openclaw/channel-agent/src/index.ts)
+来源： [`packages/openclaw/channel-agent/src/index.ts:105`](../packages/openclaw/channel-agent/src/index.ts)
 
 <a id="clawdshdsh-channel-openclaw"></a>
 
@@ -279,7 +279,7 @@ export interface FlushConfig {
 
 ## `@clawdsh/dsh-skills-hub`
 
-需要： `skills` · `settings`
+需要： `skills` · `settings` · `subprocess`
 
 ```ts config-catalog
 /** Plugin config: which OpenClaw-style roots to scan and whether to evaluate `metadata.clawdbot` gating. */

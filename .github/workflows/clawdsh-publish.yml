@@ -45,8 +45,6 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     env:
-      CLAWDSH_RELEASE_DIRECTORY: ${{ runner.temp }}/clawdsh-release
-      CLAWDSH_BUNDLE_DIRECTORY: ${{ runner.temp }}/clawdsh-stage/bundle
       CLAWDSH_REGISTRY_URL: http://127.0.0.1:4873/
     steps:
       - uses: actions/checkout@v6
@@ -61,6 +59,11 @@ jobs:
         with:
           node-version: 24.19.0
           cache: pnpm
+
+      - name: Configure isolated release paths
+        run: |
+          echo "CLAWDSH_RELEASE_DIRECTORY=$RUNNER_TEMP/clawdsh-release" >> "$GITHUB_ENV"
+          echo "CLAWDSH_BUNDLE_DIRECTORY=$RUNNER_TEMP/clawdsh-stage/bundle" >> "$GITHUB_ENV"
 
       - name: Require npm trusted-publishing support
         run: node -e "const [major,minor]=process.argv[1].split('.').map(Number); if (major < 11 || (major === 11 && minor < 5)) throw new Error('npm 11.5.1 or newer is required')" "$(npm --version)"

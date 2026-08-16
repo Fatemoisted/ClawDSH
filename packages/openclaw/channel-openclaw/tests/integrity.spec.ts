@@ -101,7 +101,10 @@ interface FailClosedConfigFixture {
   models: {
     mode: string
     providers: Record<string, unknown> & {
-      clawdsh: { agentRuntime: { id: string }; models: Array<{ id: string; agentRuntime: { id: string } }> }
+      clawdsh: {
+        agentRuntime: { id: string }
+        models: Array<{ id: string; input: string[]; agentRuntime: { id: string } }>
+      }
     }
   }
   agents: {
@@ -120,6 +123,7 @@ interface FailClosedConfigFixture {
     entries: Record<string, { enabled: boolean }>
   }
   gateway: { mode: string; bind: string }
+  session: { dmScope: string }
   commands: Record<string, unknown>
   tools: { elevated: { enabled: boolean } }
   channels: Record<string, unknown>
@@ -185,7 +189,7 @@ function validConfig(bridgeRoot: string): FailClosedConfigFixture {
       providers: {
         clawdsh: {
           agentRuntime: { id: 'clawdsh' },
-          models: [{ id: 'local', agentRuntime: { id: 'clawdsh' } }],
+          models: [{ id: 'local', input: ['text'], agentRuntime: { id: 'clawdsh' } }],
         },
       },
     },
@@ -214,6 +218,7 @@ function validConfig(bridgeRoot: string): FailClosedConfigFixture {
       entries: { 'clawdsh-bridge': { enabled: true } },
     },
     gateway: { mode: 'local', bind: 'loopback' },
+    session: { dmScope: 'per-account-channel-peer' },
     commands: {
       bash: false,
       config: false,
@@ -662,6 +667,20 @@ describe('fail-closed OpenClaw config', () => {
     await expect(verifyFailClosedConfig(scalar, bridgeRoot)).rejects.toThrow(/must be an object/)
   })
 
+  it('rejects config symlinks and config files outside the declared state directory', async () => {
+    const root = await temporaryRoot()
+    const bridgeRoot = join(root, 'bridge')
+    const stateDir = join(root, 'state')
+    const outside = join(root, 'outside.json')
+    await mkdir(bridgeRoot)
+    await mkdir(stateDir)
+    await writeFile(outside, JSON.stringify(validConfig(bridgeRoot)))
+    const linked = join(stateDir, 'openclaw.json')
+    await symlink(outside, linked)
+    await expect(verifyFailClosedConfig(linked, bridgeRoot, stateDir)).rejects.toThrow(/non-symlink file/)
+    await expect(verifyFailClosedConfig(outside, bridgeRoot, stateDir)).rejects.toThrow(/inside stateDir/)
+  })
+
   it('rejects model provider and default-route escape hatches', async () => {
     const root = await temporaryRoot()
     const bridgeRoot = join(root, 'bridge')
@@ -672,6 +691,7 @@ describe('fail-closed OpenClaw config', () => {
       ['only provider', (value) => { value.models.providers.other = {} }],
       ['provider runtime', (value) => { value.models.providers.clawdsh.agentRuntime.id = 'other' }],
       ['sole provider model', (value) => { value.models.providers.clawdsh.models = [] }],
+      ['provider model input', (value) => { value.models.providers.clawdsh.models[0]!.input = ['text', 'image'] }],
       ['default model', (value) => { value.agents.defaults.model.primary = 'other/model' }],
       ['isolated workspace', (value) => { value.agents.defaults.workspace = '/tmp/other-workspace' }],
       ['empty fallback', (value) => { value.agents.defaults.model.fallbacks = ['other/model'] }],
@@ -719,6 +739,8 @@ describe('fail-closed OpenClaw config', () => {
       ['bridge enabled', (value) => { value.plugins.entries['clawdsh-bridge']!.enabled = false }],
       ['Gateway mode', (value) => { value.gateway.mode = 'remote' }],
       ['Gateway bind', (value) => { value.gateway.bind = 'lan' }],
+      ['missing Session policy', (value) => { Reflect.deleteProperty(value, 'session') }],
+      ['unsafe DM scope', (value) => { value.session.dmScope = 'main' }],
     ]
     for (const [label, mutate] of cases) {
       const value = clone(validConfig(bridgeRoot))
@@ -775,7 +797,28 @@ describe('fail-closed OpenClaw config', () => {
       value.channels.telegram as Record<string, unknown>
     const account = (value: FailClosedConfigFixture): Record<string, unknown> =>
       (telegram(value).accounts as Record<string, Record<string, unknown>>).personal!
+    const extensions: OpenClawExtensionLock[] = [{
+      pluginId: 'feishu',
+      channelIds: ['feishu'],
+      packageName: '@openclaw/feishu',
+      version: '1.2.3',
+      integrity: `sha512-${Buffer.alloc(64, 8).toString('base64')}`,
+      projectTree: { fileCount: 2, sha512: '1'.repeat(128) },
+    }, {
+      pluginId: 'discord',
+      channelIds: ['discord'],
+      packageName: '@openclaw/discord',
+      version: '1.2.3',
+      integrity: `sha512-${Buffer.alloc(64, 9).toString('base64')}`,
+      projectTree: { fileCount: 2, sha512: '2'.repeat(128) },
+    }]
     const supported = clone(validConfig(bridgeRoot))
+    supported.plugins.allow = ['clawdsh-bridge', 'feishu', 'discord']
+    supported.plugins.entries = {
+      'clawdsh-bridge': { enabled: true },
+      feishu: { enabled: true },
+      discord: { enabled: true },
+    }
     supported.channels.feishu = {
       enabled: true,
       configWrites: false,
@@ -783,14 +826,27 @@ describe('fail-closed OpenClaw config', () => {
       groupPolicy: 'allowlist',
       requireMention: true,
     }
+    supported.channels.discord = {
+      enabled: true,
+      configWrites: false,
+      dmPolicy: 'pairing',
+      groupPolicy: 'allowlist',
+      guilds: { '*': { requireMention: true } },
+    }
     supported.channels.matrix = { enabled: false }
-    await expect(checkConfig(root, bridgeRoot, supported)).resolves.toBeUndefined()
+    await expect(checkConfig(root, bridgeRoot, supported, extensions)).resolves.toBeUndefined()
+    const unsafeDiscord = clone(supported)
+    const guilds = (unsafeDiscord.channels.discord as Record<string, unknown>).guilds as Record<string, Record<string, unknown>>
+    Reflect.deleteProperty(guilds['*']!, 'requireMention')
+    await expect(checkConfig(root, bridgeRoot, unsafeDiscord, extensions)).rejects.toThrow(/requireMention/)
     const cases: Array<[string, (value: FailClosedConfigFixture) => void]> = [
       ['missing channels object', (value) => { Reflect.deleteProperty(value, 'channels') }],
       ['channels object', (value) => { Reflect.set(value, 'channels', []) }],
       ['Channel object', (value) => { value.channels.telegram = [] }],
       ['missing Channel enabled', (value) => { Reflect.deleteProperty(telegram(value), 'enabled') }],
       ['unsupported enabled Channel', (value) => { value.channels.matrix = { enabled: true } }],
+      ['unlocked Feishu Channel', (value) => { value.channels.feishu = { enabled: true } }],
+      ['unlocked Discord Channel', (value) => { value.channels.discord = { enabled: true } }],
       ['missing Channel configWrites', (value) => { Reflect.deleteProperty(telegram(value), 'configWrites') }],
       ['Channel configWrites', (value) => { telegram(value).configWrites = true }],
       ['missing Channel DM policy', (value) => { Reflect.deleteProperty(telegram(value), 'dmPolicy') }],

@@ -155,6 +155,31 @@ describe('ClawDSH Activity page', () => {
     await waitFor(() => { expect(screen.getAllByRole('heading', { name: 'Memory 搜索' })).toHaveLength(2) })
   })
 
+  it('aborts a pending continuation request when the page unmounts', async () => {
+    const continuation = Promise.withResolvers<ClawdshActivityListResponse>()
+    let continuationSignal: AbortSignal | undefined
+    const listActivity = vi.fn()
+      .mockResolvedValueOnce(page([], { nextCursor: 'cursor_one' }))
+      .mockImplementationOnce((_request, signal: AbortSignal | undefined) => {
+        continuationSignal = signal
+        return continuation.promise
+      })
+    const view = render(
+      <ActivityPage
+        control={controlFixture({ listActivity })}
+        localControlAvailable
+        sessionId="session-one"
+      />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: '加载更多' }))
+    await waitFor(() => { expect(listActivity).toHaveBeenCalledTimes(2) })
+    expect(continuationSignal?.aborted).toBe(false)
+
+    view.unmount()
+    expect(continuationSignal?.aborted).toBe(true)
+  })
+
   it('does not contact local control without a current Session or on a remote page', () => {
     const noSession = vi.fn(async () => page([]))
     const first = render(<ActivityPage control={controlFixture({ listActivity: noSession })} localControlAvailable />)

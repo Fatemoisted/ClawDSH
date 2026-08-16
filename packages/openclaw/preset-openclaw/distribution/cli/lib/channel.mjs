@@ -1,7 +1,7 @@
 /** Explicit acquisition, assembly, and verification of the locked production Gateway. */
 
 import { spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
 import {
   chmodSync,
@@ -13,6 +13,8 @@ import {
   readlinkSync,
   readdirSync,
   realpathSync,
+  renameSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
@@ -406,6 +408,77 @@ async function verifyManagedConfig(home, configPath, bridgeRoot, stateDir) {
   await provider.verifyFailClosedConfig(configPath, bridgeRoot, stateDir, [])
 }
 
+/**
+ * Upgrade only fields emitted by the previous managed-config template.
+ * Every other JSON value, including platform credentials and Channel policy,
+ * remains untouched and the strict Provider verifier still owns acceptance.
+ * @param {unknown} value
+ * @returns {ChannelJson | undefined}
+ */
+function upgradeLegacyManagedConfig(value) {
+  const config = object(value, 'managed OpenClaw config')
+  let upgraded = config
+  let changed = false
+  const models = config.models
+  if (models !== null && typeof models === 'object' && !Array.isArray(models)) {
+    const providers = models.providers
+    if (providers !== null && typeof providers === 'object' && !Array.isArray(providers)) {
+      const clawdsh = providers.clawdsh
+      if (clawdsh !== null && typeof clawdsh === 'object' && !Array.isArray(clawdsh)
+        && Array.isArray(clawdsh.models) && clawdsh.models.length === 1) {
+        const model = clawdsh.models[0]
+        if (model !== null && typeof model === 'object' && !Array.isArray(model)
+          && Array.isArray(model.input) && model.input.length === 2
+          && model.input[0] === 'text' && model.input[1] === 'image') {
+          upgraded = {
+            ...upgraded,
+            models: {
+              ...models,
+              providers: {
+                ...providers,
+                clawdsh: { ...clawdsh, models: [{ ...model, input: ['text'] }] },
+              },
+            },
+          }
+          changed = true
+        }
+      }
+    }
+  }
+  if (!Object.hasOwn(upgraded, 'session')) {
+    upgraded = { ...upgraded, session: { dmScope: 'per-account-channel-peer' } }
+    changed = true
+  } else {
+    const session = upgraded.session
+    if (session !== null && typeof session === 'object' && !Array.isArray(session)
+      && !Object.hasOwn(session, 'dmScope')) {
+      upgraded = { ...upgraded, session: { ...session, dmScope: 'per-account-channel-peer' } }
+      changed = true
+    }
+  }
+  return changed ? upgraded : undefined
+}
+
+/** Verify an upgraded config inside its managed state tree, then move it into the transaction candidate. */
+/** @param {string} home @param {string} stateDir @param {string} bridgeRoot @param {string} candidatePath @returns {Promise<boolean>} */
+async function stageManagedConfigUpgrade(home, stateDir, bridgeRoot, candidatePath) {
+  const configPath = join(stateDir, 'openclaw.json')
+  const upgraded = upgradeLegacyManagedConfig(readJson(configPath, 'managed OpenClaw config'))
+  if (upgraded === undefined) return false
+  const verificationPath = join(
+    stateDir,
+    `.openclaw-upgrade-${String(process.pid)}-${randomBytes(8).toString('hex')}.json`,
+  )
+  try {
+    writeJsonAtomic(verificationPath, upgraded)
+    await verifyManagedConfig(home, verificationPath, bridgeRoot, stateDir)
+    renameSync(verificationPath, candidatePath)
+    return true
+  } finally {
+    if (existsSync(verificationPath)) unlinkSync(verificationPath)
+  }
+}
+
 /** @param {string} stateDir @param {string} bridgeRoot @param {number} [gatewayPort] @returns {ChannelJson} */
 function failClosedConfig(stateDir, bridgeRoot, gatewayPort = 18789) {
   return {
@@ -423,7 +496,7 @@ function failClosedConfig(stateDir, bridgeRoot, gatewayPort = 18789) {
             name: 'ClawDSH local agent',
             api: 'openai-responses',
             reasoning: true,
-            input: ['text', 'image'],
+            input: ['text'],
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
             contextWindow: 200_000,
             maxTokens: 32_768,
@@ -448,6 +521,7 @@ function failClosedConfig(stateDir, bridgeRoot, gatewayPort = 18789) {
       entries: { 'clawdsh-bridge': { enabled: true } },
     },
     gateway: { mode: 'local', bind: 'loopback', port: gatewayPort, auth: { mode: 'none' } },
+    session: { dmScope: 'per-account-channel-peer' },
     commands: {
       bash: false,
       config: false,
@@ -588,7 +662,9 @@ export function createChannelManager(options) {
         publishConfig = true
       } else {
         requireKind(paths.config, 'file')
-        await verifyManagedConfig(home, paths.config, bridge.root, paths.state)
+        const candidateConfig = join(tx.candidateRoot, 'openclaw.json')
+        publishConfig = await stageManagedConfigUpgrade(home, paths.state, bridge.root, candidateConfig)
+        if (!publishConfig) await verifyManagedConfig(home, paths.config, bridge.root, paths.state)
       }
       const nextMarker = {
         ...marker,

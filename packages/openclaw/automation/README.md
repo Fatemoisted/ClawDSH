@@ -45,7 +45,7 @@ Rule ids must match `[a-zA-Z0-9_-]+` (they land in persisted session names). Inv
 - **Disabled by default**: the schema defaults `enabled` to false, and the disabled path validates configuration but creates no runtime, timer, or session;
 - **One re-arming unref'd timer**: armed to the earliest occurrence across rules; on wake, due rules run sequentially, then the timer re-arms (OpenClaw's scheduler shape);
 - **Per-rule session lifecycle**: resume-or-create keeps the session log (and thus the run history) across restarts; the rule fires immediately at mount for `every` rules (OpenClaw's "first run at/after the anchor");
-- **Failure semantics**: a `started` record lands before the turn (at-least-once); the `turn/end` reason decides `ok` vs `error` (loop-contained adapter failures still surface as `error`); failures log and the next occurrence still fires.
+- **Failure semantics**: a `started` record lands before the turn (at-least-once); only `completed` and `max-tokens` terminal reasons become `ok`; `error`, `blocked`, `aborted`, and any non-success terminal become `error`. Cron/every failures log and the next occurrence still fires. A failed one-shot `at` attempt stays dormant for the current mount (no zero-delay retry loop) but is not written as a durable success, so an explicit later remount can recover it.
 
 ## Changelog
 
@@ -77,7 +77,7 @@ Append-only: the framed message lands mid-log like any turn input; no system-pro
 
 - **No channel delivery**: OpenClaw's `deliver` (post the reply to a channel) is not ported; replies stay in the rule's session log;
 - **No main-session summary**: OpenClaw's `main` target (`System:` lines injected into the main session) is not ported — the `clawdsh` profile has no main-session wiring yet;
-- **No automatic retries**: failures record an `error` run and the next occurrence proceeds (OpenClaw-isomorphic);
+- **No automatic retries**: failures record an `error` run; cron/every wait for their next scheduled occurrence, while a failed `at` rule stays dormant until a later remount (OpenClaw-isomorphic);
 - **No runtime-editable rules**: rules are config-declared; OpenClaw's job store + `cron.add/remove/…` tools and CLI are deferred until a consumer needs runtime edits;
 - **`at` once-guard needs the session artifact**: if the persisted session log is deleted, a past one-shot re-fires once (at-least-once semantics);
 - **`every` re-anchors at mount**: each boot fires once immediately, then runs on the anchor grid (OpenClaw's anchor semantics, no catch-up of missed ticks).

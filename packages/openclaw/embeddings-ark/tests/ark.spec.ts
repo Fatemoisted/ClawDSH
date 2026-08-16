@@ -14,7 +14,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { CredentialInfo, CredentialRef, ResolvedCredential } from '@deepseek-ai/dsh-credentials'
 import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
-import { ARK_SETTINGS_NAMESPACE, ArkEmbeddings } from '@clawdsh/dsh-embeddings-ark'
+import { ARK_SETTINGS_NAMESPACE, ArkEmbeddings, Config as ArkConfig } from '@clawdsh/dsh-embeddings-ark'
 
 class TestSettings extends SettingsProvider {
   constructor(ctx: Context, private readonly store: Record<string, unknown>) { super(ctx) }
@@ -62,6 +62,20 @@ function firstFetchInit(fetchMock: ReturnType<typeof vi.fn>): RequestInit {
   return first[1] as RequestInit
 }
 
+/** Parse one text-only Ark request body, failing loudly on a malformed test call. */
+function requestText(init: RequestInit): string {
+  if (typeof init.body !== 'string') throw new TypeError('expected a string request body')
+  const payload: unknown = JSON.parse(init.body)
+  if (typeof payload !== 'object' || payload === null || !('input' in payload) || !Array.isArray(payload.input)) {
+    throw new TypeError('expected an Ark input array')
+  }
+  const first: unknown = payload.input[0]
+  if (typeof first !== 'object' || first === null || !('text' in first) || typeof first.text !== 'string') {
+    throw new TypeError('expected one Ark text input')
+  }
+  return first.text
+}
+
 beforeEach(() => {
   vi.stubEnv('ARK_API_KEY', 'test-key')
 })
@@ -76,11 +90,33 @@ describe('ark embeddings provider', () => {
     expect(ArkEmbeddings.inject).toEqual(['settings'])
   })
 
+  it.each([
+    ['an empty base URL', { baseURL: '' }],
+    ['a malformed base URL', { baseURL: 'not-a-url' }],
+    ['a non-HTTP base URL', { baseURL: 'file:///tmp/ark' }],
+    ['a base URL with credentials', { baseURL: 'https://user:secret@ark.example/v3' }],
+    ['a base URL with a query', { baseURL: 'https://ark.example/v3?tenant=one' }],
+    ['a base URL with a fragment', { baseURL: 'https://ark.example/v3#anchor' }],
+    ['a base URL with surrounding whitespace', { baseURL: ' https://ark.example/v3 ' }],
+    ['an empty model', { model: '' }],
+    ['a whitespace-only model', { model: '   ' }],
+    ['a model with surrounding whitespace', { model: ' model-name ' }],
+  ])('rejects %s at the settings schema boundary', (_label, config) => {
+    expect(() => { ArkConfig(config) }).toThrow()
+  })
+
+  it('accepts explicit HTTP endpoint and non-empty model settings', () => {
+    expect(ArkConfig({ baseURL: 'http://127.0.0.1:8080/api/v3', model: 'model-name' })).toMatchObject({
+      baseURL: 'http://127.0.0.1:8080/api/v3',
+      model: 'model-name',
+    })
+  })
+
   it('uses endpoint settings from the startup snapshot while credentials stay next-call', async () => {
     const fetchMock = okFetch(responseBody([0.1]))
     vi.stubGlobal('fetch', fetchMock)
     const ctx = await testContext({
-      'clawdsh-embeddings-ark': { baseURL: 'https://settings.example/v3', model: 'settings-model' },
+      'clawdsh-embeddings-ark': { baseURL: 'https://settings.example/v3///', model: 'settings-model' },
     })
     await ctx.plugin(ArkEmbeddings, { model: 'base-model' })
     await ctx.embeddings.embed(['a'])
@@ -99,7 +135,7 @@ describe('ark embeddings provider', () => {
 
   it('sends one text-only request per text and parses vectors in order', async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const text = (JSON.parse(init.body as string).input as { text: string }[])[0]!.text
+      const text = requestText(init)
       return new Response(responseBody(text === '天很蓝' ? [0.1, 0.2] : [0.3, 0.4]), { status: 200 })
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -111,9 +147,9 @@ describe('ark embeddings provider', () => {
     const first = fetchMock.mock.calls[0]
     if (first === undefined) throw new Error('fetch was never called')
     const [url, init] = first
-    expect(String(url)).toBe('https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal')
-    expect((init as RequestInit).headers).toMatchObject({ Authorization: 'Bearer test-key' })
-    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+    expect(url).toBe('https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal')
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer test-key' })
+    expect(JSON.parse(init.body as string)).toEqual({
       model: 'doubao-embedding-vision-251215',
       input: [{ type: 'text', text: '天很蓝' }],
     })
@@ -214,7 +250,7 @@ describe('ark embeddings provider', () => {
     const ctx = await testContext()
     await ctx.plugin(ArkEmbeddings, { maxConcurrentTexts: 4 })
     const embedding = ctx.embeddings.embed(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'])
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+    await vi.waitFor(() => { expect(fetchMock).toHaveBeenCalledTimes(4) })
     expect(peak).toBe(4)
     openGate()
     const vectors = await embedding
@@ -225,7 +261,7 @@ describe('ark embeddings provider', () => {
 
   it('returns vectors in input order even when requests resolve out of order', async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const text = (JSON.parse(init.body as string).input as { text: string }[])[0]!.text
+      const text = requestText(init)
       const index = Number(text)
       // The first request is the slowest; completion order is the reverse of input order.
       await new Promise(resolve => setTimeout(resolve, (10 - index) * 2))
@@ -241,7 +277,7 @@ describe('ark embeddings provider', () => {
 
   it('rejects the whole batch when one request fails', async () => {
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const text = (JSON.parse(init.body as string).input as { text: string }[])[0]!.text
+      const text = requestText(init)
       if (text === 'bad') return new Response('boom', { status: 500 })
       return new Response(responseBody([0.1]), { status: 200 })
     })
@@ -267,7 +303,7 @@ describe('ark embeddings provider', () => {
     const ctx = await testContext()
     await ctx.plugin(ArkEmbeddings, { maxConcurrentTexts: 1 })
     const embedding = ctx.embeddings.embed(['a', 'b', 'c'])
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => { expect(fetchMock).toHaveBeenCalledTimes(1) })
     expect(peak).toBe(1)
     openGate()
     await embedding

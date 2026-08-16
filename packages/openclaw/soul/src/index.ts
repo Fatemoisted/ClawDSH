@@ -140,10 +140,33 @@ export class SoulSettingsHost extends Service {
    */
   forSession(entry: Config): Config {
     const user = this.settings?.describe().find(descriptor => descriptor.ns === SOUL_SETTINGS_NAMESPACE)?.user
-    return Config({
-      ...entry,
-      ...(isRecord(user) ? user : {}),
-    })
+    const merged = Config(entry)
+    if (!isRecord(user)) return merged
+    if (Object.hasOwn(user, 'enabled')) {
+      if (typeof user.enabled !== 'boolean') throw new TypeError('soul: setting "enabled" must be a boolean')
+      merged.enabled = user.enabled
+    }
+    if (Object.hasOwn(user, 'source')) {
+      if (typeof user.source !== 'string') throw new TypeError('soul: setting "source" must be a string')
+      merged.source = user.source
+    }
+    if (Object.hasOwn(user, 'text')) {
+      if (typeof user.text !== 'string') throw new TypeError('soul: setting "text" must be a string')
+      merged.text = user.text
+    }
+    if (Object.hasOwn(user, 'mode')) {
+      if (user.mode !== 'replace' && user.mode !== 'append') {
+        throw new TypeError('soul: setting "mode" must be "replace" or "append"')
+      }
+      merged.mode = user.mode
+    }
+    if (Object.hasOwn(user, 'includeRuntimeContext')) {
+      if (typeof user.includeRuntimeContext !== 'boolean') {
+        throw new TypeError('soul: setting "includeRuntimeContext" must be a boolean')
+      }
+      merged.includeRuntimeContext = user.includeRuntimeContext
+    }
+    return Config(merged)
   }
 }
 
@@ -166,12 +189,13 @@ export function apply(ctx: Context, config: Config): void {
   if (scopeOf(ctx) === undefined) {
     throw new Error('soul: mounts only inside an agent scope (an unscoped mount would publish a process-global soul)')
   }
-  if (config.mode !== undefined && config.mode !== 'replace' && config.mode !== 'append') {
-    throw new Error(`soul: unknown mode ${JSON.stringify(config.mode)}; expected "replace" or "append"`)
+  const requestedMode: unknown = Reflect.get(config, 'mode')
+  if (requestedMode !== undefined && requestedMode !== 'replace' && requestedMode !== 'append') {
+    throw new Error(`soul: unknown mode ${JSON.stringify(requestedMode)}; expected "replace" or "append"`)
   }
   const resolved = ctx.get('clawdshSoulSettings')?.forSession(config) ?? Config(config)
   if (!(resolved.enabled ?? true)) return
-  const mode = resolved.mode ?? 'append'
+  const mode: unknown = Reflect.get(resolved, 'mode') ?? 'append'
   if (mode !== 'replace' && mode !== 'append') {
     throw new Error(`soul: unknown mode ${JSON.stringify(mode)}; expected "replace" or "append"`)
   }

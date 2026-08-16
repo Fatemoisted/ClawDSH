@@ -115,7 +115,7 @@ function installActivity(write: (input: PromptActivityInput) => Promise<unknown>
 function emitRequestHeader(scope: object, sessionId: string, system: string, seq: number): void {
   const session = { id: sessionId }
   const event = { type: 'request/header', seq, data: { header: { system }, reason: 'initial' } }
-  const emit = ctx.emit as unknown as (
+  const emit = ctx.emit.bind(ctx) as unknown as (
     target: object,
     name: 'session/event',
     subject: typeof session,

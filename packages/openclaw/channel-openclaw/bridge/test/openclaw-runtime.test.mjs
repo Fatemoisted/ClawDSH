@@ -10,6 +10,37 @@ import {
   createProcessSharedOpenClawBridge,
   createSyntheticProvider,
 } from '../shared/openclaw-runtime.js'
+import { validateTurnResult } from '../shared/protocol-v1.js'
+
+const SAFE_TURN_EFFECTS = Object.freeze({
+  hadPotentialSideEffects: false,
+  replaySafe: true,
+  didSendViaMessagingTool: false,
+  messagingToolSentTexts: Object.freeze([]),
+  messagingToolSentMediaUrls: Object.freeze([]),
+  messagingToolSentTargets: Object.freeze([]),
+})
+
+test('wire turn results require complete explicit side-effect evidence', () => {
+  const base = {
+    protocolVersion: 1,
+    turnId: 'turn-wire',
+    runId: 'run-wire',
+    replayId: 'replay-wire',
+    status: 'silent',
+    sessionId: 'session-wire',
+  }
+  assert.throws(() => validateTurnResult(base), /missing field "effects"/)
+  assert.throws(() => validateTurnResult({ ...base, effects: null }), /turnResult\.effects/)
+  assert.deepEqual(validateTurnResult({ ...base, effects: SAFE_TURN_EFFECTS }).effects, SAFE_TURN_EFFECTS)
+  const attempted = {
+    ...SAFE_TURN_EFFECTS,
+    hadPotentialSideEffects: true,
+    replaySafe: false,
+    didSendViaMessagingTool: true,
+  }
+  assert.deepEqual(validateTurnResult({ ...base, effects: attempted }).effects, attempted)
+})
 
 test('runtime inspection requires neither supervisor environment nor state access', async () => {
   let stateCalls = 0
@@ -103,6 +134,102 @@ test('bridge health stays starting until startup recovery completes', async t =>
   assert.equal((await fixture.requestBridge('health.get', {})).status, 'starting')
   await bridge.start()
   assert.equal((await fixture.requestBridge('health.get', {})).status, 'ready')
+})
+
+test('bridge projects durable message-send evidence into AgentHarness replay metadata', async t => {
+  const fixture = await gatewayFixture(t)
+  fixture.setTurnEffects({
+    hadPotentialSideEffects: true,
+    replaySafe: false,
+    didSendViaMessagingTool: true,
+    messagingToolSentTexts: ['sent by tool'],
+    messagingToolSentMediaUrls: [],
+    messagingToolSentTargets: [{
+      tool: 'message',
+      provider: 'telegram',
+      accountId: 'primary',
+      to: 'chat-42',
+      text: 'sent by tool',
+    }],
+  })
+  const bridge = createOpenClawBridge(mockApi(), {
+    generation: 'v1',
+    env: bridgeEnv(fixture.endpoint, fixture.directory),
+    config: { controlTimeoutMs: 2000, routeStateMaxEntries: 100, deliveryStateMaxEntries: 100 },
+  })
+  t.after(async () => { await bridge.dispose() })
+
+  await bridge.start()
+  const result = await bridge.harness.runAttempt(attemptParams())
+  assert.equal(result.didSendViaMessagingTool, true)
+  assert.deepEqual(result.messagingToolSentTexts, ['sent by tool'])
+  assert.deepEqual(result.messagingToolSentMediaUrls, [])
+  assert.deepEqual(result.messagingToolSentTargets, [{
+    tool: 'message', provider: 'telegram', accountId: 'primary', to: 'chat-42', text: 'sent by tool',
+  }])
+  assert.deepEqual(result.replayMetadata, { hadPotentialSideEffects: true, replaySafe: false })
+})
+
+test('post-result projection failure preserves confirmed send evidence', async t => {
+  const fixture = await gatewayFixture(t)
+  fixture.setTurnEffects({
+    hadPotentialSideEffects: true,
+    replaySafe: false,
+    didSendViaMessagingTool: true,
+    messagingToolSentTexts: ['already sent'],
+    messagingToolSentMediaUrls: [],
+    messagingToolSentTargets: [{
+      tool: 'message', provider: 'telegram', accountId: 'primary', to: 'chat-42', text: 'already sent',
+    }],
+  })
+  let activeChecks = 0
+  const bridge = createOpenClawBridge(mockApi(), {
+    generation: 'v1',
+    env: bridgeEnv(fixture.endpoint, fixture.directory),
+    config: { controlTimeoutMs: 2000, routeStateMaxEntries: 100, deliveryStateMaxEntries: 100 },
+    assertActive: () => {
+      activeChecks += 1
+      if (activeChecks === 3) throw new Error('host projection closed after the terminal result')
+    },
+  })
+  t.after(async () => { await bridge.dispose() })
+
+  await bridge.start()
+  const result = await bridge.harness.runAttempt(attemptParams())
+  assert.deepEqual(result.assistantTexts, [
+    '[ClawDSH bridge CHANNEL_BRIDGE_FAILED] The authenticated local ClawDSH communication bridge is unavailable.',
+  ])
+  assert.equal(result.didSendViaMessagingTool, true)
+  assert.deepEqual(result.messagingToolSentTexts, ['already sent'])
+  assert.deepEqual(result.messagingToolSentTargets, [{
+    tool: 'message', provider: 'telegram', accountId: 'primary', to: 'chat-42', text: 'already sent',
+  }])
+  assert.deepEqual(result.replayMetadata, { hadPotentialSideEffects: true, replaySafe: false })
+})
+
+test('bridge health reports transport readiness without calling the host-only account API', async t => {
+  const fixture = await gatewayFixture(t)
+  const api = mockApi()
+  const requests = []
+  api.runtime.gateway = {
+    request: async (method, params) => {
+      requests.push([method, params])
+      throw new Error('local bridge plugins must not call this trusted-only API')
+    },
+  }
+  const bridge = createOpenClawBridge(api, {
+    generation: 'v1',
+    env: bridgeEnv(fixture.endpoint, fixture.directory),
+    config: { controlTimeoutMs: 2000, routeStateMaxEntries: 100, deliveryStateMaxEntries: 100 },
+  })
+  t.after(async () => { await bridge.dispose() })
+
+  await bridge.start()
+  const health = await fixture.requestBridge('health.get', {})
+  assert.equal(health.status, 'ready')
+  assert.deepEqual(health.accounts, [])
+  assert.deepEqual(health.diagnostics.map(diagnostic => diagnostic.code), ['OPENCLAW_ACCOUNT_STATUS_UNAVAILABLE'])
+  assert.deepEqual(requests, [])
 })
 
 test('repeated OpenClaw registries share one authenticated transport until the last service stops', async t => {
@@ -376,7 +503,13 @@ test('keeps arbitrary RPC and terminal failure details out of assistant and tran
   fixture.setTurnFailure({ kind: 'rpc', message: privateDetails })
   const rpcFailure = await bridge.harness.runAttempt(attemptParams())
   assert.deepEqual(rpcFailure.assistantTexts, expected)
+  assert.deepEqual(rpcFailure.replayMetadata, { hadPotentialSideEffects: true, replaySafe: false })
 
+  fixture.setTurnEffects({
+    ...SAFE_TURN_EFFECTS,
+    hadPotentialSideEffects: true,
+    replaySafe: false,
+  })
   fixture.setTurnFailure({ kind: 'result', message: privateDetails })
   const terminalFailure = await bridge.harness.runAttempt({
     ...attemptParams(),
@@ -386,6 +519,7 @@ test('keeps arbitrary RPC and terminal failure details out of assistant and tran
     currentMessageId: 'terminal-failure-message',
   })
   assert.deepEqual(terminalFailure.assistantTexts, expected)
+  assert.deepEqual(terminalFailure.replayMetadata, { hadPotentialSideEffects: true, replaySafe: false })
   const publicProjection = JSON.stringify({
     assistantTexts: [...rpcFailure.assistantTexts, ...terminalFailure.assistantTexts],
     mirrored,
@@ -611,11 +745,47 @@ test('a send failure after adapter dispatch is ambiguous and is never resent', a
   assert.equal(sends, 1)
 })
 
+test('a poll rejected synchronously before adapter dispatch is dead-letter, not ambiguous', async t => {
+  const fixture = await gatewayFixture(t)
+  const api = mockApi()
+  let polls = 0
+  api.runtime.channel.outbound.loadAdapter = async () => ({
+    sendPoll: () => {
+      polls += 1
+      throw new Error('invalid poll before platform request')
+    },
+  })
+  const bridge = createOpenClawBridge(api, {
+    generation: 'v1',
+    env: bridgeEnv(fixture.endpoint, fixture.directory),
+    config: { controlTimeoutMs: 2000, routeStateMaxEntries: 100, deliveryStateMaxEntries: 100 },
+  })
+  t.after(async () => { await bridge.dispose() })
+  await bridge.start()
+  const result = await fixture.requestBridge('channel.action', {
+    protocolVersion: 1,
+    actionId: 'poll-pre-dispatch',
+    target: {
+      gatewayInstanceId: 'gateway-test',
+      channel: 'telegram',
+      account: 'primary',
+      conversation: 'chat-42',
+    },
+    kind: 'poll',
+    question: 'Choose',
+    options: ['one', 'two'],
+    multiple: false,
+  })
+  assert.equal(result.status, 'dead-letter')
+  assert.equal(polls, 1)
+})
+
 test('synthetic provider exposes exactly one harness-owned model', async () => {
   const provider = createSyntheticProvider()
   assert.equal(provider.id, 'clawdsh')
   const catalog = await provider.staticCatalog.run()
   assert.deepEqual(catalog.provider.models.map(model => [model.id, model.agentRuntime.id]), [['local', 'clawdsh']])
+  assert.deepEqual(catalog.provider.models[0].input, ['text'])
   assert.equal(Object.hasOwn(catalog.provider, 'fallbacks'), false)
 })
 
@@ -717,7 +887,7 @@ async function gatewayFixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'clawdsh-runtime-'))
   await chmod(directory, 0o700)
   const endpoint = join(directory, 'gateway.sock')
-  const state = { turn: undefined, reset: undefined, resetCount: 0 }
+  const state = { turn: undefined, turnEffects: SAFE_TURN_EFFECTS, reset: undefined, resetCount: 0 }
   const sockets = new Set()
   const pending = new Map()
   let bridgeSocket
@@ -755,6 +925,7 @@ async function gatewayFixture(t) {
                   turnId: frame.params.turnId,
                   runId: frame.params.runId,
                   replayId: 'replay-test',
+                  effects: state.turnEffects,
                   status: 'failed',
                   error: { code: 'DSH_FAILURE', message: state.turnFailure.message, retryable: false },
                 }
@@ -763,6 +934,7 @@ async function gatewayFixture(t) {
                   turnId: frame.params.turnId,
                   runId: frame.params.runId,
                   replayId: 'replay-test',
+                  effects: state.turnEffects,
                   status: 'completed',
                   sessionId: 'dsh-session',
                   text: 'DSH answer',
@@ -824,6 +996,7 @@ async function gatewayFixture(t) {
     server,
     requestBridge,
     setTurnFailure: failure => { state.turnFailure = failure },
+    setTurnEffects: effects => { state.turnEffects = effects },
     failNextReset: message => { state.resetFailure = message },
     openSocketCount: () => sockets.size,
     waitForNoSockets: async () => {

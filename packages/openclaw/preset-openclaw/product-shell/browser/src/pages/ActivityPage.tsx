@@ -81,6 +81,12 @@ export function ActivityPage({ control, localControlAvailable, sessionId }: Acti
   const activeRequest = useRef<AbortController>()
   const categoriesKey = categories.join(',')
 
+  useEffect(() => () => {
+    generation.current += 1
+    activeRequest.current?.abort()
+    activeRequest.current = undefined
+  }, [])
+
   useEffect(() => {
     generation.current += 1
     const currentGeneration = generation.current

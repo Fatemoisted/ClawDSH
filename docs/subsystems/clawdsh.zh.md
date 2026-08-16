@@ -2,7 +2,7 @@
 
 [English](clawdsh.md) | 中文
 
-**ClawDSH 扩展**子系统是 [`packages/openclaw`](../../packages/openclaw/README.zh.md) 下的产品层。它在不复制 DeepSeek Harness agent loop 的前提下，增加唯一的外部渠道 seam（`ctx.channels`）、OpenClaw 控制与活动服务、Soul 设置及 embeddings。Telegram、Discord 与飞书是 [OpenClaw 包地图](../../packages/openclaw/README.zh.md)所述唯一 `channel → channel-agent → channel-openclaw` 路径下的 catalog entry；出现在目录中不代表 route 已认证或启用。
+**ClawDSH 扩展**子系统是 [`packages/openclaw`](../../packages/openclaw/README.md) 下的产品层。它在不复制 DeepSeek Harness agent loop 的前提下，增加唯一的外部渠道 seam（`ctx.channels`）、OpenClaw 控制与活动服务、Soul 设置及 embeddings。Telegram、Discord 与飞书是 [OpenClaw 包地图](../../packages/openclaw/README.md)所述唯一 `channel → channel-agent → channel-openclaw` 路径下的 catalog entry；出现在目录中不代表 route 已认证或启用。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

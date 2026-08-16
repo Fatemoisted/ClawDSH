@@ -137,6 +137,7 @@ async function validateManagedInstallation(
   await requirePrivateDirectory(config.stateDir)
   await requirePrivateDirectory(config.stagingRoot)
   await requireContained(config.stateDir, config.configPath, 'configPath')
+  await requireOrdinaryFile(config.configPath, 'configPath')
   await requireContained(config.stateDir, config.endpoint, 'endpoint')
   await requireContained(config.stateDir, config.stagingRoot, 'stagingRoot')
   await verifyRuntimeInstallation(lock, config.runtimeRoot, config.hostRoot)

@@ -9,7 +9,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry from '@deepseek-ai/dsh-agent'
+import AgentRegistry, { type AgentHandle } from '@deepseek-ai/dsh-agent'
 import AgentDefaultModelConfig from '@deepseek-ai/dsh-agent-default-model'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
@@ -271,7 +271,7 @@ describe('automation row', () => {
       enabled: true,
       rules: [{ id: 'daily', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
-    await vi.waitFor(() => expect(runRecords(first, 'daily')).toEqual(['started', 'ok']), { timeout: 5_000 })
+    await vi.waitFor(() => { expect(runRecords(first, 'daily')).toEqual(['started', 'ok']) }, { timeout: 5_000 })
 
     await first.fiber.dispose()
     contexts.splice(contexts.indexOf(first), 1)
@@ -283,7 +283,7 @@ describe('automation row', () => {
       rules: [{ id: 'daily', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
     // The remounted rule fires once more (anchor reset), and the resumed session carries run one's records.
-    await vi.waitFor(() => expect(runRecords(second, 'daily')).toEqual(['started', 'ok', 'started', 'ok']), { timeout: 5_000 })
+    await vi.waitFor(() => { expect(runRecords(second, 'daily')).toEqual(['started', 'ok', 'started', 'ok']) }, { timeout: 5_000 })
     const agent = agentFor(second, 'daily')
     const turnCount = agent?.session.events.filter(event =>
       event.type === 'user/message' && event.data.source.kind === 'plugin').length
@@ -299,7 +299,7 @@ describe('automation row', () => {
     contexts.push(first)
     const rules: Automation.Config['rules'] = [{ id: 'once', schedule: { kind: 'at', at: '2026-08-05T08:00:00.000Z' }, message: 'run once' }]
     await first.plugin(Automation, { enabled: true, rules })
-    await vi.waitFor(() => expect(runRecords(first, 'once')).toEqual(['started', 'ok']), { timeout: 5_000 })
+    await vi.waitFor(() => { expect(runRecords(first, 'once')).toEqual(['started', 'ok']) }, { timeout: 5_000 })
 
     await first.fiber.dispose()
     contexts.splice(contexts.indexOf(first), 1)
@@ -329,6 +329,206 @@ describe('automation row', () => {
     await settle()
     expect(runRecords(ctx, 'flaky')).toEqual(['started', 'error', 'started', 'error'])
     expect(adapter.requests).toHaveLength(2)
+  })
+
+  it('records one failed at attempt without a zero-delay retry loop', async () => {
+    const adapter = new ScriptedAdapter(['fail'])
+    const ctx = await harness(adapter)
+    contexts.push(ctx)
+    await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'failed-once', schedule: { kind: 'at', at: '2026-08-05T08:00:00.000Z' }, message: 'work' }],
+    })
+    await settle()
+
+    expect(adapter.requests).toHaveLength(1)
+    expect(runRecords(ctx, 'failed-once')).toEqual(['started', 'error'])
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000)
+    await settle()
+    expect(adapter.requests).toHaveLength(1)
+    expect(runRecords(ctx, 'failed-once')).toEqual(['started', 'error'])
+  })
+
+  it('keeps a failed at rule eligible for recovery on a later mount', { timeout: 15_000 }, async () => {
+    vi.useRealTimers()
+    const root = await tempDir('automation-at-recovery')
+    tempDirs.push(root)
+    const rules: Automation.Config['rules'] = [
+      { id: 'recover-once', schedule: { kind: 'at', at: '2026-08-05T08:00:00.000Z' }, message: 'work' },
+    ]
+    const first = await harness(new ScriptedAdapter(['fail']), root)
+    contexts.push(first)
+    await first.plugin(Automation, { enabled: true, rules })
+    await vi.waitFor(() => { expect(runRecords(first, 'recover-once')).toEqual(['started', 'error']) }, { timeout: 5_000 })
+
+    await first.fiber.dispose()
+    contexts.splice(contexts.indexOf(first), 1)
+
+    const second = await harness(new ScriptedAdapter([textReply('recovered')]), root)
+    contexts.push(second)
+    await second.plugin(Automation, { enabled: true, rules })
+    await vi.waitFor(() => {
+      expect(runRecords(second, 'recover-once')).toEqual(['started', 'error', 'started', 'ok'])
+    }, { timeout: 5_000 })
+  })
+
+  it('records blocked and aborted at turns as errors without losing them as successful completions', async () => {
+    const blockedAdapter = new ScriptedAdapter([])
+    const blocked = await harness(blockedAdapter)
+    contexts.push(blocked)
+    blocked.on('agent/pre-step', async () => ({ kind: 'reject' }))
+    await blocked.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'blocked-once', schedule: { kind: 'at', at: NOW }, message: 'work' }],
+    })
+    await settle()
+    expect(blockedAdapter.requests).toHaveLength(0)
+    expect(runRecords(blocked, 'blocked-once')).toEqual(['started', 'error'])
+
+    const abortedAdapter = new ScriptedAdapter(['hang'])
+    const aborted = await harness(abortedAdapter)
+    contexts.push(aborted)
+    await aborted.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'aborted-once', schedule: { kind: 'at', at: NOW }, message: 'work' }],
+    })
+    await settle()
+    expect(abortedAdapter.requests).toHaveLength(1)
+    agentFor(aborted, 'aborted-once')?.cancel({ kind: 'user' })
+    await settle()
+    expect(runRecords(aborted, 'aborted-once')).toEqual(['started', 'error'])
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    await settle()
+    expect(blockedAdapter.requests).toHaveLength(0)
+    expect(abortedAdapter.requests).toHaveLength(1)
+  })
+
+  it('disposes a created candidate when startup quiescence fails and leaves the rule dormant', async () => {
+    const adapter = new ScriptedAdapter([textReply('must not run')])
+    const ctx = await harness(adapter)
+    contexts.push(ctx)
+    const realCreate = ctx.agents.create.bind(ctx.agents)
+    let disposalCalls = 0
+    vi.spyOn(ctx.agents, 'create').mockImplementation(async (options) => {
+      const handle = await realCreate(options)
+      vi.spyOn(handle.agent, 'whenIdle').mockRejectedValueOnce(new Error('late create startup failure'))
+      return {
+        agent: handle.agent,
+        async dispose(): Promise<void> {
+          disposalCalls += 1
+          await handle.dispose()
+        },
+      }
+    })
+
+    await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'create-late-failure', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+    await settle()
+
+    expect(disposalCalls).toBe(1)
+    expect(agentFor(ctx, 'create-late-failure')).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(120_000)
+    await settle()
+    expect(adapter.requests).toHaveLength(0)
+  })
+
+  it('disposes a resumed candidate when startup quiescence fails and does not create a replacement', { timeout: 15_000 }, async () => {
+    vi.useRealTimers()
+    const root = await tempDir('automation-resume-late-failure')
+    tempDirs.push(root)
+    const sessionId = SessionId('automation:resume-late-failure')
+    const first = await harness(new ScriptedAdapter([]), root)
+    contexts.push(first)
+    const seeded = await first.agents.create({
+      sessionId,
+      meta: { cwd: process.cwd() },
+      agentOptions: { provider: 'mock', model: 'mock' },
+    })
+    seeded.agent.session.append('automation/run', {
+      ruleId: 'resume-late-failure',
+      scheduledAt: NOW,
+      status: 'started',
+    })
+    await first.sessions.flush(seeded.agent.session)
+    await seeded.dispose()
+    await first.fiber.dispose()
+    contexts.splice(contexts.indexOf(first), 1)
+
+    const adapter = new ScriptedAdapter([textReply('must not run')])
+    const second = await harness(adapter, root)
+    contexts.push(second)
+    const realResume = second.agents.resume.bind(second.agents)
+    const create = vi.spyOn(second.agents, 'create')
+    const warn = vi.spyOn(second.logger, 'warn').mockImplementation(() => {})
+    let disposalCalls = 0
+    const resume = vi.spyOn(second.agents, 'resume').mockImplementation(async (options) => {
+      const handle = await realResume(options)
+      vi.spyOn(handle.agent, 'whenIdle').mockRejectedValueOnce(new Error('late resume startup failure'))
+      return {
+        agent: handle.agent,
+        async dispose(): Promise<void> {
+          disposalCalls += 1
+          await handle.dispose()
+        },
+      }
+    })
+
+    await second.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'resume-late-failure', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+
+    await vi.waitFor(() => { expect(disposalCalls).toBe(1) }, { timeout: 5_000 })
+    expect(resume).toHaveBeenCalledTimes(1)
+    expect(create).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('late resume startup failure'))
+    expect(agentFor(second, 'resume-late-failure')).toBeUndefined()
+    expect(adapter.requests).toHaveLength(0)
+  })
+
+  it('joins late initialization and the AgentHandle teardown before plugin disposal resolves', async () => {
+    const adapter = new ScriptedAdapter([])
+    const ctx = await harness(adapter)
+    contexts.push(ctx)
+    const realCreate = ctx.agents.create.bind(ctx.agents)
+    const acquired = Promise.withResolvers<AgentHandle>()
+    const releaseAcquire = Promise.withResolvers<undefined>()
+    const disposalStarted = Promise.withResolvers<undefined>()
+    const releaseDisposal = Promise.withResolvers<undefined>()
+    vi.spyOn(ctx.agents, 'create').mockImplementation(async (options) => {
+      const handle = await realCreate(options)
+      acquired.resolve(handle)
+      await releaseAcquire.promise
+      return {
+        agent: handle.agent,
+        async dispose(): Promise<void> {
+          disposalStarted.resolve(undefined)
+          await releaseDisposal.promise
+          await handle.dispose()
+        },
+      }
+    })
+
+    const fiber = await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'late', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+    await acquired.promise
+    const disposed = fiber.dispose()
+    let settled = false
+    void disposed.then(() => { settled = true })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+
+    releaseAcquire.resolve(undefined)
+    await disposalStarted.promise
+    expect(settled).toBe(false)
+    releaseDisposal.resolve(undefined)
+    await disposed
+    expect(agentFor(ctx, 'late')).toBeUndefined()
   })
 
   it('stops firing and disposes its agents when the plugin fiber is disposed', async () => {

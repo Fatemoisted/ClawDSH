@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-`@clawdsh/dsh-channel-openclaw` 是 [Channel Service Definition](../channel/README.md) 的 OpenClaw 通信平面 Service Provider。它校验并监管一个锁定版本的 OpenClaw Gateway，认证其本地 bridge，把已准入的 turn 转发给 Agent 平面 driver，并把原生 Channel action 返回给 OpenClaw。OpenClaw 继续负责平台凭据、登录状态、准入策略、协议客户端、媒体获取和最终平台投递；[Agent consumer](../channel-agent/README.md)继续负责模型选择、提示词、工具、记忆、Session 和模型可见历史。
+`@clawdsh/dsh-channel-openclaw` 是 [Channel Service Definition](../channel/README.md) 的 OpenClaw 通信平面 Service Provider。它校验并监管一个锁定版本的 OpenClaw Gateway，认证其本地 bridge，把已准入的 turn 转发给 Agent 平面 driver，并把原生 Channel action 返回给 OpenClaw。OpenClaw 继续负责平台凭据、登录状态、准入策略、协议客户端、媒体获取和最终平台投递；[Agent consumer](../channel-agent/README.md)继续负责模型选择、提示词、工具、记忆、Session 和模型可见历史。[Harness 上下文与复用地图](../../../docs/specs/context-map.md)记录了这条唯一 canonical 路径复用的 dsh service。
 
 ## 配置
 
@@ -57,7 +57,9 @@
 | `handshakeTimeoutMs` / `startupTimeoutMs` | 每个 socket 的首个认证帧，以及宿主预检加首个已接受 bridge 身份的正安全整数超时上限。 |
 | `shutdownGraceMs` / `diagnosticBytes` | 进程树关闭超时和每个诊断流保留字节数的正安全整数上限。预检输出发生丢失时启动失败。 |
 
-OpenClaw JSON 必须用唯一的 `clawdsh/local` 替换模型注册表，让每个默认和具名 Agent route 选择 `clawdsh` AgentHarness，使用空 fallback 列表，并把 Agent workspace 设为 `stateDir/workspace`。`plugins.load.paths` 只能包含已校验的 bridge root；`plugins.allow` 和已启用的 `plugins.entries` 必须精确包含 `clawdsh-bridge` 加锁定 extension id；`plugins.installs` 必须为空。Bash、config、MCP、plugin、debug、restart 和 native-skill command 必须显式关闭；已准入 text command 必须使用 access group，禁止 wildcard sender，全局及每个具名 Agent 必须显式设置 `tools.elevated.enabled: false`，Agent defaults 必须设置 `elevatedDefault: off`。即使没有配置 Channel，也必须存在 `channels` 对象，每个 entry 和 account 都必须显式设置 `enabled`。首批锁定的准入校验器允许启用 Telegram 和 Feishu：两者都要求 `configWrites: false`、安全的 DM 与群组策略，并分别通过 Feishu `requireMention` 或 Telegram `groups["*"].requireMention` 显式要求 mention。其他已编目的 Channel 在具备版本专用的准入字段校验器前必须保持关闭，避免把目录存在误报成已认证运行支持。所有 Channel 的不安全嵌套策略和 public wildcard sender 都会被拒绝。任何不匹配都会在 Gateway 启动前失败。
+OpenClaw JSON 必须用唯一的 `clawdsh/local` 替换模型注册表，只声明 stable V1 支持的 `text` input，让每个默认和具名 Agent route 选择 `clawdsh` AgentHarness，使用空 fallback 列表，把 Agent workspace 设为 `stateDir/workspace`，并把 `session.dmScope` 设为 `per-account-channel-peer`。`plugins.load.paths` 只能包含已校验的 bridge root；`plugins.allow` 和已启用的 `plugins.entries` 必须精确包含 `clawdsh-bridge` 加锁定 extension id；`plugins.installs` 必须为空。Bash、config、MCP、plugin、debug、restart 和 native-skill command 必须显式关闭；已准入 text command 必须使用 access group，禁止 wildcard sender，全局及每个具名 Agent 必须显式设置 `tools.elevated.enabled: false`，Agent defaults 必须设置 `elevatedDefault: off`。即使没有配置 Channel，也必须存在 `channels` 对象，每个 entry 和 account 都必须显式设置 `enabled`。锁定的准入校验器可以接受 bundled Telegram；飞书或 Discord 则只有在配置的 channel id 属于匹配的精确 extension lock 时才可接受。三者都要求 `configWrites: false`、安全的 DM 与群组策略，并按平台分别通过 Telegram group、飞书配置或 Discord guild 显式要求 mention。其他已编目的 Channel 在具备版本专用的准入字段校验器前必须保持关闭。所有 Channel 的不安全嵌套策略和 public wildcard sender 都会被拒绝。任何不匹配都会在 Gateway 启动前失败。
+
+上述 validator 覆盖不会提升支持状态。Production catalog 把 Telegram 记录为 bundled，并记录飞书与 Discord 的精确 repository-official artifact；但交付 profile 使用 `enabled: false` 与 `extensions: []`，安装器从 `channels: {}` 开始。机器 support catalog 把三者在内的全部 production channel 都归为 `cataloged`；没有任何渠道达到 installable、certified 或 enabled。除了这条 OpenClaw 通信平面，ClawDSH 不交付直连 Telegram、飞书或 Discord adapter。
 
 ## 锁定宿主与扩展
 
@@ -96,7 +98,7 @@ npx --yes npm@10.9.7 pack --silent --ignore-scripts --pack-destination "$artifac
 pnpm exec tsx packages/openclaw/channel-openclaw/tests/assembled-smoke.ts "$artifact_dir/openclaw-2026.7.1-2.tgz"
 ```
 
-该测试使用真实稳定版 OpenClaw schema 校验无凭据且策略完备的 Telegram 与 Feishu 配置，启动已校验的生产 Gateway，贯穿稳定 V1 bridge 和真实 DSH `channel`、`channel-agent` 包，并从确定性 mock LLM 获得终态回答。随后它断开 Provider，证明第二个 Gateway request 返回 bridge 故障、`fallbackUsed: false`，并且不会再次调用 DSH 模型。
+该测试先让真实稳定版 OpenClaw schema 校验无凭据的 Telegram 与飞书策略 fixture，再单独启动已校验的 production Gateway，贯穿 stable V1 bridge 和真实 DSH `channel`、`channel-agent` 包，并从确定性 mock LLM 获得终态回答。它不会安装任何平台 extension，也不会贯穿 Telegram、飞书或 Discord transport。随后它断开 Provider，证明第二个 Gateway request 返回 bridge 故障、`fallbackUsed: false`，并且不会再次调用 DSH 模型。
 
 该 request 有意不使用 `--deliver`。断言终止于终态 `ChannelTurnResultV1` 和已完成的 Agent ledger 记录，因为锁定宿主没有可关联最终平台投递的公共 hook。该测试不会伪造平台 receipt，也不会据此认证 Channel。
 
@@ -123,6 +125,7 @@ pnpm exec tsx packages/openclaw/channel-openclaw/tests/assembled-smoke.ts "$arti
 - **锁定 bridge 只声明 `send` 和 `poll`**：其他 V1 action variant 在协议层仍然有效，但在 OpenClaw bridge 具备等效公共宿主 API 前会因能力检查失败。
 - **媒体支持不对称**：在 DSH 拥有已校验 staging writer 前，出站 Provider action 会拒绝媒体；stable V1 因 AgentHarness 缺少安全的已 materialize 文件 fact 而拒绝入站媒体，V2 只接受已校验的本地 staging 文件。
 - **锁定 bridge 不协商最终投递报告**：两个宿主代际都缺少公开且可关联的 final-delivery hook，因此 Agent 侧 ledger 无法从这些适配器收到 `delivery.report`。最终投递声明以及依赖此能力的任何 Channel 认证仍处于阻塞状态。
+- **本地 bridge 无法获取逐账号健康状态**：锁定版 OpenClaw 只允许 bundled 或 trusted-official 插件发起 `channels.status` Gateway 请求，而 `clawdsh-bridge` 从已校验的本地路径加载。因此 bridge health 只报告已认证 transport 的 readiness，`accounts` 保持为空，并发出固定的 `OPENCLAW_ACCOUNT_STATUS_UNAVAILABLE` 诊断；它不表示已配置的平台账号处于连接状态。
 - **崩溃歧义需要对账**：确认丢失的副作用会保留为 recovery-required 或 ambiguous，绝不会被盲目重发。
 - **仅限聊天**：语音通话、实时音频和会议生命周期需要单独协议。
-- **认证状态依赖外部证据**：keyless 测试校验本 Provider 和 bridge 协议，不校验真实账号凭据、平台条款、硬件依赖或各 Channel 的认证状态。
+- **认证状态依赖外部证据**：keyless 测试校验本 Provider 和 bridge 协议，不校验交付的逐 Channel assembly、真实账号凭据、平台条款、硬件依赖或各 Channel 的认证状态。受检 support catalog 是权威，当前仍把所有 Channel 保持在 `cataloged`。

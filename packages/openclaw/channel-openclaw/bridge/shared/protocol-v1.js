@@ -317,9 +317,60 @@ function validateUsage(value, path) {
   }
 }
 
+function validateMessagingToolSend(value, path) {
+  const object = exact(value, ['tool', 'provider', 'accountId', 'to'], ['threadId', 'text', 'mediaUrls'], path)
+  literal(object.tool, 'message', `${path}.tool`)
+  opaqueString(object.provider, `${path}.provider`)
+  opaqueString(object.accountId, `${path}.accountId`)
+  opaqueString(object.to, `${path}.to`)
+  optional(object, 'threadId', opaqueString, path)
+  optional(object, 'text', plainString, path)
+  optional(object, 'mediaUrls', (candidate, candidatePath) => {
+    arrayOf(candidate, nonBlankString, candidatePath)
+  }, path)
+  if (!Object.hasOwn(object, 'text') && (!Array.isArray(object.mediaUrls) || object.mediaUrls.length === 0)) {
+    fail(path, 'a confirmed send requires text or mediaUrls')
+  }
+}
+
+function validateTurnEffects(value, path) {
+  const object = exact(value, [
+    'hadPotentialSideEffects',
+    'replaySafe',
+    'didSendViaMessagingTool',
+    'messagingToolSentTexts',
+    'messagingToolSentMediaUrls',
+    'messagingToolSentTargets',
+  ], [], path)
+  booleanValue(object.hadPotentialSideEffects, `${path}.hadPotentialSideEffects`)
+  booleanValue(object.replaySafe, `${path}.replaySafe`)
+  booleanValue(object.didSendViaMessagingTool, `${path}.didSendViaMessagingTool`)
+  arrayOf(object.messagingToolSentTexts, plainString, `${path}.messagingToolSentTexts`)
+  arrayOf(object.messagingToolSentMediaUrls, nonBlankString, `${path}.messagingToolSentMediaUrls`)
+  arrayOf(object.messagingToolSentTargets, validateMessagingToolSend, `${path}.messagingToolSentTargets`)
+  if (object.replaySafe === object.hadPotentialSideEffects) {
+    fail(path, 'replaySafe must be the inverse of hadPotentialSideEffects')
+  }
+  if (object.messagingToolSentTargets.length > 0 && !object.didSendViaMessagingTool) {
+    fail(path, 'confirmed send targets require an attempted messaging send')
+  }
+  if (object.didSendViaMessagingTool && !object.hadPotentialSideEffects) {
+    fail(path, 'an attempted send is a potential side effect')
+  }
+  const targetTexts = object.messagingToolSentTargets.flatMap(target => target.text === undefined ? [] : [target.text])
+  const targetMediaUrls = object.messagingToolSentTargets.flatMap(target => target.mediaUrls ?? [])
+  if (JSON.stringify(object.messagingToolSentTexts) !== JSON.stringify(targetTexts)) {
+    fail(path, 'sent texts must match confirmed targets in order')
+  }
+  if (JSON.stringify(object.messagingToolSentMediaUrls) !== JSON.stringify(targetMediaUrls)) {
+    fail(path, 'sent media URLs must match confirmed targets in order')
+  }
+}
+
 function validateResultBase(object, path) {
   literal(object.protocolVersion, 1, `${path}.protocolVersion`)
   for (const key of ['turnId', 'runId', 'replayId']) opaqueString(object[key], `${path}.${key}`)
+  validateTurnEffects(object.effects, `${path}.effects`)
 }
 
 /**
@@ -329,7 +380,7 @@ function validateResultBase(object, path) {
  */
 export function validateTurnResult(value) {
   const path = 'turnResult'
-  const base = ['protocolVersion', 'turnId', 'runId', 'replayId', 'status']
+  const base = ['protocolVersion', 'turnId', 'runId', 'replayId', 'effects', 'status']
   const candidate = record(value, path)
   switch (candidate.status) {
     case 'completed': {

@@ -83,14 +83,16 @@ export function ProductShell({
             <a
               key={item.id}
               href={routePath(item.id)}
+              aria-label={item.label}
               aria-current={route.id === item.id ? 'page' : undefined}
+              title={item.label}
               onClick={navigate(item.id)}
             >
               <span aria-hidden="true">{item.mark}</span>
               <span>{item.label}</span>
             </a>
           ))}
-          <a href="/">
+          <a href="/" aria-label="Harness 高级" title="Harness 高级">
             <span aria-hidden="true">↗</span>
             <span>Harness 高级</span>
           </a>
@@ -111,12 +113,12 @@ export function ProductShell({
           {conversation}
         </div>
         {route.id === 'settings' ? (
-          <div className={css.page}>
+          <div className={css.page} data-clawdsh-product-page>
             <SettingsPage control={control} localControlAvailable={localControlAvailable} />
           </div>
         ) : null}
         {route.id === 'activity' ? (
-          <div className={css.page}>
+          <div className={css.page} data-clawdsh-product-page>
             <ActivityPage
               control={control}
               localControlAvailable={localControlAvailable}
@@ -125,7 +127,7 @@ export function ProductShell({
           </div>
         ) : null}
         {route.id === 'not-found' ? (
-          <div className={css.page}>
+          <div className={css.page} data-clawdsh-product-page>
             <NotFoundPage pathname={route.pathname} returnToChat={() => { router.navigate('chat') }} />
           </div>
         ) : null}

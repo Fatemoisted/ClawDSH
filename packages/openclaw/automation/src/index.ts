@@ -14,8 +14,9 @@
  * scheduler shape). Semantics are OpenClaw-isomorphic: at-least-once (a
  * `started` record lands before the turn), no automatic retries, in-flight
  * dedup, missed occurrences skipped (no catch-up), one-shot `at` rules
- * complete after an `ok` run and the durable guard suppresses re-firing after
- * restarts. `ctx.schedule` is deliberately not used: its 300s `every` floor,
+ * complete after an `ok` run; a failed attempt stays dormant for this mount
+ * without being mistaken for durable success. `ctx.schedule` is deliberately
+ * not used: its 300s `every` floor,
  * session-local delivery, live-root-only runtime attach, and tools-only
  * creation API cannot express minute-granularity cron with one dedicated
  * durable session per rule (see the cron-mapping Agent Note).
@@ -136,6 +137,16 @@ interface RuleState {
   anchorMs: number
 }
 
+/** Minimal optional persistence surface used to distinguish absent sessions from resume failures. */
+interface SessionPersistenceReader {
+  list(): Promise<SessionHeader[]>
+}
+
+/** Narrow an optional Cordis service without importing a persistence implementation. */
+function isSessionPersistenceReader(value: unknown): value is SessionPersistenceReader {
+  return typeof value === 'object' && value !== null && 'list' in value && typeof value.list === 'function'
+}
+
 /** Parse a config value into defaults and schedule facts; a malformed value throws. */
 function resolveRule(rule: AutomationRule): ResolvedRule {
   if (!RULE_ID.test(rule.id)) {
@@ -184,9 +195,11 @@ export function apply(ctx: Context, config: Config = {}): void {
   const rules = resolveRules(runtimeConfig)
   if (!(runtimeConfig.enabled ?? false)) return
   const runtime = new AutomationRuntime(ctx, rules)
-  void runtime.initialize()
-  ctx.effect(function* () {
-    yield () => runtime.dispose()
+  // Cordis's async effect is the lifecycle barrier: unload waits for a late
+  // acquire to settle before invoking (and awaiting) the runtime disposer.
+  ctx.effect(async () => {
+    await runtime.initialize()
+    return () => runtime.dispose()
   }, 'automation.runtime()')
 }
 
@@ -205,6 +218,7 @@ function resolveRules(config: Config): ResolvedRule[] {
 class AutomationRuntime {
   private readonly states: RuleState[]
   private timer: ReturnType<typeof setTimeout> | undefined
+  private tickTask: Promise<void> | undefined
   private disposed = false
 
   constructor(
@@ -227,7 +241,7 @@ class AutomationRuntime {
     for (const state of this.states) {
       await this.acquireAgent(state)
       if (state.handle === undefined) continue
-      if (await this.atAlreadyCompleted(state)) {
+      if (this.atAlreadyCompleted(state)) {
         state.completed = true
         continue
       }
@@ -238,13 +252,27 @@ class AutomationRuntime {
     this.arm()
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.disposed = true
     if (this.timer !== undefined) clearTimeout(this.timer)
     this.timer = undefined
-    for (const state of this.states) {
-      if (state.handle !== undefined) void state.handle.dispose()
-    }
+    const tickTask = this.tickTask
+    const handles = this.states.flatMap((state) => {
+      const handle = state.handle
+      delete state.handle
+      return handle === undefined ? [] : [handle]
+    })
+    // AgentHandle.dispose is the harness-owned stop/drain/unregister boundary.
+    // Start all drains before joining the active tick so a hanging turn is
+    // cancelled and allowed to converge.
+    await Promise.all(handles.map(async (handle) => {
+      try {
+        await handle.dispose()
+      } catch (error) {
+        this.ctx.logger.warn(`automation: cannot dispose agent: ${errorMessage(error)}`)
+      }
+    }))
+    if (tickTask !== undefined) await tickTask
   }
 
   /** Resume the rule's persisted session, or create it fresh when no artifact exists. */
@@ -255,32 +283,32 @@ class AutomationRuntime {
     const setup = (agentCtx: Context) => {
       installModelSelection(agentCtx, { current: selection, assembled: undefined })
     }
-    const persistence = this.ctx.get('sessionPersistence')
+    const persistence: unknown = this.ctx.get('sessionPersistence')
     try {
-      if (persistence !== undefined) {
+      if (isSessionPersistenceReader(persistence)) {
         try {
-          state.handle = await this.ctx.agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
-          await state.handle.agent.whenIdle()
+          const candidate = await this.ctx.agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
+          state.handle = await settledAgentHandle(candidate, state.rule.id)
           return
         } catch (error) {
           const exists = (await persistence.list()).some((header: SessionHeader) => header.id === sessionId)
           if (exists) throw error
         }
       }
-      state.handle = await this.ctx.agents.create({
+      const candidate = await this.ctx.agents.create({
         sessionId,
         meta: { cwd: process.cwd() },
         agentOptions,
         setup,
       })
-      await state.handle.agent.whenIdle()
+      state.handle = await settledAgentHandle(candidate, state.rule.id)
     } catch (error) {
       this.ctx.logger.warn(`automation: cannot acquire agent for rule "${state.rule.id}": ${errorMessage(error)}`)
     }
   }
 
   /** Whether a one-shot `at` rule already recorded an `ok` run for its occurrence in the session log. */
-  private async atAlreadyCompleted(state: RuleState): Promise<boolean> {
+  private atAlreadyCompleted(state: RuleState): boolean {
     if (state.rule.schedule.kind !== 'at' || state.handle === undefined) return false
     const scheduledAt = new Date(state.rule.atMs).toISOString()
     return state.handle.agent.session.events.some((event: SessionEvent) =>
@@ -324,8 +352,12 @@ class AutomationRuntime {
     const earliest = Math.min(...targets)
     if (!Number.isFinite(earliest)) return
     const delay = Math.min(Math.max(earliest - Date.now(), 0), MAX_TIMER_DELAY_MS)
-    this.timer = setTimeout(() => { void this.tick() }, delay)
-    this.timer.unref?.()
+    this.timer = setTimeout(() => {
+      this.tickTask = this.tick().catch((error: unknown) => {
+        this.ctx.logger.warn(`automation: scheduler tick failed: ${errorMessage(error)}`)
+      })
+    }, delay)
+    this.timer.unref()
   }
 
   /** Run all due occurrences sequentially (OpenClaw's wake shape), then re-arm. */
@@ -360,12 +392,15 @@ class AutomationRuntime {
       // `turn/end` reason is the authoritative failure record.
       const turnEnd = agent.session.events.findLast(event =>
         event.type === 'turn/end' && event.seq >= firstSeq)
-      if (turnEnd?.type === 'turn/end' && turnEnd.data.reason.kind === 'error') {
-        agent.session.append('automation/run', { ruleId: state.rule.id, scheduledAt, status: 'error', error: turnEnd.data.reason.error.message })
-        this.ctx.logger.warn(`automation: rule "${state.rule.id}" run failed: ${turnEnd.data.reason.error.message}`)
-      } else {
+      const failure = turnEnd?.type === 'turn/end'
+        ? turnFailure(turnEnd.data.reason)
+        : 'Agent reached idle without a terminal turn record.'
+      if (failure === undefined) {
         agent.session.append('automation/run', { ruleId: state.rule.id, scheduledAt, status: 'ok' })
         if (state.rule.schedule.kind === 'at') state.completed = true
+      } else {
+        agent.session.append('automation/run', { ruleId: state.rule.id, scheduledAt, status: 'error', error: failure })
+        this.ctx.logger.warn(`automation: rule "${state.rule.id}" run failed: ${failure}`)
       }
       // The final record must be durable before the run returns: the `at`
       // once-guard re-reads it from storage on the next mount.
@@ -376,8 +411,43 @@ class AutomationRuntime {
     } finally {
       state.running = false
     }
-    this.scheduleNext(state, now, false)
+    // An `at` rule has no next occurrence. Success is the durable once-guard;
+    // failure remains non-completed so a later remount can recover it, but this
+    // mounted runtime never turns a past timestamp into a zero-delay retry loop.
+    if (state.rule.schedule.kind === 'at') {
+      state.nextRunAt = Number.POSITIVE_INFINITY
+    } else {
+      this.scheduleNext(state, now, false)
+    }
   }
+}
+
+/** Publish an acquired handle only after startup quiesces; dispose every failed candidate. */
+async function settledAgentHandle(candidate: AgentHandle, ruleId: string): Promise<AgentHandle> {
+  try {
+    await candidate.agent.whenIdle()
+    return candidate
+  } catch (error) {
+    try {
+      await candidate.dispose()
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `automation: rule "${ruleId}" agent startup failed (${errorMessage(error)})`
+          + ` and candidate cleanup was incomplete (${errorMessage(cleanupError)})`,
+      )
+    }
+    throw error
+  }
+}
+
+/** Map only genuinely successful Agent terminals to success. */
+function turnFailure(reason: SessionEvent<'turn/end'>['data']['reason']): string | undefined {
+  if (reason.kind === 'completed' || reason.kind === 'max-tokens') return undefined
+  if (reason.kind === 'error') return reason.error.message
+  if (reason.kind === 'blocked') return 'Agent policy blocked the automation turn.'
+  if (reason.kind === 'aborted') return `Agent automation turn was aborted (${reason.reason.kind}).`
+  return 'Agent automation turn did not complete.'
 }
 
 function errorMessage(error: unknown): string {

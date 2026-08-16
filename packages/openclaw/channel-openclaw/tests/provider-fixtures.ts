@@ -25,6 +25,16 @@ export interface ProviderMedia {
   closes: number
 }
 
+/** Side-effect-free terminal-result fixture. */
+export const SAFE_TURN_EFFECTS = {
+  hadPotentialSideEffects: false,
+  replaySafe: true,
+  didSendViaMessagingTool: false,
+  messagingToolSentTexts: [],
+  messagingToolSentMediaUrls: [],
+  messagingToolSentTargets: [],
+} as const
+
 /** Create a context with durable tables and observable channel-driver calls. */
 export function providerContext(media: ProviderMedia = { deliveries: new Map(), actions: new Map(), closes: 0 }) {
   const table = (name: 'deliveries' | 'actions') => {
@@ -45,6 +55,7 @@ export function providerContext(media: ProviderMedia = { deliveries: new Map(), 
       turnId: 'turn-1',
       runId: 'run-1',
       replayId: 'replay-1',
+      effects: SAFE_TURN_EFFECTS,
       status: 'silent',
       sessionId: 'channel-session-1',
     })),

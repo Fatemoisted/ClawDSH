@@ -1,4 +1,6 @@
 .page {
+  box-sizing: border-box;
+  min-width: 0;
   width: min(1120px, 100%);
   margin: 0 auto;
   padding: 48px 40px 80px;
@@ -41,6 +43,8 @@
 }
 
 .section {
+  box-sizing: border-box;
+  min-width: 0;
   padding: 24px;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 16px;
@@ -250,6 +254,8 @@
 }
 
 .namespaceCard {
+  box-sizing: border-box;
+  min-width: 0;
   padding: 20px;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 14px;
@@ -271,6 +277,7 @@
 
 .namespaceHeading > div,
 .credentialHeading > div {
+  min-width: 0;
   display: grid;
   gap: 4px;
 }
@@ -296,6 +303,7 @@
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
   line-height: 18px;
+  overflow-wrap: anywhere;
 }
 
 .revisionLine {
@@ -339,14 +347,17 @@
 }
 
 .fieldCopy {
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, max-content) minmax(0, max-content);
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 4px 8px;
 }
 
-.fieldCopy label {
+.fieldLabel {
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .fieldCopy p {
@@ -401,8 +412,10 @@
 }
 
 .readonlyList {
+  max-width: 100%;
   margin: 0;
   padding-left: 18px;
+  overflow-wrap: anywhere;
 }
 
 .namespaceActions,
@@ -463,6 +476,7 @@
 }
 
 .rule {
+  min-width: 0;
   margin: 0;
   padding: 14px;
   border: 1px solid var(--dsw-alias-border-l1);
@@ -500,6 +514,8 @@
 }
 
 .credentialCard {
+  box-sizing: border-box;
+  min-width: 0;
   padding: 16px;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 12px;
@@ -518,4 +534,16 @@
   .settingField { grid-template-columns: 1fr; }
   .rule { grid-template-columns: 1fr; }
   .messageField { grid-column: auto; }
+}
+
+@media (max-width: 420px) {
+  .page { padding: 24px 12px 48px; }
+  .section,
+  .namespaceCard,
+  .credentialCard { padding: 14px; }
+  .settingField,
+  .rule { padding: 12px; }
+  .namespaceHeading,
+  .credentialHeading { flex-wrap: wrap; }
+  .capabilities { grid-template-columns: minmax(0, 1fr); }
 }

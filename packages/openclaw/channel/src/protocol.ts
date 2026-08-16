@@ -291,11 +291,53 @@ const channelFailureV1Schema = z.object({
   retryable: z.boolean(),
 }).strict()
 
+const messagingToolSendV1Schema = z.object({
+  tool: z.literal('message'),
+  provider: channelIdSchema,
+  accountId: channelAccountIdSchema,
+  to: channelConversationIdSchema,
+  threadId: channelThreadIdSchema.optional(),
+  text: plainStringSchema.optional(),
+  mediaUrls: z.array(nonBlankSchema).optional(),
+}).strict().superRefine((value, context) => {
+  if (value.text === undefined && (value.mediaUrls?.length ?? 0) === 0) {
+    context.addIssue({ code: 'custom', message: 'a confirmed send requires text or mediaUrls' })
+  }
+})
+
+const channelTurnEffectsV1Schema = z.object({
+  hadPotentialSideEffects: z.boolean(),
+  replaySafe: z.boolean(),
+  didSendViaMessagingTool: z.boolean(),
+  messagingToolSentTexts: z.array(plainStringSchema),
+  messagingToolSentMediaUrls: z.array(nonBlankSchema),
+  messagingToolSentTargets: z.array(messagingToolSendV1Schema),
+}).strict().superRefine((value, context) => {
+  if (value.replaySafe === value.hadPotentialSideEffects) {
+    context.addIssue({ code: 'custom', message: 'replaySafe must be the inverse of hadPotentialSideEffects' })
+  }
+  if (value.messagingToolSentTargets.length > 0 && !value.didSendViaMessagingTool) {
+    context.addIssue({ code: 'custom', message: 'confirmed send targets require an attempted messaging send' })
+  }
+  if (value.didSendViaMessagingTool && !value.hadPotentialSideEffects) {
+    context.addIssue({ code: 'custom', message: 'an attempted send is a potential side effect' })
+  }
+  const targetTexts = value.messagingToolSentTargets.flatMap(target => target.text === undefined ? [] : [target.text])
+  const targetMediaUrls = value.messagingToolSentTargets.flatMap(target => target.mediaUrls ?? [])
+  if (JSON.stringify(value.messagingToolSentTexts) !== JSON.stringify(targetTexts)) {
+    context.addIssue({ code: 'custom', message: 'sent texts must match confirmed targets in order' })
+  }
+  if (JSON.stringify(value.messagingToolSentMediaUrls) !== JSON.stringify(targetMediaUrls)) {
+    context.addIssue({ code: 'custom', message: 'sent media URLs must match confirmed targets in order' })
+  }
+})
+
 const turnResultBase = {
   protocolVersion: protocolVersionSchema,
   turnId: channelTurnIdSchema,
   runId: channelRunIdSchema,
   replayId: channelReplayIdSchema,
+  effects: channelTurnEffectsV1Schema,
 }
 
 const completedResultSchema = z.object({

@@ -196,6 +196,40 @@ export interface ChannelFailureV1 {
   readonly retryable: boolean
 }
 
+/** One confirmed `message.send` projection in the shape consumed by OpenClaw AgentHarness. */
+export interface ChannelMessagingToolSendV1 {
+  /** Model-visible tool identity. */
+  readonly tool: 'message'
+  /** Channel provider that accepted the send. */
+  readonly provider: ChannelId
+  /** Account selected by the route-bound tool. */
+  readonly accountId: ChannelAccountId
+  /** Conversation selected by the route-bound tool. */
+  readonly to: ChannelConversationId
+  /** Thread selected by the route-bound tool, when present. */
+  readonly threadId?: ChannelThreadId
+  /** Confirmed sent text, when present. */
+  readonly text?: string
+  /** Confirmed media URLs, when present. */
+  readonly mediaUrls?: readonly string[]
+}
+
+/** Durable side-effect evidence derived from the exact owning Agent turn. */
+export interface ChannelTurnEffectsV1 {
+  /** Whether the turn invoked a mutating tool or otherwise has an uncertain effect boundary. */
+  readonly hadPotentialSideEffects: boolean
+  /** Whether the Agent turn may be executed again; exactly the inverse of potential side effects. */
+  readonly replaySafe: boolean
+  /** Whether a `message.send` may have dispatched; false only for definitive pre-dispatch outcomes. */
+  readonly didSendViaMessagingTool: boolean
+  /** Texts from confirmed `message.send` calls in execution order. */
+  readonly messagingToolSentTexts: readonly string[]
+  /** Media URLs from confirmed `message.send` calls in execution order. */
+  readonly messagingToolSentMediaUrls: readonly string[]
+  /** Route-bound targets from confirmed `message.send` calls in execution order. */
+  readonly messagingToolSentTargets: readonly ChannelMessagingToolSendV1[]
+}
+
 /** Fields shared by every terminal turn result. */
 export interface ChannelTurnResultBaseV1 {
   /** Base protocol version. */
@@ -206,6 +240,8 @@ export interface ChannelTurnResultBaseV1 {
   readonly runId: ChannelRunId
   /** Persisted result identity used for safe replay without Agent execution. */
   readonly replayId: ChannelReplayId
+  /** Durable Agent-tool side-effect evidence for OpenClaw replay policy. */
+  readonly effects: ChannelTurnEffectsV1
 }
 
 /** A turn that produced final text or media. */

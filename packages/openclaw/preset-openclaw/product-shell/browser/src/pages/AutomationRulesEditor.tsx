@@ -39,6 +39,16 @@ function replaceRule(rules: RuleRecord[], index: number, patch: Partial<RuleReco
   return rules.map((rule, position) => position === index ? { ...rule, ...patch } : rule)
 }
 
+function nextRuleId(rules: readonly RuleRecord[]): string {
+  const ids = new Set(rules.map(rule => rule.id))
+  // Starting just beyond the number of rows guarantees a free suffix after
+  // at most `rules.length` probes, without parsing user-controlled digits into
+  // an imprecise Number (which could otherwise stop incrementing forever).
+  let sequence = rules.length + 1
+  while (ids.has(`rule-${String(sequence)}`)) sequence += 1
+  return `rule-${String(sequence)}`
+}
+
 function scheduleKind(schedule: Record<string, unknown>): 'cron' | 'at' | 'every' {
   return schedule.kind === 'cron' || schedule.kind === 'at' ? schedule.kind : 'every'
 }
@@ -123,7 +133,7 @@ export function AutomationRulesEditor({ id, value, disabled, onChange }: Automat
         disabled={disabled}
         onClick={() => {
           onChange([...rules, {
-            id: `rule-${String(rules.length + 1)}`,
+            id: nextRuleId(rules),
             name: '',
             enabled: true,
             schedule: { kind: 'every', seconds: 3600 },
