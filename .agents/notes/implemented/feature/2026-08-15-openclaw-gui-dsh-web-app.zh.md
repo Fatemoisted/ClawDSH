@@ -10,16 +10,16 @@ OpenClaw 有两种用法：本机命令行，以及经 Gateway 桥接到通讯�
 
 ## 决策
 
-物理 `preset-openclaw` 组装组合 web bundle 并交付完整 `clawdsh` agent preset，使 `pnpm dsh --profile clawdsh` 能带 ClawDSH 的 OpenClaw 衍生功能启动浏览器 GUI。四处改动，全在 ClawDSH 自有文件内：
+物理 `preset-openclaw` 组装组合 web bundle 并交付完整 `clawdsh` agent preset，因此公开托管启动器与隔离的源码开发启动器都能带 ClawDSH 的 OpenClaw 衍生功能启动浏览器 GUI。组合仍位于 ClawDSH 自有文件内：
 
-- **profile bundles** — `profile/package.json` 的 `dsh.profile.bundles` 加入 `@deepseek-ai/dsh-web-app`（与内置 `web` 模板一致）。profile 自身的 `cordis.patch.yml` 在 `system-prompt` persona 上仍胜出，因为 profile patch 后于 bundle 层应用。
-- **默认 preset** — `profile/cordis.patch.yml` 把 web bundle 的 `agent-presets` `default` 从 `standard` 改为 `clawdsh`，让新 GUI 会话自动挂载 `ClawDSH 模式`。
+- **源码 profile 与启动器** — `profile/package.template.json` 声明 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app` 与私有 `@clawdsh/dsh-dev-bundle`。`tools/run-clawdsh-dev.sh` 刷新该源码安装，以 `~/.clawdsh-dev` 为默认值解析 `CLAWDSH_DEV_HOME`，把结果导出为 `DSH_HOME`，再启动 `clawdsh` profile。源码开发绝不 fallback 到公开 `DSH_HOME`。
+- **产品层与用户层** — `profile/dev-bundle/cordis.patch.yml` 所有产品组合，包括 `system-prompt` persona 与 `agent-presets.default: clawdsh`。安装后的 `profiles/clawdsh/cordis.patch.yml` 是初始为空的用户层，源码刷新会逐字节保留它。[源码开发与托管迁移决策](../architecture/2026-08-17-clawdsh-source-development-and-managed-migration.md)所有 marker、备份与接管行为。
 - **agent preset 工具集** — `agent.cordis.yml` 现在镜像 `standard` 预设的全套 agent-plane 工具（shell、fs、skills、plan、compaction、delegation/workflow、web、todo），仅一处替换：`persona` 行（`@deepseek-ai/dsh-persona` 的「coding agent」）换成 `@clawdsh/dsh-soul`（`souls/assistant.md`，见 [feature-soul](../../../../docs/specs/feature-soul.md)）。web bundle 把模型可见工具挪进 preset，不补则 GUI agent 只见 soul 加 host-plane 的 memory 工具。
-- **preset 安装** — `tools/link-clawdsh.sh` 把 `preset.yml` + `agent.cordis.yml` + `souls/` 复制进 `$DSH_HOME/.agent-presets/clawdsh/`（preset id 即目录名）。安装名称与旧资产处理由[身份和安全默认值决策](2026-08-15-clawdsh-identity-and-safe-defaults.md)所有。
+- **preset 安装** — 源码安装器把 `preset.yml`、`agent.cordis.yml` 与 `souls/` 的受管副本经摘要校验后记录到 `$CLAWDSH_DEV_HOME/.agent-presets/clawdsh/` 下（preset id 即目录名）。受管资产有修改时，除非操作者显式请求先创建仅属主可访问的备份，否则安装器拒绝替换。安装名称与历史资产处理由[身份和安全默认值决策](2026-08-15-clawdsh-identity-and-safe-defaults.md)所有。
 
 ## 影响
 
-- `pnpm dsh --profile clawdsh` 服务 `http://127.0.0.1:3080`；GUI 对话呈现与渠道路径相同的 soul 人格、`clawdsh:memory-recall` 段、`memory_search`/`memory_get` 工具与 skills 目录，外加全套 standard 工具。
+- 启动器打印选定的 loopback origin；ClawDSH 产品入口为 `/clawdsh/`，`/` 则保留原生 Harness 界面。GUI 对话呈现与渠道路径相同的 soul 人格、`clawdsh:memory-recall` 段、`memory_search`/`memory_get` 工具与 skills 目录，外加全套 standard 工具。
 - Web server 独立于可选外部集成启动。干净安装默认禁用 OpenClaw Gateway 与 Automation；显式启用锁定 Gateway 后保留其 fail-closed 准入与配置校验。
 - `soul` 保留 `mode: append`；若 web-runtime 的「coding agent」段漏进组装后的 prompt，则把 `soul` 切 `mode: replace`（complete persona 会同时抑制 host 默认与 web-runtime 段）。
 

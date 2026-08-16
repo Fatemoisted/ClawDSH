@@ -7,8 +7,10 @@ import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { createClawdshContextMessageNodeView } from './channel-message-view.tsx'
+import { ClawdshMark } from './clawdsh-brand.tsx'
 import { createClawdshControlClient } from './control-client.ts'
 import { registerHarnessAdvancedAction } from './harness-advanced-action.tsx'
 import css from './ProductShell.module.css'
@@ -30,10 +32,10 @@ declare module '@deepseek-ai/cordis' {
 export const name = 'clawdsh-product-shell'
 
 /** Native assembly dependencies; lifecycle waiting remains Loader-owned. */
-export const inject = ['slots', 'sessions', 'layout', 'connection']
+export const inject = ['slots', 'sessions', 'layout', 'connection', 'theme']
 
 function ClawdshPresetIdentity(): ReactNode {
-  return <span className={css.presetIdentity}>ClawDSH 模式</span>
+  return <span className={css.presetIdentity}><ClawdshMark className={css.presetMark} />ClawDSH 模式</span>
 }
 
 /** Create the shell-owned plugin after the public Web library has been loaded. */
@@ -44,6 +46,10 @@ export function createNativeAppPlugin(buildRenderApp: typeof BuildRenderApp) {
     /** Install the public slot renderer and expose the native root render closure. */
     apply(ctx: ClientContext): void {
       ctx.slots.install(createSlotRenderer())
+      ctx.effect(() => ctx.theme.overrideTokens('@clawdsh/dsh-product-browser', {
+        '--dsw-alias-brand-primary': { light: '#1473E6', dark: '#F4FAFF' },
+        '--dsw-alias-state-business-primary': { light: '#1473E6', dark: '#F4FAFF' },
+      }), 'register ClawDSH brand theme tokens')
       const connection = ctx.get('connection') as ConnectionHandle | undefined
       if (connection === undefined) throw new Error('ClawDSH browser: Connection service unavailable')
       const control = createClawdshControlClient(connection)

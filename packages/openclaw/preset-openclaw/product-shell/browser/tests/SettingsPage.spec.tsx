@@ -32,6 +32,17 @@ function controlFixture(overrides: Partial<ClawdshControlClient> = {}): ClawdshC
 }
 
 describe('ClawDSH settings page', () => {
+  it('explains every configuration owner and credential timing at the unified entry', () => {
+    render(<SettingsPage control={controlFixture()} localControlAvailable />)
+
+    expect(screen.getByRole('heading', { name: '配置与数据位置' })).toBeTruthy()
+    expect(screen.getByText('$DSH_HOME/settings.yaml')).toBeTruthy()
+    expect(screen.getByText('$DSH_HOME/.credentials.yaml；启动环境；.env')).toBeTruthy()
+    expect(screen.getByText('$DSH_HOME/clawdsh/channel/openclaw/state/openclaw.json')).toBeTruthy()
+    expect(screen.getByText(/\.credentials\.yaml 在下一次调用生效/)).toBeTruthy()
+    expect(screen.getByText(/同一 UID 下的 Agent 工具主动读取/)).toBeTruthy()
+  })
+
   it('offers a visible retry when one presentation endpoint is unavailable', async () => {
     const loadCapabilities = vi.fn()
       .mockRejectedValueOnce(new Error('temporarily unavailable'))

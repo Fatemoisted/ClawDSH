@@ -143,6 +143,17 @@ export async function runCli(argv, options = {}) {
   const home = resolve(options.home ?? resolveHome(options.environment))
   const bundleRoot = resolve(options.bundleRoot ?? packageRoot('@clawdsh/dsh-bundle'))
   inspectBundle(bundleRoot)
+  if (invocation.mode === 'migrate-source' && !invocation.apply) {
+    createInstaller({
+      home,
+      bundleRoot,
+      npmRunner: options.npmRunner,
+      now: options.now,
+      out,
+      warn,
+    }).migrateSource({ apply: false, backupModified: false })
+    return 0
+  }
   if (invocation.mode !== 'start') {
     const releaseLock = acquireManagementLock(home)
     try {
@@ -169,6 +180,10 @@ export async function runCli(argv, options = {}) {
       }
       if (invocation.mode === 'doctor') {
         installer.doctor()
+        return 0
+      }
+      if (invocation.mode === 'migrate-source') {
+        installer.migrateSource({ apply: invocation.apply, backupModified: invocation.backupModified })
         return 0
       }
       if (invocation.mode === 'channel-install') {

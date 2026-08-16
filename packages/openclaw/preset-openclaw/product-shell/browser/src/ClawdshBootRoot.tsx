@@ -1,5 +1,6 @@
 import { useSyncExternalStore, type ReactNode } from 'react'
 import type { KernelSignal, LoaderStatus } from '@deepseek-ai/dsh-client-web'
+import { ClawdshMark } from './clawdsh-brand.tsx'
 import css from './ClawdshBootRoot.module.css'
 
 interface ClawdshBootRootProps {
@@ -21,7 +22,7 @@ export function ClawdshBootRoot({ settled, status, error, renderProduct }: Clawd
   return (
     <div className={css.boot}>
       <div className={css.card}>
-        <div className={css.mark}>C</div>
+        <ClawdshMark className={css.mark} />
         <strong>ClawDSH</strong>
         {!loud ? (
           <><span className={css.spinner} /><p>正在加载 ClawDSH 能力…</p></>

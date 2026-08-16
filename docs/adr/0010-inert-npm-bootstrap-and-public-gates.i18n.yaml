@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/adr/0010-inert-npm-bootstrap-and-public-gates.md
+0010-inert-npm-bootstrap-and-public-gates.md: 71f8371ea1fdb2da0fd731a54610bfaf6a585fb0
+0010-inert-npm-bootstrap-and-public-gates.zh.md: 99a555606317539d9794f3d9b85384ecd783d3a1

@@ -31,6 +31,17 @@ const MANAGED_TARGET_KINDS = new Map([
   ['clawdsh/channel/openclaw/runtime', 'directory'],
   ['clawdsh/channel/openclaw/state/openclaw.json', 'file'],
   ['.clawdsh.json', 'file'],
+  ['profiles/node_modules/@clawdsh/dsh-activity', 'symlink'],
+  ['profiles/node_modules/@clawdsh/dsh-automation', 'symlink'],
+  ['profiles/node_modules/@clawdsh/dsh-channel', 'symlink'],
+  ['profiles/node_modules/@clawdsh/dsh-channel-agent', 'symlink'],
+  ['profiles/node_modules/@clawdsh/dsh-channel-openclaw', 'symlink'],
+  ['profiles/node_modules/@clawdsh/dsh-embeddings', 'symlink'],
+  ['profiles/node_modules/@clawdsh/dsh-embeddings-ark', 'symlink'],
+  ['profiles/node_modules/@clawdsh/dsh-memory', 'symlink'],
+  ['profiles/node_modules/@clawdsh/dsh-product-runtime', 'symlink'],
+  ['profiles/node_modules/@clawdsh/dsh-skills-hub', 'symlink'],
+  ['profiles/node_modules/@clawdsh/dsh-soul', 'symlink'],
 ])
 
 /** @param {number} pid @returns {boolean} */
@@ -126,11 +137,22 @@ export function acquireManagementLock(home, options = {}) {
 }
 
 /** Transaction journals are narrowed before any recorded path is used. @typedef {Record<string, any>} JournalJson */
-/** @typedef {'file' | 'directory'} OperationKind */
-/** @typedef {{target: string, candidate: string, backup: string, kind: OperationKind}} JournalOperation */
-/** @typedef {{target: string, candidate: string, kind: OperationKind}} RequestedOperation */
+/** @typedef {'file' | 'directory' | 'symlink'} OperationKind */
+/** @typedef {'replace' | 'remove'} OperationAction */
+/** @typedef {{target: string, candidate?: string, backup: string, kind: OperationKind, action?: OperationAction}} JournalOperation */
+/** @typedef {{target: string, candidate?: string, kind: OperationKind, action?: OperationAction}} RequestedOperation */
 /** @typedef {{home: string, transaction: string, candidateRoot: string, backupRoot: string}} ManagedTransaction */
-/** @typedef {JournalOperation & {paths: {target: string, candidate: string, backup: string}, transaction: string}} ValidatedOperation */
+/** @typedef {JournalOperation & {action: OperationAction, paths: {target: string, candidate?: string, backup: string}, transaction: string}} ValidatedOperation */
+
+/** @param {string} path @param {OperationKind} kind */
+function requireOperationKind(path, kind) {
+  if (kind !== 'symlink') {
+    requireKind(path, kind)
+    return
+  }
+  const metadata = lstatSync(path)
+  if (!metadata.isSymbolicLink()) throw new Error(`managed symlink has an unsafe filesystem type: ${path}`)
+}
 
 /** @param {string} home @param {string} transaction @param {string} candidateRoot @param {string} backupRoot @param {JournalJson} value @param {number} index @returns {ValidatedOperation} */
 function validatedOperation(home, transaction, candidateRoot, backupRoot, value, index) {
@@ -138,34 +160,48 @@ function validatedOperation(home, transaction, candidateRoot, backupRoot, value,
     throw new TypeError(`transaction operation ${index} must be an object`)
   }
   const target = safeRelative(value.target, `transaction operation ${index} target`)
-  const candidate = safeRelative(value.candidate, `transaction operation ${index} candidate`)
+  const action = value.action ?? 'replace'
+  if (action !== 'replace' && action !== 'remove') {
+    throw new TypeError(`transaction operation ${index} has invalid action`)
+  }
+  const candidate = action === 'replace'
+    ? safeRelative(value.candidate, `transaction operation ${index} candidate`)
+    : undefined
+  if (action === 'remove' && value.candidate !== undefined) {
+    throw new TypeError(`transaction remove operation ${index} must not have a candidate`)
+  }
   const backup = safeRelative(value.backup, `transaction operation ${index} backup`)
   const kind = value.kind
-  if (kind !== 'file' && kind !== 'directory') throw new TypeError(`transaction operation ${index} has invalid kind`)
+  if (kind !== 'file' && kind !== 'directory' && kind !== 'symlink') {
+    throw new TypeError(`transaction operation ${index} has invalid kind`)
+  }
   if (MANAGED_TARGET_KINDS.get(target) !== kind) {
     throw new TypeError(`transaction operation ${index} is not an allowed managed target`)
   }
   const paths = {
     target: resolve(home, target),
-    candidate: resolve(candidateRoot, candidate),
+    ...(candidate === undefined ? {} : { candidate: resolve(candidateRoot, candidate) }),
     backup: resolve(backupRoot, backup),
   }
   if (!isInside(home, paths.target) || paths.target === resolve(home)
-    || !isInside(candidateRoot, paths.candidate) || paths.candidate === candidateRoot
+    || (paths.candidate !== undefined
+      && (!isInside(candidateRoot, paths.candidate) || paths.candidate === candidateRoot))
     || !isInside(backupRoot, paths.backup) || paths.backup === backupRoot) {
     throw new TypeError(`transaction operation ${index} escapes its managed root`)
   }
   requireOrdinaryParents(home, target, `transaction operation ${index} target`)
-  requireOrdinaryParents(candidateRoot, candidate, `transaction operation ${index} candidate`)
+  if (candidate !== undefined) {
+    requireOrdinaryParents(candidateRoot, candidate, `transaction operation ${index} candidate`)
+  }
   requireOrdinaryParents(backupRoot, backup, `transaction operation ${index} backup`)
-  return { target, candidate, backup, kind, paths, transaction }
+  return { target, ...(candidate === undefined ? {} : { candidate }), backup, kind, action, paths, transaction }
 }
 
 /** @param {ValidatedOperation[]} operations */
 function requireUniqueOperations(operations) {
   const groups = /** @type {Array<[string, string[]]>} */ ([
     ['targets', operations.map(operation => operation.target)],
-    ['candidates', operations.map(operation => operation.candidate)],
+    ['candidates', operations.flatMap(operation => operation.candidate === undefined ? [] : [operation.candidate])],
     ['backups', operations.map(operation => operation.backup)],
   ])
   for (const [label, values] of groups) {
@@ -191,7 +227,8 @@ function readJournal(home, transaction) {
     validatedOperation(home, transaction, candidateRoot, backupRoot, value, index)
   ))
   requireUniqueOperations(operations)
-  if (journal.markerIndex !== operations.length - 1 || operations.at(-1)?.target !== '.clawdsh.json') {
+  if (journal.markerIndex !== operations.length - 1 || operations.at(-1)?.target !== '.clawdsh.json'
+    || operations.at(-1)?.action !== 'replace') {
     throw new TypeError('ClawDSH transaction marker must be the final operation')
   }
   return { operations, markerIndex: journal.markerIndex }
@@ -207,24 +244,26 @@ function recoverTransaction(home, transaction) {
   const { operations, markerIndex } = readJournal(home, transaction)
   const marker = operations[markerIndex]
   if (marker === undefined) throw new TypeError('ClawDSH transaction marker is missing')
+  if (marker.paths.candidate === undefined) throw new TypeError('ClawDSH transaction marker candidate is missing')
   if (!entryExists(marker.paths.candidate) && entryExists(marker.paths.target)) {
     requireKind(marker.paths.target, 'file')
     removeManagedEntry(transaction)
     return 'committed'
   }
   for (const operation of [...operations].reverse()) {
-    const candidateMoved = !entryExists(operation.paths.candidate)
+    const candidateMoved = operation.action === 'remove'
+      || (operation.paths.candidate !== undefined && !entryExists(operation.paths.candidate))
     if (entryExists(operation.paths.backup)) {
-      requireKind(operation.paths.backup, operation.kind === 'file' ? 'file' : 'directory')
+      requireOperationKind(operation.paths.backup, operation.kind)
       if (entryExists(operation.paths.target)) {
-        requireKind(operation.paths.target, operation.kind === 'file' ? 'file' : 'directory')
+        requireOperationKind(operation.paths.target, operation.kind)
         removeManagedEntry(operation.paths.target)
       }
       mkdirSync(dirname(operation.paths.target), { recursive: true })
       requireOrdinaryParents(home, operation.target, 'transaction recovery target')
       renameSync(operation.paths.backup, operation.paths.target)
-    } else if (candidateMoved && entryExists(operation.paths.target)) {
-      requireKind(operation.paths.target, operation.kind === 'file' ? 'file' : 'directory')
+    } else if (operation.action === 'replace' && candidateMoved && entryExists(operation.paths.target)) {
+      requireOperationKind(operation.paths.target, operation.kind)
       removeManagedEntry(operation.paths.target)
     }
   }
@@ -283,12 +322,31 @@ export function commitTransaction(tx, requested) {
   if (!Array.isArray(requested) || requested.length === 0) throw new TypeError('transaction needs managed operations')
   const operations = requested.map((operation, index) => {
     const target = safeRelative(operation.target, `operation ${index} target`)
-    const candidate = safeRelative(operation.candidate, `operation ${index} candidate`)
+    const action = operation.action ?? 'replace'
+    if (action !== 'replace' && action !== 'remove') throw new TypeError(`operation ${index} has invalid action`)
+    const requestedCandidate = operation.candidate
+    if (action === 'replace' && typeof requestedCandidate !== 'string') {
+      throw new TypeError(`replace operation ${index} must have a candidate`)
+    }
+    const candidate = action === 'replace'
+      ? safeRelative(/** @type {string} */ (requestedCandidate), `operation ${index} candidate`)
+      : undefined
+    if (action === 'remove' && operation.candidate !== undefined) {
+      throw new TypeError(`remove operation ${index} must not have a candidate`)
+    }
     const kind = operation.kind
-    if (kind !== 'file' && kind !== 'directory') throw new TypeError(`operation ${index} has invalid kind`)
-    return { target, candidate, backup: `${String(index).padStart(3, '0')}-${kind}`, kind }
+    if (kind !== 'file' && kind !== 'directory' && kind !== 'symlink') {
+      throw new TypeError(`operation ${index} has invalid kind`)
+    }
+    return {
+      target,
+      ...(candidate === undefined ? {} : { candidate }),
+      backup: `${String(index).padStart(3, '0')}-${kind}`,
+      kind,
+      action,
+    }
   })
-  if (operations.at(-1)?.target !== '.clawdsh.json') {
+  if (operations.at(-1)?.target !== '.clawdsh.json' || operations.at(-1)?.action !== 'replace') {
     throw new TypeError('the managed marker must be published last')
   }
   const validated = operations.map((operation, index) => (
@@ -296,9 +354,14 @@ export function commitTransaction(tx, requested) {
   ))
   requireUniqueOperations(validated)
   for (const operation of validated) {
-    requireKind(join(tx.candidateRoot, operation.candidate), operation.kind === 'file' ? 'file' : 'directory')
+    if (operation.action === 'replace') {
+      if (operation.paths.candidate === undefined) throw new TypeError('replace operation candidate is missing')
+      requireOperationKind(operation.paths.candidate, operation.kind)
+    }
     if (entryExists(operation.paths.target)) {
-      requireKind(operation.paths.target, operation.kind === 'file' ? 'file' : 'directory')
+      requireOperationKind(operation.paths.target, operation.kind)
+    } else if (operation.action === 'remove') {
+      throw new Error(`managed remove target is absent: ${operation.paths.target}`)
     }
   }
   writeJsonAtomic(join(tx.transaction, JOURNAL_FILENAME), {
@@ -310,15 +373,18 @@ export function commitTransaction(tx, requested) {
   try {
     for (const operation of operations) {
       const target = join(tx.home, operation.target)
-      const candidate = join(tx.candidateRoot, operation.candidate)
+      const candidate = operation.candidate === undefined ? undefined : join(tx.candidateRoot, operation.candidate)
       const backup = join(tx.backupRoot, operation.backup)
       mkdirSync(dirname(target), { recursive: true })
       requireOrdinaryParents(tx.home, operation.target, 'transaction target')
       if (entryExists(target)) {
-        requireKind(target, operation.kind === 'file' ? 'file' : 'directory')
+        requireOperationKind(target, operation.kind)
         renameSync(target, backup)
       }
-      renameSync(candidate, target)
+      if (operation.action === 'replace') {
+        if (candidate === undefined) throw new TypeError('replace operation candidate is missing')
+        renameSync(candidate, target)
+      }
     }
     removeManagedEntry(tx.transaction)
   } catch (error) {

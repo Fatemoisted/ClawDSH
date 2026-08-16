@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -63,6 +64,75 @@ test('startup recovery keeps a transaction whose marker was published last', () 
     renameSync(candidate, join(home, '.clawdsh.json'))
     assert.deepEqual(recoverTransactions(home), ['committed'])
     assert.deepEqual(JSON.parse(readFileSync(join(home, '.clawdsh.json'))), { committed: true })
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('startup recovery restores a source symlink removed before marker publication', () => {
+  const root = temporary()
+  try {
+    const home = join(root, 'home')
+    const source = join(root, 'source-activity')
+    mkdirSync(source)
+    const target = join(home, 'profiles/node_modules/@clawdsh/dsh-activity')
+    mkdirSync(join(home, 'profiles/node_modules/@clawdsh'), { recursive: true })
+    symlinkSync(source, target, 'dir')
+    const tx = beginTransaction(home, 'source-remove-crash')
+    write(tx.candidateRoot, 'marker.json', '{"managed":true}\n')
+    write(tx.transaction, 'journal.json', `${JSON.stringify({
+      schemaVersion: 1,
+      state: 'publishing',
+      markerIndex: 1,
+      operations: [
+        {
+          target: 'profiles/node_modules/@clawdsh/dsh-activity',
+          backup: '000-symlink',
+          kind: 'symlink',
+          action: 'remove',
+        },
+        {
+          target: '.clawdsh.json',
+          candidate: 'marker.json',
+          backup: '001-file',
+          kind: 'file',
+          action: 'replace',
+        },
+      ],
+    }, null, 2)}\n`)
+    renameSync(target, join(tx.backupRoot, '000-symlink'))
+
+    assert.deepEqual(recoverTransactions(home), ['rolled-back'])
+    assert.equal(lstatSync(target).isSymbolicLink(), true)
+    assert.equal(realpathSync(target), realpathSync(source))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('transaction removes an allowlisted source symlink only when marker publication commits', () => {
+  const root = temporary()
+  try {
+    const home = join(root, 'home')
+    const source = join(root, 'source-activity')
+    mkdirSync(source)
+    const target = join(home, 'profiles/node_modules/@clawdsh/dsh-activity')
+    mkdirSync(join(home, 'profiles/node_modules/@clawdsh'), { recursive: true })
+    symlinkSync(source, target, 'dir')
+    const tx = beginTransaction(home, 'source-remove')
+    write(tx.candidateRoot, 'marker.json', '{"managed":true}\n')
+
+    commitTransaction(tx, [
+      {
+        target: 'profiles/node_modules/@clawdsh/dsh-activity',
+        kind: 'symlink',
+        action: 'remove',
+      },
+      { target: '.clawdsh.json', candidate: 'marker.json', kind: 'file' },
+    ])
+
+    assert.equal(existsSync(target), false)
+    assert.deepEqual(JSON.parse(readFileSync(join(home, '.clawdsh.json'))), { managed: true })
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

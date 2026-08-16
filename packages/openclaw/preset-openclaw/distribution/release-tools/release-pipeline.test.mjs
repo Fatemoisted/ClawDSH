@@ -100,6 +100,17 @@ test('tarball verifier rejects local protocols, private registries, and undeclar
     assert.throws(() => verifyPackageTarball(archive, '@clawdsh/dsh-activity'), /private registry URL/)
 
     delete manifest.dependencies
+    manifest.publishConfig.tag = 'latest'
+    writeFileSync(manifestPath, JSON.stringify(manifest))
+    rmSync(archive)
+    execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', fixture.temporary], {
+      cwd: packageRoot,
+      env: { ...process.env, npm_config_cache: join(fixture.temporary, 'npm-cache') },
+      stdio: 'pipe',
+    })
+    assert.throws(() => verifyPackageTarball(archive, '@clawdsh/dsh-activity'), /exactly public access/)
+
+    delete manifest.publishConfig.tag
     manifest.files = ['lib/index.js', 'lib/index.d.ts']
     writeFileSync(manifestPath, JSON.stringify(manifest))
     writeFileSync(join(packageRoot, 'undeclared.txt'), 'must not ship\n')
@@ -129,7 +140,11 @@ test('publisher accepts only canonical order and public-provenance or loopback-t
       publish: value => calls.push(value),
     })
     assert.deepEqual(calls.map(call => call.name), RELEASE_PACKAGE_NAMES)
-    assert.ok(calls.every(call => call.registry === 'http://127.0.0.1:4873/' && call.provenance === false))
+    assert.ok(calls.every(call => (
+      call.registry === 'http://127.0.0.1:4873/'
+        && call.provenance === false
+        && call.tag === 'next'
+    )))
     assert.throws(() => publishRelease({
       directory,
       registry: PUBLIC_NPM_REGISTRY,

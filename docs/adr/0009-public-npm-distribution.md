@@ -2,10 +2,11 @@
 
 English | [中文](0009-public-npm-distribution.zh.md)
 
-- **Status**: Accepted (2026-08-15); bootstrap required and publication not yet authorized
+- **Status**: Accepted (2026-08-15); inert bootstrap specified by ADR-0010 and publication not yet authorized
 - **Date**: 2026-08-15
 - **Supersedes**: ADR-0004; ADR-0006 decision 5 and its related registry statements
 - **Depends on**: ADR-0006, ADR-0007, ADR-0008
+- **Bootstrap refined by**: ADR-0010 (2026-08-17)
 
 ## Context
 
@@ -55,7 +56,7 @@ Initialization constructs a complete candidate under a staging directory, verifi
 
 The ClawDSH workflow fixes the public registry, package allowlist, topological order, Node 24, 4 GiB heap, candidate version, and `next` tag. It accepts no registry input and uses npm trusted publishing with `id-token: write` and provenance; a long-lived npm write token is prohibited. Before any remote write, it builds and tests the product, stages the bundle, creates all thirteen real tarballs, validates the immutable release manifest, and installs them through an isolated temporary registry and DSH home.
 
-Initial package creation is a separate one-time bootstrap outside this workflow. It requires new user authorization for the exact archive set, versions, public repository transition, and registry writes, followed by direct publication from an interactive npm account protected by 2FA. Staged publishing cannot replace this step because npm does not allow a brand-new package to be staged. The bootstrap version must be chosen explicitly: consuming `0.1.0-rc.1` interactively would make that immutable version unavailable for the later OIDC workflow. This implementation neither selects bootstrap artifacts nor performs the bootstrap.
+Initial package creation is the separate one-time procedure in ADR-0010. It uses deterministic, metadata-only `0.1.0-rc.0` archives under the `bootstrap` tag, requires new user authorization for the exact archive set, public repository transition, and registry writes, and proceeds one package at a time from an interactive npm account protected by 2FA. Read-only remote checks make an interrupted run resumable only when every existing integrity matches the closed bootstrap index and `latest` remains absent. The procedure does not consume `0.1.0-rc.1`, which remains reserved for this OIDC workflow. This implementation generates and verifies bootstrap artifacts but does not publish them.
 
 After all thirteen package objects exist, a maintainer configures and verifies one trusted-publisher record per package. Every record must name the same GitHub repository, workflow filename `clawdsh-publish.yml`, environment `npm`, and `npm publish` permission. The GitHub `npm` environment must admit deployments only from the canonical `clawdsh` branch, while the workflow independently requires the exact ref `refs/heads/clawdsh`; tags and other branches are not publication authorities. Only this complete state is `OIDC-ready`.
 

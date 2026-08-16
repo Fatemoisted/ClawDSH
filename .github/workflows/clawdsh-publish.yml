@@ -50,6 +50,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -64,6 +65,10 @@ jobs:
         run: |
           echo "CLAWDSH_RELEASE_DIRECTORY=$RUNNER_TEMP/clawdsh-release" >> "$GITHUB_ENV"
           echo "CLAWDSH_BUNDLE_DIRECTORY=$RUNNER_TEMP/clawdsh-stage/bundle" >> "$GITHUB_ENV"
+          echo "CLAWDSH_BOOTSTRAP_DIRECTORY=$RUNNER_TEMP/clawdsh-release/bootstrap" >> "$GITHUB_ENV"
+
+      - name: Audit the ClawDSH Git delta for committed secrets
+        run: node packages/openclaw/preset-openclaw/distribution/release-tools/secret-history-audit.mjs --base origin/master --head HEAD
 
       - name: Require npm trusted-publishing support
         run: node -e "const [major,minor]=process.argv[1].split('.').map(Number); if (major < 11 || (major === 11 && minor < 5)) throw new Error('npm 11.5.1 or newer is required')" "$(npm --version)"
@@ -71,10 +76,36 @@ jobs:
       - name: Install source dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Chromium for the packed-product browser smoke
+        run: pnpm --filter @deepseek-ai/dsh-web-frontend exec playwright install --with-deps chromium
+
       - name: Typecheck and build source packages
         run: |
           pnpm run typecheck
           pnpm run build
+
+      - name: Verify lint and synchronized documentation
+        run: |
+          pnpm run lint
+          pnpm run doc-sync
+
+      - name: Verify vendor rescope or its exact upstream baseline
+        run: |
+          node --test tools/verify-clawdsh-rescope-baseline.test.mjs
+          node tools/verify-clawdsh-rescope-baseline.mjs --upstream-ref origin/master
+
+      - name: Verify every remaining hygiene component
+        run: |
+          pnpm run knip
+          pnpm run publint
+          pnpm run constraints
+          pnpm run verify-dsh-package-licenses
+          pnpm run verify-package-invariants
+          pnpm run verify-built-package-invariants
+          pnpm run verify-cordis-config
+          pnpm run verify-node-next-types
+          pnpm run verify-runtime-closure
+          pnpm run verify-vendored-links
 
       - name: Install locked OpenClaw runtime
         run: npx --yes npm@10.9.7 ci --ignore-scripts --prefix packages/openclaw/channel-openclaw/runtime
@@ -148,6 +179,18 @@ jobs:
             --work-directory "$RUNNER_TEMP/clawdsh-clean-install" \
             --attestation "$CLAWDSH_RELEASE_DIRECTORY/smoke-attestation.json"
 
+      - name: Verify the inert bootstrap registry state before a public write
+        if: ${{ inputs.publish }}
+        run: |
+          node packages/openclaw/preset-openclaw/distribution/release-tools/bootstrap-pack.mjs \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output "$CLAWDSH_BOOTSTRAP_DIRECTORY"
+          node packages/openclaw/preset-openclaw/distribution/release-tools/bootstrap-publication.mjs \
+            --directory "$CLAWDSH_BOOTSTRAP_DIRECTORY" \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --release-index "$CLAWDSH_RELEASE_DIRECTORY/release-index.json" \
+            --require-complete \
+            --attestation "$CLAWDSH_RELEASE_DIRECTORY/bootstrap-attestation.json"
       - name: Confirm dry-run or requested public-release authority
         env:
           CLAWDSH_PUBLISH_REQUESTED: ${{ inputs.publish }}
@@ -157,6 +200,8 @@ jobs:
           CLAWDSH_TRUSTED_PUBLISHING_CONFIRMED: ${{ inputs.trusted_publishing_confirmed }}
           CLAWDSH_PUBLIC_REPOSITORY_APPROVED: ${{ inputs.public_repository_approved }}
           CLAWDSH_RC6_COMPATIBILITY_CONFIRMED: ${{ inputs.rc6_compatibility_confirmed }}
+          CLAWDSH_BOOTSTRAP_INDEX: ${{ runner.temp }}/clawdsh-release/bootstrap/bootstrap-index.json
+          CLAWDSH_BOOTSTRAP_ATTESTATION: ${{ runner.temp }}/clawdsh-release/bootstrap-attestation.json
           CLAWDSH_RELEASE_INDEX: ${{ runner.temp }}/clawdsh-release/release-index.json
           CLAWDSH_SMOKE_ATTESTATION: ${{ runner.temp }}/clawdsh-release/smoke-attestation.json
         run: node packages/openclaw/preset-openclaw/distribution/release-tools/release-readiness.mjs
@@ -183,7 +228,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 24.19.0
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
@@ -191,6 +236,14 @@ jobs:
         with:
           name: clawdsh-public-npm-candidate
           path: ${{ runner.temp }}/clawdsh-release
+
+      - name: Recheck bootstrap registry state after environment approval
+        run: |
+          node packages/openclaw/preset-openclaw/distribution/release-tools/bootstrap-publication.mjs \
+            --directory "$RUNNER_TEMP/clawdsh-release/bootstrap" \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --release-index "$RUNNER_TEMP/clawdsh-release/release-index.json" \
+            --require-complete
 
       - name: Recheck release authority and smoke evidence
         env:
@@ -201,6 +254,8 @@ jobs:
           CLAWDSH_TRUSTED_PUBLISHING_CONFIRMED: ${{ inputs.trusted_publishing_confirmed }}
           CLAWDSH_PUBLIC_REPOSITORY_APPROVED: ${{ inputs.public_repository_approved }}
           CLAWDSH_RC6_COMPATIBILITY_CONFIRMED: ${{ inputs.rc6_compatibility_confirmed }}
+          CLAWDSH_BOOTSTRAP_INDEX: ${{ runner.temp }}/clawdsh-release/bootstrap/bootstrap-index.json
+          CLAWDSH_BOOTSTRAP_ATTESTATION: ${{ runner.temp }}/clawdsh-release/bootstrap-attestation.json
           CLAWDSH_RELEASE_INDEX: ${{ runner.temp }}/clawdsh-release/release-index.json
           CLAWDSH_SMOKE_ATTESTATION: ${{ runner.temp }}/clawdsh-release/smoke-attestation.json
         run: |
@@ -208,11 +263,19 @@ jobs:
           node packages/openclaw/preset-openclaw/distribution/release-tools/release-verify.mjs \
             "$RUNNER_TEMP/clawdsh-release"
 
-      - name: Publish dependency-first to public npm next with provenance
+      - name: Publish or exactly resume dependency-first on public npm
         run: |
-          node packages/openclaw/preset-openclaw/distribution/release-tools/publish-release.mjs \
+          node packages/openclaw/preset-openclaw/distribution/release-tools/public-release-publication.mjs \
             --directory "$RUNNER_TEMP/clawdsh-release" \
             --registry https://registry.npmjs.org/ \
-            --order "$CLAWDSH_RELEASE_ORDER" \
             --tag next \
             --provenance
+
+      - name: Verify all 13 public packages, tags, integrity, and provenance
+        run: |
+          node packages/openclaw/preset-openclaw/distribution/release-tools/public-release-publication.mjs \
+            --directory "$RUNNER_TEMP/clawdsh-release" \
+            --registry https://registry.npmjs.org/ \
+            --tag next \
+            --provenance \
+            --verify-only

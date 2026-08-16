@@ -34,7 +34,7 @@ ClawDSH profile 启动一个 dsh Host 进程，并暴露两个浏览器应用。
 
 产品壳消费 [Web Client 架构](../../implemented/architecture/2026-07-19-gui-web-client-architecture.md)、[Client 插件加载模型](../../implemented/architecture/2026-07-23-client-plugin-loading-model.md)与 [GUI RPC 分层](../../implemented/architecture/2026-07-19-gui-layering-and-rpc-protocol.md)所描述的公开 boot manifest、静态浏览器模块表、加载状态、Connection protocol 与完整 root 渲染组装。其浏览器、runtime 与发行源码嵌套在 `packages/openclaw/preset-openclaw/` 下，不进入根 Client aggregate。ClawDSH 不用 CSS、私有 Slot 或私有 import 移除原生 Harness frame。
 
-该应用组装向既有公开 `conversation.hero.agentPreset`、`sidebar.footer.action`、`settings.section` 与 `conversation.view` Slot 贡献内容。它不注册新 Slot，不增加 `dsh.client` 包，不进入 shipped occupant catalog，也不修改 `api-proxy`、Agent Loop、生成文件或上游源码。它也不会使用 runtime package injection 或 scanner exception 模仿 catalog entry。proposed 的[动态 package runtime](../../proposed/architecture/2026-08-08-cordis-web-dynamic-packages.md)具有不同的信任与生命周期模型，不是本产品壳的依赖。
+该应用组装向既有公开 `conversation.hero.agentPreset`、`sidebar.footer.action`、`settings.section`、`conversation.view` 与 `conversation.chat.node` Slot 贡献内容。最后一项 contribution 通过标准 Chat node 呈现 Channel context，但不改变其持久事件。组装不注册新 Slot，不增加 `dsh.client` 包，不进入 shipped occupant catalog，也不修改 `api-proxy`、Agent Loop、生成文件或上游源码。它也不会使用 runtime package injection 或 scanner exception 模仿 catalog entry。proposed 的[动态 package runtime](../../proposed/architecture/2026-08-08-cordis-web-dynamic-packages.md)具有不同的信任与生命周期模型，不是本产品壳的依赖。
 
 物理 `preset-openclaw` 目录暂时保留，因为仓库当前层级 gate 识别该组装路径。产品文案、安装后的 profile 与 preset id、默认选择、命令、安全的干净安装默认值与旧资产处理遵循 [ClawDSH 身份决策](../../implemented/feature/2026-08-15-clawdsh-identity-and-safe-defaults.md)；该目录名不作为兼容承诺暴露。
 
@@ -84,7 +84,7 @@ Loopback-only `activity/list` request 跟随 session-scoped 记录 Slot 提供�
 - 两个浏览器路由使用同一个 Host Session service 与持久化；「对话」挂载现有完整 Client root，不重新实现或私下抽取 Chat。
 - `dsh --profile web` 保持纯净 Harness 进程，ClawDSH 内的 preset 变化不会被描述成卸载 Host 能力。
 - 原生信息架构只包含一套 sidebar；ClawDSH 是 Settings 首个分区，「ClawDSH 记录」位于 Trajectory 之后，「Harness 高级」位于 sidebar footer。
-- 实现不修改上游自有源码、Client Catalog、生成文件、现有 Slot definition、`api-proxy` 或 Agent Loop。ClawDSH 只向四个批准的公开 Slot 注册 contribution，不使用私有 import 或 DOM 导航 bridge。
+- 实现不修改上游自有源码、Client Catalog、生成文件、现有 Slot definition、`api-proxy` 或 Agent Loop。ClawDSH 只向五个批准的公开 Slot 注册 contribution，不使用私有 import 或 DOM 导航 bridge。
 - Settings 只暴露 allowlist 内的能力、字段与 credential reference；revision conflict 拒绝过期写入，reset 保留 profile base，并显示生效时间。
 - 秘密值只通过私有 write-only draft 与其发出的请求跨越浏览器边界；Host 绝不返回，所有请求完成路径与 plugin dispose 都会清空 draft，公开 Settings state、日志、Session 文件与 Activity 存储都不保留秘密值。
 - Activity 呈现限制隐私的 Prompt、Memory、Channel、Skill 与 Automation 记录；sidecar 缺失、损坏或不可写只让视图降级。

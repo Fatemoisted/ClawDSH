@@ -80,6 +80,7 @@ export function createReleaseFixture() {
   const temporary = mkdtempSync(join(tmpdir(), 'clawdsh-release-test-'))
   const repository = join(temporary, 'repository')
   mkdirSync(repository)
+  writeFileSync(join(repository, 'LICENSE'), 'MIT License\n\nCopyright fixture contributors\n')
   for (const specification of RELEASE_PACKAGES) {
     writePackage(join(repository, specification.directory), specification.name)
   }

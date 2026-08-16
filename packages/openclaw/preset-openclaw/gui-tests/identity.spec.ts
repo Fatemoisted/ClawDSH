@@ -18,6 +18,7 @@ const repositoryRoot = resolve(import.meta.dirname, '../../../..')
 const assemblyRoot = join(repositoryRoot, 'packages/openclaw/preset-openclaw')
 const profileSource = join(assemblyRoot, 'profile')
 const profileManifestSource = join(profileSource, 'package.template.json')
+const productPatchSource = join(profileSource, 'dev-bundle/cordis.patch.yml')
 const presetSource = assemblyRoot
 const safePresetSource = join(repositoryRoot, 'packages/openclaw/preset-clawdsh-messaging-safe')
 const productRuntimeSource = join(assemblyRoot, 'product-shell/runtime')
@@ -49,7 +50,11 @@ function runRefresh(home: string): SpawnSyncReturns<string> {
   return spawnSync(linkScript, [], {
     cwd: repositoryRoot,
     encoding: 'utf8',
-    env: { ...process.env, DSH_HOME: home },
+    env: {
+      ...process.env,
+      CLAWDSH_DEV_HOME: home,
+      DSH_HOME: join(home, 'public-home-must-remain-unused'),
+    },
   })
 }
 
@@ -85,16 +90,16 @@ afterEach(() => {
 describe('ClawDSH installed profile identity', () => {
   it('uses the ClawDSH ids and user-visible mode name', () => {
     const manifest = JSON.parse(read(profileManifestSource)) as { name?: unknown }
-    const patch = read(join(profileSource, 'cordis.patch.yml'))
+    const patch = read(productPatchSource)
     const preset = read(join(presetSource, 'preset.yml'))
 
-    expect(manifest.name).toBe('clawdsh')
+    expect(manifest.name).toBe('clawdsh-dev-profile')
     expect(patch).toMatch(/^- id: agent-presets\n  config:\n    default: clawdsh$/m)
     expect(preset).toMatch(/^name: ClawDSH 模式$/m)
   })
 
   it('always mounts the communication plane while keeping the OpenClaw Gateway disabled', () => {
-    const entry = loaderEntry(read(join(profileSource, 'cordis.patch.yml')), 'clawdsh-communication-plane')
+    const entry = loaderEntry(read(productPatchSource), 'clawdsh-communication-plane')
     expect(entry).not.toMatch(/^      disabled:/m)
     expect(entry).toMatch(/name: '@deepseek-ai\/dsh-invariants'/)
     expect(entry).toMatch(/name: '@clawdsh\/dsh-channel'/)
@@ -117,7 +122,7 @@ describe('ClawDSH installed profile identity', () => {
   })
 
   it('mounts settings-owning capabilities with fail-closed defaults', () => {
-    const patch = read(join(profileSource, 'cordis.patch.yml'))
+    const patch = read(productPatchSource)
     const activity = loaderEntry(patch, 'clawdsh-activity')
     const memory = loaderEntry(patch, 'memory')
     const skills = loaderEntry(patch, 'skills-hub')
@@ -133,7 +138,7 @@ describe('ClawDSH installed profile identity', () => {
   })
 
   it('mounts one Soul settings host with the managed preset base', () => {
-    const patch = read(join(profileSource, 'cordis.patch.yml'))
+    const patch = read(productPatchSource)
     const preset = read(join(presetSource, 'agent.cordis.yml'))
     const host = loaderEntry(patch, 'clawdsh-soul-settings')
     const soul = profileOverride(preset, 'soul')
@@ -146,7 +151,7 @@ describe('ClawDSH installed profile identity', () => {
   })
 
   it('gives product URL ownership to the ClawDSH runtime', () => {
-    const patch = read(join(profileSource, 'cordis.patch.yml'))
+    const patch = read(productPatchSource)
     const webRuntime = profileOverride(patch, 'web-runtime')
     const productRuntime = loaderEntry(patch, 'clawdsh-product-runtime')
 
@@ -162,11 +167,35 @@ describe('ClawDSH installed profile identity', () => {
 })
 
 describe.skipIf(process.platform === 'win32')('ClawDSH development refresh', () => {
+  it('refuses a public managed marker without changing its home', () => {
+    const home = temporaryHome()
+    const marker = join(home, '.clawdsh.json')
+    const sentinel = join(home, 'settings.yaml')
+    writeFileSync(marker, '{"schemaVersion":1,"sentinel":"public"}\n')
+    writeFileSync(sentinel, 'public: unchanged\n')
+
+    const result = runRefresh(home)
+
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('refusing to use public managed home')
+    expect(read(marker)).toBe('{"schemaVersion":1,"sentinel":"public"}\n')
+    expect(read(sentinel)).toBe('public: unchanged\n')
+    expect(existsSync(join(home, '.clawdsh-dev.json'))).toBe(false)
+  })
+
   it('installs only clawdsh assets and refreshes them idempotently', () => {
     const home = temporaryHome()
+    const publicHome = join(home, 'public-home-must-remain-unused')
     const profile = join(home, 'profiles/clawdsh')
     const preset = join(home, '.agent-presets/clawdsh')
     const safePreset = join(home, '.agent-presets/clawdsh-messaging-safe')
+    const publicMarker = '{"schemaVersion":1,"sentinel":"public-home"}\n'
+    const publicSettings = 'public: settings-must-remain-unchanged\n'
+    const publicCredentials = 'ARK_API_KEY: public-secret-must-remain-unchanged\n'
+    mkdirSync(publicHome, { recursive: true })
+    writeFileSync(join(publicHome, '.clawdsh.json'), publicMarker)
+    writeFileSync(join(publicHome, 'settings.yaml'), publicSettings)
+    writeFileSync(join(publicHome, '.credentials.yaml'), publicCredentials)
 
     const first = runRefresh(home)
     expectRefreshSuccess(first)
@@ -183,6 +212,9 @@ describe.skipIf(process.platform === 'win32')('ClawDSH development refresh', () 
     expect(existsSync(join(home, 'profiles/openclaw'))).toBe(false)
     expect(existsSync(join(home, '.agent-presets/openclaw'))).toBe(false)
     expect(existsSync(join(home, '.agent-presets/openclaw-messaging-safe'))).toBe(false)
+    expect(read(join(publicHome, '.clawdsh.json'))).toBe(publicMarker)
+    expect(read(join(publicHome, 'settings.yaml'))).toBe(publicSettings)
+    expect(read(join(publicHome, '.credentials.yaml'))).toBe(publicCredentials)
 
     for (const packageName of linkedPackages) {
       const link = join(home, 'profiles/node_modules/@clawdsh', `dsh-${packageName}`)
@@ -192,12 +224,29 @@ describe.skipIf(process.platform === 'win32')('ClawDSH development refresh', () 
     const productRuntimeLink = join(home, 'profiles/node_modules/@clawdsh/dsh-product-runtime')
     expect(lstatSync(productRuntimeLink).isSymbolicLink()).toBe(true)
     expect(realpathSync(productRuntimeLink)).toBe(realpathSync(productRuntimeSource))
+    const devBundleLink = join(home, 'profiles/node_modules/@clawdsh/dsh-dev-bundle')
+    expect(lstatSync(devBundleLink).isSymbolicLink()).toBe(true)
+    expect(realpathSync(devBundleLink)).toBe(realpathSync(join(profileSource, 'dev-bundle')))
     expect(existsSync(productIndex), 'development refresh must build the nested browser assets').toBe(true)
 
-    writeFileSync(join(profile, 'package.json'), '{"name":"drifted"}\n')
+    const userPatch = '# user-owned development override\n[]\n'
+    writeFileSync(join(profile, 'cordis.patch.yml'), userPatch)
+    const presetBefore = read(join(preset, 'preset.yml'))
+    const safePresetBefore = read(join(safePreset, 'preset.yml'))
     const second = runRefresh(home)
     expectRefreshSuccess(second)
     expect(read(join(profile, 'package.json'))).toBe(read(profileManifestSource))
+    expect(read(join(profile, 'cordis.patch.yml'))).toBe(userPatch)
+    expect(read(join(preset, 'preset.yml'))).toBe(presetBefore)
+    expect(read(join(safePreset, 'preset.yml'))).toBe(safePresetBefore)
+    expect(read(join(publicHome, '.clawdsh.json'))).toBe(publicMarker)
+    expect(read(join(publicHome, 'settings.yaml'))).toBe(publicSettings)
+    expect(read(join(publicHome, '.credentials.yaml'))).toBe(publicCredentials)
+    expect(JSON.parse(read(join(home, '.clawdsh-dev.json')))).toMatchObject({
+      schemaVersion: 1,
+      profileId: 'clawdsh',
+      bundle: { name: '@clawdsh/dsh-dev-bundle' },
+    })
   })
 
   it.each([
@@ -229,16 +278,15 @@ describe.skipIf(process.platform === 'win32')('ClawDSH development refresh', () 
     const result = runRefresh(home)
     expectRefreshSuccess(result)
 
-    expect(result.stderr.includes(`旧 profile：${legacyProfile}\n`)).toBe(hasProfile)
-    expect(result.stderr.includes(`旧 agent preset：${legacyPreset}\n`)).toBe(hasPreset)
-    expect(result.stderr.includes(`旧受限 preset：${legacySafePreset}\n`)).toBe(hasSafePreset)
-    expect(result.stderr.includes('旧 Session 可能仍引用 preset id "openclaw"')).toBe(hasPreset)
-    expect(result.stderr.includes('旧 profile 不再维护或刷新')).toBe(hasProfile)
-    expect(result.stderr.includes('旧渠道 Session 可能仍引用 preset id "openclaw-messaging-safe"')).toBe(hasSafePreset)
-    expect(result.stderr).toContain('tools/link-clawdsh.sh')
-    expect(result.stderr).toContain('pnpm dsh --profile clawdsh')
-    expect(result.stderr.includes('人工清理')).toBe(hasProfile || hasPreset)
-    expect(result.stderr.includes('不会删除、移动或改写')).toBe(hasProfile || hasPreset)
+    expect(result.stderr.includes(
+      `Warning: legacy OpenClaw profile remains at ${legacyProfile}; the source installer will not modify it.\n`,
+    )).toBe(hasProfile)
+    expect(result.stderr.includes(
+      `Warning: legacy OpenClaw agent preset remains at ${legacyPreset}; the source installer will not modify it.\n`,
+    )).toBe(hasPreset)
+    expect(result.stderr.includes(
+      `Warning: legacy OpenClaw restricted preset remains at ${legacySafePreset}; the source installer will not modify it.\n`,
+    )).toBe(hasSafePreset)
     if (hasProfile) {
       expect(readdirSync(legacyProfile)).toEqual(['legacy-profile.txt'])
       expect(read(profileSentinel)).toBe('profile sentinel\n')

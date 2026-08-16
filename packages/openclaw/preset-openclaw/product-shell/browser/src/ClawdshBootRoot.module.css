@@ -15,15 +15,8 @@
 }
 
 .mark {
-  width: 44px;
-  height: 44px;
-  border-radius: 13px;
-  display: grid;
-  place-items: center;
-  color: white;
-  background: linear-gradient(145deg, #4b75ff, #7255ea);
-  font-size: 20px;
-  font-weight: 700;
+  width: 64px;
+  height: 64px;
 }
 
 .card > p {
@@ -62,4 +55,11 @@
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    border-top-color: var(--dsw-alias-brand-primary, #1473e6);
+  }
 }

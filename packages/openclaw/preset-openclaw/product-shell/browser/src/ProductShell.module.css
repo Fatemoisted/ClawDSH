@@ -30,10 +30,16 @@
   border-radius: 8px;
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   color: var(--dsw-alias-label-secondary);
   background: var(--dsw-alias-bg-layer-1);
   font-size: 12px;
   font-weight: 600;
+}
+
+.presetMark {
+  width: 17px;
+  height: 17px;
 }
 
 .page {
@@ -50,9 +56,9 @@
   align-items: center;
   gap: 8px;
   width: calc(100% + 8px);
-  height: 34px;
+  min-height: 48px;
   margin: 4px -4px 0;
-  padding: 6px 2px 6px 10px;
+  padding: 6px 8px;
   box-sizing: border-box;
   border-radius: 12px;
   color: var(--dsw-alias-label-primary);
@@ -60,6 +66,33 @@
   line-height: 20px;
   text-decoration: none;
   overflow: hidden;
+}
+
+.advancedActionMark {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+
+.advancedActionCopy {
+  min-width: 0;
+  display: grid;
+  flex: 1;
+  line-height: 16px;
+}
+
+.advancedActionCopy small {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  line-height: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.advancedActionExternal {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-secondary);
 }
 
 .advancedAction:hover {
@@ -87,4 +120,47 @@
   margin: 8px 0 0;
   padding: 0;
   border-radius: 50%;
+}
+
+.advancedActionRail .advancedActionMark {
+  width: 24px;
+  height: 24px;
+}
+
+/* The public settings shell has desktop-first two-column geometry. Keep its
+   semantic dialog structure usable inside the product's narrow viewport until
+   the upstream shell exposes a responsive layout seam. */
+@media (max-width: 600px) {
+  :global([data-clawdsh-shell] [data-sidebar-collapsed]:has([role='dialog'][aria-modal='true']) > :first-child) {
+    overflow: visible;
+  }
+
+  .nativeApp :global([role='dialog'][aria-modal='true']) {
+    flex-direction: column;
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+    border-radius: 16px;
+  }
+
+  .nativeApp :global([role='dialog'][aria-modal='true'] > nav) {
+    width: 100%;
+    padding: 12px 12px 8px;
+    gap: 8px;
+    border-bottom: 1px solid var(--dsw-alias-border-l1);
+  }
+
+  .nativeApp :global([role='dialog'][aria-modal='true'] > nav > :last-child) {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .nativeApp :global([role='dialog'][aria-modal='true'] > nav button) {
+    flex: 0 0 auto;
+  }
+
+  .nativeApp :global([role='dialog'][aria-modal='true'] > nav + div) {
+    min-height: 0;
+  }
 }

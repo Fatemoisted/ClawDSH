@@ -2,6 +2,14 @@
   "name": "clawdsh",
   "version": "0.1.0-rc.5",
   "license": "MIT",
+  "homepage": "https://github.com/Fatemoisted/ClawDSH#readme",
+  "bugs": {
+    "url": "https://github.com/Fatemoisted/ClawDSH/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fatemoisted/ClawDSH.git"
+  },
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.7.0",

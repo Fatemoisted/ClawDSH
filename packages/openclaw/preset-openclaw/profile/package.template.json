@@ -1,11 +1,17 @@
 {
-  "name": "clawdsh",
+  "name": "clawdsh-dev-profile",
   "private": true,
+  "dependencies": {
+    "@clawdsh/dsh-dev-bundle": "0.1.0-rc.1",
+    "@deepseek-ai/dsh-base": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-web-app": "0.1.0-rc.6"
+  },
   "dsh": {
     "profile": {
       "bundles": [
         "@deepseek-ai/dsh-base",
-        "@deepseek-ai/dsh-web-app"
+        "@deepseek-ai/dsh-web-app",
+        "@clawdsh/dsh-dev-bundle"
       ]
     }
   }

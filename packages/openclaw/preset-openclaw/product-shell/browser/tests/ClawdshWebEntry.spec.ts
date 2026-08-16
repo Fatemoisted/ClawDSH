@@ -1,5 +1,27 @@
+import { render, waitFor } from '@testing-library/react'
+import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ClawdshBootRoot } from '../src/ClawdshBootRoot.tsx'
 import { ClawdshWebEntry } from '../src/ClawdshWebEntry.tsx'
+import { CLAWDSH_BOOT_FAILURE_CODES } from '../src/fatal-boot.ts'
+
+const PRIVATE_FAILURE_SENTINEL = `${'sk-'}${'B'.repeat(40)} ${['', 'Users', 'operator', 'private', 'settings.yaml'].join('/')}`
+
+function signal<T>(initial: T) {
+  let value = initial
+  const listeners = new Set<() => void>()
+  return {
+    getSnapshot: () => value,
+    subscribe(listener: () => void) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    set(next: T) {
+      value = next
+      for (const listener of listeners) listener()
+    },
+  }
+}
 
 afterEach(() => {
   delete (globalThis as { __DSH_MODULES__?: unknown }).__DSH_MODULES__
@@ -24,5 +46,27 @@ describe('ClawDSH browser lifecycle', () => {
     expect(dispose).toHaveBeenCalledOnce()
     expect((globalThis as { __DSH_MODULES__?: unknown }).__DSH_MODULES__).toBeUndefined()
     expect((globalThis as { __ModuleLoader__?: unknown }).__ModuleLoader__).toBeUndefined()
+  })
+
+  it('keeps an ordinary plugin boot failure out of the DOM and console', async () => {
+    const entry = new ClawdshWebEntry(document.createElement('div'))
+    const error = signal<string | undefined>(undefined)
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    Object.assign(entry, { error })
+    const view = render(createElement(ClawdshBootRoot, {
+      settled: signal(false),
+      status: signal({}),
+      error,
+      renderProduct: () => null,
+    }))
+
+    ;(entry as unknown as { failPluginBoot(reason: unknown): void })
+      .failPluginBoot(new Error(PRIVATE_FAILURE_SENTINEL))
+
+    await waitFor(() => { expect(view.container.textContent).toContain(CLAWDSH_BOOT_FAILURE_CODES.plugin) })
+    expect(view.container.textContent).not.toContain(PRIVATE_FAILURE_SENTINEL)
+    expect(consoleError).toHaveBeenCalledExactlyOnceWith(CLAWDSH_BOOT_FAILURE_CODES.plugin)
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(PRIVATE_FAILURE_SENTINEL)
+    view.unmount()
   })
 })

@@ -1,0 +1,47 @@
+# Read-only preparation of the one-time inert npm package-name bootstrap.
+name: clawdsh-bootstrap
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clawdsh-npm-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+
+      - name: Audit the ClawDSH Git delta for committed secrets
+        run: node packages/openclaw/preset-openclaw/distribution/release-tools/secret-history-audit.mjs --base origin/master --head HEAD
+
+      - name: Test, generate, and verify the inert bootstrap set
+        run: |
+          node --test \
+            packages/openclaw/preset-openclaw/distribution/release-tools/bootstrap-release.test.mjs \
+            packages/openclaw/preset-openclaw/distribution/release-tools/secret-history-audit.test.mjs
+          node packages/openclaw/preset-openclaw/distribution/release-tools/bootstrap-pack.mjs \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output "$RUNNER_TEMP/clawdsh-bootstrap"
+          node packages/openclaw/preset-openclaw/distribution/release-tools/bootstrap-verify.mjs \
+            "$RUNNER_TEMP/clawdsh-bootstrap"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clawdsh-npm-bootstrap-0.1.0-rc.0
+          path: ${{ runner.temp }}/clawdsh-bootstrap
+          if-no-files-found: error
+          retention-days: 7

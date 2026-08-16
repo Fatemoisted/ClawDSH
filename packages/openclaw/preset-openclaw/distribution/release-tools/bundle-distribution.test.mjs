@@ -65,7 +65,7 @@ function fixture() {
       publishConfig: { access: 'public' },
     }))
   }
-  write(repository, 'packages/openclaw/preset-openclaw/profile/cordis.patch.yml', `
+  write(repository, 'packages/openclaw/preset-openclaw/profile/dev-bundle/cordis.patch.yml', `
 - insert:
     - id: channel-invariants
       name: '@deepseek-ai/dsh-invariants'
@@ -110,6 +110,7 @@ function fixture() {
     write(repository, `${runtimeRoot}/tsconfig.json`, '{}\n'),
     write(repository, `${sharedRoot}/src/protocol.ts`, 'export const version = 1\n'),
     write(repository, `${browserRoot}/src/main.tsx`, 'export const app = true\n'),
+    write(repository, `${browserRoot}/public/favicon.svg`, '<svg xmlns="http://www.w3.org/2000/svg"/>\n'),
     write(repository, `${browserRoot}/index.html`, '<div id="root"></div>\n'),
     write(repository, `${browserRoot}/package.json`, '{"private":true}\n'),
     write(repository, `${browserRoot}/vite.config.ts`, 'export default {}\n'),
@@ -301,6 +302,20 @@ test('refuses stale product-shell artifacts instead of manufacturing replacement
     assert.throws(
       () => stageBundle({ repositoryRoot: repository, outputDirectory: join(temporary, 'staged') }),
       /build is stale/,
+    )
+  } finally {
+    cleanup(temporary)
+  }
+})
+
+test('treats browser public assets as product build inputs', () => {
+  const { temporary, repository } = fixture()
+  try {
+    const asset = join(repository, 'packages/openclaw/preset-openclaw/product-shell/browser/public/favicon.svg')
+    utimesSync(asset, new Date(NEW.getTime() + 60_000), new Date(NEW.getTime() + 60_000))
+    assert.throws(
+      () => stageBundle({ repositoryRoot: repository, outputDirectory: join(temporary, 'staged') }),
+      /product browser build is stale/,
     )
   } finally {
     cleanup(temporary)

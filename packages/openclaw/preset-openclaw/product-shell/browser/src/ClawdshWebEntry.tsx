@@ -9,6 +9,7 @@ import type {
 import type { LoaderStatusStore, KernelValueSignal } from '@deepseek-ai/dsh-client-web'
 import { ClawdshBootRoot } from './ClawdshBootRoot.tsx'
 import { ProductShell } from './ProductShell.tsx'
+import { CLAWDSH_BOOT_FAILURE_CODES } from './fatal-boot.ts'
 import { createNativeAppPlugin } from './native-app-plugin.tsx'
 import { CLAWDSH_APP_SHELL_ID, CLIENT_MODULES_ID, clawdshLoaderRows } from './loader-rows.ts'
 
@@ -119,9 +120,13 @@ export class ClawdshWebEntry {
       await this.runPluginBoot(prefetching)
       this.settled.set(true)
     } catch (reason) {
-      console.error(reason)
-      this.error.set(reason instanceof Error ? reason.message : String(reason))
+      this.failPluginBoot(reason)
     }
+  }
+
+  private failPluginBoot(_reason: unknown): void {
+    console.error(CLAWDSH_BOOT_FAILURE_CODES.plugin)
+    this.error.set(CLAWDSH_BOOT_FAILURE_CODES.plugin)
   }
 
   /** Unmount the UI and dispose the complete Client plugin graph. */

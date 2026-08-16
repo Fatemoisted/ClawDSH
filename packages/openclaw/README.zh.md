@@ -28,9 +28,9 @@ pnpm workspace 与 tsdown 构建都以 `packages/*/*` 为通配符，且 tsdown 
 
 | 包 | 定位 | OpenClaw 对应 | dsh 接缝 | 状态 |
 |---|---|---|---|---|
-| `preset-openclaw/` | `clawdsh` profile、preset、产品壳与 Control Runtime 的内部源码 | 整体组装 | profile、patch 与公开 dsh Web 组装 | **已实现** |
-| `preset-openclaw/distribution/bundle/` | 公共 ClawDSH 组合包 | 托管产品资产 | dsh bundle patch 与精确包依赖 | **`0.1.0-rc.1` 候选版本已准备；需要 bootstrap；未发布** |
-| `preset-openclaw/distribution/cli/` | 托管安装器、launcher、doctor 与显式 Channel 安装器 | 本地产品安装 | 精确 dsh CLI 依赖与托管文件系统资产 | **`0.1.0-rc.1` 候选版本已准备；需要 bootstrap；未发布** |
+| `preset-openclaw/` | `clawdsh` profile、私有开发 bundle、产品壳、品牌与发行组装的内部源码 | 整体组装 | 隔离源码 profile 与公开 dsh Web 组装 | **已实现** |
+| `preset-openclaw/distribution/bundle/` | 公共 ClawDSH 组合包 | 托管产品资产 | dsh bundle patch 与精确包依赖 | **公共 RC payload：`0.1.0-rc.1@next`** |
+| `preset-openclaw/distribution/cli/` | 托管安装器、launcher、source migration、doctor 与显式 Channel 安装器 | 本地产品安装 | 精确 dsh CLI 依赖与托管文件系统资产 | **公共 RC payload：`0.1.0-rc.1@next`** |
 | `preset-clawdsh-messaging-safe/` | 受限 Channel Session preset | OpenClaw 非 owner / group 隔离 | agent preset composition | **已实现** |
 | `channel/` | provider-neutral Channel Service Definition | Gateway channel protocol | 自有 `ctx.channels`（ADR-0008） | **V1 已实现** |
 | `channel-agent/` | durable Agent-plane Driver | Gateway-to-Agent execution | `ctx.channels`、Agents、Sessions、attachments | **基础已实现；认证未完成** |
@@ -50,4 +50,8 @@ pnpm workspace 与 tsdown 构建都以 `packages/*/*` 为通配符，且 tsdown 
 
 公共发行 allowlist 是以下 13 个 `0.1.0-rc.1` 包：`@clawdsh/dsh-soul`、`@clawdsh/dsh-embeddings`、`@clawdsh/dsh-embeddings-ark`、`@clawdsh/dsh-memory`、`@clawdsh/dsh-skills-hub`、`@clawdsh/dsh-automation`、`@clawdsh/dsh-channel`、`@clawdsh/dsh-channel-agent`、`@clawdsh/dsh-channel-openclaw`、`@clawdsh/dsh-activity`、`@clawdsh/dsh-preset-messaging-safe`、`@clawdsh/dsh-bundle` 与 `@clawdsh/cli`。机器可读顺序位于 [`release-contract.mjs`](preset-openclaw/distribution/release-tools/release-contract.mjs)；其中的 denylist 拒绝已移除的直连 adapter package name，nested product runtime 也不是公共包。
 
-发行工具构建真实 tarball，把自有 `workspace:` 关系转换为精确 `0.1.0-rc.1` 依赖，拒绝本地协议、symlink、未声明文件与私有 registry URL，并通过临时 registry 与隔离 dsh home 验证这些包。当前 registry 状态是 `bootstrap-required`，而不是 `OIDC-ready`：13 个 package name 均不存在，因此必须先由用户另行授权交互式 2FA 发布来创建它们，才能逐包配置 npm trust；staged publishing 不能创建全新 package。创建后，每条 trust 记录必须匹配 `clawdsh-publish.yml`、GitHub environment `npm` 与 `npm publish`；该 environment 必须只允许 `clawdsh` branch，release readiness 则要求 `refs/heads/clawdsh`。[ADR-0009](../../docs/adr/0009-public-npm-distribution.md)拥有 bootstrap 与发布条件。本仓库不执行 bootstrap、不改变仓库可见性、不配置 trust，也不发布候选版本。
+功能发行工具会构建真实 tarball，把自有 `workspace:` 关系转换为精确 `0.1.0-rc.1` 依赖，拒绝本地协议、symlink、未声明文件与私有 registry URL，并通过临时 registry 与隔离 dsh home 验证这些包。
+
+Package name 创建使用独立且经过评审的 `0.1.0-rc.0@bootstrap` 集合。每个确定性 inert archive 只包含 package metadata、MIT license 与引导用户使用 `@next` 的 README；其中没有 dependency、executable、export、entry point、script 或代码文件。闭合的 `bootstrap-index.json` 为全部 13 个 archive 记录 SHA-512。生成该集合、逐包发布和运行 `0.1.0-rc.1` workflow 必须来自同一个已评审 commit：修改根 `LICENSE` 或 bootstrap contract 会改变不可变 archive SHA-512，因此 inspector 与 workflow 会失败关闭。只读 publication helper 只有在远端既有版本 integrity 匹配时才会接受，拒绝任何 `latest` tag，并且每次只打印一条显式交互式 2FA `npm publish ... --tag bootstrap` 命令。精确命令与恢复流程归 [bootstrap 运维指南](preset-openclaw/distribution/release-tools/bootstrap/README.md)所有。
+
+Package 创建后，每条 trusted-publisher 记录必须匹配 `clawdsh-publish.yml`、GitHub environment `npm` 与 `npm publish`；该 environment 只允许 `clawdsh` branch，release readiness 则要求 `refs/heads/clawdsh`。Artifact-first workflow 使用 OIDC provenance 把功能版 `0.1.0-rc.1` archive 发布到 `next`，并拒绝创建 `latest`。[ADR-0009](../../docs/adr/0009-public-npm-distribution.md)拥有发布条件。

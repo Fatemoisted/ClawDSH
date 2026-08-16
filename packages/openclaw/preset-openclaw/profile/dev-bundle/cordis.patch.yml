@@ -1,0 +1,124 @@
+# ClawDSH product bundle layer for source development and public distribution.
+# 格式：顶层 YAML 数组的 loader patch entries（覆盖既有行 / insert 新行）。
+# 干净安装默认关闭 OpenClaw Gateway 与 Automation，确保无外部凭据时 GUI 仍可启动。
+
+- id: system-prompt
+  config:
+    persona: >-
+      You are a personal AI assistant.
+
+# ClawDSH 产品 runtime 负责唯一的启动 URL；原生 Harness 仍完整保留在 `/`。
+- id: web-runtime
+  config:
+    printUrl: false
+    surfaceContext: true
+    trustedHosts: !!js ctx.webStartup.trustedHosts
+
+- insert:
+    # Host singleton 注册 Soul 设置；base 与 managed preset 的 Soul 行保持一致。
+    # Session scope 只在挂载时读取 user layer，因此修改不会影响现有会话。
+    - id: clawdsh-soul-settings
+      name: '@clawdsh/dsh-soul/settings-host'
+      config:
+        source: ./souls/assistant.md
+        mode: append
+
+    # Activity 是必需的 Host 服务；生产者把它视为可选观测 sink，记录失败不阻断业务。
+    - id: clawdsh-activity
+      name: '@clawdsh/dsh-activity'
+      config:
+        enabled: true
+
+    - id: clawdsh-product-runtime
+      name: '@clawdsh/dsh-product-runtime'
+
+    # OpenClaw 独占平台凭据、准入和投递；DSH 独占 Agent、Session、工具与审批。
+    # 旧 Telegram/Feishu adapter 不再出现在 profile 中。切换前须先停掉旧登录，避免同一账号双登录。
+    - id: clawdsh-communication-plane
+      name: cordis:group
+      group: true
+      config:
+        - id: channel-invariants
+          name: '@deepseek-ai/dsh-invariants'
+          config:
+            package_allowlist:
+              - '^@clawdsh/dsh-channel(?:-(?:agent|openclaw))?$'
+
+        - id: channel
+          name: '@clawdsh/dsh-channel'
+
+        - id: channel-invariant
+          name: '@clawdsh/dsh-channel/invariant'
+
+        - id: channel-agent
+          name: '@clawdsh/dsh-channel-agent'
+          config:
+            ownerPreset: clawdsh
+            safePreset: clawdsh-messaging-safe
+            cwd: !!js process.env.CLAWDSH_CHANNEL_CWD || process.cwd()
+            stagingRoot: !!js process.env.CLAWDSH_OPENCLAW_STAGING_ROOT || dshHomePath('clawdsh/channel/openclaw/state/staging')
+            maxMediaBytes: 5242880
+            shutdownGraceMs: 30000
+
+        - id: channel-agent-invariant
+          name: '@clawdsh/dsh-channel-agent/invariant'
+
+        - id: channel-openclaw
+          name: '@clawdsh/dsh-channel-openclaw'
+          config:
+            enabled: false
+            track: !!js process.env.CLAWDSH_OPENCLAW_TRACK || 'production'
+            gatewayInstanceId: !!js process.env.CLAWDSH_OPENCLAW_GATEWAY_INSTANCE_ID || 'clawdsh-managed'
+            artifactPath: !!js process.env.CLAWDSH_OPENCLAW_ARTIFACT_PATH || dshHomePath('clawdsh/channel/openclaw/artifacts/openclaw.tgz')
+            hostRoot: !!js process.env.CLAWDSH_OPENCLAW_HOST_ROOT || dshHomePath('clawdsh/channel/openclaw/runtime/node_modules/openclaw')
+            runtimeRoot: !!js process.env.CLAWDSH_OPENCLAW_RUNTIME_ROOT || dshHomePath('clawdsh/channel/openclaw/runtime')
+            # 分离安装的 Channel 必须逐项提供 pluginId/channelIds/packageName/version/integrity/projectTree；
+            # 独立安装流程输出的受检 JSON 在 Loader 阶段解析，缺失时仍以空列表拒绝未受检插件。
+            extensions: !!js JSON.parse(process.env.CLAWDSH_OPENCLAW_EXTENSIONS_JSON || '[]')
+            nodePath: !!js process.env.CLAWDSH_OPENCLAW_NODE_PATH || process.execPath
+            configPath: !!js process.env.CLAWDSH_OPENCLAW_CONFIG_PATH || dshHomePath('clawdsh/channel/openclaw/state/openclaw.json')
+            stateDir: !!js process.env.CLAWDSH_OPENCLAW_STATE_DIR || dshHomePath('clawdsh/channel/openclaw/state')
+            stagingRoot: !!js process.env.CLAWDSH_OPENCLAW_STAGING_ROOT || dshHomePath('clawdsh/channel/openclaw/state/staging')
+            maxMediaBytes: 5242880
+            endpoint: !!js process.env.CLAWDSH_OPENCLAW_ENDPOINT || dshHomePath('clawdsh/channel/openclaw/state/bridge.sock')
+            gatewayPort: 18789
+            maxFrameBytes: 1048576
+            maxInFlight: 32
+            requestTimeoutMs: 30000
+            handshakeTimeoutMs: 30000
+            startupTimeoutMs: 120000
+            shutdownGraceMs: 10000
+            diagnosticBytes: 262144
+
+        - id: channel-openclaw-invariant
+          name: '@clawdsh/dsh-channel-openclaw/invariant'
+
+    # memory（Markdown 记忆事实源）+ embeddings-ark（语义召回后端）。
+    # embeddings-ark 缺 ARK_API_KEY 时 boot 不受影响；provider 只在调用时解析凭据并 fail-loud。
+    - id: memory
+      name: '@clawdsh/dsh-memory'
+      config:
+        enabled: true
+        root: !!js dshHomePath('memory')
+
+    - id: embeddings-ark
+      name: '@clawdsh/dsh-embeddings-ark'
+
+    # skills-hub（ClawHub 兼容技能目录 provider）默认启用，无凭据、无安装副作用。
+    - id: skills-hub
+      name: '@clawdsh/dsh-skills-hub'
+      config:
+        enabled: true
+
+    # Automation 默认关闭；用户显式配置规则后再启用。
+    - id: automation
+      name: '@clawdsh/dsh-automation'
+      config:
+        enabled: false
+        preset: clawdsh
+        cwd: !!js process.env.CLAWDSH_AUTOMATION_CWD || process.cwd()
+
+# 新 GUI 会话默认挂载「ClawDSH 模式」preset。
+- id: agent-presets
+  config:
+    default: clawdsh

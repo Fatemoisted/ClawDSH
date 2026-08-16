@@ -14,9 +14,15 @@ Native Settings sections unmount when users close the panel or select another se
 
 ## Decision
 
-`/clawdsh/` renders one complete `buildRenderApp()` tree inside a minimal root container. ClawDSH removes its outer navigation and contributes only to four existing public Slots: `conversation.hero.agentPreset`, `sidebar.footer.action`, `settings.section`, and `conversation.view`. The contributions fix the product identity, add the full-page Harness Advanced link, place ClawDSH first in native Settings, and add `ClawDSH 记录` after Trajectory. No contribution imports an upstream `src/*` path, registers a new Slot, searches localized DOM text, or simulates a click.
+`/clawdsh/` renders one complete `buildRenderApp()` tree inside a minimal root container. ClawDSH removes its outer navigation and contributes only to five existing public Slots: `conversation.hero.agentPreset`, `sidebar.footer.action`, `settings.section`, `conversation.view`, and `conversation.chat.node`. The contributions fix the product identity, add the full-page Harness Advanced link, place ClawDSH first in native Settings, add `ClawDSH 记录` after Trajectory, and present Channel context through the standard Chat node. No contribution imports an upstream `src/*` path, registers a new Slot, searches localized DOM text, or simulates a click.
 
 The product root retains the stable `[data-variant='think']` presentation rule, while Harness owns AppFrame, the sidebar, Session history, Chat, Settings chrome, Trajectory, the composer, and all associated React state. Opening or closing Settings does not remount that native application. `/clawdsh/settings` and `/clawdsh/activity` are one-cycle HTTP 308 aliases to `/clawdsh/`; protocol-v1 route fields remain unchanged until a separate versioned removal.
+
+The minimal entry chunk loads the complete Client entry asynchronously. A failure while loading that chunk, materializing the public Client kernel, or parsing the boot manifest disposes any partial entry and replaces the mount with a dependency-free branded alert. Failures after the kernel signals exist continue through the normal branded loading gate. Both paths expose only stable ClawDSH error codes: the unknown exception, stack, path, and possible credential text never enter the DOM or browser console. The packed-product browser smoke must execute this path rather than treating an HTML response as successful startup.
+
+The rc.6 static fallback does not assign a PNG media type. The product Host therefore owns exact GET/HEAD routes for the three raster icons named by its Web manifest and responds with `image/png`; every other product asset continues through the shared static server. These fixed routes are a release compatibility layer and can disappear when the published static server owns PNG MIME.
+
+The published Settings shell currently exposes no responsive-layout seam. Below 600 px, a product-scoped compatibility rule uses the shell's semantic `role="dialog"`, `aria-modal`, and direct `nav` structure to stack navigation above content, and lifts the collapsed sidebar's clipping only while that dialog is present. This narrow exception changes no upstream source, does not hide or replace Harness identity, and is covered by the real-profile mobile journey. It must be removed when an upstream responsive Settings seam is available; other native DOM structure remains outside the product interface.
 
 ### Settings lifetime and evidence
 
@@ -44,12 +50,14 @@ The records contribution receives its Session id from the session-scoped `conver
 
 ## Verification
 
-Focused browser tests pin the four Slot registrations, single native root, wide and rail footer action, first Settings ordering, store lifetime, unload protection, credential cleanup and disposal, status matrix, conservative fallback, third-tab Session binding, cancellation, pagination, source-specific availability, and category-specific empty copy. Runtime tests pin legacy redirects, query preservation, method rejection, and unknown product paths. Static assertions reject private imports and DOM navigation bridges.
+Focused browser tests pin the five Slot registrations, single native root, wide and rail footer action, first Settings ordering, store lifetime, unload protection, credential cleanup and disposal, status matrix, conservative fallback, third-tab Session binding, cancellation, pagination, source-specific availability, and category-specific empty copy. Runtime tests pin legacy redirects, query preservation, method rejection, and unknown product paths. Static assertions reject private imports and DOM navigation bridges.
 
 The normal `clawdsh` profile is exercised in the browser at desktop, rail, and narrow widths. Verification covers one sidebar, the native ClawDSH Settings section, five clean-install states, adjacent Conversation/Trajectory/Records tabs, records produced by a real Session, legacy redirects, product 404, and browser console output.
 
+Bootstrap tests inject entry-chunk and boot-manifest failures and require the branded alert after partial-state disposal. Sentinel credentials and local paths prove that bootstrap, disposal, and ordinary plugin failures disclose only stable codes in the DOM and console. The packed-product smoke launches Chromium, waits for the settled native root and footer, and rejects page exceptions, console errors, failed product requests, and error responses.
+
 ## Consequences
 
-ClawDSH gains a smaller information architecture and keeps one owner for Session and modal state. Product features depend on the stability of four published Slot contracts and the complete-root renderer rather than on native DOM structure.
+ClawDSH gains a smaller information architecture and keeps one owner for Session and modal state. Product features depend on the stability of five published Slot contracts and the complete-root renderer. Only the temporary narrow-screen Settings compatibility rule depends on semantic native dialog structure.
 
 Unsaved drafts last only for the current browser process and plugin lifetime. This deliberately avoids recovery after a reload in exchange for keeping credential text out of durable storage. Sequence labels correlate records with Session order but do not offer a deep link into Trajectory.

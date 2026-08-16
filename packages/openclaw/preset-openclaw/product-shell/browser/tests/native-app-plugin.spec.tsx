@@ -10,11 +10,13 @@ describe('ClawDSH native application adapter', () => {
     const register = vi.fn((_options: unknown, _component: unknown) => vi.fn())
     const provide = vi.fn((_name: string, _service: unknown) => undefined)
     const buildRenderApp = vi.fn(() => () => <div>native root</div>)
+    const overrideTokens = vi.fn(() => vi.fn())
     const ctx = {
       get: vi.fn((service: string) => service === 'connection'
         ? { isLoopback: true, rpc: { call: vi.fn() } }
         : undefined),
       effect: vi.fn((setup: () => unknown) => setup()),
+      theme: { overrideTokens },
       slots: {
         install: vi.fn(),
         inject: vi.fn((_key: string, setup: () => unknown) => setup()),
@@ -31,6 +33,10 @@ describe('ClawDSH native application adapter', () => {
 
     plugin.apply(ctx as never)
 
+    expect(overrideTokens).toHaveBeenCalledWith('@clawdsh/dsh-product-browser', {
+      '--dsw-alias-brand-primary': { light: '#1473E6', dark: '#F4FAFF' },
+      '--dsw-alias-state-business-primary': { light: '#1473E6', dark: '#F4FAFF' },
+    })
     expect(register).toHaveBeenCalledTimes(5)
     const registrations = register.mock.calls.map(call => call[0])
     expect(registrations).toEqual(expect.arrayContaining([
@@ -77,6 +83,7 @@ describe('ClawDSH native application adapter', () => {
         ? { isLoopback: true, rpc: { call: vi.fn() } }
         : undefined),
       effect: vi.fn((setup: () => unknown) => setup()),
+      theme: { overrideTokens: vi.fn(() => vi.fn()) },
       slots: {
         install: vi.fn(),
         inject: vi.fn((_key: string, setup: () => unknown) => setup()),
@@ -107,6 +114,7 @@ describe('ClawDSH native application adapter', () => {
         ? { isLoopback: true, rpc: { call: vi.fn() } }
         : undefined),
       effect: vi.fn((setup: () => unknown) => setup()),
+      theme: { overrideTokens: vi.fn(() => vi.fn()) },
       slots: {
         install: vi.fn(),
         inject: vi.fn((_key: string, setup: () => unknown) => setup()),

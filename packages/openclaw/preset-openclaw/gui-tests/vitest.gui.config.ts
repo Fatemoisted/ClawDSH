@@ -7,6 +7,7 @@ export default defineConfig({
   root: repositoryRoot,
   test: {
     include: [
+      'packages/openclaw/preset-openclaw/gui-tests/brand-assets.spec.ts',
       'packages/openclaw/preset-openclaw/gui-tests/identity.spec.ts',
       'packages/openclaw/preset-openclaw/gui-tests/real-profile.e2e.ts',
     ],

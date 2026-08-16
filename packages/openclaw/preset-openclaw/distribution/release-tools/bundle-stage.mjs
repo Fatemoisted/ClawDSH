@@ -74,6 +74,7 @@ const RUNTIME_BUILD_INPUTS = Object.freeze([
 ])
 const BROWSER_BUILD_INPUTS = Object.freeze([
   'packages/openclaw/preset-openclaw/product-shell/browser/src',
+  'packages/openclaw/preset-openclaw/product-shell/browser/public',
   'packages/openclaw/preset-openclaw/product-shell/shared/src',
   'packages/openclaw/preset-openclaw/product-shell/browser/index.html',
   'packages/openclaw/preset-openclaw/product-shell/browser/package.json',
@@ -267,7 +268,7 @@ export function stageBundle({ repositoryRoot, outputDirectory, templateManifest 
 
   writeFileSync(join(output, 'package.json'), packedManifest(readFileSync(template)))
 
-  const profileSource = 'packages/openclaw/preset-openclaw/profile/cordis.patch.yml'
+  const profileSource = 'packages/openclaw/preset-openclaw/profile/dev-bundle/cordis.patch.yml'
   const profileBytes = readFileSync(ordinarySource(repository, profileSource))
   const profileText = profileBytes.toString('utf8')
   const developmentCount = count(profileText, DEVELOPMENT_RUNTIME)

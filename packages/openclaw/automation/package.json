@@ -31,7 +31,7 @@
     "lib/types/**/*.d.ts"
   ],
   "peerDependencies": {
-    "@clawdsh/dsh-channel": "workspace:^",
+    "@clawdsh/dsh-channel": "workspace:0.1.0-rc.1",
     "@deepseek-ai/dsh-agent": "workspace:^",
     "@deepseek-ai/dsh-agent-default-model": "workspace:^",
     "@deepseek-ai/dsh-agent-presets": "workspace:^",
@@ -60,7 +60,7 @@
     "croner": "^9.1.0"
   },
   "devDependencies": {
-    "@clawdsh/dsh-channel": "workspace:^",
+    "@clawdsh/dsh-channel": "workspace:0.1.0-rc.1",
     "@deepseek-ai/dsh-agent": "workspace:^",
     "@deepseek-ai/dsh-agent-default-model": "workspace:^",
     "@deepseek-ai/dsh-agent-presets": "workspace:^",
