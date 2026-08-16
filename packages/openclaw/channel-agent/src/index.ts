@@ -10,6 +10,8 @@ import z from '@deepseek-ai/schemastery'
 import {
   ChannelReplayId,
   ChannelToolCallId,
+  deliveryReceiptAdvances,
+  sameChannelRoute,
   type ChannelDeliveryReportV1,
   type ChannelDeliveryReceiptV1,
   type ChannelDriverV1,
@@ -107,7 +109,7 @@ export interface Config {
   ownerPreset: string
   /** Restricted preset used for every other sender or group. */
   safePreset: string
-  /** Absolute workspace assigned to channel-created Sessions. */
+  /** Absolute workspace recorded when a channel Session is first created. */
   cwd: string
   /** Absolute root shared only with the authenticated local bridge. */
   stagingRoot: string
@@ -147,6 +149,22 @@ interface ChannelActivitySink {
     readonly seq: number
     readonly status?: 'started' | 'failed' | 'sent'
   }): Promise<unknown>
+}
+
+/** Optional title surface used without making the host presentation package a runtime dependency. */
+interface SessionTitlePresenter {
+  get(session: Agent['session']): unknown
+  rename(session: Agent['session'], title: string): unknown
+}
+
+/** Optional workspace entity used without making the host workspace package a runtime dependency. */
+interface WorkspacePresenter {
+  attachSession(sessionId: SessionId): Promise<void>
+}
+
+/** Optional workspace registry used only to publish channel Session membership. */
+interface WorkspaceRegistryPresenter {
+  resolveByPath(path: string): Promise<WorkspacePresenter | undefined>
 }
 
 /** Exact pre-Agent cancellation requested through `turn.cancel`. */
@@ -468,7 +486,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       if (record.delivery.deliveryId !== report.receipt.deliveryId) {
         throw new Error('channel-agent: delivery identity changed for one final turn')
       }
-      if (!deliveryAdvances(record.delivery, report.receipt)) {
+      if (!deliveryReceiptAdvances(record.delivery, report.receipt)) {
         throw new Error('channel-agent: delivery report regressed durable delivery state')
       }
     }
@@ -490,7 +508,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       mention: record.envelope.wasMentioned ?? null,
       ...status === undefined ? {} : { status },
     }
-    void this.latestSessionSeq(record.sessionId).then((seq) => {
+    void this.deliverySessionSeq(record).then((seq) => {
       if (seq === undefined) return
       try {
         void activity.channelDelivery({ ...safe, seq }).catch((_activityWriteFailed: unknown) => {
@@ -504,11 +522,18 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
     })
   }
 
-  /** Resolve a source Session sequence from the live log, then its immutable persisted inspection. */
-  private async latestSessionSeq(sessionId: SessionId): Promise<number | undefined> {
-    const live = this.ctx.sessions.get(sessionId)
-    if (live !== undefined) return live.events.at(-1)?.seq
-    return (await this.ctx.sessionPersistence.inspect(sessionId)).events.at(-1)?.seq
+  /** Resolve the stable inbound-event sequence for this exact turn without projecting its route or message identity. */
+  private async deliverySessionSeq(record: ChannelLedgerRecord): Promise<number | undefined> {
+    if (record.sessionId === undefined) return undefined
+    const live = this.ctx.sessions.get(record.sessionId)
+    const events = live?.events ?? (await this.ctx.sessionPersistence.inspect(record.sessionId)).events
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index]
+      if (event?.type !== 'user/message' || event.data.source.kind !== 'channel') continue
+      if (event.data.source.turnId === record.envelope.turnId
+        && event.data.source.runId === record.envelope.runId) return event.seq
+    }
+    return undefined
   }
 
   private async executeTurn(
@@ -816,7 +841,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       throw new Error(`channel-agent: ${operation} does not name the current route generation`)
     }
     const binding = this.bindings.get(bindingKey(route))
-    if (binding !== undefined && !sameRoute(binding.route, route)) {
+    if (binding !== undefined && !sameChannelRoute(binding.route, route)) {
       throw new Error(`channel-agent: ${operation} route conflicts with the durable account binding`)
     }
   }
@@ -894,7 +919,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       const preset = this.presetFor(turn)
       const found = this.bindings.get(key)
       if (found !== undefined) {
-        if (found.state !== 'active' || !sameRoute(found.route, turn.route)) {
+        if (found.state !== 'active' || !sameChannelRoute(found.route, turn.route)) {
           throw new Error('channel-agent: route binding is closed or conflicts with persisted account identity')
         }
         if (found.preset !== preset) {
@@ -953,12 +978,70 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
     }
     const headers = await this.ctx.sessionPersistence.list()
     const exists = headers.some((header: SessionHeader) => header.id === sessionId)
-    const handle = exists
+    const candidate = exists
       ? await this.ctx.agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
       : await this.ctx.agents.create({ sessionId, meta: { cwd: this.config.cwd, agentPreset: preset }, agentOptions, setup })
-    await handle.agent.whenIdle()
-    this.handles.set(sessionId, handle)
-    return handle
+    try {
+      await candidate.agent.whenIdle()
+      await this.makeDiscoverable(candidate, route)
+      this.handles.set(sessionId, candidate)
+      return candidate
+    } catch (error) {
+      try {
+        await candidate.dispose()
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          'channel-agent: Agent startup failed and candidate cleanup was incomplete',
+        )
+      }
+      throw error
+    }
+  }
+
+  /** Publish privacy-safe host presentation metadata without owning channel delivery success. */
+  private async makeDiscoverable(handle: AgentHandle, route: ChannelRouteV1): Promise<void> {
+    await Promise.all([
+      this.publishTitle(handle, route),
+      this.attachWorkspace(handle),
+    ])
+  }
+
+  /** Set and persist a title only while the optional title service still reports none. */
+  private async publishTitle(handle: AgentHandle, route: ChannelRouteV1): Promise<void> {
+    const titles = this.ctx.get('sessionTitle') as SessionTitlePresenter | undefined
+    if (titles === undefined) return
+    try {
+      if (titles.get(handle.agent.session) !== undefined) return
+      titles.rename(handle.agent.session, channelSessionTitle(route))
+      await this.ctx.sessions.flush(handle.agent.session)
+    } catch (_presentationFailure) {
+      this.ctx.logger.warn('channel-agent: could not publish a display title for a channel Session')
+    }
+  }
+
+  /** Attach the Session when the optional registry recognizes its immutable workspace. */
+  private async attachWorkspace(handle: AgentHandle): Promise<void> {
+    const registry = this.ctx.get('workspaceRegistry') as WorkspaceRegistryPresenter | undefined
+    if (registry === undefined) return
+    const cwd = handle.agent.session.header.cwd
+    if (cwd === undefined) {
+      this.ctx.logger.warn('channel-agent: skipped workspace attachment because the channel Session has no recorded cwd')
+      return
+    }
+    let workspace: WorkspacePresenter | undefined
+    try {
+      workspace = await registry.resolveByPath(cwd)
+    } catch (_workspaceResolutionFailure) {
+      this.ctx.logger.warn('channel-agent: could not resolve workspace membership for a channel Session')
+      return
+    }
+    if (workspace === undefined) return
+    try {
+      await workspace.attachSession(handle.agent.session.id)
+    } catch (_workspaceAttachmentFailure) {
+      this.ctx.logger.warn('channel-agent: could not attach a channel Session to its workspace')
+    }
   }
 
   private async releaseBinding(binding: ChannelSessionBindingRecord | undefined): Promise<void> {
@@ -979,7 +1062,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
   /** Cancel every active Agent run bound to one exact route generation. */
   private cancelRoute(route: ChannelRouteV1): void {
     for (const active of this.active.values()) {
-      if (sameRoute(active.turn.route, route)) active.agent.cancel({ kind: 'user' })
+      if (sameChannelRoute(active.turn.route, route)) active.agent.cancel({ kind: 'user' })
     }
   }
 
@@ -1022,6 +1105,16 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
   }
 }
 
+/** Build a bounded title from non-personal route fields only. */
+function channelSessionTitle(route: ChannelRouteV1): string {
+  const normalized = String(route.channel)
+    .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const channel = Array.from(normalized).slice(0, 24).join('')
+  return `外部消息 · ${channel || '渠道'} · ${route.kind === 'direct' ? '私聊' : '群聊'}`
+}
+
 /** Active-run map key. */
 function activeKey(turnId: string, runId: string): string {
   return `${turnId}\0${runId}`
@@ -1036,18 +1129,6 @@ function replayIdFor(turn: ChannelTurnEnvelopeV1): ReturnType<typeof ChannelRepl
     .update('\0')
     .update(turn.turnId)
     .digest('hex'))
-}
-
-/** Compare the complete route identity; no account/conversation may alias one binding. */
-function sameRoute(left: ChannelRouteV1, right: ChannelRouteV1): boolean {
-  return left.gatewayInstanceId === right.gatewayInstanceId
-    && left.openclawSessionKey === right.openclawSessionKey
-    && left.generation === right.generation
-    && left.channel === right.channel
-    && left.account === right.account
-    && left.conversation === right.conversation
-    && left.thread === right.thread
-    && left.kind === right.kind
 }
 
 /** Derive one final result from the exact user message's owning turn. */
@@ -1268,22 +1349,6 @@ function deliveryActivityStatus(
       throw new Error(`channel-agent: unknown delivery status ${String(exhaustive)}`)
     }
   }
-}
-
-/** Whether a platform delivery state permits no later transition. */
-function isTerminalDelivery(receipt: ChannelDeliveryReceiptV1): boolean {
-  return receipt.status === 'confirmed' || receipt.status === 'ambiguous' || receipt.status === 'dead-letter'
-}
-
-/** Require monotonic receipt attempts, status, and learned platform identity. */
-function deliveryAdvances(previous: ChannelDeliveryReceiptV1, next: ChannelDeliveryReceiptV1): boolean {
-  if (isTerminalDelivery(previous) || next.attempt < previous.attempt) return false
-  if (previous.platformMessageId !== undefined && next.platformMessageId !== previous.platformMessageId) return false
-  if (previous.status === 'retrying') {
-    if (next.status === 'accepted') return false
-    if (next.status === 'retrying' && next.attempt <= previous.attempt) return false
-  }
-  return true
 }
 
 /** Progress is optional presentation; listener failure cannot change the Agent result. */

@@ -10,6 +10,8 @@ export type ClawdshActivityKind =
   | 'prompt.contribution'
   | 'memory.search'
   | 'memory.read'
+  | 'memory.write'
+  | 'memory.update'
   | 'memory.flush'
   | 'channel.received'
   | 'channel.delivery'
@@ -156,12 +158,40 @@ export interface PromptContributionActivity {
   readonly seq: number
 }
 
-/** Typed input shared by Memory search, read, and flush records. */
+/** Typed input shared by privacy-safe Memory lifecycle records. */
 export interface MemoryActivity {
   readonly sessionId: SessionId
   readonly status: 'started' | 'succeeded' | 'failed'
   readonly seq: number
 }
+
+/** Privacy-safe result of one successful Memory write request. */
+export type MemoryWriteOutcome = 'stored' | 'already-stored'
+
+/** Privacy-safe result of one successful durable Memory update request. */
+export type MemoryUpdateOutcome = 'updated' | 'forgotten' | 'already-current' | 'not-found'
+
+/** Fields shared by every privacy-safe Memory write lifecycle state. */
+interface MemoryWriteFields extends MemoryActivity {
+  readonly scope: 'durable' | 'daily'
+}
+
+/** Typed input for one privacy-safe Memory write lifecycle state. */
+export type MemoryWriteActivity = MemoryWriteFields & (
+  | { readonly status: 'started' | 'failed'; readonly outcome?: never }
+  | { readonly status: 'succeeded'; readonly outcome?: MemoryWriteOutcome }
+)
+
+/** Fields shared by every privacy-safe durable Memory update lifecycle state. */
+interface MemoryUpdateFields extends MemoryActivity {
+  readonly action: 'updated' | 'forgotten'
+}
+
+/** Typed input for one privacy-safe durable Memory correction or forget state. */
+export type MemoryUpdateActivity = MemoryUpdateFields & (
+  | { readonly status: 'started' | 'failed'; readonly outcome?: never }
+  | { readonly status: 'succeeded'; readonly outcome?: MemoryUpdateOutcome }
+)
 
 /** Typed input for a sanitized inbound channel record. */
 export interface ChannelReceivedActivity {

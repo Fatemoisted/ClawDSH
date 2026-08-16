@@ -38,6 +38,8 @@ DSH Settings 服务存在时，该插件会把现有 schema 注册到 `clawdsh-c
 
 owner 直接消息使用 `ownerPreset`。其他所有已准入轮次使用 `safePreset`；owner 发起的群组仍属于群组，不能继承 owner 权限。未知或与 route 不一致的 admission class 会在 Agent 执行前失败，并再次被 live/restored Session invariant 拒绝。空的继承工具 allowlist 会移除 shell、文件系统和其他部署级全局工具，不受 owner preset 暴露内容影响。作用域本地工具有意不受该限制，因此经过审计的安全 preset 可以贡献自己的工具，本包也始终可以加入绑定到当前路由的 `message` 工具。
 
+当 Host 安装了可选的标题和工作区展示服务时，每个新建或恢复的渠道 Session 都会在 agent 进入空闲后出现在普通 Web 工作区中。没有标题的 Session 会获得 `外部消息 · <channel> · 私聊` 或 `外部消息 · <channel> · 群聊`；标题只使用渠道名和会话类型，绝不包含消息文本、account 或 conversation id，也不包含发送者名称。已有标题绝不会被覆盖。新 Session 会记录当前运行时的 `cwd`；恢复的 Session 即使遇到不同的重启配置，也会保留不可变 header 中的 `cwd`。工作区展示会解析该已记录路径，并在匹配工作区存在时关联该 Session。旧 header 若没有 `cwd`，标题处理仍然生效，但工作区关联会跳过并记录固定的脱敏警告。这些尽力而为的展示写入不会改变渠道轮次的结果。
+
 ## 持久化幂等与投递
 
 `clawdsh_channel_agent` storage domain 管理绑定、当前 generation 和以网关为作用域的入站 ledger。每个持久化记录都经过严格 schema；格式错误的 id、时间戳、envelope digest、result 身份、receipt 或 phase／receipt 组合会在加载时失败，而不会被强制转换。

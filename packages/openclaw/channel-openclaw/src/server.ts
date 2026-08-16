@@ -7,6 +7,7 @@ import { dirname, isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import {
   ChannelProviderId,
+  canonicalChannelJson,
   channelActionV1Schema,
   channelActionResultV1Schema,
   channelBridgeHandshakeV1Schema,
@@ -16,6 +17,7 @@ import {
   channelSessionResetV1Schema,
   channelTurnCancelV1Schema,
   channelTurnEnvelopeV1Schema,
+  deliveryReceiptAdvances,
   type ChannelActionV1,
   type ChannelActionResultV1,
   type ChannelBridgeHandshakeV1,
@@ -145,7 +147,7 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
     }
     const mutation = isMutation(action)
     const key = action.actionId
-    const digest = digestJson(action as unknown as CanonicalJsonValue)
+    const digest = digestJson(action)
     let reconcile = false
     if (mutation) {
       const previous = this.actions.get(key)
@@ -452,7 +454,7 @@ export class OpenClawChannelProvider implements ChannelProviderV1 {
         throw new Error('channel-openclaw: delivery id was reused for another subject')
       }
       if (JSON.stringify(previous.receipt) === JSON.stringify(receipt)) return
-      if (!deliveryAdvances(previous.receipt, receipt)) {
+      if (!deliveryReceiptAdvances(previous.receipt, receipt)) {
         throw new Error('channel-openclaw: delivery receipt regressed after a durable state')
       }
     }
@@ -552,22 +554,6 @@ function hasErrorCode(error: unknown, code: string): boolean {
   return error instanceof Error && 'code' in error && error.code === code
 }
 
-/** Whether a delivery status is terminal and may not be replaced. */
-function terminal(status: ChannelDeliveryReceiptV1['status']): boolean {
-  return status === 'confirmed' || status === 'ambiguous' || status === 'dead-letter'
-}
-
-/** Require monotonic receipt attempts, status, and platform identity. */
-function deliveryAdvances(previous: ChannelDeliveryReceiptV1, next: ChannelDeliveryReceiptV1): boolean {
-  if (terminal(previous.status) || next.attempt < previous.attempt) return false
-  if (previous.platformMessageId !== undefined && next.platformMessageId !== previous.platformMessageId) return false
-  if (previous.status === 'retrying') {
-    if (next.status === 'accepted') return false
-    if (next.status === 'retrying' && next.attempt <= previous.attempt) return false
-  }
-  return true
-}
-
 /** Ensure a callback receives an Error. */
 function errorMessageError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
@@ -580,19 +566,8 @@ function isMutation(action: ChannelActionV1): boolean {
 }
 
 /** Canonical JSON identity for durable action input comparison. */
-function digestJson(value: CanonicalJsonValue): string {
-  return createHash('sha256').update(canonicalJson(value)).digest('hex')
-}
-
-/** Serialize JSON with sorted object keys. */
-function canonicalJson(value: CanonicalJsonValue): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
-  const entries = Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
-  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(',')}}`
-}
-
-/** JSON values accepted after strict protocol validation. */
-type CanonicalJsonValue = null | boolean | number | string | readonly CanonicalJsonValue[] | {
-  readonly [key: string]: CanonicalJsonValue
+function digestJson(value: unknown): string {
+  return createHash('sha256')
+    .update(canonicalChannelJson(value, 'channel-openclaw', 'literal'))
+    .digest('hex')
 }

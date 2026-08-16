@@ -4,7 +4,7 @@ Status: implemented
 
 English | [中文](2026-08-15-clawdsh-product-shell.zh.md)
 
-The product posture is accepted by [ADR-0007](../../../../docs/adr/0007-clawdsh-local-gui-product.md), and the user-facing behavior is defined by the [ClawDSH local GUI](../../../../docs/specs/feature-gui-web.md) and [semantic Activity](../../../../docs/specs/feature-activity.md) specifications. The [product-shell runtime](../../implemented/feature/2026-08-15-clawdsh-product-shell-runtime.md) and [Settings control plane](../../implemented/feature/2026-08-15-clawdsh-settings-control-plane.md) own their narrower implementation decisions.
+The product posture is accepted by [ADR-0007](../../../../docs/adr/0007-clawdsh-local-gui-product.md), and the user-facing behavior is defined by the [ClawDSH local GUI](../../../../docs/specs/feature-gui-web.md) and [semantic Activity](../../../../docs/specs/feature-activity.md) specifications. The [native Slot integration](2026-08-16-clawdsh-native-slot-integration.md) supersedes this note's original outer-navigation and non-contribution choices; this note remains the owner of the profile boundary, control plane, Settings mutation rules, Activity storage, and privacy model. The [product-shell runtime](../../implemented/feature/2026-08-15-clawdsh-product-shell-runtime.md) and [Settings control plane](../../implemented/feature/2026-08-15-clawdsh-settings-control-plane.md) own their narrower implementation decisions.
 
 ## Problem
 
@@ -24,9 +24,9 @@ The raw [Trajectory ledger](../../implemented/feature/2026-07-27-trajectory-insp
 
 The ClawDSH profile starts one dsh Host process and exposes two browser applications. `/clawdsh/` is the default product route. `/` remains the stock dsh Web application and is linked as Harness Advanced. A separately started `dsh --profile web` process remains the only pure Harness mode.
 
-The product shell owns top-level navigation, ClawDSH Settings, ClawDSH Activity, capability presentation, and product branding. dsh continues to own Connection transport, Session state, Chat, streaming, approvals, tool rendering, persistence, raw Settings diagnostics, and raw Trajectory. Both routes address the same Host services and Session store; neither copies conversation state into a second product database.
+The product assembly owns ClawDSH Settings content, semantic records, capability presentation, and product identity. dsh continues to own top-level navigation, Connection transport, Session state, Chat, streaming, approvals, tool rendering, persistence, Settings chrome, and raw Trajectory. Both routes address the same Host services and Session store; neither copies conversation state into a second product database.
 
-The fixed product navigation is Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced. The public `buildRenderApp()` face renders the complete Harness root, so v1 Conversation mounts that root, including its native frame and diagnostic views, rather than extracting Chat. Harness Advanced opens the same stock application directly at `/`; it is a diagnostic route, not a competing product mode.
+The product uses one native sidebar, the existing Settings panel, and the Session tabs `Conversation`, `Trajectory`, and `ClawDSH 记录`. Harness Advanced is a sidebar footer link to `/`. The public `buildRenderApp()` face renders the complete Harness root once rather than extracting Chat; the advanced route is a diagnostic entry point, not a competing product mode.
 
 ### Composition and identity
 
@@ -34,25 +34,25 @@ The product boundary is the `clawdsh` profile. The default Agent identity is the
 
 The shell consumes the public boot manifest, static browser module table, loading state, Connection protocol, and complete root rendering assembly described by the [Web Client architecture](../../implemented/architecture/2026-07-19-gui-web-client-architecture.md), [Client plugin loading model](../../implemented/architecture/2026-07-23-client-plugin-loading-model.md), and [GUI RPC layering](../../implemented/architecture/2026-07-19-gui-layering-and-rpc-protocol.md). Its browser, runtime, and distribution source stays nested under `packages/openclaw/preset-openclaw/`, outside the root Client aggregate. ClawDSH does not use CSS, a private Slot, or a private import to remove the native Harness frame.
 
-This is an application assembly, not a reusable Client contribution. It does not register a new Slot, add a `dsh.client` package, enter the shipped occupant catalog, or modify `api-proxy`, Agent Loop, generated files, or upstream source. It also does not use runtime package injection or scanner exceptions to imitate a catalog entry. The proposed [dynamic package runtime](../../proposed/architecture/2026-08-08-cordis-web-dynamic-packages.md) has a different trust and lifecycle model and is not a dependency of this shell.
+This application assembly contributes to the existing public `conversation.hero.agentPreset`, `sidebar.footer.action`, `settings.section`, and `conversation.view` Slots. It does not register a new Slot, add a `dsh.client` package, enter the shipped occupant catalog, or modify `api-proxy`, Agent Loop, generated files, or upstream source. It also does not use runtime package injection or scanner exceptions to imitate a catalog entry. The proposed [dynamic package runtime](../../proposed/architecture/2026-08-08-cordis-web-dynamic-packages.md) has a different trust and lifecycle model and is not a dependency of this shell.
 
 The physical `preset-openclaw` directory remains temporarily because the repository's current hierarchy gate recognizes that assembly path. Product copy, installed profile and preset ids, default selection, commands, safe clean-install defaults, and legacy handling follow the [ClawDSH identity decision](../../implemented/feature/2026-08-15-clawdsh-identity-and-safe-defaults.md); the directory name is not exposed as a compatibility promise.
 
 ### Settings and activity
 
-The capability overview is read-only. It maps product capabilities to owning packages, dependencies, Loader entries, and Fiber state, classifying `@clawdsh/*` as ClawDSH, `@deepseek-ai/*` and `cordis:*` as Platform, and every other source as Community. This inventory provides runtime evidence without offering a Loader toggle; editable fields follow the separate Settings decision.
+The primary capability overview is read-only and contains Soul, Memory, Skills Hub, Channels, and Automation. It distinguishes mounted implementation, enabled behavior, complete configuration, and verified execution evidence. Package, dependency, Loader, Fiber, channel catalog, and required Activity state remain collapsed diagnostics without a Loader toggle; editable fields follow the separate Settings decision.
 
 ClawDSH Settings uses a static allowlist of product capability namespaces and credential references. Each capability contributes a server-owned Config description; the control plane resolves profile base, user override, and schema default into one desired configuration. Mutations carry an expected revision, resets remove only the user layer, and the response distinguishes desired revision, runtime revision, and restart requirements.
 
 Capabilities remain mounted so Settings can describe and validate them. A supported `enabled` field controls optional behavior at the capability's documented lifecycle point; users do not toggle arbitrary Loader entries. Required infrastructure cannot be disabled, and implementation dependencies are grouped under their owning capability. A read-only Loader inventory remains available for advanced diagnosis.
 
-Credentials remain in the dsh credentials provider. RPC methods accept only allowlisted references, never return secret values, and expose readiness as metadata. A secret exists in the browser only in the write-only input draft and its outgoing `credentials.set` request; the draft clears after settlement, and the value is not retained in Settings state or persisted to logs, Settings files, the Session log, or Activity sidecars. A disabled optional capability may omit credentials; enabling it fails at the earliest resolvable point when a required reference is absent.
+Credentials remain in the dsh credentials provider. RPC methods accept only allowlisted references, never return secret values, and expose configured state as metadata rather than readiness. A plugin-lifetime memory store retains drafts across native Settings section mounts without persistent browser storage. A secret exists only in that store's private write-only draft and its outgoing `credentials.set` request; success, failure, explicit clearing, and plugin disposal erase it. The value is not retained in public Settings state or persisted to logs, Settings files, the Session log, or Activity sidecars. A disabled optional capability may omit credentials; enabling it fails at the earliest resolvable point when a required reference is absent.
 
 ClawDSH Activity is a semantic projection that complements Trajectory. The always-mounted `@clawdsh/dsh-activity` Host service derives records from standard Session history when a standard event owns the fact and uses separate, bounded sidecar streams for ClawDSH-only facts. Records carry a Session id, category, fixed kind, optional status, package-generated summary, and privacy-limited scalar metadata; Prompt records store contribution identity and digest rather than prompt text, and Channel records exclude sender, account, conversation, thread, message and delivery identifiers, message bodies, and errors.
 
 Sidecar ownership is per subsystem to avoid competing appenders. A SHA-256 of the Session id selects the directory; five fixed producer files use owner-only permissions, 8 KiB record limits, 1 MiB active-file limits, and two rotations. Appends are serialized per Session and producer, disposal drains accepted writes, and parsing skips damaged lines or tails without rewriting source data. Sidecar failure marks Activity degraded but cannot fail model execution, channel delivery, Memory, Skills, or Automation. Sessions without sidecars still show records derivable from standard history.
 
-The loopback-only `activity/list` request follows the selected Session and merges live or inspected history with sidecars. It filters the five categories, orders by timestamp and id, defaults to 50 records, accepts at most 100, and uses a versioned base64url cursor bound to Session, filter, order, timestamp, and id. The browser aborts an old request and clears its cursor when the Session changes, renders one fixed component per kind without raw JSON, and keeps Raw Trajectory linked through Harness Advanced.
+The loopback-only `activity/list` request follows the Session supplied by the session-scoped records Slot and merges live or inspected history with sidecars. It filters the five categories, orders by timestamp and id, defaults to 50 records, accepts at most 100, and uses a versioned base64url cursor bound to Session, filter, order, timestamp, and id. The browser aborts an old request and clears its cursor when the Session changes or the tab unmounts, renders one fixed component per kind without raw JSON, and displays a read-only same-Session sequence association beside the adjacent native Trajectory tab.
 
 ### Security and extension boundary
 
@@ -60,7 +60,7 @@ Static product routes own the `/clawdsh/` prefix, so the control plane cannot re
 
 Capability namespace, field name, credential reference, Activity metadata, and route ownership are explicit allowlists. Unknown names fail before storage or runtime mutation. The control runtime returns product DTOs rather than live Cordis objects, Loader entries, Config providers, or credential records.
 
-If later work needs a dsh capability that the public assembly does not expose or any upstream modification, implementation stops at that dependency and this GUI design is revised within its approved local-only boundary. This decision does not justify an upstream Slot or catalog modification.
+If later work needs a dsh capability that the public assembly does not expose or any upstream modification, implementation stops at that dependency and this GUI design is revised within its approved local-only boundary. This decision does not justify a private import, DOM bridge, new upstream Slot, or catalog modification.
 
 ## Alternatives considered
 
@@ -72,7 +72,7 @@ If later work needs a dsh capability that the public assembly does not expose or
 
 **Extract or hide Chat with private imports, private Slots, or CSS.** The public assembly renders the complete root. Depending on undocumented structure would create a local fork by another name, so v1 accepts the complete Harness frame inside Conversation; if that is not acceptable, the GUI must be redesigned.
 
-**Insert ClawDSH pages through new Client Slots.** The top-level product frame is an application concern, not a reusable occupant inside the Harness application. Adding or disguising Slot/catalog entries would cross the repository's upstream-read-only boundary without supplying a general dsh seam.
+**Keep ClawDSH pages behind a second product navigation shell.** The shell can own arbitrary routes, but it duplicates native navigation, narrows the working area, and creates another lifecycle around the authoritative Session application. Existing public Slots carry the product-owned content without changing the upstream catalog.
 
 **Expose Loader entry enable/disable as the Settings model.** Loader state is an implementation mechanism and can break dependencies or unmount the very schema needed to repair configuration. Stable capability namespaces and validated `enabled` behavior provide a supportable product contract.
 
@@ -83,12 +83,12 @@ If later work needs a dsh capability that the public assembly does not expose or
 - The `clawdsh` profile starts `/clawdsh/`, preserves the stock application at `/`, and prints the product URL only after the Loader settles.
 - Both browser routes use the same Host Session services and persistence; Conversation mounts the existing complete Client root and does not reimplement or privately extract Chat.
 - `dsh --profile web` remains a pure Harness process, and a preset change inside ClawDSH is not described as unloading Host capabilities.
-- Product navigation contains Conversation, ClawDSH Settings, ClawDSH Activity, and Harness Advanced.
-- No implementation change touches upstream-owned source, the Client Catalog, a generated file, an existing Slot definition, `api-proxy`, or Agent Loop. ClawDSH-owned shell code never calls `ctx.slots.register()` to inject product UI; reused dsh plugins continue to register their existing Slots.
+- The native information architecture contains one sidebar, ClawDSH as the first Settings section, `ClawDSH 记录` after Trajectory, and Harness Advanced in the sidebar footer.
+- No implementation change touches upstream-owned source, the Client Catalog, a generated file, an existing Slot definition, `api-proxy`, or Agent Loop. ClawDSH registers occupants only in the four approved public Slots and uses no private import or DOM navigation bridge.
 - Settings expose only allowlisted capabilities, fields, and credential references; revision conflicts reject stale writes, reset preserves the profile base, and effect timing is visible.
-- Secret values cross the browser boundary only through the write-only input draft and its outgoing request; the Host never returns them, the draft clears after settlement, and Settings state, logs, Session files, and Activity storage do not retain them.
+- Secret values cross the browser boundary only through the private write-only draft and its outgoing request; the Host never returns them, all settlement and plugin disposal paths clear the draft, and public Settings state, logs, Session files, and Activity storage do not retain them.
 - Activity presents privacy-limited Prompt, Memory, Channel, Skill, and Automation records, while missing, damaged, or unwritable sidecars degrade only the view.
-- Raw Trajectory remains available in Harness Advanced, and Prompt Activity is labeled as a ClawDSH contribution rather than a reconstruction of the final System Prompt.
+- Raw Trajectory remains available in the adjacent native tab, and Prompt Activity is labeled as a ClawDSH contribution rather than a reconstruction of the final System Prompt.
 - Keyless clean-home startup, browser and runtime typechecks, focused package and control-plane tests, the real-profile Playwright journey, and product snapshots verify the assembled application.
 
 ## Consequences

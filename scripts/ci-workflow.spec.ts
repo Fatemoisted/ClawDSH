@@ -69,7 +69,9 @@ describe('CI workflow', () => {
     expect(windowsNative['runs-on']).not.toContain('DSH_CI_FAILOVER_LINUX')
     expect(windowsNative['runs-on']).toContain('self-hosted')
     expect(windowsNative['runs-on']).toContain('dsh-win-ci')
+    expect(windowsNative['runs-on']).toContain("github.repository == 'deepseek-ai/deepseek-harness'")
     expect(windowsNative['runs-on']).toContain('dsh-windows-2025-16core')
+    expect(windowsNative['runs-on']).toContain('windows-2025')
     expect(windowsNative.name).toBe('windows node 24 / native complete')
     expect(windowsNative.if).toBe("github.event_name == 'pull_request'")
     const nativeCommandSteps = (windowsNative.steps as unknown[]).filter((step): step is Record<string, unknown> & { run: string } => (
@@ -99,10 +101,28 @@ describe('CI workflow', () => {
       expect(job['runs-on'], `${jobName} runs-on must use the Linux failover switch`).toContain('DSH_CI_FAILOVER_LINUX')
       expect(job['runs-on'], `${jobName} runs-on must not use the Windows failover switch`).not.toContain('DSH_CI_FAILOVER_WINDOWS')
       expect(job['runs-on']).toContain('vm-backup')
+      expect(job['runs-on']).toContain('dsh-ubuntu-24-04-16core')
+      expect(job['runs-on'], `${jobName} must reserve the enterprise pool for the canonical repository`).toContain("github.repository == 'deepseek-ai/deepseek-harness'")
+      expect(job['runs-on'], `${jobName} must keep a standard hosted fallback for mirrors`).toContain('ubuntu-latest')
     }
     expect(aggregate['runs-on']).toContain('DSH_CI_FAILOVER_LINUX')
     expect(aggregate['runs-on']).not.toContain('DSH_CI_FAILOVER_WINDOWS')
     expect(aggregate['runs-on']).toContain('vm-backup')
+
+    const mirrorBoundedEnv = [
+      ['node-24', node24, ['DSH_GATE_CONCURRENCY']],
+      ['node-24-coverage', node24Coverage, ['DSH_COVERAGE_MAX_WORKERS', 'DSH_GATE_CONCURRENCY']],
+      ['node-24-consumers', node24Consumers, ['DSH_GATE_CONCURRENCY', 'DSH_OXLINT_THREADS', 'DSH_PUBLINT_CONCURRENCY', 'DSH_SNAPSHOT_MAX_CONCURRENCY']],
+      ['windows-native', windowsNative, ['DSH_COVERAGE_MAX_WORKERS', 'DSH_GATE_CONCURRENCY', 'DSH_PUBLINT_CONCURRENCY']],
+    ] as const
+    for (const [jobName, job, keys] of mirrorBoundedEnv) {
+      if (!isRecord(job.env)) throw new TypeError(`${jobName} must define an env block`)
+      for (const key of keys) {
+        expect(typeof job.env[key], `${jobName}.${key} must be an expression`).toBe('string')
+        expect(job.env[key], `${jobName}.${key} must detect mirror repositories`).toContain('github.repository')
+        expect(job.env[key], `${jobName}.${key} must use a single worker on mirrors`).toContain("'1'")
+      }
+    }
   })
 
   it('exempts push from cancellation, so one master merge does not cancel the running drill', () => {
@@ -178,6 +198,25 @@ describe('CI workflow', () => {
     expect(config).not.toContain('packages/lsp/lsp-stdio/src/connection.ts')
     expect(config).not.toContain('packages/lsp/lsp-stdio/src/index.ts')
     expect(config).not.toContain('packages/lsp/lsp-stdio/src/instance.ts')
+  })
+
+  it('excludes only the POSIX OpenClaw IPC seam from native Windows coverage', () => {
+    const config = readFileSync(resolve(root, 'vitest.config.ts'), 'utf8')
+    const supervisorSpec = readFileSync(
+      resolve(root, 'packages/openclaw/channel-openclaw/tests/supervisor.spec.ts'),
+      'utf8',
+    )
+
+    expect(config).toContain("'packages/openclaw/channel-openclaw/tests/server.spec.ts'")
+    expect(config).toContain("'packages/openclaw/channel-openclaw/tests/server-probe.spec.ts'")
+    expect(config).not.toContain("'packages/openclaw/channel-openclaw/tests/supervisor.spec.ts'")
+    expect(config).toContain("'packages/openclaw/channel-openclaw/src/server.ts'")
+    expect(config).toContain("'packages/openclaw/channel-openclaw/src/supervisor.ts'")
+    expect(config).not.toContain("'packages/openclaw/channel-openclaw/src/**/*.ts'")
+    expect(supervisorSpec).toContain(
+      "describe.skipIf(process.platform === 'win32')('managed Gateway supervision'",
+    )
+    expect(supervisorSpec).toContain("describe('runtime inspection contract'")
   })
 
   it('requires one release-shaped Python runtime target on every pull request', () => {

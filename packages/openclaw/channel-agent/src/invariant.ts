@@ -3,6 +3,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import { sameChannelRoute, type ChannelRouteV1 } from '@clawdsh/dsh-channel'
 import type { ChannelMessageSource } from './events.ts'
 
 const PACKAGE_NAME = '@clawdsh/dsh-channel-agent'
@@ -14,7 +15,7 @@ export const name = 'channel-agent-invariant'
 export const inject = ['invariants']
 
 interface ChannelTrace {
-  route?: ChannelMessageSource
+  route?: ChannelRouteV1
   readonly turnIds: Set<string>
   readonly runIds: Set<string>
   readonly idempotencyKeys: Set<string>
@@ -32,16 +33,18 @@ function cloneTrace(trace: ChannelTrace): ChannelTrace {
   }
 }
 
-/** Compare the complete Session-routing identity recorded on channel messages. */
-function sameRoute(left: ChannelMessageSource, right: ChannelMessageSource): boolean {
-  return left.gatewayInstanceId === right.gatewayInstanceId
-    && left.openclawSessionKey === right.openclawSessionKey
-    && left.generation === right.generation
-    && left.channel === right.channel
-    && left.account === right.account
-    && left.conversation === right.conversation
-    && left.thread === right.thread
-    && left.isGroup === right.isGroup
+/** Project the message provenance fields that form one authenticated route identity. */
+function routeFromSource(source: ChannelMessageSource): ChannelRouteV1 {
+  return {
+    gatewayInstanceId: source.gatewayInstanceId,
+    openclawSessionKey: source.openclawSessionKey,
+    generation: source.generation,
+    channel: source.channel,
+    account: source.account,
+    conversation: source.conversation,
+    ...(source.thread === undefined ? {} : { thread: source.thread }),
+    kind: source.isGroup ? 'group' : 'direct',
+  }
 }
 
 /** Add one identity to a per-Session uniqueness set or report the duplicated value. */
@@ -63,8 +66,9 @@ function applyEvent(trace: ChannelTrace, event: SessionEvent, fail: InvariantFai
   if (source.isGroup !== (source.trust === 'group-allowlisted')) {
     fail(`turn ${source.turnId} carries an admission class inconsistent with its conversation kind`)
   }
-  if (trace.route === undefined) trace.route = source
-  else if (!sameRoute(trace.route, source)) {
+  const route = routeFromSource(source)
+  if (trace.route === undefined) trace.route = route
+  else if (!sameChannelRoute(trace.route, route)) {
     fail(`turn ${source.turnId} crossed the Session's channel route`)
   }
   addUnique(trace.turnIds, source.turnId, 'turn', fail)
@@ -73,6 +77,9 @@ function applyEvent(trace: ChannelTrace, event: SessionEvent, fail: InvariantFai
   addUnique(trace.messageIds, source.messageId, 'platform message', fail)
 }
 
+// Invariant companions stay independently installable and must each own their validate-before-publish
+// transaction. Sharing this package lifecycle would couple failure attribution and disposal semantics.
+/* jscpd:ignore-start */
 /** Install a validate-before-publication fold over all live and restored Sessions. */
 const install: InvariantInstaller = Object.assign((ctx: Context, fail: InvariantFailure) => {
   const traces = new WeakMap<Session, ChannelTrace>()
@@ -110,3 +117,4 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
 /** Register this package's invariant companion. */
 export const apply = (ctx: Context): Promise<() => void> =>
   Promise.resolve(ctx.invariants.register(PACKAGE_NAME, install))
+/* jscpd:ignore-end */

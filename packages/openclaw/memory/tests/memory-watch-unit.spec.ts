@@ -18,6 +18,7 @@ interface FakeWatcher {
 const harness = vi.hoisted(() => ({
   watchers: [] as FakeWatcher[],
   closeErrors: 0,
+  closeGate: undefined as Promise<void> | undefined,
 }))
 
 vi.mock('chokidar', () => ({
@@ -27,6 +28,7 @@ vi.mock('chokidar', () => ({
       const control: FakeWatcher = { emitter, closeCalls: 0, options, path: String(path) }
       emitter.close = async () => {
         control.closeCalls += 1
+        await harness.closeGate
         if (harness.closeErrors > 0) {
           harness.closeErrors -= 1
           throw new Error('close failed')
@@ -46,6 +48,7 @@ const CONFIG = { enabled: true, stabilityThresholdMs: 20, pollIntervalMs: 10 } a
 beforeEach(() => {
   harness.watchers.length = 0
   harness.closeErrors = 0
+  harness.closeGate = undefined
 })
 
 describe('installMemoryWatch', () => {
@@ -65,10 +68,30 @@ describe('installMemoryWatch', () => {
       persistent: true,
       ignoreInitial: true,
       depth: 1,
-      followSymlinks: true,
+      followSymlinks: false,
+      usePolling: true,
+      interval: 10,
       atomic: true,
       awaitWriteFinish: { stabilityThreshold: 20, pollInterval: 10 },
     })
+    await dispose()
+  })
+
+  it('reopens a watcher after an initially missing root is created', async () => {
+    const ctx = new Context()
+    const seen: string[] = []
+    const dispose = await installMemoryWatch(ctx, '/root', CONFIG, rel => seen.push(rel))
+    const first = harness.watchers[0]
+    if (first === undefined) throw new Error('expected the initial watcher')
+
+    await dispose.recover()
+
+    expect(first.closeCalls).toBe(1)
+    expect(harness.watchers).toHaveLength(2)
+    const recovered = harness.watchers[1]
+    if (recovered === undefined) throw new Error('expected the recovered watcher')
+    recovered.emitter.emit('add', '/root/MEMORY.md')
+    expect(seen).toEqual(['MEMORY.md'])
     await dispose()
   })
 
@@ -120,5 +143,27 @@ describe('installMemoryWatch', () => {
     watcher.emitter.emit('change', '/root/MEMORY.md')
     expect(seen).toEqual(['MEMORY.md'])
     await dispose()
+  })
+
+  it('waits for watcher close and an in-flight recovery before disposal settles', async () => {
+    const ctx = new Context()
+    let releaseClose!: () => void
+    harness.closeGate = new Promise<void>((resolve) => { releaseClose = resolve })
+    const dispose = await installMemoryWatch(ctx, '/root', CONFIG, () => {})
+    const watcher = harness.watchers[0]
+    if (watcher === undefined) throw new Error('expected a watcher')
+
+    const recovering = dispose.recover()
+    await vi.waitFor(() => { expect(watcher.closeCalls).toBe(1) })
+    const closing = dispose()
+    let settled = false
+    void closing.then(() => { settled = true })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+
+    releaseClose()
+    await Promise.all([recovering, closing])
+    expect(settled).toBe(true)
+    expect(harness.watchers).toHaveLength(1)
   })
 })

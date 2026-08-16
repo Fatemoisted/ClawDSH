@@ -17,6 +17,8 @@ const CATEGORIES: Readonly<Record<ClawdshActivityKind, ClawdshActivityCategory>>
   'prompt.contribution': 'prompt',
   'memory.search': 'memory',
   'memory.read': 'memory',
+  'memory.write': 'memory',
+  'memory.update': 'memory',
   'memory.flush': 'memory',
   'channel.received': 'channel',
   'channel.delivery': 'channel',
@@ -30,6 +32,8 @@ const SUMMARIES: Readonly<Record<ClawdshActivityKind, string>> = {
   'prompt.contribution': 'ClawDSH Prompt contribution recorded',
   'memory.search': 'Memory search activity recorded',
   'memory.read': 'Memory read activity recorded',
+  'memory.write': 'Memory write activity recorded',
+  'memory.update': 'Memory update activity recorded',
   'memory.flush': 'Memory flush activity recorded',
   'channel.received': 'Channel message received',
   'channel.delivery': 'Channel delivery state recorded',
@@ -124,6 +128,10 @@ function validateKind(
     case 'memory.read':
     case 'memory.flush':
       return producer === 'memory' && isWorkStatus(status) && validateSeqMetadata(metadata)
+    case 'memory.write':
+      return producer === 'memory' && validateMemoryWrite(status, metadata)
+    case 'memory.update':
+      return producer === 'memory' && validateMemoryUpdate(status, metadata)
     case 'channel.received':
       return producer === 'channels' && status === undefined && validateChannelMetadata(metadata)
     case 'channel.delivery':
@@ -152,6 +160,39 @@ function validateKind(
         && typeof metadata.scheduledAt === 'string'
         && isCanonicalTimestamp(metadata.scheduledAt)
         && isNonNegativeSafeInteger(metadata.seq)
+    default:
+      return false
+  }
+}
+
+function validateMemoryWrite(status: unknown, metadata: Record<string, unknown>): boolean {
+  const hasOutcome = Object.hasOwn(metadata, 'outcome')
+  if (!isWorkStatus(status)
+    || !hasExactKeys(metadata, hasOutcome ? ['scope', 'seq', 'outcome'] : ['scope', 'seq'])
+    || (metadata.scope !== 'durable' && metadata.scope !== 'daily')
+    || !isNonNegativeSafeInteger(metadata.seq)) return false
+  if (!hasOutcome) return true
+  return status === 'succeeded'
+    && (metadata.outcome === 'stored'
+      || (metadata.outcome === 'already-stored' && metadata.scope === 'durable'))
+}
+
+function validateMemoryUpdate(status: unknown, metadata: Record<string, unknown>): boolean {
+  const hasOutcome = Object.hasOwn(metadata, 'outcome')
+  if (!isWorkStatus(status)
+    || !hasExactKeys(metadata, hasOutcome ? ['action', 'seq', 'outcome'] : ['action', 'seq'])
+    || (metadata.action !== 'updated' && metadata.action !== 'forgotten')
+    || !isNonNegativeSafeInteger(metadata.seq)) return false
+  if (!hasOutcome) return true
+  if (status !== 'succeeded') return false
+  switch (metadata.outcome) {
+    case 'updated':
+    case 'already-current':
+      return metadata.action === 'updated'
+    case 'forgotten':
+      return metadata.action === 'forgotten'
+    case 'not-found':
+      return true
     default:
       return false
   }
@@ -206,16 +247,31 @@ function isWorkStatus(value: unknown): value is 'started' | 'succeeded' | 'faile
   return value === 'started' || value === 'succeeded' || value === 'failed'
 }
 
-function isCanonicalTimestamp(value: string): boolean {
+/**
+ * Test whether a timestamp is the canonical ISO representation accepted by Activity boundaries.
+ * @param value - Timestamp text to validate.
+ * @returns Whether parsing and serializing the value is lossless.
+ */
+export function isCanonicalTimestamp(value: string): boolean {
   const parsed = Date.parse(value)
   return Number.isFinite(parsed) && new Date(parsed).toISOString() === value
 }
 
-function isNonNegativeSafeInteger(value: unknown): value is number {
+/**
+ * Test whether an unknown value is a non-negative safe integer.
+ * @param value - Candidate sequence or count.
+ * @returns Whether the value can safely cross an Activity JSON boundary.
+ */
+export function isNonNegativeSafeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 }
 
-function isSafeLabel(value: unknown): value is string {
+/**
+ * Test whether an unknown value is a bounded, trimmed, control-free Activity label.
+ * @param value - Candidate adapter, skill, or rule label.
+ * @returns Whether the label is safe to retain in an Activity record.
+ */
+export function isSafeLabel(value: unknown): value is string {
   return typeof value === 'string'
     && value.length > 0
     && value === value.trim()

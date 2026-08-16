@@ -344,11 +344,12 @@ describe('ClawDSH Settings control', () => {
     const schema = z.object({
       ownerPreset: z.string().default('clawdsh'),
       cwd: z.string().default('/workspace'),
+      shutdownGraceMs: z.number().default(5_000),
     })
     const current = descriptor(
       'clawdsh-channel-agent',
       schema,
-      { ownerPreset: 'clawdsh', cwd: '/workspace' },
+      { ownerPreset: 'clawdsh', cwd: '/workspace', shutdownGraceMs: 5_000 },
       4,
     )
     const mutate = vi.fn(async (_ns: unknown, _operations: unknown[], expected: number) => {
@@ -371,7 +372,7 @@ describe('ClawDSH Settings control', () => {
       version: 1,
       namespace: 'clawdsh-channel-agent',
       expectedRevision: 3,
-      operations: [{ op: 'set', path: ['cwd'], value: '/another-workspace' }],
+      operations: [{ op: 'set', path: ['shutdownGraceMs'], value: 4_000 }],
     })
     expect(stale).toMatchObject({
       ok: false,
@@ -386,7 +387,7 @@ describe('ClawDSH Settings control', () => {
       version: 1,
       namespace: 'clawdsh-channel-agent',
       expectedRevision: 4,
-      operations: [{ op: 'set', path: ['cwd'], value: '/another-workspace' }],
+      operations: [{ op: 'set', path: ['shutdownGraceMs'], value: 4_000 }],
     })
     expect(raced).toMatchObject({
       ok: false,
@@ -524,5 +525,26 @@ describe('ClawDSH Credentials control', () => {
     })
     expect(JSON.stringify(forbidden)).not.toContain('feishu-secret')
     expect(credentials.set).toHaveBeenCalledOnce()
+  })
+
+  it('does not return a provider error that contains the submitted credential', async () => {
+    const secret = 'provider-error-secret-canary'
+    const control = readyControl({
+      credentials: {
+        describe: async () => ({ configured: false, writable: true }),
+        set: async (_ref: unknown, value: string) => {
+          throw new Error(`provider rejected ${value}`)
+        },
+      },
+    })
+
+    const result = await control.handle(CLAWDSH_RPC_ENDPOINTS.credentialsSet, {
+      version: 1,
+      id: 'ark-api-key',
+      value: secret,
+    })
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'credential-rejected' } })
+    expect(JSON.stringify(result)).not.toContain(secret)
   })
 })

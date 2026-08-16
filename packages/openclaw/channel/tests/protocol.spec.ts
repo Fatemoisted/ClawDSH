@@ -3,6 +3,7 @@ import {
   CHANNEL_BRIDGE_METHODS_V1,
   CHANNEL_BRIDGE_NOTIFICATIONS_V1,
   CHANNEL_PROTOCOL_VERSION,
+  canonicalChannelJson,
   channelActionV1Schema,
   channelActionResultV1Schema,
   channelBridgeHandshakeV1Schema,
@@ -16,6 +17,8 @@ import {
   channelTurnEnvelopeV1Schema,
   channelTurnNotificationV1Schema,
   channelTurnResultV1Schema,
+  deliveryReceiptAdvances,
+  sameChannelRoute,
 } from '../src/index.ts'
 import {
   RAW_ACTION,
@@ -30,11 +33,92 @@ import {
 
 const FAILURE = { code: 'DELIVERY_FAILED', message: 'delivery failed', retryable: true } as const
 
+function deliveryReceipt(
+  status: 'accepted' | 'retrying' | 'confirmed' | 'ambiguous' | 'dead-letter',
+  attempt = 1,
+  platformMessageId?: string,
+) {
+  const failure = status === 'retrying' || status === 'ambiguous' || status === 'dead-letter'
+    ? { error: { ...FAILURE, retryable: status === 'retrying' } }
+    : {}
+  return channelDeliveryReceiptV1Schema.parse({
+    protocolVersion: 1,
+    deliveryId: 'delivery-helper',
+    subject: { kind: 'action', actionId: 'action-helper' },
+    attempt,
+    ...(platformMessageId === undefined ? {} : { platformMessageId }),
+    status,
+    ...(status === 'retrying' ? { nextAttemptAt: '2026-08-15T04:00:00Z' } : {}),
+    ...failure,
+  })
+}
+
 function turnWithMedia(media: Record<string, unknown>): Record<string, unknown> {
   return { ...RAW_TURN, media: [{ ...RAW_MEDIA, ...media }] }
 }
 
 describe('channel protocol valid payloads', () => {
+  it('shares complete route identity, canonical JSON, and monotonic delivery semantics', () => {
+    const route = channelSessionCloseV1Schema.parse({
+      protocolVersion: 1,
+      route: RAW_ROUTE,
+      reason: 'shutdown',
+    }).route
+    expect(sameChannelRoute(route, { ...route })).toBe(true)
+    const distinctRoutes = [
+      { gatewayInstanceId: 'gateway-2' },
+      { openclawSessionKey: 'session-2' },
+      { generation: 2 },
+      { channel: 'discord' },
+      { account: 'account-2' },
+      { conversation: 'conversation-2' },
+      { thread: 'thread-2' },
+      { kind: 'direct' },
+    ].map(overrides => channelSessionCloseV1Schema.parse({
+      protocolVersion: 1,
+      route: { ...RAW_ROUTE, ...overrides },
+      reason: 'shutdown',
+    }).route)
+    for (const candidate of distinctRoutes) expect(sameChannelRoute(route, candidate)).toBe(false)
+
+    expect(canonicalChannelJson({ z: [true, null, 'x'], a: { d: 2, c: false } }))
+      .toBe('{"a":{"c":false,"d":2},"z":[true,null,"x"]}')
+    expect(canonicalChannelJson(Object.assign(Object.create(null), { b: 1, a: 0 }))).toBe('{"a":0,"b":1}')
+    expect(() => canonicalChannelJson(Number.POSITIVE_INFINITY, 'channel-test')).toThrow(
+      'channel-test: canonical identity value contains a non-finite number',
+    )
+    expect(() => canonicalChannelJson(new Date(), 'channel-test')).toThrow(
+      'channel-test: canonical identity value is not plain JSON',
+    )
+    expect(() => canonicalChannelJson(undefined)).toThrow('channel: canonical identity value is not plain JSON')
+    expect(canonicalChannelJson({
+      replyTo: undefined,
+      target: { thread: undefined },
+    }, 'channel-openclaw', 'literal')).toBe('{"replyTo":undefined,"target":{"thread":undefined}}')
+    expect(() => canonicalChannelJson(Symbol('invalid'), 'channel-openclaw', 'literal')).toThrow(
+      'channel-openclaw: canonical identity value is not plain JSON',
+    )
+
+    const accepted = deliveryReceipt('accepted', 1)
+    expect(deliveryReceiptAdvances(accepted, deliveryReceipt('retrying', 1))).toBe(true)
+    expect(deliveryReceiptAdvances(deliveryReceipt('accepted', 2), accepted)).toBe(false)
+    expect(deliveryReceiptAdvances(deliveryReceipt('retrying', 2), accepted)).toBe(false)
+    expect(deliveryReceiptAdvances(deliveryReceipt('retrying', 2), deliveryReceipt('retrying', 2))).toBe(false)
+    expect(deliveryReceiptAdvances(deliveryReceipt('retrying', 2), deliveryReceipt('retrying', 3))).toBe(true)
+    expect(deliveryReceiptAdvances(deliveryReceipt('retrying', 2), deliveryReceipt('confirmed', 2))).toBe(true)
+    expect(deliveryReceiptAdvances(
+      deliveryReceipt('accepted', 1, 'message-1'),
+      deliveryReceipt('confirmed', 1, 'message-2'),
+    )).toBe(false)
+    expect(deliveryReceiptAdvances(
+      deliveryReceipt('accepted', 1, 'message-1'),
+      deliveryReceipt('confirmed', 1, 'message-1'),
+    )).toBe(true)
+    for (const status of ['confirmed', 'ambiguous', 'dead-letter'] as const) {
+      expect(deliveryReceiptAdvances(deliveryReceipt(status), accepted)).toBe(false)
+    }
+  })
+
   it('exports the fixed version and request method names', () => {
     expect(CHANNEL_PROTOCOL_VERSION).toBe(1)
     expect(CHANNEL_BRIDGE_METHODS_V1).toEqual({

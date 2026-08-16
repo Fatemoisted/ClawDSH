@@ -2,12 +2,19 @@
 
 import { createHash } from 'node:crypto'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
-import { createActivityRecord } from './records.ts'
+import {
+  createActivityRecord,
+  isCanonicalTimestamp,
+  isNonNegativeSafeInteger,
+  isSafeLabel,
+} from './records.ts'
 import type {
   ClawdshActivityHistoryProjection,
   ClawdshActivityKind,
   ClawdshActivityRecord,
   ClawdshActivityStatus,
+  MemoryUpdateOutcome,
+  MemoryWriteOutcome,
 } from './types.ts'
 
 interface EventView {
@@ -17,12 +24,21 @@ interface EventView {
   readonly data: unknown
 }
 
-interface TrackedToolCall {
-  readonly kind: 'memory.search' | 'memory.read' | 'skill.invoked'
-  readonly skill?: string
-}
-
-const CONTROL_PATTERN = /[\u0000-\u001f\u007f]/
+type TrackedToolCall =
+  | { readonly kind: 'memory.search' | 'memory.read'; readonly callId: string; readonly start: EventView }
+  | {
+    readonly kind: 'memory.write'
+    readonly callId: string
+    readonly scope: 'durable' | 'daily'
+    readonly start: EventView
+  }
+  | {
+    readonly kind: 'memory.update'
+    readonly action: 'updated' | 'forgotten'
+    readonly callId: string
+    readonly start: EventView
+  }
+  | { readonly kind: 'skill.invoked'; readonly callId: string; readonly skill: string; readonly start: EventView }
 
 /**
  * Project standard and already-registered plugin Session events into sanitized Activity records.
@@ -48,37 +64,59 @@ export function projectSessionHistory(
           break
         }
         let tracked: TrackedToolCall | undefined
-        if (data.name === 'memory_search') tracked = { kind: 'memory.search' }
-        else if (data.name === 'memory_get') tracked = { kind: 'memory.read' }
+        if (data.name === 'memory_search') tracked = { kind: 'memory.search', callId: data.callId, start: event }
+        else if (data.name === 'memory_get') tracked = { kind: 'memory.read', callId: data.callId, start: event }
+        else if (data.name === 'memory_write') {
+          const scope = typeof data.arguments === 'string' ? memoryWriteScopeFromArguments(data.arguments) : undefined
+          if (scope === undefined) {
+            degraded = true
+            break
+          }
+          tracked = { kind: 'memory.write', callId: data.callId, scope, start: event }
+        }
+        else if (data.name === 'memory_update') {
+          const action = typeof data.arguments === 'string' ? memoryUpdateActionFromArguments(data.arguments) : undefined
+          if (action === undefined) {
+            degraded = true
+            break
+          }
+          tracked = { kind: 'memory.update', action, callId: data.callId, start: event }
+        }
         else if (data.name === 'skill') {
           const skill = typeof data.arguments === 'string' ? skillNameFromArguments(data.arguments) : undefined
           if (skill === undefined) {
             degraded = true
             break
           }
-          tracked = { kind: 'skill.invoked', skill }
+          tracked = { kind: 'skill.invoked', callId: data.callId, skill, start: event }
         }
         if (tracked === undefined) break
-        const record = toolActivity(sessionId, event, tracked, 'started')
-        if (record === undefined) {
+        const key = toolCallKey(data, data.callId)
+        if (key === undefined) {
           degraded = true
           break
         }
-        toolCalls.set(data.callId, tracked)
-        records.push(record)
+        if (toolCalls.has(key)) degraded = true
+        toolCalls.set(key, tracked)
         break
       }
       case 'tool/result': {
         const data = asRecord(event.data)
-        const message = asRecord(data?.message)
+        if (data === undefined) break
+        const message = asRecord(data.message)
         const source = asRecord(message?.source)
         const callId = source?.callId
         if (typeof callId !== 'string') break
-        const tracked = toolCalls.get(callId)
+        const key = toolCallKey(data, callId)
+        if (key === undefined) {
+          if ([...toolCalls.values()].some(tracked => tracked.callId === callId)) degraded = true
+          break
+        }
+        const tracked = toolCalls.get(key)
         if (tracked === undefined) break
-        toolCalls.delete(callId)
-        const status = data?.error === undefined && !toolResultIsError(message) ? 'succeeded' : 'failed'
-        const record = toolActivity(sessionId, event, tracked, status)
+        toolCalls.delete(key)
+        const status = data.error === undefined && !toolResultIsError(message) ? 'succeeded' : 'failed'
+        const record = toolActivity(sessionId, event, tracked, status, message)
         if (record === undefined) degraded = true
         else records.push(record)
         break
@@ -143,6 +181,11 @@ export function projectSessionHistory(
         break
     }
   }
+  for (const tracked of toolCalls.values()) {
+    const record = toolActivity(sessionId, tracked.start, tracked, 'started')
+    if (record === undefined) degraded = true
+    else records.push(record)
+  }
   return Object.freeze({ records: Object.freeze(records), degraded })
 }
 
@@ -151,16 +194,54 @@ function toolActivity(
   event: EventView,
   tracked: TrackedToolCall,
   status: 'started' | 'succeeded' | 'failed',
+  message?: Record<string, unknown>,
 ): ClawdshActivityRecord | undefined {
+  const outcome = status === 'succeeded' ? memoryOutcome(tracked, message) : undefined
   return eventRecord(
     sessionId,
     event,
     tracked.kind,
-    tracked.kind === 'skill.invoked'
-      ? { skill: tracked.skill ?? '', seq: event.seq }
-      : { seq: event.seq },
+    toolMetadata(tracked, event.seq, outcome),
     status,
   )
+}
+
+function toolMetadata(
+  tracked: TrackedToolCall,
+  seq: number,
+  outcome: MemoryWriteOutcome | MemoryUpdateOutcome | undefined,
+): Record<string, string | number | boolean | null> {
+  switch (tracked.kind) {
+    case 'memory.search':
+    case 'memory.read':
+      return { seq }
+    case 'memory.write':
+      return { scope: tracked.scope, seq, ...(outcome === undefined ? {} : { outcome }) }
+    case 'memory.update':
+      return { action: tracked.action, seq, ...(outcome === undefined ? {} : { outcome }) }
+    case 'skill.invoked':
+      return { skill: tracked.skill, seq }
+  }
+}
+
+function memoryOutcome(
+  tracked: TrackedToolCall,
+  message: Record<string, unknown> | undefined,
+): MemoryWriteOutcome | MemoryUpdateOutcome | undefined {
+  const text = toolResultText(message)
+  if (tracked.kind === 'memory.write') {
+    if (text === 'Stored durable memory.' || text === 'Stored daily memory.') return 'stored'
+    if (text === 'Durable memory already stored.' && tracked.scope === 'durable') return 'already-stored'
+    return undefined
+  }
+  if (tracked.kind !== 'memory.update') return undefined
+  if (text === 'Updated durable memory.' && tracked.action === 'updated') return 'updated'
+  if (text === 'Forgot durable memory.' && tracked.action === 'forgotten') return 'forgotten'
+  if (text === 'Durable memory is already current.' && tracked.action === 'updated') return 'already-current'
+  if (text === 'No exact durable memory entry matched. Read MEMORY.md and retry with the exact line.') {
+    return 'not-found'
+  }
+  return undefined
 }
 
 function projectChannelReceived(
@@ -229,6 +310,34 @@ function skillNameFromArguments(argumentsJson: string): string | undefined {
   return isSafeLabel(record?.name) ? record.name : undefined
 }
 
+function memoryWriteScopeFromArguments(argumentsJson: string): 'durable' | 'daily' | undefined {
+  let value: unknown
+  try {
+    value = JSON.parse(argumentsJson)
+  } catch {
+    return undefined
+  }
+  const scope = asRecord(value)?.scope
+  return scope === 'durable' || scope === 'daily' ? scope : undefined
+}
+
+function memoryUpdateActionFromArguments(argumentsJson: string): 'updated' | 'forgotten' | undefined {
+  let value: unknown
+  try {
+    value = JSON.parse(argumentsJson)
+  } catch {
+    return undefined
+  }
+  const record = asRecord(value)
+  if (typeof record?.oldContent !== 'string' || typeof record.newContent !== 'string') return undefined
+  return record.newContent.trim() === '' ? 'forgotten' : 'updated'
+}
+
+function toolCallKey(data: Record<string, unknown>, callId: string): string | undefined {
+  if (!isNonNegativeSafeInteger(data.turn) || !isNonNegativeSafeInteger(data.step)) return undefined
+  return JSON.stringify([data.turn, data.step, callId])
+}
+
 function toolResultIsError(message: Record<string, unknown> | undefined): boolean {
   const content = message?.content
   if (!Array.isArray(content)) return false
@@ -236,17 +345,13 @@ function toolResultIsError(message: Record<string, unknown> | undefined): boolea
   return first?.type === 'tool-result' && first.isError === true
 }
 
-function isSafeLabel(value: unknown): value is string {
-  return typeof value === 'string'
-    && value.length > 0
-    && value === value.trim()
-    && !CONTROL_PATTERN.test(value)
-    && Buffer.byteLength(value, 'utf8') <= 256
-}
-
-function isCanonicalTimestamp(value: string): boolean {
-  const parsed = Date.parse(value)
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value
+function toolResultText(message: Record<string, unknown> | undefined): string | undefined {
+  const content = message?.content
+  if (!Array.isArray(content)) return undefined
+  const result = content.map(asRecord).find(block => block?.type === 'tool-result')
+  if (result === undefined || !Array.isArray(result.content) || result.content.length !== 1) return undefined
+  const text = asRecord(result.content[0])
+  return text?.type === 'text' && typeof text.text === 'string' ? text.text : undefined
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

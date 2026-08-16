@@ -721,9 +721,15 @@ describe('bridge-to-DSH request routing', () => {
 })
 
 describe('DSH-to-bridge actions and receipts', () => {
-  it('persists a successful mutation and replays it without a second platform request', async () => {
+  it('persists a successful mutation with undefined optional properties and replays it once', async () => {
     const app = await setup()
-    const action = sendAction()
+    const base = sendAction()
+    const action = sendAction({
+      replyTo: undefined,
+      target: { ...base.target, thread: undefined },
+    })
+    expect(Object.hasOwn(action, 'replyTo')).toBe(true)
+    expect(Object.hasOwn(action.target, 'thread')).toBe(true)
     await expect(app.provider.action(action)).resolves.toMatchObject({ status: 'confirmed' })
     await expect(app.provider.action(action)).resolves.toMatchObject({ status: 'confirmed' })
     expect(app.client.requests.filter(frame => frame.method === 'channel.action')).toHaveLength(1)

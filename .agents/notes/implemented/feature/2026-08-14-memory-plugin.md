@@ -4,6 +4,8 @@ Status: implemented
 
 English | [中文](2026-08-14-memory-plugin.zh.md)
 
+The storage and recall decisions below remain current. Its statement that the plugin never writes and exposes only two tools is superseded by [owned mutation and the clean-install empty store](../bug-fix/2026-08-16-memory-owned-mutation-and-empty-store.md).
+
 ## Problem
 
 ClawDSH stage 2 needs the Memory row: OpenClaw's long-term memory (people, preferences, decisions, prior work; cross-session retrieval) as a dsh plugin. The handoff's original pointer was `ctx.spillStore` for persistence, but the deep-read of OpenClaw `v2026.1.15` and the dsh seam inventory falsified that: OpenClaw's memory is plain Markdown files as the source of truth (human-editable, cross-session, read back by `memory_get`), while `SpillStore` only saves text, scopes storage per owner session, and returns opaque locators with no programmatic read — it cannot carry the ported capability category. Semantic recall was the one genuine gap: dsh has no embedding facility anywhere.

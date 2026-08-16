@@ -33,10 +33,15 @@ class TestSettings extends SettingsProvider {
 }
 
 /** Minimal scripted adapter: each model call consumes the next entry. */
+interface DelayedReply {
+  delayMs: number
+  chunks: StreamChunk[]
+}
+
 class ScriptedAdapter extends LlmAdapter {
   requests: GenerateOptions[] = []
 
-  constructor(private script: Array<StreamChunk[] | 'hang' | 'fail'>) {
+  constructor(private script: Array<StreamChunk[] | DelayedReply | 'hang' | 'fail'>) {
     super()
   }
 
@@ -57,7 +62,10 @@ class ScriptedAdapter extends LlmAdapter {
       })
       return
     }
-    for (const chunk of entry) {
+    const chunks = Array.isArray(entry) ? entry : await new Promise<StreamChunk[]>((resolve) => {
+      setTimeout(() => { resolve(entry.chunks) }, entry.delayMs)
+    })
+    for (const chunk of chunks) {
       if (options.signal?.aborted) throw new Error('aborted')
       yield chunk
     }
@@ -74,10 +82,19 @@ function textReply(text: string): StreamChunk[] {
   ]
 }
 
+interface HarnessOptions {
+  presetMount?: (agentCtx: Context, preset: string) => Promise<void>
+  sessionTitle?: object
+  workspaceRegistry?: object
+}
+
+const presetMounts = new WeakMap<Context, string[]>()
+
 async function harness(
   adapter: ScriptedAdapter,
   persistenceRoot?: string,
   settingsStore: Record<string, unknown> = {},
+  options: HarnessOptions = {},
 ): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(TestSettings, settingsStore)
@@ -90,6 +107,24 @@ async function harness(
   await ctx.plugin(AgentDefaultModelConfig, { provider: 'mock', model: 'mock' })
   if (persistenceRoot !== undefined) await ctx.plugin(SessionPersistenceJsonl, { root: persistenceRoot })
   ctx.llm.registerAdapter(['mock'], adapter)
+  const mounts: string[] = []
+  presetMounts.set(ctx, mounts)
+  ctx.provide('agentPresets', {
+    async mount(agentCtx: Context, preset: string): Promise<void> {
+      mounts.push(preset)
+      if (options.presetMount !== undefined) {
+        await options.presetMount(agentCtx, preset)
+        return
+      }
+      agentCtx.systemPrompt.section({
+        name: 'automation:test-preset',
+        order: 1,
+        text: `automation test preset ${preset}`,
+      })
+    },
+  } as never)
+  if (options.sessionTitle !== undefined) ctx.provide('sessionTitle', options.sessionTitle as never)
+  if (options.workspaceRegistry !== undefined) ctx.provide('workspaceRegistry', options.workspaceRegistry as never)
   return ctx
 }
 
@@ -135,8 +170,8 @@ function runRecords(ctx: Context, id: string) {
 }
 
 describe('automation row', () => {
-  it('declares Settings as a required plugin dependency', () => {
-    expect(Automation.inject).toEqual(['agents', 'sessions', 'agentDefaultModel', 'settings'])
+  it('declares preset composition and Settings as required plugin dependencies', () => {
+    expect(Automation.inject).toEqual(['agents', 'agentPresets', 'sessions', 'agentDefaultModel', 'settings'])
   })
 
   it('does not create a runtime, timer, or session while the restart setting is disabled', async () => {
@@ -187,6 +222,25 @@ describe('automation row', () => {
     })).rejects.toThrow(/bad id.*invalid id/)
   })
 
+  it('rejects a relative cwd before agent acquisition without exposing its value', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    const privateRelativePath = 'private-customer-workspace'
+    let failure: unknown
+    try {
+      await ctx.plugin(Automation, {
+        enabled: true,
+        cwd: privateRelativePath,
+        rules: [{ id: 'relative-cwd', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+      })
+    } catch (error) {
+      failure = error
+    }
+    expect(String(failure)).toContain('automation: cwd must be an absolute path')
+    expect(String(failure)).not.toContain(privateRelativePath)
+    expect(agentFor(ctx, 'relative-cwd')).toBeUndefined()
+  })
+
   it('fires a cron rule at the minute boundary with the framed turn and run records', async () => {
     const adapter = new ScriptedAdapter([textReply('digest done')])
     const ctx = await harness(adapter)
@@ -203,6 +257,8 @@ describe('automation row', () => {
     await settle()
 
     expect(adapter.requests).toHaveLength(1)
+    expect(presetMounts.get(ctx)).toEqual(['clawdsh'])
+    expect(adapter.requests[0]?.system).toContain('automation test preset clawdsh')
     const agent = agentFor(ctx, 'digest')
     expect(agent).toBeDefined()
     const turn = agent?.session.events.find(event =>
@@ -215,6 +271,103 @@ describe('automation row', () => {
     expect(runRecords(ctx, 'digest')).toEqual(['started', 'ok'])
   })
 
+  it('records the configured preset and cwd on a new session, then publishes title and workspace membership', async () => {
+    const titles = new Map<string, { title: string }>()
+    const renamed: string[] = []
+    const attached: string[] = []
+    const resolveByPath = vi.fn(async () => ({
+      async attachSession(id: SessionId): Promise<void> { attached.push(id) },
+    }))
+    const ctx = await harness(new ScriptedAdapter([]), undefined, {}, {
+      sessionTitle: {
+        get: (session: { id: SessionId }) => titles.get(session.id),
+        rename: (session: { id: SessionId }, title: string) => {
+          const snapshot = { title }
+          titles.set(session.id, snapshot)
+          renamed.push(title)
+          return snapshot
+        },
+      },
+      workspaceRegistry: { resolveByPath },
+    })
+    contexts.push(ctx)
+
+    await ctx.plugin(Automation, {
+      enabled: true,
+      preset: 'personal-assistant',
+      cwd: process.cwd(),
+      rules: [{ id: 'visible', name: '晨间摘要', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+
+    const agent = agentFor(ctx, 'visible')
+    expect(agent?.session.header).toMatchObject({ cwd: process.cwd(), agentPreset: 'personal-assistant' })
+    expect(presetMounts.get(ctx)).toEqual(['personal-assistant'])
+    expect(renamed).toEqual(['自动任务 · 晨间摘要'])
+    expect(resolveByPath).toHaveBeenCalledWith(process.cwd())
+    expect(attached).toEqual([SessionId('automation:visible')])
+  })
+
+  it('publishes a resumed session from its immutable cwd after the configured cwd changes', { timeout: 15_000 }, async () => {
+    vi.useRealTimers()
+    const root = await tempDir('automation-cwd-resume')
+    tempDirs.push(root)
+    const originalCwd = join(root, 'original-workspace')
+    const changedCwd = join(root, 'changed-workspace')
+    const first = await harness(new ScriptedAdapter([textReply('persisted')]), root)
+    contexts.push(first)
+    const rules: Automation.Config['rules'] = [{
+      id: 'stable-cwd',
+      schedule: { kind: 'at', at: NOW },
+      message: 'work',
+    }]
+    await first.plugin(Automation, {
+      enabled: true,
+      cwd: originalCwd,
+      rules,
+    })
+    await vi.waitFor(() => { expect(runRecords(first, 'stable-cwd')).toEqual(['started', 'ok']) }, { timeout: 5_000 })
+    expect(agentFor(first, 'stable-cwd')?.session.header.cwd).toBe(originalCwd)
+    await first.fiber.dispose()
+    contexts.splice(contexts.indexOf(first), 1)
+
+    const attached: SessionId[] = []
+    const resolveByPath = vi.fn(async () => ({
+      async attachSession(id: SessionId): Promise<void> { attached.push(id) },
+    }))
+    const second = await harness(new ScriptedAdapter([]), root, {}, {
+      workspaceRegistry: { resolveByPath },
+    })
+    contexts.push(second)
+    await second.plugin(Automation, {
+      enabled: true,
+      cwd: changedCwd,
+      rules,
+    })
+
+    expect(agentFor(second, 'stable-cwd')?.session.header.cwd).toBe(originalCwd)
+    expect(resolveByPath).toHaveBeenCalledWith(originalCwd)
+    expect(resolveByPath).not.toHaveBeenCalledWith(changedCwd)
+    expect(attached).toEqual([SessionId('automation:stable-cwd')])
+  })
+
+  it('waits a complete interval before the first every occurrence', async () => {
+    const adapter = new ScriptedAdapter([textReply('done')])
+    const ctx = await harness(adapter)
+    contexts.push(ctx)
+    await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'interval', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+
+    await vi.advanceTimersByTimeAsync(59_999)
+    await settle()
+    expect(adapter.requests).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(1)
+    await settle()
+    expect(adapter.requests).toHaveLength(1)
+    expect(runRecords(ctx, 'interval')).toEqual(['started', 'ok'])
+  })
+
   it('skips overlapping fires while a run is in flight', async () => {
     const adapter = new ScriptedAdapter(['hang'])
     const ctx = await harness(adapter)
@@ -224,10 +377,11 @@ describe('automation row', () => {
       rules: [{ id: 'slow', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
     await settle()
-    expect(adapter.requests).toHaveLength(1)
+    expect(adapter.requests).toHaveLength(0)
 
     await vi.advanceTimersByTimeAsync(60_000)
     await settle()
+    expect(adapter.requests).toHaveLength(1)
     await vi.advanceTimersByTimeAsync(60_000)
     await settle()
     expect(adapter.requests).toHaveLength(1)
@@ -253,8 +407,35 @@ describe('automation row', () => {
     await settle()
     expect(adapter.requests).toHaveLength(1)
 
-    // The next occurrence (09:12:00) still fires.
+    // The next occurrence after completion still fires without replaying the missed minutes.
     await vi.advanceTimersByTimeAsync(60_000)
+    await settle()
+    expect(adapter.requests).toHaveLength(2)
+  })
+
+  it('schedules an interval from completion time instead of catching up after a long run', async () => {
+    const adapter = new ScriptedAdapter([
+      { delayMs: 90_000, chunks: textReply('slow') },
+      textReply('next'),
+    ])
+    const ctx = await harness(adapter)
+    contexts.push(ctx)
+    await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'long', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    await settle()
+    expect(adapter.requests).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(90_000)
+    await settle()
+    expect(runRecords(ctx, 'long')).toEqual(['started', 'ok'])
+
+    await vi.advanceTimersByTimeAsync(29_999)
+    await settle()
+    expect(adapter.requests).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
     await settle()
     expect(adapter.requests).toHaveLength(2)
   })
@@ -269,7 +450,7 @@ describe('automation row', () => {
     contexts.push(first)
     await first.plugin(Automation, {
       enabled: true,
-      rules: [{ id: 'daily', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+      rules: [{ id: 'daily', schedule: { kind: 'every', seconds: 1 }, message: 'work' }],
     })
     await vi.waitFor(() => { expect(runRecords(first, 'daily')).toEqual(['started', 'ok']) }, { timeout: 5_000 })
 
@@ -280,9 +461,9 @@ describe('automation row', () => {
     contexts.push(second)
     await second.plugin(Automation, {
       enabled: true,
-      rules: [{ id: 'daily', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+      rules: [{ id: 'daily', schedule: { kind: 'every', seconds: 1 }, message: 'work' }],
     })
-    // The remounted rule fires once more (anchor reset), and the resumed session carries run one's records.
+    // The remounted rule waits one interval, then the resumed session carries both runs.
     await vi.waitFor(() => { expect(runRecords(second, 'daily')).toEqual(['started', 'ok', 'started', 'ok']) }, { timeout: 5_000 })
     const agent = agentFor(second, 'daily')
     const turnCount = agent?.session.events.filter(event =>
@@ -314,6 +495,31 @@ describe('automation row', () => {
     expect(runRecords(second, 'once')).toEqual(['started', 'ok'])
   })
 
+  it('treats a failed at occurrence as terminal across restart', { timeout: 15_000 }, async () => {
+    vi.useRealTimers()
+    const root = await tempDir('automation-once-error')
+    tempDirs.push(root)
+    const rules: Automation.Config['rules'] = [{
+      id: 'once-error',
+      schedule: { kind: 'at', at: '2026-08-05T08:00:00.000Z' },
+      message: 'run once',
+    }]
+    const first = await harness(new ScriptedAdapter(['fail']), root)
+    contexts.push(first)
+    await first.plugin(Automation, { enabled: true, rules })
+    await vi.waitFor(() => { expect(runRecords(first, 'once-error')).toEqual(['started', 'error']) }, { timeout: 5_000 })
+
+    await first.fiber.dispose()
+    contexts.splice(contexts.indexOf(first), 1)
+    const secondAdapter = new ScriptedAdapter([])
+    const second = await harness(secondAdapter, root)
+    contexts.push(second)
+    await second.plugin(Automation, { enabled: true, rules })
+    await new Promise(resolve => setTimeout(resolve, 300))
+    expect(secondAdapter.requests).toHaveLength(0)
+    expect(runRecords(second, 'once-error')).toEqual(['started', 'error'])
+  })
+
   it('records an error run and re-arms for the next occurrence', async () => {
     const adapter = new ScriptedAdapter(['fail', 'fail'])
     const ctx = await harness(adapter)
@@ -323,8 +529,11 @@ describe('automation row', () => {
       rules: [{ id: 'flaky', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
     await settle()
-    expect(runRecords(ctx, 'flaky')).toEqual(['started', 'error'])
+    expect(runRecords(ctx, 'flaky')).toEqual([])
 
+    await vi.advanceTimersByTimeAsync(60_000)
+    await settle()
+    expect(runRecords(ctx, 'flaky')).toEqual(['started', 'error'])
     await vi.advanceTimersByTimeAsync(60_000)
     await settle()
     expect(runRecords(ctx, 'flaky')).toEqual(['started', 'error', 'started', 'error'])
@@ -349,27 +558,24 @@ describe('automation row', () => {
     expect(runRecords(ctx, 'failed-once')).toEqual(['started', 'error'])
   })
 
-  it('keeps a failed at rule eligible for recovery on a later mount', { timeout: 15_000 }, async () => {
-    vi.useRealTimers()
-    const root = await tempDir('automation-at-recovery')
-    tempDirs.push(root)
-    const rules: Automation.Config['rules'] = [
-      { id: 'recover-once', schedule: { kind: 'at', at: '2026-08-05T08:00:00.000Z' }, message: 'work' },
-    ]
-    const first = await harness(new ScriptedAdapter(['fail']), root)
-    contexts.push(first)
-    await first.plugin(Automation, { enabled: true, rules })
-    await vi.waitFor(() => { expect(runRecords(first, 'recover-once')).toEqual(['started', 'error']) }, { timeout: 5_000 })
+  it('never appends a second terminal record when the terminal flush fails', async () => {
+    const adapter = new ScriptedAdapter([textReply('done')])
+    const ctx = await harness(adapter)
+    contexts.push(ctx)
+    await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'flush-failure', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+    const originalFlush = ctx.sessions.flush.bind(ctx.sessions)
+    vi.spyOn(ctx.sessions, 'flush').mockImplementation(async (session) => {
+      const last = session.events.at(-1)
+      if (last?.type === 'automation/run' && last.data.status === 'ok') throw new Error('disk unavailable')
+      return await originalFlush(session)
+    })
 
-    await first.fiber.dispose()
-    contexts.splice(contexts.indexOf(first), 1)
-
-    const second = await harness(new ScriptedAdapter([textReply('recovered')]), root)
-    contexts.push(second)
-    await second.plugin(Automation, { enabled: true, rules })
-    await vi.waitFor(() => {
-      expect(runRecords(second, 'recover-once')).toEqual(['started', 'error', 'started', 'ok'])
-    }, { timeout: 5_000 })
+    await vi.advanceTimersByTimeAsync(60_000)
+    await settle()
+    expect(runRecords(ctx, 'flush-failure')).toEqual(['started', 'ok'])
   })
 
   it('records blocked and aborted at turns as errors without losing them as successful completions', async () => {
@@ -404,7 +610,7 @@ describe('automation row', () => {
     expect(abortedAdapter.requests).toHaveLength(1)
   })
 
-  it('disposes a created candidate when startup quiescence fails and leaves the rule dormant', async () => {
+  it('fails initialization and disposes a created candidate when startup quiescence fails', async () => {
     const adapter = new ScriptedAdapter([textReply('must not run')])
     const ctx = await harness(adapter)
     contexts.push(ctx)
@@ -422,11 +628,10 @@ describe('automation row', () => {
       }
     })
 
-    await ctx.plugin(Automation, {
+    await expect(ctx.plugin(Automation, {
       enabled: true,
       rules: [{ id: 'create-late-failure', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
-    })
-    await settle()
+    })).rejects.toThrow(/create-late-failure.*late create startup failure/)
 
     expect(disposalCalls).toBe(1)
     expect(agentFor(ctx, 'create-late-failure')).toBeUndefined()
@@ -435,7 +640,7 @@ describe('automation row', () => {
     expect(adapter.requests).toHaveLength(0)
   })
 
-  it('disposes a resumed candidate when startup quiescence fails and does not create a replacement', { timeout: 15_000 }, async () => {
+  it('fails initialization, disposes a resumed candidate, and does not create a replacement', { timeout: 15_000 }, async () => {
     vi.useRealTimers()
     const root = await tempDir('automation-resume-late-failure')
     tempDirs.push(root)
@@ -462,7 +667,6 @@ describe('automation row', () => {
     contexts.push(second)
     const realResume = second.agents.resume.bind(second.agents)
     const create = vi.spyOn(second.agents, 'create')
-    const warn = vi.spyOn(second.logger, 'warn').mockImplementation(() => {})
     let disposalCalls = 0
     const resume = vi.spyOn(second.agents, 'resume').mockImplementation(async (options) => {
       const handle = await realResume(options)
@@ -476,15 +680,14 @@ describe('automation row', () => {
       }
     })
 
-    await second.plugin(Automation, {
+    await expect(second.plugin(Automation, {
       enabled: true,
       rules: [{ id: 'resume-late-failure', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
-    })
+    })).rejects.toThrow(/resume-late-failure.*late resume startup failure/)
 
-    await vi.waitFor(() => { expect(disposalCalls).toBe(1) }, { timeout: 5_000 })
+    expect(disposalCalls).toBe(1)
     expect(resume).toHaveBeenCalledTimes(1)
     expect(create).not.toHaveBeenCalled()
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('late resume startup failure'))
     expect(agentFor(second, 'resume-late-failure')).toBeUndefined()
     expect(adapter.requests).toHaveLength(0)
   })
@@ -512,7 +715,7 @@ describe('automation row', () => {
       }
     })
 
-    const fiber = await ctx.plugin(Automation, {
+    const fiber = ctx.plugin(Automation, {
       enabled: true,
       rules: [{ id: 'late', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
@@ -527,8 +730,82 @@ describe('automation row', () => {
     await disposalStarted.promise
     expect(settled).toBe(false)
     releaseDisposal.resolve(undefined)
-    await disposed
+    await Promise.allSettled([fiber, disposed])
     expect(agentFor(ctx, 'late')).toBeUndefined()
+  })
+
+  it('fails plugin initialization when preset composition or workspace discovery fails', async () => {
+    const presetFailure = await harness(new ScriptedAdapter([]), undefined, {}, {
+      presetMount: () => Promise.reject(new Error('preset broken')),
+    })
+    contexts.push(presetFailure)
+    await expect(presetFailure.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'broken-preset', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })).rejects.toThrow(/broken-preset.*preset broken/)
+    expect(agentFor(presetFailure, 'broken-preset')).toBeUndefined()
+
+    const workspaceFailure = await harness(new ScriptedAdapter([]), undefined, {}, {
+      workspaceRegistry: { resolveByPath: () => Promise.resolve(undefined) },
+    })
+    contexts.push(workspaceFailure)
+    await expect(workspaceFailure.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'hidden', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })).rejects.toThrow(/hidden.*no registered workspace owns the Automation session cwd/)
+    expect(agentFor(workspaceFailure, 'hidden')).toBeUndefined()
+  })
+
+  it('does not publish a late agent when its owner is disposed during preset acquisition', async () => {
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const ctx = await harness(new ScriptedAdapter([]), undefined, {}, {
+      presetMount: async () => {
+        entered.resolve(undefined)
+        await release.promise
+      },
+    })
+    contexts.push(ctx)
+    const agents = ctx.agents
+    const mounting = ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'acquiring', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+    await entered.promise
+    const disposing = ctx.fiber.dispose()
+    release.resolve(undefined)
+    await Promise.allSettled([mounting, disposing])
+    contexts.splice(contexts.indexOf(ctx), 1)
+    expect(agents.get(SessionId('automation:acquiring'))).toBeUndefined()
+  })
+
+  it('does not start a later due rule after disposal begins during the current rule', async () => {
+    const adapter = new ScriptedAdapter(['hang', textReply('must not run')])
+    const ctx = await harness(adapter)
+    contexts.push(ctx)
+    const fiber = await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [
+        { id: 'first-due', schedule: { kind: 'at', at: NOW }, message: 'hold the tick open' },
+        { id: 'second-due', schedule: { kind: 'at', at: NOW }, message: 'must not start' },
+      ],
+    })
+    const first = agentFor(ctx, 'first-due')
+    const second = agentFor(ctx, 'second-due')
+
+    await settle()
+    expect(adapter.requests).toHaveLength(1)
+    expect(runRecords(ctx, 'first-due')).toEqual(['started'])
+    expect(runRecords(ctx, 'second-due')).toEqual([])
+
+    await fiber.dispose()
+
+    expect(adapter.requests).toHaveLength(1)
+    expect(first?.session.events.filter(event => event.type === 'automation/run').map(event => event.data.status))
+      .toEqual(['started', 'error'])
+    expect(second?.session.events.some(event => event.type === 'automation/run')).toBe(false)
+    expect(agentFor(ctx, 'first-due')).toBeUndefined()
+    expect(agentFor(ctx, 'second-due')).toBeUndefined()
   })
 
   it('stops firing and disposes its agents when the plugin fiber is disposed', async () => {
@@ -540,13 +817,13 @@ describe('automation row', () => {
       rules: [{ id: 'stops', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
     })
     await settle()
-    expect(adapter.requests).toHaveLength(1)
+    expect(adapter.requests).toHaveLength(0)
     expect(agentFor(ctx, 'stops')).toBeDefined()
 
     await fiber.dispose()
     await vi.advanceTimersByTimeAsync(120_000)
     await settle()
-    expect(adapter.requests).toHaveLength(1)
+    expect(adapter.requests).toHaveLength(0)
     expect(agentFor(ctx, 'stops')).toBeUndefined()
   })
 })

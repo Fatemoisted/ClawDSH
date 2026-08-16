@@ -227,10 +227,30 @@ function writeActivityFixture(harnessHome: string, sessionId: string): void {
     },
   })}\n`, { mode: 0o600 })
   chmodSync(sidecar, 0o600)
+  const memorySidecar = join(sessionDirectory, 'memory.jsonl')
+  writeFileSync(memorySidecar, `${JSON.stringify({
+    version: 1,
+    id: 'ca251d2f-02f7-4397-bfbd-f7cb80ab9c0a',
+    timestamp: '2026-08-15T12:00:00.000Z',
+    sessionId,
+    category: 'prompt',
+    kind: 'prompt.contribution',
+    status: 'succeeded',
+    summary: 'ClawDSH Prompt contribution recorded',
+    metadata: {
+      producer: 'memory',
+      section: 'clawdsh:memory-recall',
+      mode: 'append',
+      characters: 256,
+      sha256: 'b'.repeat(64),
+      seq: 1,
+    },
+  })}\n`, { mode: 0o600 })
+  chmodSync(memorySidecar, 0o600)
 }
 
 describe('ClawDSH isolated real profile browser entry', () => {
-  it('boots both routes keyless and exposes secret-free product settings', async () => {
+  it('boots the native Slot composition keyless and exposes secret-free product settings', async () => {
     expect(existsSync(builtCli), 'built CLI missing; run `pnpm run build` before this lane').toBe(true)
     expect(existsSync(builtWeb), 'built Web app missing; run `pnpm run build` before this lane').toBe(true)
 
@@ -276,6 +296,13 @@ describe('ClawDSH isolated real profile browser entry', () => {
       const harnessUrl = new URL('/', ready.productUrl).href
       expect((await fetch(ready.productUrl)).status).toBe(200)
       expect((await fetch(harnessUrl)).status).toBe(200)
+      for (const legacyPath of ['settings', 'settings/', 'activity', 'activity/']) {
+        const legacy = await fetch(new URL(`${legacyPath}?from=real-profile`, ready.productUrl), {
+          redirect: 'manual',
+        })
+        expect(legacy.status).toBe(308)
+        expect(legacy.headers.get('location')).toBe('/clawdsh/?from=real-profile')
+      }
       const created = await rpc<{ sessionId: string }>(harnessUrl, 'session.create', {})
       writeActivityFixture(harnessHome, created.sessionId)
 
@@ -289,128 +316,130 @@ describe('ClawDSH isolated real profile browser entry', () => {
       })
       await page.goto(ready.productUrl, { waitUntil: 'load' })
 
-      const conversationLink = page.getByRole('link', { name: '对话', exact: true })
-      const settingsLink = page.getByRole('link', { name: 'ClawDSH 设置', exact: true })
-      const activityLink = page.getByRole('link', { name: 'ClawDSH 活动', exact: true })
-      const advancedLink = page.getByRole('link', { name: 'Harness 高级', exact: true })
-      for (const destination of [conversationLink, settingsLink, activityLink, advancedLink]) {
-        await destination.waitFor({ timeout: 30_000 })
-      }
+      const sidebarFooter = page.locator('[data-slot="sidebar.footer.action"]')
+      const advancedLink = sidebarFooter.getByRole('link', { name: 'Harness 高级', exact: true })
+      await advancedLink.waitFor({ timeout: 30_000 })
+      expect(await page.locator('[data-slot="sidebar"]').count()).toBe(1)
+      expect(await sidebarFooter.count()).toBe(1)
+      expect(await advancedLink.count()).toBe(1)
       expect(await advancedLink.getAttribute('href')).toBe('/')
-      const navigationSnapshot = await Promise.all(
-        [conversationLink, settingsLink, activityLink, advancedLink].map(async link => (await link.ariaSnapshot()).trim()),
-      )
+      const sidebarFooterSnapshot = (await advancedLink.ariaSnapshot()).trim()
 
-      const productEntry = page.getByRole('button', { name: 'ClawDSH 模式', exact: true })
-      await productEntry.waitFor({ timeout: 30_000 })
       const notice = page.getByRole('dialog', { name: '内测声明' })
       if (await notice.count() > 0) {
         await notice.getByRole('button', { name: '继续', exact: true }).click()
         await notice.waitFor({ state: 'detached', timeout: 10_000 })
       }
       const keyDialog = page.getByRole('dialog', { name: '添加一个 API Key 开始使用' })
-      await keyDialog.waitFor({ timeout: 10_000 })
-      await keyDialog.getByRole('button', { name: '稍后配置', exact: true }).click()
-      await keyDialog.waitFor({ state: 'detached', timeout: 10_000 })
+      if (await keyDialog.count() > 0) {
+        await keyDialog.getByRole('button', { name: '稍后配置', exact: true }).click()
+        await keyDialog.waitFor({ state: 'detached', timeout: 10_000 })
+      }
 
       await page.getByRole('button', { name: '设置', exact: true }).click()
       const settings = page.getByRole('dialog', { name: '设置' })
       await settings.waitFor({ timeout: 10_000 })
-      await settings.getByRole('button', { name: 'Agent 预设', exact: true }).click()
-      const current = settings.getByRole('button', { name: /^当前使用: ClawDSH 模式$/ })
-      await current.waitFor({ timeout: 10_000 })
-      expect(await current.getByText('clawdsh', { exact: true }).count()).toBe(1)
-      const currentSnapshot = (await current.ariaSnapshot()).trim()
+      const clawdshSection = settings.getByRole('button', { name: 'ClawDSH', exact: true })
+      await clawdshSection.waitFor({ timeout: 10_000 })
+      expect(await clawdshSection.getAttribute('aria-current')).toBe('true')
+      await settings.getByRole('heading', { name: 'ClawDSH', exact: true }).waitFor({ timeout: 10_000 })
+      const featureStatus = page.locator('section[aria-labelledby="clawdsh-feature-status-title"]')
+      await featureStatus.waitFor({ timeout: 10_000 })
+      const expectedFeatures = [
+        ['soul', 'Soul', 'Soul', '新会话启用'],
+        ['memory', 'Memory', 'Memory', '已启用'],
+        ['skills', 'Skills Hub', 'Skills Hub', '来源已启用'],
+        ['channels', 'Channels', 'Channels', '尚未连接平台'],
+        ['automation', '自动任务', '自动任务（Automation）', '尚未设置'],
+      ] as const
+      for (const [id, statusLabel, configLabel, state] of expectedFeatures) {
+        const statusCard = page.locator(`[data-feature="${id}"]`)
+        await statusCard.waitFor({ timeout: 10_000 })
+        expect(await statusCard.getByText(statusLabel, { exact: true }).count()).toBe(1)
+        expect(await statusCard.getByText(state, { exact: true }).count()).toBe(1)
+        const configCard = page.locator(`[data-feature-config="${id}"]`)
+        expect(await configCard.getByText(configLabel, { exact: true }).count()).toBe(1)
+      }
+      await page.getByText('3 项已启用 · 2 项未启用 · 1 个配置提醒', { exact: true }).waitFor({ timeout: 10_000 })
+      await page.getByText('长期记忆工具已加载，本地存储会在首次读写时验证；语义搜索待配置。', { exact: true }).waitFor({ timeout: 10_000 })
+      const settingsSectionSnapshot = (await clawdshSection.ariaSnapshot()).trim()
+      const featureStatusSnapshot = (await featureStatus.ariaSnapshot()).trim()
+      expect(featureStatusSnapshot).not.toContain('ARK_API_KEY')
+      expect(featureStatusSnapshot).not.toContain('FEISHU_APP_SECRET')
+      expect(featureStatusSnapshot).not.toContain('TELEGRAM_BOT_TOKEN')
+      for (const width of [320, 375]) {
+        await page.setViewportSize({ width, height: 800 })
+        const horizontalOverflow = await page.evaluate(() => {
+          const viewportOverflow = document.documentElement.scrollWidth - document.documentElement.clientWidth
+          const dialog = document.querySelector<HTMLElement>('[role="dialog"]')
+          if (dialog === null) throw new Error('native Settings dialog is missing')
+          return Math.max(viewportOverflow, dialog.scrollWidth - dialog.clientWidth)
+        }, undefined)
+        expect(horizontalOverflow).toBeLessThanOrEqual(0)
+        expect((await advancedLink.ariaSnapshot()).trim()).not.toBe('')
+      }
+      await page.setViewportSize({ width: 1680, height: 1000 })
       await settings.getByRole('button', { name: '关闭', exact: true }).click()
       await settings.waitFor({ state: 'detached', timeout: 10_000 })
 
+      await rpc<{ accepted: true }>(harnessUrl, 'session.prompt', {
+        sessionId: created.sessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text: 'ClawDSH real-profile UI fixture' }],
+      })
       await page.evaluate(({ sessionId }) => {
         localStorage.setItem('dsh.sessions.current', JSON.stringify({ sessionId }))
       }, created)
       await page.goto(ready.productUrl, { waitUntil: 'load' })
-      await page.getByRole('button', { name: 'ClawDSH 模式', exact: true }).waitFor({ timeout: 30_000 })
 
-      await settingsLink.click()
-      const settingsPage = page.getByRole('heading', { name: 'ClawDSH 设置', exact: true })
-      await settingsPage.waitFor({ timeout: 10_000 })
-      const overview = page.getByRole('heading', { name: 'ClawDSH 总览', exact: true })
-      await overview.waitFor({ timeout: 10_000 })
-      for (const namespace of [
-        'clawdsh-soul',
-        'clawdsh-channel-agent',
-        'clawdsh-channel-openclaw',
-        'clawdsh-memory',
-        'clawdsh-embeddings-ark',
-        'clawdsh-skills-hub',
-        'clawdsh-automation',
-        'clawdsh-activity',
-      ]) {
-        await page.locator(`[data-settings-namespace="${namespace}"]`).waitFor({ timeout: 10_000 })
-      }
-      const gatewayEnabled = page.locator(
-        '[data-settings-namespace="clawdsh-channel-openclaw"] [data-setting-path="enabled"] input[type="checkbox"]',
+      const tablist = page.getByRole('tablist')
+      await tablist.waitFor({ timeout: 10_000 })
+      const tablistSnapshot = (await tablist.ariaSnapshot()).trim()
+      const chatIndex = tablistSnapshot.indexOf('tab "对话"')
+      const trajectoryIndex = tablistSnapshot.indexOf('tab "轨迹"')
+      const recordsIndex = tablistSnapshot.indexOf('tab "ClawDSH 记录"')
+      expect(chatIndex).toBeGreaterThanOrEqual(0)
+      expect(trajectoryIndex).toBeGreaterThan(chatIndex)
+      expect(recordsIndex).toBeGreaterThan(trajectoryIndex)
+      const recordsTab = page.getByRole('tab', { name: 'ClawDSH 记录', exact: true })
+      await recordsTab.click()
+      expect(await recordsTab.getAttribute('aria-selected')).toBe('true')
+      await page.locator('section[aria-labelledby="clawdsh-records-title"]').waitFor({ timeout: 10_000 })
+      const activityRecord = page.locator(
+        `[data-kind="prompt.contribution"]:has-text("${'a'.repeat(64)}")`,
       )
-      expect(await gatewayEnabled.count()).toBe(1)
-      expect(await gatewayEnabled.isChecked()).toBe(false)
-      const arkCredential = page.locator('[data-credential="ark-api-key"]')
-      await arkCredential.waitFor({ timeout: 10_000 })
-      const arkCredentialSnapshot = (await arkCredential.ariaSnapshot()).trim()
-      expect(arkCredentialSnapshot).toContain('未配置')
-      expect(arkCredentialSnapshot).not.toContain('ARK_API_KEY')
-      expect(arkCredentialSnapshot).not.toContain('FEISHU_APP_SECRET')
-      expect(arkCredentialSnapshot).not.toContain('TELEGRAM_BOT_TOKEN')
-      await page.getByRole('status', { name: 'Soul 运行中', exact: true }).waitFor({ timeout: 10_000 })
-      await page.getByRole('status', { name: 'Channels 已关闭', exact: true }).waitFor({ timeout: 10_000 })
-      await page.getByRole('status', { name: 'Automation 已关闭', exact: true }).waitFor({ timeout: 10_000 })
-      expect(await page.locator('[data-capability="channels"] [data-support="cataloged"]').count()).toBe(27)
-      expect(await page.locator('[data-origin="ClawDSH"]').count()).toBeGreaterThan(0)
-      expect(await page.locator('[data-origin="Platform"]').count()).toBeGreaterThan(0)
-      const overviewSnapshot = (await overview.ariaSnapshot()).trim()
+      await activityRecord.waitFor({ timeout: 10_000 })
+      await activityRecord.getByRole('heading', { name: '已准备本轮 ClawDSH 上下文', exact: true }).waitFor({ timeout: 10_000 })
+      await activityRecord.getByText('技术详情', { exact: true }).waitFor({ timeout: 10_000 })
+      const activityRecordSnapshot = (await activityRecord.ariaSnapshot()).trim()
       for (const width of [320, 375]) {
         await page.setViewportSize({ width, height: 800 })
-        const horizontalOverflow = await page.evaluate(() => {
-          const productPage = document.querySelector<HTMLElement>('[data-clawdsh-product-page]')
-          if (productPage === null) throw new Error('ClawDSH product page scroll container is missing')
-          return productPage.scrollWidth - productPage.clientWidth
-        }, undefined)
+        const horizontalOverflow = await page.evaluate(() => (
+          document.documentElement.scrollWidth - document.documentElement.clientWidth
+        ), undefined)
         expect(horizontalOverflow).toBeLessThanOrEqual(0)
-        for (const destination of [conversationLink, settingsLink, activityLink, advancedLink]) {
-          expect((await destination.ariaSnapshot()).trim()).not.toBe('')
-        }
+        expect((await recordsTab.ariaSnapshot()).trim()).not.toBe('')
       }
       await page.setViewportSize({ width: 1680, height: 1000 })
-
-      await activityLink.click()
-      const activity = page.getByRole('heading', { name: 'ClawDSH 活动', exact: true })
-      await activity.waitFor({ timeout: 10_000 })
-      const activityRecord = page.locator('[data-kind="prompt.contribution"]')
-      await activityRecord.waitFor({ timeout: 10_000 })
-      await activityRecord.getByRole('heading', { name: 'ClawDSH Prompt 贡献', exact: true }).waitFor({ timeout: 10_000 })
-      const activitySnapshot = (await activity.ariaSnapshot()).trim()
-      const activityRecordSnapshot = (await activityRecord.ariaSnapshot()).trim()
 
       await page.goto(new URL('not-found', ready.productUrl).href, { waitUntil: 'load' })
       const notFound = page.getByRole('heading', { name: '页面不存在', exact: true })
       await notFound.waitFor({ timeout: 10_000 })
       const notFoundSnapshot = (await notFound.ariaSnapshot()).trim()
 
-      await page.goto(harnessUrl, { waitUntil: 'load' })
-      await page.getByRole('button', { name: 'ClawDSH 模式', exact: true }).waitFor({ timeout: 30_000 })
-      expect(await page.getByRole('link', { name: 'ClawDSH 设置', exact: true }).count()).toBe(0)
-      expect(await page.getByRole('link', { name: 'ClawDSH 活动', exact: true }).count()).toBe(0)
-
       compareOrRefresh([
-        '# ClawDSH navigation',
-        ...navigationSnapshot,
-        '# Read-only overview',
-        overviewSnapshot,
-        '# Semantic activity',
-        activitySnapshot,
+        '# Native sidebar footer',
+        sidebarFooterSnapshot,
+        '# Native settings default section',
+        settingsSectionSnapshot,
+        '# Feature status',
+        featureStatusSnapshot,
+        '# Conversation views',
+        tablistSnapshot,
+        '# ClawDSH records',
         activityRecordSnapshot,
         '# Unknown product page',
         notFoundSnapshot,
-        '# Installed preset identity',
-        currentSnapshot,
       ].join('\n\n'))
     } finally {
       try {

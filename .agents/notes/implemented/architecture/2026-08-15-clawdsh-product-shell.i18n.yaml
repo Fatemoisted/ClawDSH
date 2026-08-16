@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-15-clawdsh-product-shell.md
-2026-08-15-clawdsh-product-shell.md: 23bd8f83d9547f9a144c60f463511e963a3c06f1
-2026-08-15-clawdsh-product-shell.zh.md: 8f0cfca44abbb6b8919f6e6cd9afdf0d8cb8b459
+2026-08-15-clawdsh-product-shell.md: 927a7c46bf180405145e554c41b1b46cd05520ea
+2026-08-15-clawdsh-product-shell.zh.md: 2bd62a6155f9dc76fbff413796430029573a77d6

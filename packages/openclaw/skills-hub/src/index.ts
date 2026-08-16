@@ -114,6 +114,9 @@ interface RootSpec {
  * @returns the resolved config; invalid field types fail loudly.
  */
 export function resolveConfig(config: Config = {}): ResolvedConfig {
+  if (config.enabled !== undefined && typeof config.enabled !== 'boolean') {
+    throw new TypeError('skills-hub: config "enabled" must be a boolean')
+  }
   const workspaceDir = config.workspaceDir
   if (workspaceDir !== undefined && typeof workspaceDir !== 'string') {
     throw new TypeError('skills-hub: config "workspaceDir" must be a string')
@@ -125,6 +128,9 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
   const extraDirs = config.extraDirs ?? []
   if (!Array.isArray(extraDirs) || extraDirs.some(dir => typeof dir !== 'string')) {
     throw new TypeError('skills-hub: config "extraDirs" must be an array of strings')
+  }
+  if (extraDirs.some(dir => dir.trim() === '')) {
+    throw new TypeError('skills-hub: config "extraDirs" cannot contain an empty path')
   }
   if (config.gating !== undefined && typeof config.gating !== 'boolean') {
     throw new TypeError('skills-hub: config "gating" must be a boolean')
@@ -152,7 +158,12 @@ export function apply(ctx: Context, config: Config = {}): void {
   }).get() ?? Config(config)
   const resolved = resolveConfig(runtimeConfig)
   if (!resolved.enabled) return
-  ctx.skills.registerProvider(() => new ClawHubProvider(resolved, ctx.logger, ctx.subprocess))
+  ctx.skills.registerProvider(control => new ClawHubProvider(
+    resolved,
+    ctx.logger,
+    ctx.subprocess,
+    control.signal,
+  ))
 }
 
 /** Provider that maps OpenClaw-style skill directories into `ctx.skills`. */
@@ -163,12 +174,13 @@ export class ClawHubProvider implements SkillProvider {
     private readonly config: ResolvedConfig,
     private readonly logger: LoggerService,
     private readonly subprocess: Pick<SubprocessRuntime, 'resolveExecutable'>,
+    private readonly lifecycleSignal?: AbortSignal,
   ) {}
 
   private rootSpecs(options: SkillLookupOptions): RootSpec[] {
     const workspaceDir = this.config.workspaceDir !== undefined
       ? this.config.workspaceDir
-      : (options.cwd === undefined ? undefined : join(options.cwd, 'skills'))
+      : (options.cwd === undefined ? undefined : resolve(options.cwd, 'skills'))
     const specs: RootSpec[] = []
     if (workspaceDir !== undefined) specs.push({ source: 'clawhub-workspace', rank: WORKSPACE_SKILL_RANK, dir: workspaceDir })
     for (const dir of this.config.extraDirs) specs.push({ source: 'clawhub-extra', rank: EXTRA_SKILL_RANK, dir })
@@ -177,13 +189,15 @@ export class ClawHubProvider implements SkillProvider {
   }
 
   async list(options: SkillLookupOptions): Promise<readonly SkillCandidate[]> {
-    options.signal?.throwIfAborted()
+    const signal = combineSignals(this.lifecycleSignal, options.signal)
+    signal?.throwIfAborted()
     const candidates: SkillCandidate[] = []
     for (const spec of this.rootSpecs(options)) {
-      for (const skillFile of await this.scanRoot(spec)) {
-        const parsed = await this.parseSkill(skillFile, options.signal)
+      signal?.throwIfAborted()
+      for (const skillFile of await this.scanRoot(spec, signal)) {
+        const parsed = await this.parseSkill(skillFile, signal)
         if (parsed === undefined) continue
-        if (this.config.gating && !(await passesGating(parsed.metadata, this.subprocess, options.signal))) continue
+        if (this.config.gating && !(await passesGating(parsed.metadata, this.subprocess, signal))) continue
         candidates.push({
           name: parsed.name,
           description: parsed.description,
@@ -203,9 +217,10 @@ export class ClawHubProvider implements SkillProvider {
   }
 
   async get(candidate: SkillCandidate, options: SkillLookupOptions): Promise<SkillDefinition | undefined> {
-    options.signal?.throwIfAborted()
+    const signal = combineSignals(this.lifecycleSignal, options.signal)
+    signal?.throwIfAborted()
     if (candidate.path === undefined) return undefined
-    const parsed = await this.parseSkill(candidate.path, options.signal)
+    const parsed = await this.parseSkill(candidate.path, signal)
     if (parsed === undefined || parsed.name !== candidate.name) return undefined
     return {
       name: parsed.name,
@@ -222,24 +237,29 @@ export class ClawHubProvider implements SkillProvider {
   }
 
   /** List SKILL.md files directly inside a root; a missing root yields no skills (OpenClaw-style). */
-  private async scanRoot(spec: RootSpec): Promise<string[]> {
+  private async scanRoot(spec: RootSpec, signal?: AbortSignal): Promise<string[]> {
     if (spec.dir === undefined) return []
+    signal?.throwIfAborted()
     let entries: string[]
     try {
       entries = await readdir(spec.dir)
     } catch (error) {
+      signal?.throwIfAborted()
       if (isMissingDirectory(error)) return []
       this.logger.warn(`skills-hub: cannot scan ${spec.dir}: ${errorMessage(error)}`)
       return []
     }
+    signal?.throwIfAborted()
     const skills: string[] = []
     for (const entry of entries) {
+      signal?.throwIfAborted()
       const skillFile = join(spec.dir, entry, 'SKILL.md')
       try {
         const info = await stat(skillFile)
         if (info.isFile()) skills.push(skillFile)
       } catch {
         // Non-directory entries and unreadable paths are not skills.
+        signal?.throwIfAborted()
       }
     }
     return skills
@@ -258,8 +278,9 @@ export class ClawHubProvider implements SkillProvider {
     let frontmatter: ReturnType<typeof parseFrontmatter>
     try {
       frontmatter = parseFrontmatter(raw)
-    } catch (error) {
-      this.logger.warn(`skills-hub: skill file ${skillFile} ignored: invalid YAML frontmatter: ${errorMessage(error)}`)
+    } catch (_invalidYaml) {
+      // YAML diagnostics can quote source lines. Keep local Skill contents out of logs.
+      this.logger.warn(`skills-hub: skill file ${skillFile} ignored: invalid YAML frontmatter`)
       return undefined
     }
     if (frontmatter === undefined) {
@@ -274,7 +295,8 @@ export class ClawHubProvider implements SkillProvider {
       return undefined
     }
     if (!isSkillName(name)) {
-      this.logger.warn(`skills-hub: skill file ${skillFile} ignored: invalid skill name "${name}"`)
+      // The name is local file content and may contain secrets or control text.
+      this.logger.warn(`skills-hub: skill file ${skillFile} ignored: invalid skill name`)
       return undefined
     }
     let invocation: SkillInvocationPolicy
@@ -284,13 +306,20 @@ export class ClawHubProvider implements SkillProvider {
       this.logger.warn(`skills-hub: skill file ${skillFile} ignored: invalid invocation frontmatter: ${errorMessage(error)}`)
       return undefined
     }
+    let metadata: ReturnType<typeof parseMetadata>
+    try {
+      metadata = parseMetadata(data)
+    } catch (_invalidMetadata) {
+      this.logger.warn(`skills-hub: skill file ${skillFile} ignored: metadata must be an object or JSON object string`)
+      return undefined
+    }
     const whenToUse = stringField(data, 'whenToUse')
     return {
       name,
       description,
       ...(whenToUse === undefined ? {} : { whenToUse }),
       invocation,
-      ...parseMetadata(data),
+      ...metadata,
       content: body.trim(),
     }
   }
@@ -298,19 +327,23 @@ export class ClawHubProvider implements SkillProvider {
 
 /** Split `---`-fenced YAML frontmatter from the markdown body (the same envelope skill-filesystem parses). */
 function parseFrontmatter(raw: string): { data: Record<string, unknown>; body: string } | undefined {
-  const envelope = /^---\r?\n([\s\S]*?)^---[ \t]*(\r?\n|$)/m.exec(raw)
+  const input = raw.startsWith('\uFEFF') ? raw.slice(1) : raw
+  if (!input.startsWith('---\n') && !input.startsWith('---\r\n')) return undefined
+  const envelope = /^---\r?\n([\s\S]*?)^---[ \t]*(\r?\n|$)/m.exec(input)
   if (envelope === null) return undefined
   const [full, yaml = ''] = envelope
   const parsed = parseYaml(yaml) as unknown
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined
-  return { data: parsed as Record<string, unknown>, body: raw.slice(full.length) }
+  return { data: parsed as Record<string, unknown>, body: input.slice(full.length) }
 }
 
 /**
  * Parse `metadata` as a record or as the single-line JSON string OpenClaw writes.
- * @returns the normalized metadata record, or nothing when absent or unparseable.
+ * @returns the normalized metadata record, or nothing when absent.
+ * @throws {TypeError} when a present value is not an object or JSON object string.
  */
 function parseMetadata(data: Record<string, unknown>): { metadata?: Record<string, unknown> } {
+  if (!Object.hasOwn(data, 'metadata')) return {}
   const value = data.metadata
   if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
     return { metadata: value as Record<string, unknown> }
@@ -321,11 +354,11 @@ function parseMetadata(data: Record<string, unknown>): { metadata?: Record<strin
       if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
         return { metadata: parsed as Record<string, unknown> }
       }
-    } catch {
-      // A non-JSON metadata string carries nothing gating can read.
+    } catch (_invalidJson) {
+      // The fixed error below deliberately omits the local metadata string.
     }
   }
-  return {}
+  throw new TypeError('metadata must be an object or JSON object string')
 }
 
 /** Evaluate `metadata.clawdbot.requires.*` gates; a skill without gates passes. */
@@ -334,10 +367,13 @@ async function passesGating(
   subprocess: Pick<SubprocessRuntime, 'resolveExecutable'>,
   signal?: AbortSignal,
 ): Promise<boolean> {
+  signal?.throwIfAborted()
   const clawdbot = metadata?.clawdbot
-  if (typeof clawdbot !== 'object' || clawdbot === null) return true
+  if (clawdbot === undefined) return true
+  if (typeof clawdbot !== 'object' || clawdbot === null || Array.isArray(clawdbot)) return false
   const requires = (clawdbot as { requires?: unknown }).requires
-  if (typeof requires !== 'object' || requires === null) return true
+  if (requires === undefined) return true
+  if (typeof requires !== 'object' || requires === null || Array.isArray(requires)) return false
   const gates = requires as { bins?: unknown; anyBins?: unknown; env?: unknown }
   if (gates.bins !== undefined) {
     if (!isStringArray(gates.bins) || !(await everyBinOnPath(gates.bins, subprocess, signal))) return false
@@ -346,7 +382,7 @@ async function passesGating(
     if (!isStringArray(gates.anyBins) || !(await anyBinOnPath(gates.anyBins, subprocess, signal))) return false
   }
   if (gates.env !== undefined) {
-    if (!isStringArray(gates.env) || !gates.env.every(entry => process.env[entry] !== undefined)) return false
+    if (!isStringArray(gates.env) || !gates.env.every(entry => (process.env[entry]?.length ?? 0) > 0)) return false
   }
   return true
 }
@@ -361,6 +397,7 @@ async function everyBinOnPath(
   signal?: AbortSignal,
 ): Promise<boolean> {
   for (const entry of names) {
+    signal?.throwIfAborted()
     if (!(await binOnPath(entry, subprocess, signal))) return false
   }
   return true
@@ -372,6 +409,7 @@ async function anyBinOnPath(
   signal?: AbortSignal,
 ): Promise<boolean> {
   for (const entry of names) {
+    signal?.throwIfAborted()
     if (await binOnPath(entry, subprocess, signal)) return true
   }
   return false
@@ -437,7 +475,13 @@ const FALSEY_WORDS: readonly string[] = ['false', 'no', 'off']
 /** Read a required non-empty string frontmatter field; absent or empty yields undefined. */
 function stringField(data: Record<string, unknown>, key: string): string | undefined {
   const value = data[key]
-  return typeof value === 'string' && value.length > 0 ? value : undefined
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined
+}
+
+function combineSignals(first: AbortSignal | undefined, second: AbortSignal | undefined): AbortSignal | undefined {
+  if (first === undefined) return second
+  if (second === undefined) return first
+  return AbortSignal.any([first, second])
 }
 
 function isMissingDirectory(error: unknown): boolean {

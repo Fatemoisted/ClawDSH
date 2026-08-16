@@ -247,6 +247,8 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   ClawdshActivityWriteResult: '../../packages/openclaw/activity/README.md',
   PromptContributionActivity: '../../packages/openclaw/activity/README.md',
   MemoryActivity: '../../packages/openclaw/activity/README.md',
+  MemoryWriteActivity: '../../packages/openclaw/activity/README.md',
+  MemoryUpdateActivity: '../../packages/openclaw/activity/README.md',
   ChannelReceivedActivity: '../../packages/openclaw/activity/README.md',
   ChannelDeliveryActivity: '../../packages/openclaw/activity/README.md',
   SkillCatalogActivity: '../../packages/openclaw/activity/README.md',

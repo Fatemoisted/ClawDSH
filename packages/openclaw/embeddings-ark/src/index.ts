@@ -75,7 +75,7 @@ function resolveEndpoint(config: Config): { baseURL: string; model: string } {
   const configuredBaseURL: unknown = Reflect.get(config, 'baseURL')
   const baseURL = configuredBaseURL ?? ARK_DEFAULT_BASE_URL
   if (typeof baseURL !== 'string' || baseURL.trim() !== baseURL || !isHttpBaseURL(baseURL)) {
-    throw new TypeError('embeddings-ark: baseURL must be an HTTP(S) URL without credentials, query, or fragment')
+    throw new TypeError('embeddings-ark: baseURL must be an absolute HTTP(S) URL without credentials, query, or fragment')
   }
   const configuredModel: unknown = Reflect.get(config, 'model')
   const model = configuredModel ?? ARK_DEFAULT_MODEL
@@ -83,6 +83,13 @@ function resolveEndpoint(config: Config): { baseURL: string; model: string } {
     throw new TypeError('embeddings-ark: model must be a non-empty string without surrounding whitespace')
   }
   return { baseURL: baseURL.replace(/\/+$/u, ''), model }
+}
+
+interface ResolvedConfig {
+  baseURL: string
+  model: string
+  timeoutMs: number
+  maxConcurrentTexts: number
 }
 
 export const Config: z<Config> = z.object({
@@ -124,23 +131,25 @@ export class ArkEmbeddings extends Embeddings {
     const runtimeConfig = settings?.register(ARK_SETTINGS_NAMESPACE, Config, {
       base: config,
       applies: 'restart',
-      validate: (value: Config) => { resolveEndpoint(value) },
+      validate: value => void resolveConfig(value),
     }).get() ?? Config(config)
-    const endpoint = resolveEndpoint(runtimeConfig)
-    this.baseURL = endpoint.baseURL
-    this.model = endpoint.model
-    this.timeoutMs = runtimeConfig.timeoutMs ?? ARK_DEFAULT_TIMEOUT_MS
-    this.maxConcurrentTexts = runtimeConfig.maxConcurrentTexts ?? ARK_DEFAULT_MAX_CONCURRENT_TEXTS
+    const resolved = resolveConfig(runtimeConfig)
+    this.baseURL = resolved.baseURL
+    this.model = resolved.model
+    this.timeoutMs = resolved.timeoutMs
+    this.maxConcurrentTexts = resolved.maxConcurrentTexts
   }
 
   override async embed(texts: readonly string[], signal?: AbortSignal): Promise<EmbeddingVector[]> {
     if (texts.length === 0) return []
+    signal?.throwIfAborted()
     for (let index = 0; index < texts.length; index += 1) {
       if (typeof texts[index] !== 'string') {
         throw new TypeError(`@clawdsh/dsh-embeddings-ark: texts[${index}] must be a string`)
       }
     }
     const apiKey = await this.resolveApiKey()
+    signal?.throwIfAborted()
     if (apiKey === undefined) {
       throw new Error(
         `@clawdsh/dsh-embeddings-ark: no API key resolved for ${String(this.apiKeyEnv)} ` +
@@ -150,22 +159,39 @@ export class ArkEmbeddings extends Embeddings {
     // The multimodal endpoint embeds one input array as ONE multimodal item, so
     // batching is impossible with this model: one request per text. A bounded
     // worker pool runs up to maxConcurrentTexts requests at once; each worker
-    // claims the next index, so results land in input order and one failure
-    // rejects the whole call (the embeddings seam contract). In-flight requests
-    // are not force-cancelled on a sibling failure.
+    // claims the next index, so results land in input order. One operation-wide
+    // deadline covers every wave. The first failure aborts siblings, stops new
+    // claims, and is rethrown only after all started fetches settle.
     const results = new Array<EmbeddingVector>(texts.length)
+    const siblingAbort = new AbortController()
+    const deadline = AbortSignal.timeout(this.timeoutMs)
+    const operationSignal = signal === undefined
+      ? AbortSignal.any([deadline, siblingAbort.signal])
+      : AbortSignal.any([deadline, siblingAbort.signal, signal])
     let next = 0
+    const state: { failure?: { error: unknown } } = {}
     const workers = Array.from({ length: Math.min(this.maxConcurrentTexts, texts.length) }, async () => {
       while (true) {
-        const index = next
-        next += 1
-        if (index >= texts.length) return
-        // The dense runtime validation above makes this indexed access safe.
-        const text = texts[index] as string
-        results[index] = await this.embedOne(text, apiKey, signal)
+        try {
+          operationSignal.throwIfAborted()
+          if (state.failure !== undefined) return
+          const index = next
+          next += 1
+          if (index >= texts.length) return
+          // The dense runtime validation above makes this indexed access safe.
+          const text = texts[index] as string
+          results[index] = await this.embedOne(text, apiKey, operationSignal)
+        } catch (error: unknown) {
+          if (state.failure === undefined) {
+            state.failure = { error }
+            siblingAbort.abort(error)
+          }
+          return
+        }
       }
     })
     await Promise.all(workers)
+    if (state.failure !== undefined) throw state.failure.error
     return results
   }
 
@@ -184,7 +210,7 @@ export class ArkEmbeddings extends Embeddings {
   }
 
   /** Embed one text and validate its response. */
-  private async embedOne(text: string, apiKey: string, signal?: AbortSignal): Promise<EmbeddingVector> {
+  private async embedOne(text: string, apiKey: string, signal: AbortSignal): Promise<EmbeddingVector> {
     const response = await fetch(`${this.baseURL}/embeddings/multimodal`, {
       method: 'POST',
       headers: {
@@ -195,9 +221,7 @@ export class ArkEmbeddings extends Embeddings {
         model: this.model,
         input: [{ type: 'text', text }],
       }),
-      signal: signal === undefined
-        ? AbortSignal.timeout(this.timeoutMs)
-        : AbortSignal.any([AbortSignal.timeout(this.timeoutMs), signal]),
+      signal,
     })
     if (!response.ok) {
       throw new Error(
@@ -225,6 +249,19 @@ export class ArkEmbeddings extends Embeddings {
   }
 }
 
+function resolveConfig(config: Config): ResolvedConfig {
+  const { baseURL, model } = resolveEndpoint(config)
+  const timeoutMs = config.timeoutMs ?? ARK_DEFAULT_TIMEOUT_MS
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMER_DELAY_MS) {
+    throw new TypeError('@clawdsh/dsh-embeddings-ark: config "timeoutMs" must be a supported positive integer')
+  }
+  const maxConcurrentTexts = config.maxConcurrentTexts ?? ARK_DEFAULT_MAX_CONCURRENT_TEXTS
+  if (!Number.isInteger(maxConcurrentTexts) || maxConcurrentTexts < 1 || maxConcurrentTexts > MAX_TIMER_DELAY_MS) {
+    throw new TypeError('@clawdsh/dsh-embeddings-ark: config "maxConcurrentTexts" must be a supported positive integer')
+  }
+  return { baseURL, model, timeoutMs, maxConcurrentTexts }
+}
+
 /**
  * Validate an Ark embedding response: the multimodal endpoint answers with a
  * single `data.embedding` object holding one non-empty vector of finite numbers.
@@ -236,15 +273,24 @@ function parseResponse(payload: unknown): EmbeddingVector {
     throw new Error('@clawdsh/dsh-embeddings-ark: malformed embedding response (no data field)')
   }
   const data = payload.data
-  if (typeof data !== 'object' || data === null || !('embedding' in data)
-    || !Array.isArray(data.embedding)) {
+  if (typeof data !== 'object' || data === null || !('embedding' in data)) {
     throw new Error('@clawdsh/dsh-embeddings-ark: malformed embedding response (no data.embedding vector)')
   }
-  const embedding = (data as { embedding: unknown[] }).embedding
-  if (embedding.length === 0 || !embedding.every(value => typeof value === 'number' && Number.isFinite(value))) {
+  const embedding: unknown = data.embedding
+  if (!Array.isArray(embedding)) {
+    throw new Error('@clawdsh/dsh-embeddings-ark: malformed embedding response (no data.embedding vector)')
+  }
+  if (embedding.length === 0) {
     throw new Error('@clawdsh/dsh-embeddings-ark: invalid embedding vector (empty or non-finite entries)')
   }
-  return embedding as number[]
+  const vector: number[] = []
+  for (const value of embedding) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new Error('@clawdsh/dsh-embeddings-ark: invalid embedding vector (empty or non-finite entries)')
+    }
+    vector.push(value)
+  }
+  return vector
 }
 
 export default ArkEmbeddings

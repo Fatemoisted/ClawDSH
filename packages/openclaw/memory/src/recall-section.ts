@@ -15,7 +15,11 @@ export const MEMORY_RECALL_ORDER = 115
 
 /** Stable model-facing guidance text. */
 export const RECALL_TEXT =
-  'Use memory_search to recall facts about people, preferences, decisions, and prior work from '
-  + 'MEMORY.md and memory/*.md before answering questions about them; follow a strong hit with '
-  + 'memory_get to read the needed lines. To remember something, append running notes to '
-  + 'memory/YYYY-MM-DD.md and keep durable facts in MEMORY.md through file tools only — append, never rewrite history.'
+  'Use memory_search to recall facts about people, preferences, decisions, and prior work before answering questions about them; '
+  + 'follow a strong hit with memory_get to read the needed lines. If semantic search is unavailable, read MEMORY.md directly with '
+  + 'memory_get instead of giving up. Proactively call memory_write when the user states '
+  + 'a stable identity, preference, decision, relationship, or long-lived project: use scope durable for lasting facts and scope daily '
+  + 'for running notes. For a correction or forget request, read MEMORY.md first, then call memory_update with the exact old line; never '
+  + 'append a contradiction. Never store credentials, authentication secrets, transient details, or anything the user asks you not to '
+  + 'retain. Read and write personal memory only through memory_search, memory_get, memory_write, and memory_update; never use general '
+  + 'filesystem tools for the memory store.'

@@ -6,16 +6,10 @@ import type {
   ClientModuleSystemOptions,
   DshWindow,
 } from '@deepseek-ai/dsh-client-modules/client'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import type { ISessions } from '@deepseek-ai/dsh-client-runtime/client'
 import type { LoaderStatusStore, KernelValueSignal } from '@deepseek-ai/dsh-client-web'
 import { ClawdshBootRoot } from './ClawdshBootRoot.tsx'
 import { ProductShell } from './ProductShell.tsx'
 import { createNativeAppPlugin } from './native-app-plugin.tsx'
-import {
-  createClawdshControlClient,
-  type ClawdshControlClient,
-} from './control-client.ts'
 import { CLAWDSH_APP_SHELL_ID, CLIENT_MODULES_ID, clawdshLoaderRows } from './loader-rows.ts'
 
 /** Test transport seam inherited from the public Client module system. */
@@ -80,7 +74,6 @@ export class ClawdshWebEntry {
   private manifest!: BootManifest
   private root: Root | undefined
   private web!: WebLibrary
-  private control: ClawdshControlClient | undefined
 
   constructor(
     private readonly mount: HTMLElement,
@@ -116,19 +109,7 @@ export class ClawdshWebEntry {
           const ctx = this.requireContext()
           const shell = ctx.get('clawdshAppShell')
           if (shell === undefined) throw new Error('ClawDSH browser: assembly service missing after settlement')
-          const connection = ctx.get('connection') as ConnectionHandle | undefined
-          if (connection === undefined) throw new Error('ClawDSH browser: Connection service unavailable')
-          const sessions = ctx.get('sessions') as ISessions | undefined
-          if (sessions === undefined) throw new Error('ClawDSH browser: Sessions service unavailable')
-          this.control ??= createClawdshControlClient(connection)
-          return (
-            <ProductShell
-              renderConversation={shell.renderConversation}
-              control={this.control}
-              localControlAvailable={connection.isLoopback}
-              sessions={sessions}
-            />
-          )
+          return <ProductShell renderApp={shell.renderApp} />
         }}
       />,
     )
@@ -158,7 +139,6 @@ export class ClawdshWebEntry {
         delete win.__ModuleLoader__
       }
       this.modules = undefined
-      this.control = undefined
     }
   }
 
@@ -195,6 +175,11 @@ export class ClawdshWebEntry {
 
   private assertEntriesActive(): void {
     const ctx = this.requireContext()
+    // The standalone product build intentionally consumes the published Harness
+    // rc.6 surface. It reuses that surface's STATE_LABELS, but rc.6 exposes no
+    // activation-sweep helper; keep the fail-loud sweep local until a published
+    // Harness release makes the whole operation reusable.
+    /* jscpd:ignore-start */
     const failures: string[] = []
     for (const entry of ctx.loader.entries()) {
       const name = entry.options.name
@@ -211,6 +196,7 @@ export class ClawdshWebEntry {
         failures.push(`${name}: ${state}`)
       }
     }
+    /* jscpd:ignore-end */
     if (failures.length > 0) {
       throw new Error(`ClawDSH browser: ${String(failures.length)} Loader entries did not activate\n${failures.join('\n')}`)
     }

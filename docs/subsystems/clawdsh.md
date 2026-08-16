@@ -133,6 +133,20 @@ memorySearch(input: MemoryActivity): Promise<ClawdshActivityWriteResult>
 memoryRead(input: MemoryActivity): Promise<ClawdshActivityWriteResult>
 
 /**
+ * Record one Memory write lifecycle state without content or a physical path.
+ * @param input - Durable/daily scope, Session sequence, and sanitized lifecycle state.
+ * @returns sanitized best-effort append outcome.
+ */
+memoryWrite(input: MemoryWriteActivity): Promise<ClawdshActivityWriteResult>
+
+/**
+ * Record one durable Memory correction or forget state without either fact or a physical path.
+ * @param input - Sanitized action, Session sequence, and lifecycle state.
+ * @returns sanitized best-effort append outcome.
+ */
+memoryUpdate(input: MemoryUpdateActivity): Promise<ClawdshActivityWriteResult>
+
+/**
  * Record one Memory flush lifecycle state without prompt or reply content.
  * @param input - Session sequence and sanitized lifecycle state.
  * @returns sanitized best-effort append outcome.
@@ -197,9 +211,9 @@ list(request: ClawdshActivityReadRequest): Promise<ClawdshActivityReadResult>
 async page( request: ClawdshActivityPageRequest, history: ClawdshActivityHistorySources = {}, ): Promise<ClawdshActivityPage>
 ```
 
-Types: [AutomationRunActivity](../../packages/openclaw/activity/README.md) · [ChannelDeliveryActivity](../../packages/openclaw/activity/README.md) · [ChannelReceivedActivity](../../packages/openclaw/activity/README.md) · [ClawdshActivityHistorySources](../../packages/openclaw/activity/README.md) · [ClawdshActivityPage](../../packages/openclaw/activity/README.md) · [ClawdshActivityPageRequest](../../packages/openclaw/activity/README.md) · [ClawdshActivityReadRequest](../../packages/openclaw/activity/README.md) · [ClawdshActivityReadResult](../../packages/openclaw/activity/README.md) · [ClawdshActivityWriteResult](../../packages/openclaw/activity/README.md) · [MemoryActivity](../../packages/openclaw/activity/README.md) · [PromptContributionActivity](../../packages/openclaw/activity/README.md) · [SkillCatalogActivity](../../packages/openclaw/activity/README.md) · [SkillInvokedActivity](../../packages/openclaw/activity/README.md) · [SkillLoadedActivity](../../packages/openclaw/activity/README.md)
+Types: [AutomationRunActivity](../../packages/openclaw/activity/README.md) · [ChannelDeliveryActivity](../../packages/openclaw/activity/README.md) · [ChannelReceivedActivity](../../packages/openclaw/activity/README.md) · [ClawdshActivityHistorySources](../../packages/openclaw/activity/README.md) · [ClawdshActivityPage](../../packages/openclaw/activity/README.md) · [ClawdshActivityPageRequest](../../packages/openclaw/activity/README.md) · [ClawdshActivityReadRequest](../../packages/openclaw/activity/README.md) · [ClawdshActivityReadResult](../../packages/openclaw/activity/README.md) · [ClawdshActivityWriteResult](../../packages/openclaw/activity/README.md) · [MemoryActivity](../../packages/openclaw/activity/README.md) · [MemoryUpdateActivity](../../packages/openclaw/activity/README.md) · [MemoryWriteActivity](../../packages/openclaw/activity/README.md) · [PromptContributionActivity](../../packages/openclaw/activity/README.md) · [SkillCatalogActivity](../../packages/openclaw/activity/README.md) · [SkillInvokedActivity](../../packages/openclaw/activity/README.md) · [SkillLoadedActivity](../../packages/openclaw/activity/README.md)
 
-Source: [`packages/openclaw/activity/src/index.ts:69`](../../packages/openclaw/activity/src/index.ts)
+Source: [`packages/openclaw/activity/src/index.ts:71`](../../packages/openclaw/activity/src/index.ts)
 
 <a id="ctxclawdshopenclawcontrol--clawdshopenclawcontrol"></a>
 

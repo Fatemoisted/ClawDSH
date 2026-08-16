@@ -10,7 +10,8 @@
  */
 
 import { join } from 'node:path'
-import type { FileSystem, FsTarget } from '@deepseek-ai/dsh-fs'
+import { FsError } from '@deepseek-ai/dsh-fs'
+import type { FileSystem, FsPathInfo, FsTarget } from '@deepseek-ai/dsh-fs'
 
 const MEMORY_FILE_PATTERN = /^(?:MEMORY\.md|memory\/[^/]+\.md)$/
 
@@ -22,6 +23,26 @@ const MEMORY_FILE_PATTERN = /^(?:MEMORY\.md|memory\/[^/]+\.md)$/
 export function isMemoryPath(rel: string): boolean {
   if (rel.includes('..')) return false
   return MEMORY_FILE_PATTERN.test(rel)
+}
+
+/**
+ * Reject a configured memory root whose path entry is a symbolic link or a
+ * non-directory. A missing root is valid because `memory_write` creates it.
+ * @param fs - the filesystem service.
+ * @param root - the resolved memory root target.
+ * @param signal - cancellation for the path probe.
+ * @returns the real directory metadata, or `undefined` when the root is absent.
+ */
+export async function assertSafeMemoryRoot(
+  fs: FileSystem,
+  root: FsTarget,
+  signal?: AbortSignal,
+): Promise<FsPathInfo | undefined> {
+  const info = await fs.lstat(root.displayPath, undefined, signal)
+  if (info !== undefined && info.type !== 'directory') {
+    throw new FsError('memory: root must be a real directory, not a symbolic link', 'FS_NOT_DIRECTORY')
+  }
+  return info
 }
 
 /**

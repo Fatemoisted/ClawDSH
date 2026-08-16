@@ -4,11 +4,11 @@ English | [中文](feature-activity.zh.md)
 
 - **Status**: implemented
 - **Implementation package**: `packages/openclaw/activity` (`@clawdsh/dsh-activity`)
-- **Product surface**: current-Session Activity at `/clawdsh/activity`, exposed only through the loopback `/clawdsh-rpc` control plane
+- **Product surface**: current-Session `ClawDSH 记录` conversation tab, backed only by the loopback `/clawdsh-rpc` control plane
 
 ## Product role
 
-ClawDSH Activity explains product behavior in five semantic categories: Prompt, Memory, Channels, Skills, and Automation. It complements the complete raw Trajectory in Harness Advanced; it neither replaces that diagnostic record nor claims to reconstruct the final flattened System Prompt.
+The `ClawDSH 记录` tab explains product behavior in five semantic categories: Prompt, Memory, Channels, Skills, and Automation. The technical package, RPC endpoint, and sidecar path retain the Activity name. The tab complements the adjacent raw Trajectory; it neither replaces that diagnostic record nor claims to reconstruct the final flattened System Prompt.
 
 The `clawdsh` profile always mounts `@clawdsh/dsh-activity` as a required Host capability. Its `clawdsh-activity` Settings namespace has only the installer-managed value `enabled: true`. Producers still treat `ctx.clawdshActivity` as optional and best-effort: an absent service, append failure, permission failure, rotation failure, or unreadable sidecar can make the Activity view incomplete but cannot fail prompt assembly, Memory, channel execution or delivery, skill behavior, or Automation.
 
@@ -21,12 +21,12 @@ Every record uses format version 1 and contains an opaque id, canonical timestam
 | Category | Kinds |
 |---|---|
 | Prompt | `prompt.contribution` |
-| Memory | `memory.search`, `memory.read`, `memory.flush` |
+| Memory | `memory.search`, `memory.read`, `memory.write`, `memory.update`, `memory.flush` |
 | Channels | `channel.received`, `channel.delivery` |
 | Skills | `skill.catalog`, `skill.loaded`, `skill.invoked` |
 | Automation | `automation.run` |
 
-The optional status is one of `started`, `succeeded`, `failed`, or `sent`. An ambiguous channel delivery omits status instead of being reported as failed. Producers cannot supply an arbitrary summary or metadata object; one typed service method owns each kind and constructs its complete public representation.
+The optional status is one of `started`, `succeeded`, `failed`, or `sent`. `started` means that no matching completion was recorded; it does not claim that work is still running. An ambiguous channel delivery omits status instead of being reported as failed. Producers cannot supply an arbitrary summary or metadata object; one typed service method owns each kind and constructs its complete public representation.
 
 ## Sources and privacy
 
@@ -34,11 +34,11 @@ Activity merges two sources. Standard Session history is authoritative when it a
 
 Prompt records are emitted only for a ClawDSH contribution proven to enter the final request header. They retain the fixed section identity, append/replace mode, character count, SHA-256 digest, producer, and Session sequence, but never prompt text or a source path. The label states that this is a ClawDSH Prompt contribution, not the final System Prompt.
 
-Memory projection recognizes the standard Memory tool lifecycle and memory-flush history. It retains only the operation kind, lifecycle status, and Session sequence; queries, filenames, snippets, returned content, and error text are excluded.
+Memory projection matches standard tool calls and results by `(turn, step, callId)` and recognizes search, read, write, exact update or forget, and memory-flush history. It retains only operation kind, lifecycle status, Session sequence, write scope, update action, and a package-owned privacy-safe outcome. Write outcomes distinguish stored content from an exact durable duplicate; update outcomes distinguish an actual update or deletion from already-current or not-found no-ops. Older records without an outcome remain valid and receive neutral presentation. Queries, filenames, fact text, snippets, arbitrary results, and error text are excluded.
 
 Channel receive projection uses a standard `user/message` whose source kind is `channel`. Channel delivery is recorded only when the Agent bridge commits a new durable receipt, so replaying an existing receipt does not create another Activity record. The public fields are limited to adapter, direct/group class, mention fact, lifecycle state, and Session sequence. Sender, account, conversation, thread, message and delivery identifiers, message text, and transport errors are excluded.
 
-Skill projection recognizes standard skill tool, catalog, and invocation history. It retains a bounded skill identity or catalog count, lifecycle state, and Session sequence, but not skill text, provider paths, tool arguments, results, or errors. Automation projection recognizes `automation/run` and retains only rule id, scheduled time, lifecycle state, and sequence; prompts, model output, and errors are excluded.
+Skill projection recognizes standard skill tool, catalog, and invocation history. It retains a bounded skill identity or catalog count, lifecycle state, and Session sequence, but not skill text, provider paths, tool arguments, results, or errors. Automation projection recognizes `automation/run` and retains only rule id, scheduled time, lifecycle state, and sequence; prompts, model output, and errors are excluded. The page collapses the `started` and terminal records for one scheduled occurrence before sorting and pagination, so one run appears once at its final known state and time.
 
 The durable format has no field for credential values, access tokens, filesystem paths, arbitrary producer prose, raw tool data, message content, or error text. RPC and browser validation repeat the closed kind-to-metadata mapping before rendering a record.
 
@@ -56,15 +56,17 @@ Retention is bounded rather than complete: each producer keeps at most three 1 M
 
 The trusted Host supplies either the live current Session events or validated `sessionPersistence.inspect()` events. Live history takes precedence; inspection is the fallback for a non-live Session. History or sidecars may be unavailable independently, and `activity/list` still returns the other source with explicit availability, degradation, and stable warnings.
 
-`activity/list` is a strict protocol-v1 `/clawdsh-rpc` request with `sessionId`, optional category filter, optional `asc` or `desc` order, optional limit, and optional cursor. The default is the newest 50 records and the maximum is 100. The versioned canonical base64url cursor binds the hashed Session identity, canonical category filter, order, timestamp, and record id; a malformed cursor or one from a different query fails instead of changing meaning.
+`activity/list` is a strict protocol-v1 `/clawdsh-rpc` request with `sessionId`, optional category filter, optional `asc` or `desc` order, optional limit, and optional cursor. The default is the newest 50 records and the maximum is 100. The versioned canonical base64url cursor binds the hashed Session identity, canonical category filter, order, complete filtered-result snapshot digest, timestamp, and record id. A malformed cursor, a cursor from another query, or a result set changed between pages fails instead of silently skipping, duplicating, or reordering records.
 
 The endpoint inherits the product control plane's loopback-only authority. A remote trusted-host page can continue to use Conversation but cannot read Activity. Responses expose only canonical records, continuation, availability, degraded state, and stable warnings; they do not expose a sidecar path or source error.
 
 ## Browser behavior
 
-The Activity page follows the Session selected by the mounted Harness client. With no current Session it directs the user to Conversation. A Session switch aborts the previous request, clears records and continuation, and starts the new Session from its first page.
+ClawDSH registers `clawdsh-records` as the third public `conversation.view` entry after Chat and Trajectory. The Slot supplies the current Session id directly. A Session switch or view unmount aborts the previous request, clears records and continuation, and starts the next selected Session from its first page.
 
-Users can select any combination of the five categories, choose newest-first or oldest-first order, and load another page when a continuation exists. Each fixed kind has a dedicated presentation; the page offers no raw JSON expansion. Missing sidecars display that early Activity may be incomplete, while malformed or failed data displays a degraded warning. Raw Trajectory remains a full-page link to Harness Advanced.
+Users can select any combination of the five plain-language categories—identity and context, memory, external messages, skills, and scheduled tasks—choose newest-first or oldest-first order, and load another page when a continuation exists. Prompt contributions for the same request are grouped into one context-preparation card. Every operation has a Chinese title and explanation; Memory no-op outcomes are stated explicitly, while content and errors stay private. Package kind, event sequence, hashes, and other diagnostic fields are folded under `技术详情`; the tab offers neither raw JSON nor a simulated jump into Trajectory.
+
+The view reloads after the public conversation snapshot reports a new completed turn, aborts and resets on Session or filter changes, and always offers a manual `重新读取` action for sidecar-only records that arrive later. A changed pagination snapshot asks the user to reload from page one. Historical missing sidecars, a current Session with no sidecar yet, an unreadable sidecar, unavailable Session history, partial degradation, no selected category, and category-specific empty results have distinct explanations. When a source is missing or degraded, an empty result says only that no selected record is displayable; it never concludes that the capability was unused.
 
 ## Integration constraints
 
@@ -75,4 +77,4 @@ Users can select any combination of the five categories, choose newest-first or 
 
 ## Verification
 
-Focused package tests cover typed record construction, privacy allowlists, permissions, bounded records, rotation, queue draining, malformed tails, unavailable storage, standard-history projection, deduplication, ordering, cursor binding, and one-source degradation. Control-plane and browser tests cover strict protocol parsing, current-Session selection, cancellation, filtering, ordering, pagination, kind-specific cards, remote denial, missing-sidecar copy, degraded warnings, and the Raw Trajectory link.
+Focused package tests cover typed record construction, privacy allowlists, permissions, bounded records, rotation, queue draining, malformed tails, unavailable storage, `(turn, step, callId)` tool pairing, privacy-safe Memory outcomes, Automation lifecycle collapse, deduplication, ordering, snapshot-bound cursors, and one-source degradation. Control-plane and browser tests cover strict protocol parsing, Slot-bound Session selection, completed-turn refresh, switch and unmount cancellation, manual reload, filtering, ordering, pagination restart, human-facing cards, folded technical details, remote denial, source-specific availability explanations, degradation, and category-specific empty results.

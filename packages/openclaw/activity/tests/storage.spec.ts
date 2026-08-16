@@ -222,6 +222,25 @@ describe('ActivitySidecarStore writes', () => {
 })
 
 describe('ActivitySidecarStore reads', () => {
+  it('keeps legacy Memory records that predate outcome metadata', async () => {
+    const root = await tempRoot()
+    const store = new ActivitySidecarStore(root)
+    const sessionId = 'legacy-memory-session'
+    const legacy = createActivityRecord(
+      { id: randomUUID(), timestamp: '2026-08-16T00:00:00.000Z', sessionId },
+      'memory.update',
+      { action: 'updated', seq: 4 },
+      'succeeded',
+    )
+
+    await store.append('memory', legacy)
+
+    await expect(store.read(sessionId, ['memory'])).resolves.toMatchObject({
+      degraded: false,
+      records: [{ metadata: { action: 'updated', seq: 4 } }],
+    })
+  })
+
   it('skips bad lines and an incomplete tail without modifying the source file', async () => {
     const root = await tempRoot()
     const store = new ActivitySidecarStore(root)

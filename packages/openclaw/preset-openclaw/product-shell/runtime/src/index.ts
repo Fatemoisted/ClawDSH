@@ -41,9 +41,20 @@ export const inject = ['webServer', 'connection', 'loader', 'agentPresets', 'set
 
 const PRODUCT_PREFIX = '/clawdsh'
 const PRODUCT_ROOT = '/clawdsh/'
+const LEGACY_PRODUCT_PATHS = [
+  '/clawdsh/settings',
+  '/clawdsh/settings/',
+  '/clawdsh/activity',
+  '/clawdsh/activity/',
+] as const
 const LOOPBACK_HOST = '127.0.0.1'
 const COMMUNICATION_PLANE_ID = 'clawdsh-communication-plane'
 
+// FiberState is a cross-package const enum, so no runtime value exists to
+// import. This private product package and the public plugin-inventory package
+// own different protocol projections; coupling their release artifacts solely
+// to share this numeric mirror would invert that ownership boundary.
+/* jscpd:ignore-start */
 const FIBER_STATE = {
   PENDING: 0 as FiberState.PENDING,
   LOADING: 1 as FiberState.LOADING,
@@ -61,6 +72,7 @@ const FIBER_PHASE = {
   [FIBER_STATE.DISPOSED]: null,
   [FIBER_STATE.UNLOADING]: 'unloading',
 } as const satisfies Record<FiberState, ClawdshFiberPhase>
+/* jscpd:ignore-end */
 
 const FIBER_LOADER_STATE = {
   [FIBER_STATE.PENDING]: 'starting',
@@ -554,20 +566,22 @@ function registerProductRoutes(ctx: Context, distIndex: string): void {
   const distRoot = dirname(distIndex)
   const renderIndex = async (): Promise<string> =>
     ctx.webServer.applyIndexTaps(await readFile(distIndex, 'utf8'))
-  ctx.effect(() => ctx.webServer.register({
-    kind: 'exact',
-    path: PRODUCT_PREFIX,
-    handler: (req, res) => {
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
-        res.writeHead(405)
+  for (const path of [PRODUCT_PREFIX, ...LEGACY_PRODUCT_PATHS]) {
+    ctx.effect(() => ctx.webServer.register({
+      kind: 'exact',
+      path,
+      handler: (req, res) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          res.writeHead(405)
+          res.end()
+          return
+        }
+        const search = new URL(req.url ?? path, 'http://clawdsh.invalid').search
+        res.writeHead(308, { location: `${PRODUCT_ROOT}${search}` })
         res.end()
-        return
-      }
-      const search = new URL(req.url ?? PRODUCT_PREFIX, 'http://clawdsh.invalid').search
-      res.writeHead(308, { location: `${PRODUCT_ROOT}${search}` })
-      res.end()
-    },
-  }), 'clawdsh-product-runtime: /clawdsh redirect')
+      },
+    }), `clawdsh-product-runtime: ${path} redirect`)
+  }
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
     path: PRODUCT_PREFIX,

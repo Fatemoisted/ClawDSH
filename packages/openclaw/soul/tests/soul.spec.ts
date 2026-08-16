@@ -82,6 +82,33 @@ describe('the soul row', () => {
     await ctx.fiber.dispose()
   })
 
+  it('allows intentionally disabled Host and session rows without placeholder Soul content', async () => {
+    const ctx = await harness('deployment identity', { enabled: false })
+    const key: ScopeKey = { agent: 'disabled-soul' }
+
+    await createScope(ctx, key).ctx.plugin(Soul, { enabled: false })
+
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBeUndefined()
+    expect(ctx.settings.describe().find(entry => entry.ns === Soul.SOUL_SETTINGS_NAMESPACE)?.value)
+      .toMatchObject({ enabled: false })
+    await ctx.fiber.dispose()
+  })
+
+  it('allows Settings to disable subsequent Sessions while clearing both content fields', async () => {
+    const ctx = await harness('deployment identity', { text: 'base identity' })
+    await ctx.settings.update(Soul.SOUL_SETTINGS_NAMESPACE, {
+      enabled: false,
+      source: '',
+      text: '',
+    })
+    const key: ScopeKey = { agent: 'settings-disabled-soul' }
+
+    await createScope(ctx, key).ctx.plugin(Soul, { text: 'preset identity' })
+
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBeUndefined()
+    await ctx.fiber.dispose()
+  })
+
   it('records only the rendered Soul contribution that matches a committed request header', async () => {
     const ctx = await harness('deployment identity')
     const records: PromptActivityInput[] = []
@@ -298,6 +325,17 @@ describe('the soul row', () => {
 
     await expect(createScope(ctx, key).ctx.plugin(Soul, { text: '' }))
       .rejects.toThrow(/non-empty/)
+    await expect(createScope(ctx, key).ctx.plugin(Soul, { text: ' \n\t ' }))
+      .rejects.toThrow(/non-empty/)
+  })
+
+  it('treats a whitespace-only source as absent and uses inline text', async () => {
+    const ctx = await harness('')
+    const key: ScopeKey = { agent: 'inline-fallback' }
+
+    await createScope(ctx, key).ctx.plugin(Soul, { source: '   ', text: 'Inline identity.' })
+
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBe('Inline identity.')
   })
 
   it('fails loud on an unknown mode', async () => {
