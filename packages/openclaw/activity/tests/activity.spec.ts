@@ -85,22 +85,30 @@ describe('ClawdshActivity service', () => {
       }),
       activity.memorySearch({ sessionId, status: 'started', seq: 2 }),
       activity.memoryRead({ sessionId, status: 'succeeded', seq: 3 }),
-      activity.memoryFlush({ sessionId, status: 'failed', seq: 4 }),
-      activity.channelReceived({ sessionId, adapter: 'feishu', conversation: 'group', mention: true, seq: 5 }),
-      activity.channelDelivery({ sessionId, adapter: 'feishu', conversation: 'group', mention: true, status: 'sent', seq: 6 }),
-      activity.skillCatalog({ sessionId, count: 3, seq: 7 }),
-      activity.skillLoaded({ sessionId, skill: 'calendar', seq: 8 }),
-      activity.skillInvoked({ sessionId, skill: 'calendar', status: 'succeeded', seq: 9 }),
+      activity.memoryWrite({ sessionId, scope: 'durable', status: 'succeeded', outcome: 'stored', seq: 4 }),
+      activity.memoryUpdate({
+        sessionId,
+        action: 'updated',
+        status: 'succeeded',
+        outcome: 'already-current',
+        seq: 5,
+      }),
+      activity.memoryFlush({ sessionId, status: 'failed', seq: 6 }),
+      activity.channelReceived({ sessionId, adapter: 'feishu', conversation: 'group', mention: true, seq: 6 }),
+      activity.channelDelivery({ sessionId, adapter: 'feishu', conversation: 'group', mention: true, status: 'sent', seq: 7 }),
+      activity.skillCatalog({ sessionId, count: 3, seq: 8 }),
+      activity.skillLoaded({ sessionId, skill: 'calendar', seq: 9 }),
+      activity.skillInvoked({ sessionId, skill: 'calendar', status: 'succeeded', seq: 10 }),
       activity.automationRun({
         sessionId,
         ruleId: 'morning-brief',
         scheduledAt: '2026-08-15T01:02:03.000Z',
         status: 'started',
-        seq: 10,
+        seq: 11,
       }),
     ])
 
-    expect(outcomes).toHaveLength(10)
+    expect(outcomes).toHaveLength(12)
     expect(outcomes.every(outcome => outcome.written && !outcome.degraded)).toBe(true)
     const read = await activity.list({ sessionId })
     expect(read).toMatchObject({ availability: 'available', degraded: false })
@@ -108,6 +116,8 @@ describe('ClawdshActivity service', () => {
       'prompt.contribution',
       'memory.search',
       'memory.read',
+      'memory.write',
+      'memory.update',
       'memory.flush',
       'channel.received',
       'channel.delivery',
@@ -116,8 +126,18 @@ describe('ClawdshActivity service', () => {
       'skill.invoked',
       'automation.run',
     ]))
-    expect(read.records).toHaveLength(10)
+    expect(read.records).toHaveLength(12)
     expect(read.records.every(record => record.version === 1 && record.sessionId === sessionId)).toBe(true)
+    expect(read.records.find(record => record.kind === 'memory.write')?.metadata).toEqual({
+      scope: 'durable',
+      seq: 4,
+      outcome: 'stored',
+    })
+    expect(read.records.find(record => record.kind === 'memory.update')?.metadata).toEqual({
+      action: 'updated',
+      seq: 5,
+      outcome: 'already-current',
+    })
   })
 
   it('drops extra caller fields and never projects content or platform identities', async () => {

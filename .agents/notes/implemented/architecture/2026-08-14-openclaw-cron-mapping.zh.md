@@ -4,6 +4,8 @@ Status: implemented
 
 [English](2026-08-14-openclaw-cron-mapping.md) | 中文
 
+**部分已被取代。** 调度器所有权的决策仍然有效；preset 组合、会话可发现性、`every`/`at` 时序、终态运行持久化与生命周期失败行为由 [完整组合且可发现的 Automation 会话](../bug-fix/2026-08-16-automation-composed-discoverable-sessions.md) 负责。
+
 ## 问题
 
 对齐矩阵的 Scheduling/automation 行（出处：OpenClaw `src/cron/`，接缝：`ctx.schedule` / `ctx.jobs`）处于 planning。最自然的 dsh 落点——挂在既有 schedule 接缝上——经证实无法表达：schedule 包是面向存活 agent 的会话内任务调度，而 OpenClaw cron 是全局、冷启动、分钟粒度的调度器，每个 job 一个专属持久会话。要回答的问题：cron 功能类别到底落在哪个 dsh 接缝上，诚实的增量是什么？

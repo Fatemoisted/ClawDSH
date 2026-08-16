@@ -26,19 +26,22 @@
 
 `clawdsh-embeddings-ark` namespace 暴露 endpoint、model 与请求调优，重启后生效。凭据值从不缓存，因此凭据替换仍在下次调用生效。
 
+Endpoint 在挂载时校验为绝对 HTTP(S) base，不允许 URL credential、query 或 fragment；追加固定 Ark 路径前会归一化尾随斜线。Model 必须非空。因此畸形持久化设置会在发送任何 bearer credential 之前拒绝。
+
 ## 设计要点
 
 - **每操作解析凭证**：不缓存 key（credentials seam 铁律），改 `.env` 后无需重挂载即生效；
 - **响应校验**：向量非空且全为有限数；**跨调用维度漂移 fail-loud**——服务端静默换模型不得破坏消费端的 cosine 可比性（实测维度 2048，漂移即报错）；
 - **Secret-safe 失败**：HTTP response body 与 JSON parser diagnostics 永不向外传播，因为收到 bearer credential 的端点可能原样回显它；失败只暴露固定 provider 文案与 HTTP status；
-- **协作取消**：超时 `AbortSignal.timeout(timeoutMs)` 与调用方 signal 合并，工具超时/会话取消直达 HTTP；
-- **每文本一个请求，有界并发**：multimodal 端点把整个 input 数组嵌成一条多模态条目，批量不可能——`embed(N)` 跑最多 `maxConcurrentTexts`（默认 4）个在途请求的 worker 池；每个 worker 认领下一个索引，结果按输入序返回，任一失败整体 reject（embeddings seam 契约）。兄弟请求失败时不强制取消在途请求。
+- **协作取消**：一个覆盖整次操作的 `AbortSignal.timeout(timeoutMs)` 与调用方 signal 合并，deadline 覆盖所有 worker 波次，工具超时/Session 取消直达 HTTP；
+- **每文本一个请求，有界并发**：multimodal 端点把整个 input 数组嵌成一条多模态条目，批量不可能——`embed(N)` 跑最多 `maxConcurrentTexts`（默认 4）个在途请求的 worker 池；每个 worker 认领下一个索引，结果按输入序返回。首个失败会停止新认领、取消在途兄弟 fetch，等所有已开始 worker 收敛后再以首个失败整体 reject。
 
 ## 变更说明
 
 - 0.1.0：首版（文本输入 + 凭证分层 + 响应校验 + 契约测试 8 例，mock fetch）。
 - 0.1.0（2026-08-14 真实 e2e 修正）：真实 wire 实测后按 `data.embedding` 单对象/每文本一请求重写解析与调用；移除 `maxBatchTexts`（该端点无法批量）；契约测试 8 例对齐新 wire + tools/ark-e2e.ts 真实闭环（2048 维、语义召回 0.648）。
 - 0.2.0：每文本请求有界并发（`maxConcurrentTexts` 默认 4；保序 worker 池、任一失败整体 reject；5 个并发契约测试）。
+- 0.2.0（2026-08-16 接入加固）：挂载时 endpoint/model 校验、整次调用共享一个 deadline，并在兄弟请求失败时取消且等待收敛。
 
 ## Model Experience
 
@@ -59,6 +62,6 @@ No prompt text is produced by this provider, so the prompt prefix and its KV cac
 ## Known Limitations and Deferred Work
 
 - **仅文本输入**：Ark 端点多模态（image_url 输入类型），本期只发 `type: "text"`；图像嵌入留待有消费者时补；
-- **无批量**：该端点无法批量（每文本一个请求），大语料召回仍是 N 个请求；有界并发（`maxConcurrentTexts`）摊薄开销，部分失败时在途兄弟请求自然走完（不强制取消）；
+- **无批量**：该端点无法批量（每文本一个请求），大语料召回仍是 N 个请求；有界并发（`maxConcurrentTexts`）摊薄开销；
 - **无本地模型**：OpenClaw 的 local GGUF 分支未移植；离线部署无嵌入能力（对应 memory 无检索）；
 - **调优重启生效**：base URL、model、timeout 与 concurrency 来自启动时设置快照；只有凭据修改在下次调用生效。

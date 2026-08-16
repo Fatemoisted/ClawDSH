@@ -115,6 +115,8 @@
       name: '@clawdsh/dsh-automation'
       config:
         enabled: false
+        preset: clawdsh
+        cwd: !!js process.env.CLAWDSH_AUTOMATION_CWD || process.cwd()
 
 # 新 GUI 会话默认挂载「ClawDSH 模式」preset。
 - id: agent-presets

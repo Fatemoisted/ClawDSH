@@ -76,6 +76,11 @@ function requestText(init: RequestInit): string {
   return first.text
 }
 
+function requestSignal(init: RequestInit): AbortSignal {
+  if (init.signal === undefined || init.signal === null) throw new Error('request has no AbortSignal')
+  return init.signal
+}
+
 beforeEach(() => {
   vi.stubEnv('ARK_API_KEY', 'test-key')
 })
@@ -131,6 +136,34 @@ describe('ark embeddings provider', () => {
     expect(JSON.parse((fetchMock.mock.calls[1]?.[1] as RequestInit).body as string)).toMatchObject({ model: 'settings-model' })
     expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).toMatchObject({ Authorization: 'Bearer rotated-key' })
     await ctx.fiber.dispose()
+  })
+
+  it('normalizes a trailing base URL slash before appending the Ark endpoint', async () => {
+    const fetchMock = okFetch(responseBody([0.1]))
+    vi.stubGlobal('fetch', fetchMock)
+    const ctx = await testContext()
+    await ctx.plugin(ArkEmbeddings, { baseURL: 'https://ark.example/api/v3/' })
+
+    await ctx.embeddings.embed(['a'])
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://ark.example/api/v3/embeddings/multimodal')
+  })
+
+  it('rejects unusable endpoint and model settings at mount without exposing URL credentials', async () => {
+    await expect((await testContext()).plugin(ArkEmbeddings, { model: '   ' }))
+      .rejects.toThrow(/model/)
+    await expect((await testContext()).plugin(ArkEmbeddings, { baseURL: 'relative/path' }))
+      .rejects.toThrow(/baseURL/)
+    let failure: unknown
+    try {
+      await (await testContext()).plugin(ArkEmbeddings, {
+        baseURL: 'https://ark-url-secret@example.test/api/v3',
+      })
+    } catch (error: unknown) {
+      failure = error
+    }
+    expect(failure).toBeInstanceOf(Error)
+    expect(String(failure)).not.toContain('ark-url-secret')
   })
 
   it('sends one text-only request per text and parses vectors in order', async () => {
@@ -257,6 +290,56 @@ describe('ark embeddings provider', () => {
     expect(vectors).toHaveLength(10)
     expect(fetchMock).toHaveBeenCalledTimes(10)
     expect(peak).toBe(4)
+  })
+
+  it('uses one operation signal and deadline across serial request waves', async () => {
+    const signals: AbortSignal[] = []
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      signals.push(requestSignal(init))
+      return new Response(responseBody([0.1]), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const ctx = await testContext()
+    await ctx.plugin(ArkEmbeddings, { maxConcurrentTexts: 1 })
+
+    await ctx.embeddings.embed(['a', 'b', 'c'])
+
+    expect(signals).toHaveLength(3)
+    expect(signals[1]).toBe(signals[0])
+    expect(signals[2]).toBe(signals[0])
+  })
+
+  it('aborts and drains started siblings before reporting the first batch failure', async () => {
+    const started: string[] = []
+    let slowAborted = false
+    let releaseSlow = (): void => {}
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const text = requestText(init)
+      started.push(text)
+      if (text === 'bad') return new Response('failure', { status: 500 })
+      if (text !== 'slow') return new Response(responseBody([0.1]), { status: 200 })
+      return await new Promise<Response>((resolve, reject) => {
+        releaseSlow = () => { resolve(new Response(responseBody([0.1]), { status: 200 })) }
+        const operationSignal = requestSignal(init)
+        operationSignal.addEventListener('abort', () => {
+          slowAborted = true
+          reject(operationSignal.reason instanceof Error
+            ? operationSignal.reason
+            : new Error('embedding operation aborted'))
+        }, { once: true })
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const ctx = await testContext()
+    await ctx.plugin(ArkEmbeddings, { maxConcurrentTexts: 2 })
+    try {
+      await expect(ctx.embeddings.embed(['bad', 'slow', 'must-not-start']))
+        .rejects.toThrow(/HTTP 500/)
+      expect(slowAborted).toBe(true)
+      expect(started).toEqual(['bad', 'slow'])
+    } finally {
+      releaseSlow()
+    }
   })
 
   it('returns vectors in input order even when requests resolve out of order', async () => {

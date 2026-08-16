@@ -6,16 +6,10 @@ import type {
   ClientModuleSystemOptions,
   DshWindow,
 } from '@deepseek-ai/dsh-client-modules/client'
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
-import type { ISessions } from '@deepseek-ai/dsh-client-runtime/client'
 import type { LoaderStatusStore, KernelValueSignal } from '@deepseek-ai/dsh-client-web'
 import { ClawdshBootRoot } from './ClawdshBootRoot.tsx'
 import { ProductShell } from './ProductShell.tsx'
 import { createNativeAppPlugin } from './native-app-plugin.tsx'
-import {
-  createClawdshControlClient,
-  type ClawdshControlClient,
-} from './control-client.ts'
 import { CLAWDSH_APP_SHELL_ID, CLIENT_MODULES_ID, clawdshLoaderRows } from './loader-rows.ts'
 
 /** Test transport seam inherited from the public Client module system. */
@@ -80,7 +74,6 @@ export class ClawdshWebEntry {
   private manifest!: BootManifest
   private root: Root | undefined
   private web!: WebLibrary
-  private control: ClawdshControlClient | undefined
 
   constructor(
     private readonly mount: HTMLElement,
@@ -116,19 +109,7 @@ export class ClawdshWebEntry {
           const ctx = this.requireContext()
           const shell = ctx.get('clawdshAppShell')
           if (shell === undefined) throw new Error('ClawDSH browser: assembly service missing after settlement')
-          const connection = ctx.get('connection') as ConnectionHandle | undefined
-          if (connection === undefined) throw new Error('ClawDSH browser: Connection service unavailable')
-          const sessions = ctx.get('sessions') as ISessions | undefined
-          if (sessions === undefined) throw new Error('ClawDSH browser: Sessions service unavailable')
-          this.control ??= createClawdshControlClient(connection)
-          return (
-            <ProductShell
-              renderConversation={shell.renderConversation}
-              control={this.control}
-              localControlAvailable={connection.isLoopback}
-              sessions={sessions}
-            />
-          )
+          return <ProductShell renderApp={shell.renderApp} />
         }}
       />,
     )
@@ -158,7 +139,6 @@ export class ClawdshWebEntry {
         delete win.__ModuleLoader__
       }
       this.modules = undefined
-      this.control = undefined
     }
   }
 

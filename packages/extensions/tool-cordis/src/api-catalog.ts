@@ -472,6 +472,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'sanitized best-effort append outcome.',
       },
       {
+        signature: 'memoryWrite(input: MemoryWriteActivity): Promise<ClawdshActivityWriteResult>',
+        description: 'Record one Memory write lifecycle state without content or a physical path.',
+        parameters: [{ name: 'input', description: 'Durable/daily scope, Session sequence, and sanitized lifecycle state.' }],
+        returns: 'sanitized best-effort append outcome.',
+      },
+      {
+        signature: 'memoryUpdate(input: MemoryUpdateActivity): Promise<ClawdshActivityWriteResult>',
+        description: 'Record one durable Memory correction or forget state without either fact or a physical path.',
+        parameters: [{ name: 'input', description: 'Sanitized action, Session sequence, and lifecycle state.' }],
+        returns: 'sanitized best-effort append outcome.',
+      },
+      {
         signature: 'memoryFlush(input: MemoryActivity): Promise<ClawdshActivityWriteResult>',
         description: 'Record one Memory flush lifecycle state without prompt or reply content.',
         parameters: [{ name: 'input', description: 'Session sequence and sanitized lifecycle state.' }],
@@ -3307,7 +3319,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ClawdshActivityKind',
-    declaration: 'export type ClawdshActivityKind = \'prompt.contribution\' | \'memory.search\' | \'memory.read\' | \'memory.flush\' | \'channel.received\' | \'channel.delivery\' | \'skill.catalog\' | \'skill.loaded\' | \'skill.invoked\' | \'automation.run\';',
+    declaration: 'export type ClawdshActivityKind = \'prompt.contribution\' | \'memory.search\' | \'memory.read\' | \'memory.write\' | \'memory.update\' | \'memory.flush\' | \'channel.received\' | \'channel.delivery\' | \'skill.catalog\' | \'skill.loaded\' | \'skill.invoked\' | \'automation.run\';',
   },
   {
     name: 'ClawdshActivityMetadata',
@@ -3996,6 +4008,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'MemoryActivity',
     declaration: 'export interface MemoryActivity {\n    readonly sessionId: SessionId;\n    readonly status: \'started\' | \'succeeded\' | \'failed\';\n    readonly seq: number;\n}',
+  },
+  {
+    name: 'MemoryUpdateActivity',
+    declaration: 'export type MemoryUpdateActivity = MemoryUpdateFields & ({\n    readonly status: \'started\' | \'failed\';\n    readonly outcome?: never;\n} | {\n    readonly status: \'succeeded\';\n    readonly outcome?: MemoryUpdateOutcome;\n});',
+  },
+  {
+    name: 'MemoryUpdateOutcome',
+    declaration: 'export type MemoryUpdateOutcome = \'updated\' | \'forgotten\' | \'already-current\' | \'not-found\';',
+  },
+  {
+    name: 'MemoryWriteActivity',
+    declaration: 'export type MemoryWriteActivity = MemoryWriteFields & ({\n    readonly status: \'started\' | \'failed\';\n    readonly outcome?: never;\n} | {\n    readonly status: \'succeeded\';\n    readonly outcome?: MemoryWriteOutcome;\n});',
+  },
+  {
+    name: 'MemoryWriteOutcome',
+    declaration: 'export type MemoryWriteOutcome = \'stored\' | \'already-stored\';',
   },
   {
     name: 'Message',

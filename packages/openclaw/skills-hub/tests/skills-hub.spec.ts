@@ -5,7 +5,7 @@
  * observe summaries (rank/metadata are provider-level fields); candidate-level
  * fields are asserted against the provider directly.
  */
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -78,6 +78,10 @@ function hubProvider(workspace: string, logger: Context['logger'], config: Skill
   )
 }
 
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
+
 describe('skills-hub provider', () => {
   it('declares Settings and the Harness executable resolver as required plugin dependencies', () => {
     expect(SkillsHub.inject).toEqual(['skills', 'settings', 'subprocess'])
@@ -144,10 +148,13 @@ describe('skills-hub provider', () => {
   it('evaluates metadata.clawdbot gating: missing bins and env exclude the skill', async () => {
     const workspace = await tempDir('hub-gating')
     try {
+      vi.stubEnv('DH_SKILLS_HUB_TEST_EMPTY_VAR', '')
       await writeSkill(join(workspace, 'skills'), 'needs-bin', 'Requires a bin', 'Bin body.',
         '\nmetadata: {"clawdbot":{"requires":{"bins":["definitely-not-a-real-bin-xyz"]}}}')
       await writeSkill(join(workspace, 'skills'), 'needs-env', 'Requires an env var', 'Env body.',
         '\nmetadata: {"clawdbot":{"requires":{"env":["DH_SKILLS_HUB_TEST_UNSET_VAR"]}}}')
+      await writeSkill(join(workspace, 'skills'), 'needs-nonempty-env', 'Requires a non-empty env var', 'Empty env body.',
+        '\nmetadata: {"clawdbot":{"requires":{"env":["DH_SKILLS_HUB_TEST_EMPTY_VAR"]}}}')
       await writeSkill(join(workspace, 'skills'), 'passes', 'No gates', 'Pass body.')
       const { ctx } = await setup(workspace)
       expect((await ctx.skills.list({ cwd: workspace })).map(skill => skill.name)).toEqual(['passes'])
@@ -155,7 +162,7 @@ describe('skills-hub provider', () => {
       // With gating disabled the same skills are all listed.
       const ungated = await setup(workspace, { gating: false })
       expect((await ungated.ctx.skills.list({ cwd: workspace })).map(skill => skill.name))
-        .toEqual(['needs-bin', 'needs-env', 'passes'])
+        .toEqual(['needs-bin', 'needs-env', 'needs-nonempty-env', 'passes'])
     } finally {
       await rm(workspace, { recursive: true, force: true })
     }
@@ -187,7 +194,7 @@ describe('skills-hub provider', () => {
       const { ctx } = await setup(workspace, {}, { resolveExecutable })
 
       expect((await ctx.skills.list({ cwd: workspace })).map(skill => skill.name)).toEqual(['windows-bin'])
-      expect(resolveExecutable).toHaveBeenCalledWith('win-tool', undefined, undefined)
+      expect(resolveExecutable).toHaveBeenCalledWith('win-tool', undefined, expect.any(AbortSignal))
     } finally {
       await rm(workspace, { recursive: true, force: true })
     }
@@ -206,6 +213,70 @@ describe('skills-hub provider', () => {
       expect(definition?.metadata).toEqual({ clawdbot: { emoji: '🧾', requires: { bins: [] } } })
       expect(definition?.content).toBe('Meta body.')
       expect(definition?.resourceBase).toEqual({ kind: 'directory', path: join(workspace, 'skills', 'meta-skill') })
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('fails closed on malformed metadata and malformed gating declarations', async () => {
+    const workspace = await tempDir('hub-malformed-gating')
+    try {
+      await writeSkill(join(workspace, 'skills'), 'bad-json', 'Malformed JSON metadata', 'Bad JSON.',
+        '\nmetadata: "{not-json"')
+      await writeSkill(join(workspace, 'skills'), 'bad-metadata-type', 'Scalar metadata', 'Scalar metadata.',
+        '\nmetadata: enabled')
+      await writeSkill(join(workspace, 'skills'), 'bad-requires', 'Malformed requires', 'Bad requires.',
+        '\nmetadata: {"clawdbot":{"requires":"node"}}')
+      await writeSkill(join(workspace, 'skills'), 'good', 'Valid metadata', 'Good.',
+        '\nmetadata: {"clawdbot":{"requires":{"bins":[]}}}')
+
+      expect((await (await setup(workspace)).ctx.skills.list({ cwd: workspace })).map(skill => skill.name))
+        .toEqual(['good'])
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('requires frontmatter to begin at the start of SKILL.md', async () => {
+    const workspace = await tempDir('hub-frontmatter-anchor')
+    try {
+      const skillDir = join(workspace, 'skills', 'late-frontmatter')
+      await mkdir(skillDir, { recursive: true })
+      await writeFile(join(skillDir, 'SKILL.md'), [
+        'This prose is not frontmatter.',
+        '---',
+        'name: late-frontmatter',
+        'description: Must not be discovered',
+        '---',
+        'Body.',
+      ].join('\n'))
+
+      expect(await (await setup(workspace)).ctx.skills.list({ cwd: workspace })).toEqual([])
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
+  })
+
+  it('does not quote an invalid skill name from local frontmatter in warning logs', async () => {
+    const workspace = await tempDir('hub-invalid-name-log')
+    const secret = 'skills-hub-private-name-canary-71b3'
+    try {
+      const skillDir = join(workspace, 'skills', 'invalid-name')
+      await mkdir(skillDir, { recursive: true })
+      await writeFile(join(skillDir, 'SKILL.md'), [
+        '---',
+        `name: "invalid ${secret}"`,
+        'description: Must be ignored without quoting its name',
+        '---',
+        'Body.',
+      ].join('\n'))
+      const { ctx } = await setup(workspace)
+      const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+
+      expect(await ctx.skills.list({ cwd: workspace })).toEqual([])
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('ignored: invalid skill name'))
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(secret)
     } finally {
       await rm(workspace, { recursive: true, force: true })
     }
@@ -260,6 +331,27 @@ describe('skills-hub provider', () => {
     await ctx.plugin(SkillRegistry)
     await expect(ctx.plugin(SkillsHub, { gating: 'yes' as never })).rejects.toThrow(/gating/)
     await expect(ctx.plugin(SkillsHub, { extraDirs: 'nope' as never })).rejects.toThrow(/extraDirs/)
+    await expect(ctx.plugin(SkillsHub, { enabled: 'yes' as never })).rejects.toThrow(/enabled/)
+    await expect(ctx.plugin(SkillsHub, { extraDirs: [''] })).rejects.toThrow(/empty path/)
+  })
+
+  it('cancels provider work when its registration lifecycle ends', async () => {
+    const workspace = await tempDir('hub-lifecycle')
+    try {
+      const ctx = new Context()
+      const lifecycle = new AbortController()
+      const provider = new SkillsHub.ClawHubProvider(
+        SkillsHub.resolveConfig({ managedDir: join(workspace, 'managed') }),
+        ctx.logger,
+        defaultExecutableResolver,
+        lifecycle.signal,
+      )
+      lifecycle.abort(new Error('skills-hub disposed'))
+
+      await expect(provider.list({ cwd: workspace })).rejects.toThrow(/skills-hub disposed/)
+    } finally {
+      await rm(workspace, { recursive: true, force: true })
+    }
   })
 
   it('lets a same-rank skill-filesystem custom dir beat the hub workspace candidate', async () => {

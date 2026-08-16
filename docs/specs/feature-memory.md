@@ -5,11 +5,13 @@ English | [中文](feature-memory.zh.md)
 - **Status**: implemented (Phase 2 gap-fill ✅, 2026-08-14)
 - **Implementation package**: `packages/openclaw/memory` (`@clawdsh/dsh-memory`) + `packages/openclaw/embeddings` (`@clawdsh/dsh-embeddings`) + `packages/openclaw/embeddings-ark` (`@clawdsh/dsh-embeddings-ark`)
 - **OpenClaw counterpart**: Memory system (long-term memory: people/things/preferences, retrievable across sessions). Baseline source: OpenClaw `v2026.1.15` (`9c4c9c5edd`) `src/memory/` + `src/agents/memory-search.ts` + `src/agents/tools/memory-tool.ts` (baseline v2026.1.5 has no memory; feature-completion reference).
-- **Decision record**: docs/adr/0003-embeddings-seam.md · Agent Note [2026-08-14-memory-plugin](../../.agents/notes/implemented/feature/2026-08-14-memory-plugin.md) · [2026-08-14-memory-flush-turn](../../.agents/notes/implemented/feature/2026-08-14-memory-flush-turn.md)
+- **Decision record**: docs/adr/0003-embeddings-seam.md · Agent Note [2026-08-14-memory-plugin](../../.agents/notes/implemented/feature/2026-08-14-memory-plugin.md) · [2026-08-14-memory-flush-turn](../../.agents/notes/implemented/feature/2026-08-14-memory-flush-turn.md) · [2026-08-16-memory-owned-mutation-and-empty-store](../../.agents/notes/implemented/bug-fix/2026-08-16-memory-owned-mutation-and-empty-store.md)
 
 ## Goals
 
 - Provide "cross-session long-term memory": the agent can remember people, things, and preferences the user has mentioned (files are the source of fact, retrievable across sessions);
+- Treat a missing clean-install root as an empty store and let the capability itself create its fixed targets on first write;
+- Proactively persist stable identity, preferences, decisions, relationships, and long-lived projects; support exact correction and forgetting without exposing a model-controlled path;
 - Semantic recall: `memory_search` returns fragments with source line numbers ranked by embedding cosine; `memory_get` reads back by line;
 - Retrieval content injected into a session obeys the logging invariant ("model-visible means logged");
 - Storage uses existing seams, no new backend;
@@ -26,10 +28,10 @@ English | [中文](feature-memory.zh.md)
 
 ## Seam (written down)
 
-- `ctx.fs` (declared inject): storage and reading of `MEMORY.md` + `memory/YYYY-MM-DD.md`. The plugin itself never writes; writes are carried by the model's fs tools + the guidance-section convention; append-only idempotency is backstopped by the observation policy version guard;
-- `ctx.tools`: `memory_search` / `memory_get` (generic presentation);
+- `ctx.fs` (declared inject): root-confined reading and guarded mutation of `MEMORY.md` + `memory/YYYY-MM-DD.md`. Per-target process serialization and fs-version compare-and-swap preserve concurrent external and in-process writes;
+- `ctx.tools`: `memory_search`, `memory_get`, `memory_write`, and `memory_update` (generic presentation). Mutation arguments never name a path;
 - `ctx.systemPrompt`: `clawdsh:memory-recall` section (order 115, tool guidance band 100–199);
-- `ctx.get('embeddings')` (optional read, `@clawdsh/dsh-embeddings` seam): with no provider, `memory_search` fails loud;
+- `ctx.get('embeddings')` (optional read, `@clawdsh/dsh-embeddings` seam): with no provider, `memory_search` fails loud and the guidance directs the model to `memory_get` the durable file instead of inventing a result;
 - **No new session event**: the guidance section enters the log via `request/header.header.system`, recall content via tool results.
 
 The originally-candidate `ctx.spillStore` / `ctx.sessionPersistence` were rejected after a Spike deep-read (spillStore only stores, doesn't read + session isolation; sessionPersistence is a turn log and carries no memory entries), rationale in ADR-0003 alternatives.
@@ -46,6 +48,7 @@ memory:
   snippetChars: 700              # 片段字符上限
   timeoutMs: 30000               # 协作超时（透传 embed）
   maxReadLines: 1000             # memory_get 行数硬上限
+  maxWriteChars: 4000            # 单条写入/更正的字符上限
   watch: true                    # 宿主文件变更监听（默认开，主动失效）
   watchStabilityThresholdMs: 200 # 变更稳定阈值 ms
   watchPollIntervalMs: 100       # 稳定性探测间隔 ms
@@ -53,13 +56,14 @@ memory:
     enabled: true                # 预压缩 flush 回合开关
     reserveTokensFloor: 20000    # 窗口下方保留的 token 余量
     softThresholdTokens: 4000    # 余量之下的软触发带
-    prompt: 'Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY.'
+    prompt: 'Store durable memories now with memory_write. If nothing to store, reply with NO_REPLY.'
 ```
 
 ## Acceptance criteria
 
-1. ✅ Session A writes a memory fact, Session B can retrieve it (test: cross-file recall `recalls related facts`, file written via `ctx.fs` then `memory_search` hits);
+1. ✅ A clean installation with no root can accept `memory_write` in Session A and retrieve the fact through `memory_search`/`memory_get` in Session B; without semantic search, the model falls back to a direct `memory_get`; the write creates only the fixed target and never exposes its physical path;
 2. ✅ Injected retrieval content appears in the session log (tool results enter the log via the tools seam — reconstruction path argued, recorded in `src/invariant.ts`);
 3. ✅ Swapping the embedding backend needs no change to other plugins (embeddings seam single-implementation-replaceable; test uses a bag-of-words stub to replace the real provider);
-4. ✅ Memory write/update are idempotent events (append-only convention + observation policy version guard; the plugin never writes, so it has no idempotency conflict of its own);
+4. ✅ Exact durable facts are idempotent across sequential and concurrent retries; a guarded update replaces or forgets an exact line, daily notes remain append-only, and external version conflicts retry until cancellation or tool timeout;
 5. ✅ Pre-compaction memory flush: when the measured context crosses `contextWindow − reserveTokensFloor − softThresholdTokens`, a plugin-sourced turn carrying the flush prompt queues once per compaction cycle (tests: threshold, once-per-cycle, re-arm after `compaction/end`, NO_REPLY, failure containment, missing seams, disposal); the flush decision precedes the compaction of its own turn (integration test with the real compaction engine).
+6. ✅ Root, daily-directory, and memory-file symbolic links are rejected; watcher recovery after a first write is quiescent on disposal; storage errors and Activity records contain no memory content or physical path.

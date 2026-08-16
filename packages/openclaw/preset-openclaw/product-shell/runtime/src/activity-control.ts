@@ -12,6 +12,8 @@ import {
 
 interface SessionView {
   readonly events: readonly unknown[]
+  /** Constructor-seed boundary; nonzero means this process resumed or forked stored history. */
+  readonly firstLiveSeq?: number
 }
 
 interface SessionStoreView {
@@ -146,6 +148,9 @@ async function activityHistory(
     try {
       const live = sessions.get(sessionId)
       if (live !== undefined && Array.isArray(live.events)) {
+        if (typeof live.firstLiveSeq === 'number' && live.firstLiveSeq > 0) {
+          return { sources: { inspect: live.events }, availability: 'inspect' }
+        }
         return { sources: { live: live.events }, availability: 'live' }
       }
     } catch {

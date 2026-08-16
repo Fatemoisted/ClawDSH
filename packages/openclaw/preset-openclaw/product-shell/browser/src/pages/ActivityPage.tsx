@@ -11,42 +11,42 @@ import type {
   ClawdshActivityRecord,
 } from '../../../shared/src/protocol.ts'
 import type { ClawdshControlClient } from '../control-client.ts'
-import { ActivityRecordCard } from './ActivityRecordCard.tsx'
+import { ActivityItemCard } from './ActivityRecordCard.tsx'
+import { presentActivity } from './activity-presentation.ts'
 import css from './ActivityPage.module.css'
 
 interface ActivityPageProps {
   readonly control: ClawdshControlClient
   readonly localControlAvailable: boolean
+  /** Latest completed-turn sequence from the public conversation snapshot. */
+  readonly refreshRevision?: number
   readonly sessionId?: string
 }
 
 interface ActivitySnapshot extends ClawdshActivityListResponse {
   readonly loadingMore: boolean
-  readonly loadMoreError?: string
+  readonly loadMoreError?: true
 }
 
 type ActivityState =
-  | { readonly status: 'loading' }
-  | { readonly status: 'failed'; readonly message: string }
-  | { readonly status: 'ready'; readonly snapshot: ActivitySnapshot }
+  | { readonly status: 'loading'; readonly queryKey?: string }
+  | { readonly status: 'unselected' }
+  | { readonly status: 'failed'; readonly queryKey: string }
+  | { readonly status: 'ready'; readonly queryKey: string; readonly snapshot: ActivitySnapshot }
 
 const CATEGORY_FILTERS = [
-  { id: 'prompt', label: 'Soul / Prompt' },
-  { id: 'memory', label: 'Memory' },
-  { id: 'channel', label: 'Channels' },
-  { id: 'skill', label: 'Skills' },
-  { id: 'automation', label: 'Automation' },
+  { id: 'prompt', label: '身份与上下文' },
+  { id: 'memory', label: '记忆' },
+  { id: 'channel', label: '外部消息' },
+  { id: 'skill', label: '技能' },
+  { id: 'automation', label: '定时任务' },
 ] as const satisfies readonly { readonly id: ClawdshActivityCategory; readonly label: string }[]
 
 const ALL_CATEGORIES = CATEGORY_FILTERS.map(filter => filter.id)
 const PAGE_LIMIT = 50
 
-function errorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : String(reason)
-}
-
 function isAbort(reason: unknown): boolean {
-  return reason instanceof DOMException && reason.name === 'AbortError'
+  return reason instanceof Error && reason.name === 'AbortError'
 }
 
 function appendRecords(
@@ -58,21 +58,78 @@ function appendRecords(
 }
 
 function Warnings({ snapshot }: { readonly snapshot: ActivitySnapshot }): ReactNode {
-  const missing = snapshot.warnings.includes('activity-sidecar-missing')
-  const historyUnavailable = snapshot.warnings.includes('activity-history-unavailable')
-  const incomplete = snapshot.warnings.includes('activity-data-incomplete')
-  if (!missing && !historyUnavailable && !incomplete) return null
+  const sidecarMissing = snapshot.availability.sidecar === 'missing'
+  const sidecarUnavailable = snapshot.availability.sidecar === 'unavailable'
+  const historyUnavailable = snapshot.availability.history === 'unavailable'
+  if (!sidecarMissing && !sidecarUnavailable && !historyUnavailable && !snapshot.degraded) return null
   return (
     <div className={css.warnings} role="status">
-      {missing ? <p>这个会话没有 Activity sidecar；早期活动可能不完整。</p> : null}
-      {historyUnavailable ? <p>标准会话历史当前不可用，仍会显示可读取的 ClawDSH sidecar 活动。</p> : null}
-      {incomplete ? <p>部分活动数据无法读取；对话、渠道和自动化执行不受影响。</p> : null}
+      {sidecarMissing && snapshot.availability.history === 'inspect' ? (
+        <p>这是较早的对话，部分 ClawDSH 行为当时可能没有被记录。</p>
+      ) : null}
+      {sidecarMissing && snapshot.availability.history === 'live' ? (
+        <p>当前对话还没有产生专属行为记录；使用相关能力后才会出现。</p>
+      ) : null}
+      {sidecarMissing && snapshot.availability.history === 'unavailable' ? (
+        <p>这个对话暂时没有可读取的 ClawDSH 行为记录。</p>
+      ) : null}
+      {sidecarUnavailable ? <p>ClawDSH 行为记录暂时无法读取；实际对话不受影响。</p> : null}
+      {historyUnavailable && snapshot.availability.sidecar === 'available' ? (
+        <p>常规对话轨迹暂时无法读取；下面仍会展示可用的 ClawDSH 行为记录。</p>
+      ) : null}
+      {historyUnavailable && snapshot.availability.sidecar !== 'available' ? (
+        <p>常规对话轨迹暂时无法读取。</p>
+      ) : null}
+      {snapshot.degraded ? <p>部分行为可能没有完整记录，但不影响实际对话执行。</p> : null}
     </div>
   )
 }
 
-/** Session-following semantic Activity view over the loopback control plane. */
-export function ActivityPage({ control, localControlAvailable, sessionId }: ActivityPageProps): ReactNode {
+const EMPTY_CATEGORY_MESSAGE: Readonly<Record<ClawdshActivityCategory, string>> = {
+  prompt: '没有记录到身份或上下文准备。',
+  memory: '没有记录到记忆搜索、读取、写入、更新、删除或整理。',
+  channel: '没有记录到外部消息收发。',
+  skill: '没有记录到技能准备或调用。',
+  automation: '没有记录到定时任务运行。',
+}
+
+function EmptyActivity({ categories, complete }: {
+  readonly categories: readonly ClawdshActivityCategory[]
+  readonly complete: boolean
+}): ReactNode {
+  return (
+    <div className={css.empty} role="status">
+      <span className={css.emptyIcon} aria-hidden="true">◎</span>
+      <strong>{complete ? '这个对话还没有使用所选能力' : '没有可显示的所选记录'}</strong>
+      <p>{complete
+        ? categories.length === 1
+          ? EMPTY_CATEGORY_MESSAGE[categories[0]!]
+          : '可以继续对话，相关能力被使用后会在这里说明。'
+        : '部分记录来源不可用或尚未产生，暂时无法据此判断这些能力是否被使用。'}</p>
+    </div>
+  )
+}
+
+function RecordsFrame({ children }: { readonly children: ReactNode }): ReactNode {
+  return (
+    <section className={css.page} aria-labelledby="clawdsh-records-title">
+      <h2 id="clawdsh-records-title" className={css.visuallyHidden}>ClawDSH 记录</h2>
+      {children}
+    </section>
+  )
+}
+
+/**
+ * Render current-Session ClawDSH records over the loopback Activity control plane.
+ * @param props - Control client, loopback availability, and Slot-owned Session id.
+ * @returns The filterable, paginated semantic record view.
+ */
+export function ActivityPage({
+  control,
+  localControlAvailable,
+  refreshRevision = -1,
+  sessionId,
+}: ActivityPageProps): ReactNode {
   const [categories, setCategories] = useState<readonly ClawdshActivityCategory[]>(ALL_CATEGORIES)
   const [order, setOrder] = useState<ClawdshActivityOrder>('desc')
   const [refresh, setRefresh] = useState(0)
@@ -80,6 +137,7 @@ export function ActivityPage({ control, localControlAvailable, sessionId }: Acti
   const generation = useRef(0)
   const activeRequest = useRef<AbortController>()
   const categoriesKey = categories.join(',')
+  const queryKey = `${sessionId ?? ''}\u0000${categoriesKey}\u0000${order}\u0000${refreshRevision}\u0000${refresh}`
 
   useEffect(() => () => {
     generation.current += 1
@@ -93,10 +151,14 @@ export function ActivityPage({ control, localControlAvailable, sessionId }: Acti
     activeRequest.current?.abort()
     activeRequest.current = undefined
     if (!localControlAvailable || sessionId === undefined) return
+    if (categories.length === 0) {
+      setState({ status: 'unselected' })
+      return
+    }
 
     const controller = new AbortController()
     activeRequest.current = controller
-    setState({ status: 'loading' })
+    setState({ status: 'loading', queryKey })
     void control.listActivity({
       version: 1,
       sessionId,
@@ -107,16 +169,17 @@ export function ActivityPage({ control, localControlAvailable, sessionId }: Acti
       if (controller.signal.aborted || generation.current !== currentGeneration) return
       setState({
         status: 'ready',
+        queryKey,
         snapshot: { ...response, loadingMore: false },
       })
     }, (reason: unknown) => {
       if (controller.signal.aborted || generation.current !== currentGeneration || isAbort(reason)) return
-      setState({ status: 'failed', message: errorMessage(reason) })
+      setState({ status: 'failed', queryKey })
     }).finally(() => {
       if (activeRequest.current === controller) activeRequest.current = undefined
     })
     return () => { controller.abort() }
-  }, [categoriesKey, control, localControlAvailable, order, refresh, sessionId])
+  }, [categoriesKey, control, localControlAvailable, order, queryKey, refresh, sessionId])
 
   const toggleCategory = (category: ClawdshActivityCategory): void => {
     setCategories((current) => {
@@ -129,6 +192,7 @@ export function ActivityPage({ control, localControlAvailable, sessionId }: Acti
 
   const loadMore = (): void => {
     if (state.status !== 'ready'
+      || state.queryKey !== queryKey
       || state.snapshot.nextCursor === undefined
       || state.snapshot.loadingMore
       || sessionId === undefined) return
@@ -139,6 +203,7 @@ export function ActivityPage({ control, localControlAvailable, sessionId }: Acti
     activeRequest.current = controller
     setState({
       status: 'ready',
+      queryKey: state.queryKey,
       snapshot: {
         version: state.snapshot.version,
         records: state.snapshot.records,
@@ -160,6 +225,7 @@ export function ActivityPage({ control, localControlAvailable, sessionId }: Acti
       if (controller.signal.aborted || generation.current !== currentGeneration) return
       setState(previous => previous.status !== 'ready' ? previous : {
         status: 'ready',
+        queryKey: previous.queryKey,
         snapshot: {
           ...response,
           records: appendRecords(previous.snapshot.records, response.records),
@@ -170,10 +236,11 @@ export function ActivityPage({ control, localControlAvailable, sessionId }: Acti
       if (controller.signal.aborted || generation.current !== currentGeneration || isAbort(reason)) return
       setState(previous => previous.status !== 'ready' ? previous : {
         status: 'ready',
+        queryKey: previous.queryKey,
         snapshot: {
           ...previous.snapshot,
           loadingMore: false,
-          loadMoreError: errorMessage(reason),
+          loadMoreError: true,
         },
       })
     }).finally(() => {
@@ -183,46 +250,44 @@ export function ActivityPage({ control, localControlAvailable, sessionId }: Acti
 
   if (!localControlAvailable) {
     return (
-      <div className={css.page}>
-        <p className={css.eyebrow}>会话可解释性</p>
-        <h1>ClawDSH 活动</h1>
+      <RecordsFrame>
         <div className={css.empty} role="status">
           <span className={css.emptyIcon} aria-hidden="true">◎</span>
-          <strong>ClawDSH 活动仅本机可用</strong>
-          <p>远程页面仍可使用对话；请在运行 ClawDSH 的本机打开此页面查看活动。</p>
+          <strong>ClawDSH 记录仅本机可用</strong>
+          <p>远程页面仍可使用对话；请在运行 ClawDSH 的本机打开此标签查看记录。</p>
         </div>
-      </div>
+      </RecordsFrame>
     )
   }
 
   if (sessionId === undefined) {
     return (
-      <div className={css.page}>
-        <p className={css.eyebrow}>会话可解释性</p>
-        <h1>ClawDSH 活动</h1>
+      <RecordsFrame>
         <div className={css.empty} role="status">
           <span className={css.emptyIcon} aria-hidden="true">◎</span>
           <strong>请先选择一个对话</strong>
-          <p>Activity 跟随当前会话。进入对话并选择或创建一个 Session 后即可查看。</p>
-          <a className={css.primaryLink} href="/clawdsh/">进入对话</a>
+          <p>ClawDSH 记录跟随当前会话。选择或创建一个 Session 后即可查看。</p>
         </div>
-      </div>
+      </RecordsFrame>
     )
   }
 
-  return (
-    <div className={css.page}>
-      <header className={css.header}>
-        <div>
-          <p className={css.eyebrow}>会话可解释性</p>
-          <h1>ClawDSH 活动</h1>
-          <p className={css.lead}>仅展示 ClawDSH 的隐私保护语义记录；最终原始轨迹仍由 Harness 提供。</p>
-        </div>
-        <a className={css.advancedLink} href="/">打开 Raw Trajectory ↗</a>
-      </header>
+  const visibleState: ActivityState = categories.length === 0
+    ? { status: 'unselected' }
+    : state.status === 'unselected' || (state.queryKey !== undefined && state.queryKey !== queryKey)
+      ? { status: 'loading', queryKey }
+      : state
 
-      <section className={css.controls} aria-label="Activity 筛选与排序">
-        <div className={css.filters} aria-label="Activity 分类">
+  return (
+    <RecordsFrame>
+      <div className={css.introduction}>
+        <strong>ClawDSH 在这个对话中做了什么</strong>
+        <p>这里不是完整调试轨迹，而是用简短中文说明 ClawDSH 专属功能何时被使用；相邻的「轨迹」可补充标准会话步骤，但不一定包含专属记录的错误细节。</p>
+        <p>记录只属于当前对话；外部消息和定时任务会在它们各自的独立对话中显示。消息正文、记忆内容和凭据不会展示。</p>
+      </div>
+      <div className={css.controls}>
+        <fieldset className={css.filters}>
+          <legend className={css.visuallyHidden}>ClawDSH 记录分类</legend>
           {CATEGORY_FILTERS.map(filter => (
             <button
               key={filter.id}
@@ -233,7 +298,7 @@ export function ActivityPage({ control, localControlAvailable, sessionId }: Acti
               {filter.label}
             </button>
           ))}
-        </div>
+        </fieldset>
         <label className={css.order}>
           <span>排序</span>
           <select value={order} onChange={(event) => { setOrder(event.target.value as ClawdshActivityOrder) }}>
@@ -241,47 +306,77 @@ export function ActivityPage({ control, localControlAvailable, sessionId }: Acti
             <option value="asc">最早优先</option>
           </select>
         </label>
-      </section>
+        <button type="button" className={css.loadMore} onClick={() => { setRefresh(value => value + 1) }}>
+          重新读取
+        </button>
+      </div>
 
-      {state.status === 'loading' ? (
-        <div className={css.loading} role="status"><span aria-hidden="true" />正在读取当前会话活动…</div>
+      {visibleState.status === 'loading' ? (
+        <div className={css.loading} role="status"><span aria-hidden="true" />正在读取当前会话的 ClawDSH 记录…</div>
       ) : null}
-      {state.status === 'failed' ? (
+      {visibleState.status === 'unselected' ? (
+        <div className={css.empty} role="status">
+          <span className={css.emptyIcon} aria-hidden="true">◎</span>
+          <strong>请至少选择一个分类</strong>
+          <p>选择分类后才会读取并展示当前会话的相关记录。</p>
+        </div>
+      ) : null}
+      {visibleState.status === 'failed' ? (
         <div className={css.failure} role="alert">
-          <strong>无法读取 ClawDSH 活动</strong>
-          <p>{state.message}</p>
+          <strong>无法读取 ClawDSH 记录</strong>
+          <p>请确认本机 ClawDSH 服务仍在运行，然后重试。实际对话不受影响。</p>
           <button type="button" onClick={() => { setRefresh(value => value + 1) }}>重试</button>
         </div>
       ) : null}
-      {state.status === 'ready' ? (
+      {visibleState.status === 'ready' ? (
         <>
-          <Warnings snapshot={state.snapshot} />
-          {state.snapshot.records.length === 0 ? (
-            <div className={css.empty} role="status">
-              <span className={css.emptyIcon} aria-hidden="true">◎</span>
-              <strong>当前筛选下还没有 ClawDSH 活动</strong>
-              <p>这里不会展示完整 Prompt、消息正文、工具结果、平台身份或凭据。</p>
+          <Warnings snapshot={visibleState.snapshot} />
+          {visibleState.snapshot.records.length === 0 ? (
+            <EmptyActivity
+              categories={categories}
+              complete={!visibleState.snapshot.degraded
+                && visibleState.snapshot.availability.history !== 'unavailable'
+                && visibleState.snapshot.availability.sidecar === 'available'}
+            />
+          ) : (() => {
+            const presentation = presentActivity(visibleState.snapshot.records)
+            return (
+              <>
+                {presentation.failures === 0 ? null : (
+                  <div className={css.failureSummary} role="status">
+                    <strong>发现 {presentation.failures} 项失败记录</strong>
+                    <p>失败项会在下面明确标出。可尝试在相邻的「轨迹」查看标准工具调用；专属 sidecar 记录不一定在那里包含错误细节。</p>
+                  </div>
+                )}
+                <ol className={css.timeline} aria-label="ClawDSH 记录列表">
+                  {presentation.items.map(item => (
+                    <li key={item.id}><ActivityItemCard item={item} /></li>
+                  ))}
+                </ol>
+              </>
+            )
+          })()}
+          {visibleState.snapshot.loadMoreError === undefined ? null : (
+            <div className={css.loadError} role="alert">
+              <p>记录在分页期间发生了变化，或继续读取暂时失败。请从第一页重新读取。</p>
+              <button type="button" className={css.loadMore} onClick={() => { setRefresh(value => value + 1) }}>
+                重新读取
+              </button>
             </div>
-          ) : (
-            <div className={css.timeline} aria-label="ClawDSH Activity 记录">
-              {state.snapshot.records.map(record => <ActivityRecordCard key={record.id} record={record} />)}
-            </div>
           )}
-          {state.snapshot.loadMoreError === undefined ? null : (
-            <div className={css.loadError} role="alert">加载更多失败：{state.snapshot.loadMoreError}</div>
-          )}
-          {state.snapshot.nextCursor === undefined ? null : (
-            <button
-              type="button"
-              className={css.loadMore}
-              disabled={state.snapshot.loadingMore}
-              onClick={loadMore}
-            >
-              {state.snapshot.loadingMore ? '加载中…' : '加载更多'}
-            </button>
-          )}
+          {visibleState.snapshot.nextCursor === undefined
+            || visibleState.snapshot.loadMoreError !== undefined ? null : (
+              <button
+                type="button"
+                className={css.loadMore}
+                disabled={visibleState.snapshot.loadingMore}
+                onClick={loadMore}
+              >
+                {visibleState.snapshot.loadingMore ? '加载中…' : '加载更多'}
+              </button>
+            )}
         </>
       ) : null}
-    </div>
+    </RecordsFrame>
   )
 }

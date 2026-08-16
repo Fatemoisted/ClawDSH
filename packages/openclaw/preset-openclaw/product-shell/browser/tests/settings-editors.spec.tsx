@@ -1,21 +1,27 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { useState } from 'react'
 import { AutomationRulesEditor } from '../src/pages/AutomationRulesEditor.tsx'
 import { GatewayExtensionsTable } from '../src/pages/GatewayExtensionsTable.tsx'
 import { SettingsFields } from '../src/pages/settings-fields.tsx'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 describe('ClawDSH specialized settings editors', () => {
   it('edits Automation rules as one structured array', () => {
+    vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('b9f2c9c7-6e2b-4dbf-a1ee-cb6b7b9e349d')
     const onChange = vi.fn()
     render(<AutomationRulesEditor id="rules" value={[]} disabled={false} onChange={onChange} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '添加规则' }))
+    expect(screen.getByText(/保存后还需要开启自动运行/)).toBeTruthy()
+    expect(screen.getByText(/结果保存在.*独立对话/)).toBeTruthy()
+    expect(screen.getByText(/每天 9 点整理待办/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '添加自动任务' }))
     expect(onChange).toHaveBeenCalledWith([
       {
-        id: 'rule-1',
+        id: 'rule-b9f2c9c7-6e2b-4dbf-a1ee-cb6b7b9e349d',
         name: '',
         enabled: true,
         schedule: { kind: 'every', seconds: 3600 },
@@ -24,45 +30,28 @@ describe('ClawDSH specialized settings editors', () => {
     ])
   })
 
-  it('does not reuse an Automation rule ID after deleting and adding rules', () => {
-    function Fixture() {
-      const [rules, setRules] = useState<unknown>([
-        { id: 'rule-1', name: 'first', enabled: true, schedule: { kind: 'every', seconds: 60 }, message: 'one' },
-        { id: 'rule-2', name: 'second', enabled: true, schedule: { kind: 'every', seconds: 60 }, message: 'two' },
-      ])
-      return <AutomationRulesEditor id="rules" value={rules} disabled={false} onChange={setRules} />
-    }
-
-    render(<Fixture />)
-    fireEvent.click(screen.getAllByRole('button', { name: '删除规则' })[0]!)
-    fireEvent.click(screen.getByRole('button', { name: '添加规则' }))
-
-    const ids = screen.getAllByLabelText('规则 ID').map(input => (input as HTMLInputElement).value)
-    expect(ids).toEqual(['rule-2', 'rule-3'])
-    expect(new Set(ids).size).toBe(ids.length)
-  })
-
-  it('does not freeze when an existing Automation rule has an unsafe numeric suffix', () => {
+  it('does not reuse a deleted rule\'s durable session id', () => {
+    vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('5e99098c-21a4-4ce8-974c-e5319527a15e')
     const onChange = vi.fn()
-    render(<AutomationRulesEditor
+    const { rerender } = render(<AutomationRulesEditor
       id="rules"
       value={[
-        {
-          id: 'rule-9007199254740992',
-          name: 'imported',
-          enabled: true,
-          schedule: { kind: 'every', seconds: 60 },
-          message: 'work',
-        },
+        { id: 'rule-1', name: '', enabled: true, schedule: { kind: 'every', seconds: 60 }, message: 'old' },
       ]}
       disabled={false}
       onChange={onChange}
     />)
 
-    fireEvent.click(screen.getByRole('button', { name: '添加规则' }))
-    expect(onChange).toHaveBeenCalledWith(expect.arrayContaining([
-      expect.objectContaining({ id: 'rule-2' }),
-    ]))
+    expect(screen.queryByRole('textbox', { name: '任务 ID' })).toBeNull()
+    expect(screen.getByText('rule-1')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '删除任务' }))
+    expect(onChange).toHaveBeenLastCalledWith([])
+    rerender(<AutomationRulesEditor id="rules" value={[]} disabled={false} onChange={onChange} />)
+    fireEvent.click(screen.getByRole('button', { name: '添加自动任务' }))
+    const added = onChange.mock.lastCall?.[0] as Array<{ id: string }>
+    expect(added[0]?.id).toBe('rule-5e99098c-21a4-4ce8-974c-e5319527a15e')
+    expect(added[0]?.id).not.toBe('rule-1')
+    expect(added[0]?.id).toMatch(/^[a-zA-Z0-9_-]+$/)
   })
 
   it('uses labels only for native controls and groups readonly or specialized fields', () => {

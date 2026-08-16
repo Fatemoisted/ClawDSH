@@ -19,7 +19,7 @@ Mounted within an agent scope (i.e. inside the agent preset's `agent.cordis.yml`
   name: '@clawdsh/dsh-soul'
   config:
     enabled: true                 # false skips the Soul section for new sessions
-    source: ./souls/assistant.md   # 相对 process.cwd()；优先于 text
+    source: ./souls/assistant.md   # 相对当前 preset/profile 组装目录；优先于 text
     # text: 也可以直接内联
     mode: replace                  # replace=灵魂即完整系统提示；append（默认）=叠加段落
     includeRuntimeContext: true    # false 时抑制该作用域的运行时上下文快照
@@ -51,6 +51,7 @@ Does not add template bootstrapping or the `[MISSING]` placeholder: the former s
 - **scope-only**: mounting without a scope errors out immediately (avoiding publishing a process-level soul), consistent with upstream persona's constraint;
 - **fixed at mount**: the soul text is read once at mount and does not change while running — the prompt prefix is stable, so KV-cache reuse is unaffected (following upstream's design); swapping the soul = re-mounting (patch + session restart);
 - **Host-owned settings**: one Host singleton registers the namespace; session rows only consume a mount-time snapshot, and `enabled: false` contributes no prompt section;
+- **Disabled means inert**: a disabled Soul snapshot needs no placeholder `source` or `text`; non-whitespace content is required only when a new Session actually enables Soul;
 - **relative `source` resolved against the mount tree**: a relative path is anchored to `ctx.baseUrl` — the composition directory inside an agent preset (the preset directory propagates with `copyComposition`, and the soul file follows it), or the profile directory under a profile launcher; a bare context with no baseUrl falls back to `process.cwd()`. Same semantics as relative module specifiers (the typert-loader/client-modules seam);
 - **reversible**: every registration goes through `ctx.effect()`, so unmounting rolls it back (hot-swappable);
 - **log invariant**: the soul text participates in assembly as a prompt section; "model-visible means logged" is guaranteed by upstream's session mechanism.
@@ -59,6 +60,7 @@ Does not add template bootstrapping or the `[MISSING]` placeholder: the former s
 
 - 0.1.0: initial Spike implementation (replace/append dual modes + file loading + contract tests).
 - 0.1.0 (2026-08-14 deep-read finalization): documented the OpenClaw identity mapping (README/spec/matrix consistent across all three), zero code changes.
+- 0.1.0 (2026-08-16 clean-config correction): disabled settings no longer require placeholder content, whitespace-only content fails at mount, and whitespace-only `source` falls back to inline `text`.
 
 ## Model Experience
 
@@ -70,7 +72,7 @@ The soul text (from `source` file or inline `text`) is added as an ordered syste
 
 #### Token effect
 
-Fixed per mounted scope: the soul's own tokens appear on every request an agent in that scope makes, and none for agents outside it. Empty text contributes nothing.
+Fixed per mounted scope: the soul's own tokens appear on every request an agent in that scope makes, and none for agents outside it. A disabled Soul contributes nothing; enabled empty or whitespace-only content fails at mount.
 
 #### KV Cache effect
 
@@ -81,4 +83,4 @@ Prefix-stable for the life of an agent — the text is read once at mount, befor
 - **fixed at mount**: the soul text is read once at mount and does not change while running; swapping the soul requires re-mounting + session restart.
 - **scope-only**: mounting without a scope errors out immediately, avoiding publishing a process-level soul (consistent with upstream persona's constraint).
 - **relative `source` at the bundle-patch layer**: a line supplied by the bundle-patch layer resolves to the profile directory (the root tree's baseUrl), not the bundle package directory — same semantics as relative module specifiers, not a defect.
-- **real e2e**: the assembly test for system-prompt composition needs a real key; currently covered by contract tests (12 cases).
+- **real e2e**: the assembly test for system-prompt composition needs a real key; currently covered by contract tests (20 cases).

@@ -107,6 +107,27 @@ describe('ClawDSH Activity control', () => {
     expect(inspect).toHaveBeenCalledWith(SESSION_ID, controller.signal)
   })
 
+  it('classifies an attached resumed Session as historical evidence', async () => {
+    const page = vi.fn((_request: unknown, history: unknown) => {
+      expect(history).toEqual({ inspect: [HISTORY_EVENT] })
+      return {
+        records: [],
+        availability: { history: 'inspect', sidecar: 'missing' },
+        degraded: false,
+        warnings: ['activity-sidecar-missing'],
+      }
+    })
+    const control = new ClawdshActivityControl(contextWith({
+      sessions: { get: () => ({ events: [HISTORY_EVENT], firstLiveSeq: 1 }) },
+      clawdshActivity: { page },
+    }))
+
+    await expect(control.handle({ version: 1, sessionId: SESSION_ID }, signal())).resolves.toMatchObject({
+      ok: true,
+      value: { availability: { history: 'inspect', sidecar: 'missing' } },
+    })
+  })
+
   it('degrades without an Activity service while preserving known history availability', async () => {
     const control = new ClawdshActivityControl(contextWith({
       sessions: { get: () => ({ events: [HISTORY_EVENT] }) },

@@ -23,19 +23,23 @@ export interface Config {
 }
 ```
 
-Source: [`packages/openclaw/activity/src/index.ts:51`](../packages/openclaw/activity/src/index.ts)
+Source: [`packages/openclaw/activity/src/index.ts:53`](../packages/openclaw/activity/src/index.ts)
 
 <a id="clawdshdsh-automation"></a>
 
 ## `@clawdsh/dsh-automation`
 
-Requires: `agents` · `sessions` · `agentDefaultModel` · `settings`
+Requires: `agents` · `agentPresets` · `sessions` · `agentDefaultModel` · `settings`
 
 ```ts config-catalog
 /** Plugin config: the declared rule set. cordis.yml is the durable store — no separate storage seam. */
 export interface Config {
   /** Whether any automation runtime, timer, or durable session may start. */
   enabled?: boolean
+  /** Agent preset mounted for every scheduled session. */
+  preset?: string
+  /** Absolute workspace path recorded on every newly created scheduled session. */
+  cwd?: string
   /** Scheduled rules; each gets its own durable agent session. */
   rules?: AutomationRule[]
 }
@@ -76,12 +80,12 @@ export interface AtSchedule {
 export interface EverySchedule {
   /** Discriminant: interval schedule. */
   kind: 'every'
-  /** Interval length in whole seconds (min 1); the first occurrence fires at mount. */
+  /** Interval length in whole seconds (min 1); the first occurrence follows one full interval. */
   seconds: number
 }
 ```
 
-Source: [`packages/openclaw/automation/src/index.ts:94`](../packages/openclaw/automation/src/index.ts)
+Source: [`packages/openclaw/automation/src/index.ts:97`](../packages/openclaw/automation/src/index.ts)
 
 <a id="clawdshdsh-channel-agent"></a>
 
@@ -96,7 +100,7 @@ export interface Config {
   ownerPreset: string
   /** Restricted preset used for every other sender or group. */
   safePreset: string
-  /** Absolute workspace assigned to channel-created Sessions. */
+  /** Absolute workspace recorded when a channel Session is first created. */
   cwd: string
   /** Absolute root shared only with the authenticated local bridge. */
   stagingRoot: string
@@ -248,6 +252,8 @@ export interface Config {
   timeoutMs?: number
   /** Maximum lines one memory_get call reads. Defaults to 1000. */
   maxReadLines?: number
+  /** Maximum characters one memory_write call appends. Defaults to 4000. */
+  maxWriteChars?: number
   /** Whether host changes to memory files are watched for proactive invalidation. Defaults to true. */
   watch?: boolean
   /** Milliseconds a changed memory file must remain stable before it is observed. Defaults to 200. */
@@ -271,7 +277,7 @@ export interface FlushConfig {
 }
 ```
 
-Source: [`packages/openclaw/memory/src/index.ts:66`](../packages/openclaw/memory/src/index.ts)
+Source: [`packages/openclaw/memory/src/index.ts:70`](../packages/openclaw/memory/src/index.ts)
 
 <a id="clawdshdsh-skills-hub"></a>
 

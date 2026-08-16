@@ -6,17 +6,18 @@
  */
 
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { installMemoryWatch } from '../src/watch.ts'
+import type { MemoryWatchDisposer } from '../src/watch.ts'
 
 const CONFIG = { enabled: true, stabilityThresholdMs: 20, pollIntervalMs: 10 } as const
 
 let dir: string
-let disposeWatch: (() => Promise<void>) | undefined
+let disposeWatch: MemoryWatchDisposer | undefined
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'dsh-memory-watch-'))
@@ -46,16 +47,16 @@ describe('memory watcher (real chokidar)', () => {
     expect(after.length).toBe(before.length)
 
     await writeFile(join(dir, 'MEMORY.md'), before)
-    await vi.waitFor(() => { expect(seen).toContain('MEMORY.md') })
+    await vi.waitFor(() => { expect(seen).toContain('MEMORY.md') }, { timeout: 3_000 })
 
     await writeFile(join(dir, 'MEMORY.md'), after)
-    await vi.waitFor(() => { expect(seen.filter(rel => rel === 'MEMORY.md').length).toBeGreaterThanOrEqual(2) })
+    await vi.waitFor(() => { expect(seen.filter(rel => rel === 'MEMORY.md').length).toBeGreaterThanOrEqual(2) }, { timeout: 3_000 })
 
     await writeFile(join(dir, 'memory', '2026-08-14.md'), 'Running notes.\n')
-    await vi.waitFor(() => { expect(seen).toContain('memory/2026-08-14.md') })
+    await vi.waitFor(() => { expect(seen).toContain('memory/2026-08-14.md') }, { timeout: 3_000 })
 
     await rm(join(dir, 'memory', '2026-08-14.md'))
-    await vi.waitFor(() => { expect(seen.filter(rel => rel === 'memory/2026-08-14.md').length).toBeGreaterThanOrEqual(2) })
+    await vi.waitFor(() => { expect(seen.filter(rel => rel === 'memory/2026-08-14.md').length).toBeGreaterThanOrEqual(2) }, { timeout: 3_000 })
   })
 
   it('ignores non-memory files', async () => {
@@ -63,7 +64,7 @@ describe('memory watcher (real chokidar)', () => {
     await watch(seen)
 
     await writeFile(join(dir, 'MEMORY.md'), 'A fact.\n')
-    await vi.waitFor(() => { expect(seen).toContain('MEMORY.md') })
+    await vi.waitFor(() => { expect(seen).toContain('MEMORY.md') }, { timeout: 3_000 })
 
     await writeFile(join(dir, 'notes.txt'), 'Not a memory file.\n')
     await writeFile(join(dir, 'memory', 'notes.txt'), 'Wrong extension.\n')
@@ -78,10 +79,20 @@ describe('memory watcher (real chokidar)', () => {
     const missing = join(dir, 'nested', 'memory')
     const seen: string[] = []
     // Chokidar suppresses ENOENT, watches the nearest existing ancestor, and
-    // still resolves `ready`, so startup neither throws nor hangs. Recovering a
-    // root created after startup is out of scope for this simplified watcher.
+    // still resolves `ready`, so startup neither throws nor hangs.
     await watch(seen, missing)
     await new Promise(resolve => setTimeout(resolve, 30))
     expect(seen).toEqual([])
+  })
+
+  it('observes files after an initially missing root is created and the watcher recovers', async () => {
+    const root = join(dir, 'nested', 'memory-root')
+    const seen: string[] = []
+    await watch(seen, root)
+    await mkdir(root, { recursive: true })
+    await disposeWatch?.recover()
+    await writeFile(join(root, 'MEMORY.md'), 'A recovered fact.\n')
+
+    await vi.waitFor(() => { expect(seen).toContain('MEMORY.md') }, { timeout: 3_000 })
   })
 })

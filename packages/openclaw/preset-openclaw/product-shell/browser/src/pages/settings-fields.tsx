@@ -42,6 +42,12 @@ function enumValues(node: SchemaNode): readonly (string | number)[] | undefined 
   return values as readonly (string | number)[]
 }
 
+function hasLabelableControl(node: SchemaNode): boolean {
+  if (enumValues(node) !== undefined) return true
+  if (node.type === 'boolean' || node.type === 'number' || node.type === 'string') return true
+  return node.type === 'array' && node.inner?.type === 'string'
+}
+
 function readonlyValue(value: unknown): ReactNode {
   if (value === undefined || value === '') return <span className={css.emptyValue}>未配置</span>
   if (typeof value === 'boolean') return value ? '是' : '否'
@@ -57,15 +63,6 @@ function readonlyValue(value: unknown): ReactNode {
     return <span className={css.emptyValue}>由安装器管理</span>
   }
   return <code>{String(value)}</code>
-}
-
-function hasNativeControl(node: SchemaNode | undefined): boolean {
-  if (node === undefined) return false
-  return enumValues(node) !== undefined
-    || node.type === 'boolean'
-    || node.type === 'number'
-    || node.type === 'string'
-    || (node.type === 'array' && node.inner?.type === 'string')
 }
 
 function editableControl(
@@ -155,33 +152,51 @@ export function SettingsFields({
   onChange,
   renderSpecial,
 }: SettingsFieldsProps): ReactNode {
-  const schema = useMemo(() => rehydrateSchema(serializedSchema), [serializedSchema])
+  const schema = useMemo(() => {
+    try {
+      const candidate = rehydrateSchema(serializedSchema)
+      return candidate.type === 'object' ? candidate : undefined
+    } catch {
+      return undefined
+    }
+  }, [serializedSchema])
+  if (schema === undefined) {
+    return <div className={css.unknownSetting} role="alert">设置结构不可用。</div>
+  }
   return (
     <div className={css.settingsFields}>
       {fields.map((field) => {
         const key = pathKey(field.path)
         const id = `${idPrefix}-${key.replaceAll('.', '-')}`
-        const node = nodeAtPath(schema, field.path)
-        const value = getPath(draft, field.path)
+        let node: SchemaNode | undefined
+        let value: unknown
+        try {
+          node = nodeAtPath(schema, field.path)
+          value = getPath(draft, field.path)
+        } catch {
+          node = undefined
+          value = undefined
+        }
         const update = (next: unknown): void => { onChange(setPath(draft, field.path, next)) }
         const special = renderSpecial?.(field, value, update)
-        const nativeControl = special === undefined && field.editable && hasNativeControl(node)
+        const labelsControl = special === undefined
+          && node !== undefined
+          && field.editable
+          && hasLabelableControl(node)
         const labelId = `${id}-label`
         return (
-          <div
-            className={css.settingField}
-            key={key}
-            data-setting-path={key}
-            {...nativeControl ? {} : { role: 'group', 'aria-labelledby': labelId }}
-          >
+          <div className={css.settingField} key={key} data-setting-path={key}>
             <div className={css.fieldCopy}>
-              {nativeControl
+              {labelsControl
                 ? <label className={css.fieldLabel} htmlFor={id}>{field.label}</label>
                 : <span className={css.fieldLabel} id={labelId}>{field.label}</span>}
               {field.editable ? null : <span className={css.managed}>安装器管理</span>}
               {field.description === undefined ? null : <p>{field.description}</p>}
             </div>
-            <div className={css.fieldControl}>
+            <div
+              className={css.fieldControl}
+              {...labelsControl ? {} : { role: 'group', 'aria-labelledby': labelId }}
+            >
               {special ?? (node === undefined || !field.editable
                 ? readonlyValue(value)
                 : editableControl(id, node, value, disabled, update))}

@@ -4,6 +4,8 @@ Status: implemented
 
 [English](2026-08-14-memory-plugin.md) | 中文
 
+下述存储与召回决策仍然有效；其中“插件自身零写入且只提供两个工具”的结论已被[自有变更与干净安装空库](../bug-fix/2026-08-16-memory-owned-mutation-and-empty-store.md)部分取代。
+
 ## 问题
 
 ClawDSH 阶段 2 需要 Memory 行：OpenClaw 的长期记忆（人/偏好/决策/既往工作，跨会话检索）作为 dsh 插件。handoff 原指针是 `ctx.spillStore` 持久化，但 OpenClaw `v2026.1.15` 深读与 dsh 接缝盘点证伪了它：OpenClaw 的记忆是纯 Markdown 文件作事实源（人类可编辑、跨会话、`memory_get` 可读回），而 `SpillStore` 只存不读、按 owner session 隔离、locator 不透明无读 API——承载不了被移植的功能类别。语义召回是唯一真实缺口：dsh 全库无 embedding 设施。

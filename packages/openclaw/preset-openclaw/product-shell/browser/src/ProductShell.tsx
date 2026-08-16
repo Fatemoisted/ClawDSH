@@ -1,137 +1,46 @@
-import {
-  useEffect,
-  useState,
-  useSyncExternalStore,
-  type MouseEvent,
-  type ReactNode,
-} from 'react'
-import type { ClawdshControlClient } from './control-client.ts'
-import type { ISessions } from '@deepseek-ai/dsh-client-runtime/client'
-import { ActivityPage } from './pages/ActivityPage.tsx'
+import { useEffect, useState, type ReactNode } from 'react'
 import { NotFoundPage } from './pages/NotFoundPage.tsx'
-import { SettingsPage } from './pages/SettingsPage.tsx'
-import {
-  BrowserClawdshRouter,
-  routePath,
-  type ClawdshRouteId,
-  type ClawdshRouter,
-} from './router.ts'
 import css from './ProductShell.module.css'
 
 interface ProductShellProps {
-  readonly renderConversation: () => ReactNode
-  readonly control: ClawdshControlClient
-  readonly localControlAvailable: boolean
-  readonly sessions: Pick<ISessions, 'list'>
-  readonly router?: ClawdshRouter
+  readonly renderApp: () => ReactNode
+  /** Deterministic pathname seam for component tests. */
+  readonly pathname?: string
+  /** Deterministic navigation seam for component tests. */
+  readonly navigateToRoot?: () => void
 }
 
-interface NavigationItem {
-  readonly id: Exclude<ClawdshRouteId, 'not-found'>
-  readonly label: string
-  readonly mark: string
-}
+const PRODUCT_ROOT = '/clawdsh/'
 
-const NAVIGATION: readonly NavigationItem[] = [
-  { id: 'chat', label: '对话', mark: '⌁' },
-  { id: 'settings', label: 'ClawDSH 设置', mark: '◇' },
-  { id: 'activity', label: 'ClawDSH 活动', mark: '◎' },
-]
-
-const TITLE: Record<ClawdshRouteId, string> = {
-  chat: 'ClawDSH',
-  settings: 'ClawDSH 设置 · ClawDSH',
-  activity: 'ClawDSH 活动 · ClawDSH',
-  'not-found': '页面不存在 · ClawDSH',
-}
-
-/** Product navigation wrapped around one permanently mounted native conversation tree. */
+/**
+ * Render one native DSH application tree at the sole canonical product route.
+ * @param props - Native renderer and optional deterministic browser seams.
+ * @returns The canonical native application or a loud product-route miss.
+ */
 export function ProductShell({
-  renderConversation,
-  control,
-  localControlAvailable,
-  sessions,
-  router: suppliedRouter,
+  renderApp,
+  pathname,
+  navigateToRoot,
 }: ProductShellProps): ReactNode {
-  const [router] = useState<ClawdshRouter>(() => suppliedRouter ?? new BrowserClawdshRouter())
-  const [conversation] = useState<ReactNode>(() => renderConversation())
-  const route = useSyncExternalStore(router.subscribe, router.getSnapshot, router.getSnapshot)
-  const currentSessionId = useSyncExternalStore(
-    sessions.list.subscribe,
-    () => sessions.list.getSnapshot().current,
-    () => sessions.list.getSnapshot().current,
-  )
-
-  useEffect(() => suppliedRouter === undefined ? () => { router.dispose() } : undefined, [router, suppliedRouter])
-  useEffect(() => { document.title = TITLE[route.id] }, [route.id])
-
-  const navigate = (id: NavigationItem['id']) => (event: MouseEvent<HTMLAnchorElement>): void => {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-    event.preventDefault()
-    router.navigate(id)
-  }
+  const [app] = useState<ReactNode>(() => renderApp())
+  const currentPath = pathname ?? window.location.pathname
+  const atProductRoot = currentPath === PRODUCT_ROOT || currentPath === '/clawdsh'
+  useEffect(() => {
+    if (!atProductRoot) document.title = '页面不存在 · ClawDSH'
+  }, [atProductRoot])
 
   return (
     <div className={css.shell} data-clawdsh-shell>
-      <aside className={css.navigation}>
-        <a className={css.brand} href={routePath('chat')} onClick={navigate('chat')} aria-label="ClawDSH 首页">
-          <span className={css.brandMark} aria-hidden="true">C</span>
-          <span><strong>ClawDSH</strong><small>Personal Agent</small></span>
-        </a>
-        <nav aria-label="ClawDSH 主导航">
-          {NAVIGATION.map(item => (
-            <a
-              key={item.id}
-              href={routePath(item.id)}
-              aria-label={item.label}
-              aria-current={route.id === item.id ? 'page' : undefined}
-              title={item.label}
-              onClick={navigate(item.id)}
-            >
-              <span aria-hidden="true">{item.mark}</span>
-              <span>{item.label}</span>
-            </a>
-          ))}
-          <a href="/" aria-label="Harness 高级" title="Harness 高级">
-            <span aria-hidden="true">↗</span>
-            <span>Harness 高级</span>
-          </a>
-        </nav>
-        <div className={css.engine}>
-          <span aria-hidden="true" />
-          <span><strong>ClawDSH 模式</strong><small>DeepSeek Harness Engine</small></span>
+      {atProductRoot ? (
+        <div className={css.nativeApp} data-native-app>{app}</div>
+      ) : (
+        <div className={css.page}>
+          <NotFoundPage
+            pathname={currentPath}
+            returnToChat={navigateToRoot ?? (() => { window.location.assign(PRODUCT_ROOT) })}
+          />
         </div>
-      </aside>
-
-      <main className={css.main}>
-        <div
-          className={css.conversation}
-          hidden={route.id !== 'chat'}
-          aria-hidden={route.id !== 'chat' ? 'true' : undefined}
-          data-native-conversation
-        >
-          {conversation}
-        </div>
-        {route.id === 'settings' ? (
-          <div className={css.page} data-clawdsh-product-page>
-            <SettingsPage control={control} localControlAvailable={localControlAvailable} />
-          </div>
-        ) : null}
-        {route.id === 'activity' ? (
-          <div className={css.page} data-clawdsh-product-page>
-            <ActivityPage
-              control={control}
-              localControlAvailable={localControlAvailable}
-              {...currentSessionId === undefined ? {} : { sessionId: String(currentSessionId) }}
-            />
-          </div>
-        ) : null}
-        {route.id === 'not-found' ? (
-          <div className={css.page} data-clawdsh-product-page>
-            <NotFoundPage pathname={route.pathname} returnToChat={() => { router.navigate('chat') }} />
-          </div>
-        ) : null}
-      </main>
+      )}
     </div>
   )
 }

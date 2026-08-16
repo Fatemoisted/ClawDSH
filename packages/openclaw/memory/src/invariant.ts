@@ -15,14 +15,13 @@ export const name = 'memory-invariant'
 export const inject = ['invariants']
 
 /**
- * No runtime invariant: this plugin owns no event stream and no mutable runtime data beyond its
- * private derived index. Recalled memories reach the model as tool results, logged by the tools
- * seam (dsh-agent's invariant covers model-visible-means-logged), and the guidance section rides
- * `request/header.header.system` — both reconstruction paths are owned elsewhere. Memory files
- * are written by the model through the fs tools, never by this plugin, so "writes must go through
- * the fs seam" has no observable violation surface here; path containment is enforced per call
- * (`isMemoryPath` whitelist + `FileSystem.contains`) at the operation that resolves the target,
- * which is call-time failure handling rather than a runtime invariant.
+ * No runtime invariant: this plugin owns no event stream. Recalled memories reach the model as
+ * tool results, logged by the tools seam (dsh-agent's invariant covers model-visible-means-logged),
+ * and the guidance section rides `request/header.header.system` — both reconstruction paths are
+ * owned elsewhere. `memory_write` and `memory_update` mutate only two derived targets below the
+ * configured root and apply create/version guards through the fs seam. Target containment and
+ * guarded publication are enforced at the operation that makes each decision, not by a later
+ * runtime scan.
  */
 const install: InvariantInstaller = () => {}
 

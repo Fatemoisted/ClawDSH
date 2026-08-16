@@ -32,14 +32,16 @@
 
 - **为何是薄 provider 而非重写**：技能注册表已拥有分层合并、层内 rank 排序、注册注销、目录缓存与模型面目录/加载工具。skills-hub 只贡献 OpenClaw 源惯例与 gating（见 [skills-domain mapping Agent Note](../../../.agents/notes/implemented/architecture/2026-08-14-openclaw-skills-domain-mapping.md)）；
 - **rank 契约**：workspace `<cwd>/skills` = 300（custom 槽位：低于 dsh 原生项目目录、高于用户目录），附加目录 = 350，managed `~/.clawdbot/skills` = 450（低于 dsh 原生用户目录：原生目录优先于 legacy clawdbot 目录）；同 rank 平手按 provider 注册序裁决；
-- **list 时 gating**：`requires.bins`（全部可解析）、`requires.anyBins`（至少一个可解析）、`requires.env`（环境变量已设置）；被排除的技能不进目录；二进制名称通过 `ctx.subprocess.resolveExecutable` 在 Harness execution world 中解析，不启动子进程；
-- **仅目录 + SKILL.md**：与 OpenClaw 惯例一致；无 `SKILL.md` 的目录不是技能，根目录缺失即零技能（OpenClaw 式静默跳过），非法文件 warn 跳过；
+- **list 时 gating**：`requires.bins`（全部可解析）、`requires.anyBins`（至少一个可解析）、`requires.env`（环境变量值非空）；被排除的技能不进目录，畸形 metadata 或 gating 会失败关闭；二进制名称通过 `ctx.subprocess.resolveExecutable` 在 Harness execution world 中解析，不启动子进程；
+- **仅目录 + SKILL.md**：与 OpenClaw 惯例一致；frontmatter 必须从首行开始（允许 UTF-8 BOM），无 `SKILL.md` 的目录不是技能，根目录缺失即零技能（OpenClaw 式静默跳过），非法文件警告不引用其内容；
 - **无安装执行、无远程注册表**：OpenClaw baseline 经外部 CLI 分发 ClawHub 技能；本包只加载已在磁盘上的。
 - **Provider 级关闭**：`enabled: false` 不注册 provider，因此任何 ClawHub 根都不会参与目录收集。
+- **注册生命周期取消**：注销会取消该 provider 尚未完成的发现与正文读取；注册结束后不再开始新的根目录或 PATH 探测。
 
 ## 变更日志
 
-- 0.1.0：首个版本（workspace/managed/extra 三根、`metadata.clawdbot` gating、JSON 字符串 metadata 归一化；13 个契约测试，keyless）。
+- 0.1.0：首个版本（workspace/managed/extra 三根、`metadata.clawdbot` gating、JSON 字符串 metadata 归一化；keyless 契约测试）。
+- 0.1.0（2026-08-16 接入加固）：锚定 frontmatter 起始位置、metadata 与 gating 失败关闭、环境变量 gate 与附加路径要求非空，并接入注册生命周期取消。
 
 ## Model Experience
 

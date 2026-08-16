@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/openclaw/skills-hub/README.md
-README.md: aa6551c922997c77cebc58a0143e6b2ca79903d7
-README.zh.md: 044251fc27ab364f24c734970f248c0dc884de48
+README.md: e1082e7b5288b0bd7aea019b2760c4fec42cd668
+README.zh.md: 34cfd8e294f1a78d242c56c08353e028750627d3

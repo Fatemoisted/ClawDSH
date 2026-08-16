@@ -17,6 +17,8 @@ const CATEGORIES: Readonly<Record<ClawdshActivityKind, ClawdshActivityCategory>>
   'prompt.contribution': 'prompt',
   'memory.search': 'memory',
   'memory.read': 'memory',
+  'memory.write': 'memory',
+  'memory.update': 'memory',
   'memory.flush': 'memory',
   'channel.received': 'channel',
   'channel.delivery': 'channel',
@@ -30,6 +32,8 @@ const SUMMARIES: Readonly<Record<ClawdshActivityKind, string>> = {
   'prompt.contribution': 'ClawDSH Prompt contribution recorded',
   'memory.search': 'Memory search activity recorded',
   'memory.read': 'Memory read activity recorded',
+  'memory.write': 'Memory write activity recorded',
+  'memory.update': 'Memory update activity recorded',
   'memory.flush': 'Memory flush activity recorded',
   'channel.received': 'Channel message received',
   'channel.delivery': 'Channel delivery state recorded',
@@ -124,6 +128,10 @@ function validateKind(
     case 'memory.read':
     case 'memory.flush':
       return producer === 'memory' && isWorkStatus(status) && validateSeqMetadata(metadata)
+    case 'memory.write':
+      return producer === 'memory' && validateMemoryWrite(status, metadata)
+    case 'memory.update':
+      return producer === 'memory' && validateMemoryUpdate(status, metadata)
     case 'channel.received':
       return producer === 'channels' && status === undefined && validateChannelMetadata(metadata)
     case 'channel.delivery':
@@ -152,6 +160,39 @@ function validateKind(
         && typeof metadata.scheduledAt === 'string'
         && isCanonicalTimestamp(metadata.scheduledAt)
         && isNonNegativeSafeInteger(metadata.seq)
+    default:
+      return false
+  }
+}
+
+function validateMemoryWrite(status: unknown, metadata: Record<string, unknown>): boolean {
+  const hasOutcome = Object.hasOwn(metadata, 'outcome')
+  if (!isWorkStatus(status)
+    || !hasExactKeys(metadata, hasOutcome ? ['scope', 'seq', 'outcome'] : ['scope', 'seq'])
+    || (metadata.scope !== 'durable' && metadata.scope !== 'daily')
+    || !isNonNegativeSafeInteger(metadata.seq)) return false
+  if (!hasOutcome) return true
+  return status === 'succeeded'
+    && (metadata.outcome === 'stored'
+      || (metadata.outcome === 'already-stored' && metadata.scope === 'durable'))
+}
+
+function validateMemoryUpdate(status: unknown, metadata: Record<string, unknown>): boolean {
+  const hasOutcome = Object.hasOwn(metadata, 'outcome')
+  if (!isWorkStatus(status)
+    || !hasExactKeys(metadata, hasOutcome ? ['action', 'seq', 'outcome'] : ['action', 'seq'])
+    || (metadata.action !== 'updated' && metadata.action !== 'forgotten')
+    || !isNonNegativeSafeInteger(metadata.seq)) return false
+  if (!hasOutcome) return true
+  if (status !== 'succeeded') return false
+  switch (metadata.outcome) {
+    case 'updated':
+    case 'already-current':
+      return metadata.action === 'updated'
+    case 'forgotten':
+      return metadata.action === 'forgotten'
+    case 'not-found':
+      return true
     default:
       return false
   }

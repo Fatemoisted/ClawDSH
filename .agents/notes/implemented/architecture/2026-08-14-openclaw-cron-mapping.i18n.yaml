@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-14-openclaw-cron-mapping.md
-2026-08-14-openclaw-cron-mapping.md: 64de505c8d2c30aab627e476100ab7e244382959
-2026-08-14-openclaw-cron-mapping.zh.md: dfc242700a3afae57af06e52f76545cd6e6efaeb
+2026-08-14-openclaw-cron-mapping.md: 213b7826fce3b1e54d5a0810a4cd6e2467321ee2
+2026-08-14-openclaw-cron-mapping.zh.md: 7081bf42449b53ba656bdca678c6ded6218167e7
