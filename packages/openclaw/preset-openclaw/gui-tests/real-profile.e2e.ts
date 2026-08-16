@@ -25,6 +25,13 @@ const externalCredentialNames = [
   'TELEGRAM_BOT_TOKEN',
 ] as const
 
+interface ConsoleMessageLike {
+  /** Browser console severity. */
+  type(): string
+  /** Rendered console message without inspecting argument objects. */
+  text(): string
+}
+
 interface LocatorLike {
   /** Wait for this browser element to reach the requested state. */
   waitFor(options?: { state?: 'attached' | 'detached' | 'visible'; timeout?: number }): Promise<void>
@@ -45,6 +52,10 @@ interface LocatorLike {
 }
 
 interface PageLike {
+  /** Observe browser console output before the first navigation. */
+  on(event: 'console', listener: (message: ConsoleMessageLike) => void): void
+  /** Observe uncaught page errors before the first navigation. */
+  on(event: 'pageerror', listener: (error: Error) => void): void
   /** Navigate the browser page. */
   goto(url: string, options?: { waitUntil?: 'load' }): Promise<unknown>
   /** Locate a page element by accessible role. */
@@ -80,6 +91,18 @@ interface BrowserLauncherLike {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+/** Redact likely credentials and bound browser diagnostics before an assertion can print them. */
+function safeBrowserErrorMessage(value: string): string {
+  return value
+    .replaceAll(/[\u0000-\u001F\u007F]+/g, ' ')
+    .replaceAll(/([?&][^=\s&]+)=([^&\s#]*)/g, '$1=[redacted]')
+    .replaceAll(/\b(Bearer|Basic)\s+\S+/gi, '$1 [redacted]')
+    .replaceAll(/\b\d{6,}:[A-Za-z0-9_-]{20,}\b/g, '[redacted-token]')
+    .replaceAll(/\b[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}\b/g, '[redacted-token]')
+    .replaceAll(/\b[A-Za-z0-9_-]{32,}\b/g, '[redacted-value]')
+    .slice(0, 500)
 }
 
 async function chromiumLauncher(): Promise<BrowserLauncherLike> {
@@ -314,6 +337,15 @@ describe('ClawDSH isolated real profile browser entry', () => {
         locale: 'zh-CN',
         timezoneId: 'Asia/Shanghai',
       })
+      const unexpectedBrowserErrors: string[] = []
+      page.on('console', (message) => {
+        if (message.type() === 'error') {
+          unexpectedBrowserErrors.push(`console.error: ${safeBrowserErrorMessage(message.text())}`)
+        }
+      })
+      page.on('pageerror', (error) => {
+        unexpectedBrowserErrors.push(`pageerror: ${safeBrowserErrorMessage(error.message)}`)
+      })
       await page.goto(ready.productUrl, { waitUntil: 'load' })
 
       const sidebarFooter = page.locator('[data-slot="sidebar.footer.action"]')
@@ -427,6 +459,7 @@ describe('ClawDSH isolated real profile browser entry', () => {
       await notFound.waitFor({ timeout: 10_000 })
       const notFoundSnapshot = (await notFound.ariaSnapshot()).trim()
 
+      expect(unexpectedBrowserErrors, 'browser emitted unexpected error-level diagnostics').toEqual([])
       compareOrRefresh([
         '# Native sidebar footer',
         sidebarFooterSnapshot,

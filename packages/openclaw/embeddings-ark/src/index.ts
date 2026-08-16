@@ -204,7 +204,8 @@ export class ArkEmbeddings extends Embeddings {
    */
   private async resolveApiKey(): Promise<string | undefined> {
     const credentials = this.ctx.get('credentials')
-    if (credentials !== undefined) return (await credentials.resolve(this.apiKeyEnv))?.value
+    const resolved = credentials === undefined ? undefined : await credentials.resolve(this.apiKeyEnv)
+    if (resolved !== undefined && resolved.value.length > 0) return resolved.value
     const ambient = launchEnvironmentOf(this.ctx).get(String(this.apiKeyEnv))
     return ambient !== undefined && ambient.value.length > 0 ? ambient.value : undefined
   }

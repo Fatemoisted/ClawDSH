@@ -1450,6 +1450,99 @@ describe('channel session and ledger lifecycle', () => {
       .rejects.toThrow(/regressed/)
   })
 
+  it('serializes one ledger key before validating a concurrent receipt successor', async () => {
+    const app = await harness([textResponse('reply')])
+    await app.ctx.channels.runTurn(turn(), execution())
+    const table = app.facility.get('clawdsh_channel_agent')?.table('ledger')
+    if (table === undefined) throw new Error('expected channel-agent ledger')
+    const persist = table.put.bind(table)
+    const enteredFirstWrite = Promise.withResolvers<undefined>()
+    const releaseFirstWrite = Promise.withResolvers<undefined>()
+    let writes = 0
+    table.put = async (key, value) => {
+      const record = value as ChannelLedgerRecord
+      if (record.delivery !== undefined) {
+        writes += 1
+        if (writes === 1) {
+          enteredFirstWrite.resolve(undefined)
+          await releaseFirstWrite.promise
+        }
+      }
+      await persist(key, value)
+    }
+    const committed = app.ctx.channels.reportDelivery(report())
+    await enteredFirstWrite.promise
+    const regressed = app.ctx.channels.reportDelivery(report({ status: 'accepted' }))
+    try {
+      await new Promise<void>((resolve) => { setImmediate(resolve) })
+      expect(writes).toBe(1)
+    } finally {
+      releaseFirstWrite.resolve(undefined)
+    }
+    await expect(committed).resolves.toBeUndefined()
+    await expect(regressed).rejects.toThrow(/regressed/)
+    expect((table.get(ledgerKey(turn())) as ChannelLedgerRecord).delivery?.status).toBe('confirmed')
+  })
+
+  it('revalidates the durable turn identity inside the delivery serialization boundary', async () => {
+    const app = await harness([textResponse('reply')])
+    const inbound = turn()
+    await app.ctx.channels.runTurn(inbound, execution())
+    const table = app.facility.get('clawdsh_channel_agent')?.table('ledger')
+    if (table === undefined) throw new Error('expected channel-agent ledger')
+    const key = ledgerKey(inbound)
+    const durable = table.get(key) as ChannelLedgerRecord | undefined
+    if (durable === undefined) throw new Error('expected durable channel-agent turn')
+    const read = table.get.bind(table)
+    const changedRecords: Array<ChannelLedgerRecord | undefined> = [
+      undefined,
+      { ...durable, envelope: { ...durable.envelope, turnId: 'changed-turn' as never } },
+      { ...durable, envelope: { ...durable.envelope, runId: 'changed-run' as never } },
+    ]
+    try {
+      for (const changed of changedRecords) {
+        table.get = () => changed
+        await expect(app.ctx.channels.reportDelivery(report())).rejects.toThrow(/unknown turn/)
+      }
+    } finally {
+      table.get = read
+    }
+  })
+
+  it('persists delivery receipts for different ledger keys concurrently', async () => {
+    const app = await harness([textResponse('one'), textResponse('two')])
+    const firstTurn = turn()
+    const secondTurn = turn({
+      idempotencyKey: 'inbound-2', turnId: 'turn-2', runId: 'run-2', messageId: 'message-2',
+    })
+    await app.ctx.channels.runTurn(firstTurn, execution())
+    await app.ctx.channels.runTurn(secondTurn, execution())
+    const table = app.facility.get('clawdsh_channel_agent')?.table('ledger')
+    if (table === undefined) throw new Error('expected channel-agent ledger')
+    const persist = table.put.bind(table)
+    const release = Promise.withResolvers<undefined>()
+    let entered = 0
+    table.put = async (key, value) => {
+      if ((value as ChannelLedgerRecord).delivery !== undefined) {
+        entered += 1
+        await release.promise
+      }
+      await persist(key, value)
+    }
+    const first = app.ctx.channels.reportDelivery(report())
+    const second = app.ctx.channels.reportDelivery(report({
+      deliveryId: 'delivery-2',
+      subject: { kind: 'turn', turnId: secondTurn.turnId, runId: secondTurn.runId },
+      status: 'accepted',
+    }))
+    try {
+      await vi.waitFor(() => { expect(entered).toBe(2) })
+    } finally {
+      release.resolve(undefined)
+    }
+    await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined])
+  })
+
   it('tracks accepted, retrying, ambiguous, and dead-letter delivery states without blind resend', async () => {
     const app = await harness([textResponse('one'), textResponse('two'), textResponse('three')])
     const activity: ChannelDeliveryActivityInput[] = []
@@ -1976,6 +2069,39 @@ describe('channel admission and media failures', () => {
     await first
     expect(close).toHaveBeenCalledTimes(1)
     expect(app.ctx.agents.list()).toEqual([])
+  })
+
+  it('drains an admitted delivery report before closing storage', async () => {
+    const app = await harness([textResponse('reply')], { mountAgent: false })
+    const driver = await ChannelAgent.ChannelAgentDriver.create(app.ctx, driverConfig(app))
+    await driver.runTurn(turn(), execution())
+    const domain = app.facility.get('clawdsh_channel_agent')
+    if (domain === undefined) throw new Error('expected channel-agent domain')
+    const table = domain.table('ledger')
+    const persist = table.put.bind(table)
+    const enteredWrite = Promise.withResolvers<undefined>()
+    const releaseWrite = Promise.withResolvers<undefined>()
+    table.put = async (key, value) => {
+      if ((value as ChannelLedgerRecord).delivery !== undefined) {
+        enteredWrite.resolve(undefined)
+        await releaseWrite.promise
+      }
+      await persist(key, value)
+    }
+    const close = vi.spyOn(domain, 'close')
+    const pending = driver.reportDelivery(report())
+    await enteredWrite.promise
+
+    let disposed = false
+    const disposal = driver.dispose().then(() => { disposed = true })
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    expect(disposed).toBe(false)
+    expect(close).not.toHaveBeenCalled()
+
+    releaseWrite.resolve(undefined)
+    await expect(pending).resolves.toBeUndefined()
+    await disposal
+    expect(close).toHaveBeenCalledTimes(1)
   })
 
   it('aggregates a synchronous cancellation failure after the active turn still settles', async () => {

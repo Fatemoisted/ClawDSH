@@ -113,7 +113,7 @@ export interface Config {
 }
 ```
 
-来源： [`packages/openclaw/channel-agent/src/index.ts:105`](../packages/openclaw/channel-agent/src/index.ts)
+来源： [`packages/openclaw/channel-agent/src/index.ts:108`](../packages/openclaw/channel-agent/src/index.ts)
 
 <a id="clawdshdsh-channel-openclaw"></a>
 

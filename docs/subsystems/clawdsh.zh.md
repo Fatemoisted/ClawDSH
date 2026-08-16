@@ -102,7 +102,7 @@ health(signal?: AbortSignal): Promise<ChannelHealthV1>
 
 Types: [ChannelActionResultV1](../../packages/openclaw/channel/README.md) · [ChannelActionV1](../../packages/openclaw/channel/README.md) · [ChannelDeliveryReportV1](../../packages/openclaw/channel/README.md) · [ChannelDriverV1](../../packages/openclaw/channel/README.md) · [ChannelHealthV1](../../packages/openclaw/channel/README.md) · [ChannelProviderV1](../../packages/openclaw/channel/README.md) · [ChannelSessionCloseV1](../../packages/openclaw/channel/README.md) · [ChannelSessionResetResultV1](../../packages/openclaw/channel/README.md) · [ChannelSessionResetV1](../../packages/openclaw/channel/README.md) · [ChannelTurnCancelV1](../../packages/openclaw/channel/README.md) · [ChannelTurnEnvelopeV1](../../packages/openclaw/channel/README.md) · [ChannelTurnExecutionV1](../../packages/openclaw/channel/README.md) · [ChannelTurnResultV1](../../packages/openclaw/channel/README.md)
 
-Source: [`packages/openclaw/channel/src/index.ts:65`](../../packages/openclaw/channel/src/index.ts)
+Source: [`packages/openclaw/channel/src/index.ts:66`](../../packages/openclaw/channel/src/index.ts)
 
 <a id="ctxclawdshactivity--clawdshactivity"></a>
 

@@ -316,6 +316,23 @@ describe('memory_search', () => {
     expect(text(filtered)).toBe('No matching memories found.')
   })
 
+  it('uses resolved config defaults while explicit search arguments still override them', async () => {
+    const search = vi.spyOn(MemoryIndex.prototype, 'search').mockResolvedValue([])
+    try {
+      await ctx.plugin(Memory, { root: dir, maxResults: 1, minScore: 0.8 })
+
+      await call('memory_search', { query: 'banana' })
+      await call('memory_search', { query: 'banana', maxResults: 2, minScore: 0.5 })
+
+      expect(search.mock.calls.map(searchCall => [searchCall[2], searchCall[3]])).toEqual([
+        [1, 0.8],
+        [2, 0.5],
+      ])
+    } finally {
+      search.mockRestore()
+    }
+  })
+
   it('fails loudly when no embeddings provider is loaded', async () => {
     ctx = new Context()
     await ctx.plugin(SystemPrompt)

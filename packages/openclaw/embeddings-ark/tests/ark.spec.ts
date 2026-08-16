@@ -46,6 +46,24 @@ class StubCredentials extends CredentialProvider {
   async unset(_ref: CredentialRef): Promise<void> {}
 }
 
+/** Credentials backend that can deliberately leave the fixed reference unresolved. */
+class OptionalStubCredentials extends CredentialProvider {
+  constructor(ctx: Context, private readonly config: { readonly value?: string }) { super(ctx) }
+
+  async resolve(_ref: CredentialRef): Promise<ResolvedCredential | undefined> {
+    return this.config.value === undefined
+      ? undefined
+      : { value: this.config.value, source: 'stub' }
+  }
+
+  async describe(_ref: CredentialRef): Promise<CredentialInfo> {
+    return { configured: this.config.value !== undefined, source: 'stub', writable: false }
+  }
+
+  async set(_ref: CredentialRef, _value: string): Promise<void> {}
+  async unset(_ref: CredentialRef): Promise<void> {}
+}
+
 /** Build the live wire's response body: one `data.embedding` vector. */
 function responseBody(embedding: readonly number[]): string {
   return JSON.stringify({ data: { embedding } })
@@ -257,7 +275,8 @@ describe('ark embeddings provider', () => {
     expect(firstFetchInit(fetchMock).headers).toMatchObject({ Authorization: 'Bearer env-key' })
   })
 
-  it('resolves the fixed ARK_API_KEY reference through the credentials seam', async () => {
+  it('prefers the fixed ARK_API_KEY reference from credentials over the launch environment', async () => {
+    vi.stubEnv('ARK_API_KEY', 'env-key')
     const fetchMock = okFetch(responseBody([0.1]))
     vi.stubGlobal('fetch', fetchMock)
     const ctx = await testContext()
@@ -265,6 +284,22 @@ describe('ark embeddings provider', () => {
     await ctx.plugin(ArkEmbeddings, {})
     await ctx.embeddings.embed(['a'])
     expect(firstFetchInit(fetchMock).headers).toMatchObject({ Authorization: 'Bearer stub-key-ARK_API_KEY' })
+  })
+
+  it.each([
+    ['an unresolved credential', {}],
+    ['an empty credential', { value: '' }],
+  ])('falls back to the launch environment for %s', async (_label, config) => {
+    vi.stubEnv('ARK_API_KEY', 'env-fallback-key')
+    const fetchMock = okFetch(responseBody([0.1]))
+    vi.stubGlobal('fetch', fetchMock)
+    const ctx = await testContext()
+    await ctx.plugin(OptionalStubCredentials, config)
+    await ctx.plugin(ArkEmbeddings, {})
+
+    await ctx.embeddings.embed(['a'])
+
+    expect(firstFetchInit(fetchMock).headers).toMatchObject({ Authorization: 'Bearer env-fallback-key' })
   })
 
   it('caps in-flight requests at maxConcurrentTexts and completes the full batch', async () => {

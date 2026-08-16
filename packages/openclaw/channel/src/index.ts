@@ -23,6 +23,7 @@ import type {
 } from './types.ts'
 
 export * from './brand.ts'
+export * from './operations.ts'
 export * from './protocol.ts'
 export type * from './types.ts'
 

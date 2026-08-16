@@ -286,6 +286,32 @@ describe('projectSessionHistory', () => {
 
     expect(projected).toEqual({ records: [], degraded: true })
   })
+
+  it('accepts the Date boundary and degrades a safe integer beyond it without throwing', () => {
+    const maximumDateTime = 8_640_000_000_000_000
+    const valid = projectSessionHistory('history-session', [
+      event('user/message', 1, {
+        source: { kind: 'channel', channel: 'telegram', isGroup: false },
+      }, maximumDateTime),
+    ])
+    expect(valid).toMatchObject({
+      degraded: false,
+      records: [{ timestamp: new Date(maximumDateTime).toISOString() }],
+    })
+
+    const beyondDateRange = maximumDateTime + 1
+    expect(Number.isSafeInteger(beyondDateRange)).toBe(true)
+    expect(() => projectSessionHistory('history-session', [
+      event('user/message', 1, {
+        source: { kind: 'channel', channel: 'telegram', isGroup: false },
+      }, beyondDateRange),
+    ])).not.toThrow()
+    expect(projectSessionHistory('history-session', [
+      event('user/message', 1, {
+        source: { kind: 'channel', channel: 'telegram', isGroup: false },
+      }, beyondDateRange),
+    ])).toEqual({ records: [], degraded: true })
+  })
 })
 
 describe('createActivityPage', () => {

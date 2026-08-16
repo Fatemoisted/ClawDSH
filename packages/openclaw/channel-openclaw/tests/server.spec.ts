@@ -149,6 +149,36 @@ describe('authenticated local Provider lifecycle', () => {
     expect(completed).toBe(1)
   })
 
+  it('drains an admitted mutation before Provider disposal closes its durable ledger', async () => {
+    const app = await setup()
+    const enteredRunningWrite = Promise.withResolvers<undefined>()
+    const releaseRunningWrite = Promise.withResolvers<undefined>()
+    const table = Reflect.get(app.provider, 'actions') as {
+      put(key: string, value: { readonly phase: string }): Promise<void>
+    }
+    const persist = table.put.bind(table)
+    table.put = async (key, value) => {
+      if (value.phase === 'running') {
+        enteredRunningWrite.resolve(undefined)
+        await releaseRunningWrite.promise
+      }
+      await persist(key, value)
+    }
+    const action = app.provider.action(sendAction())
+    void action.catch(() => {})
+    await enteredRunningWrite.promise
+
+    let disposed = false
+    const disposal = app.provider.dispose().then(() => { disposed = true })
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    expect(disposed).toBe(false)
+
+    releaseRunningWrite.resolve(undefined)
+    await expect(action).rejects.toThrow(/disconnected|shutting down/)
+    await disposal
+    expect(app.media.actions.get('action-1')).toMatchObject({ phase: 'needs-recovery' })
+  })
+
   it('retains the newest peer drain and waits for its matching settlement', async () => {
     const app = await setup({ authenticate: false })
     const trackPeer = Reflect.get(app.provider, 'trackPeer') as (
@@ -841,20 +871,65 @@ describe('DSH-to-bridge actions and receipts', () => {
     })
   })
 
-  it('rejects a concurrent mutation while its first dispatch is still running', async () => {
+  it('reserves an action id before its first running write and forbids duplicate dispatch', async () => {
     const app = await setup()
     const action = sendAction()
-    let release!: () => void
-    app.client.onProviderRequest = () => new Promise((resolve) => {
-      release = () => { resolve(confirmed(action)) }
-    })
+    const enteredRunningWrite = Promise.withResolvers<undefined>()
+    const releaseRunningWrite = Promise.withResolvers<undefined>()
+    const table = Reflect.get(app.provider, 'actions') as {
+      put(key: string, value: { readonly phase: string }): Promise<void>
+    }
+    const persist = table.put.bind(table)
+    table.put = async (key, value) => {
+      if (value.phase === 'running') {
+        enteredRunningWrite.resolve(undefined)
+        await releaseRunningWrite.promise
+      }
+      await persist(key, value)
+    }
     const first = app.provider.action(action)
-    await vi.waitFor(() => {
-      expect(app.client.requests.filter(frame => frame.method === 'channel.action')).toHaveLength(1)
-    })
-    await expect(app.provider.action(action)).rejects.toThrow(/already running/)
-    release()
+    await enteredRunningWrite.promise
+    try {
+      await expect(app.provider.action(action)).rejects.toThrow(/already running/)
+      await expect(app.provider.action(sendAction({ text: 'different' })))
+        .rejects.toThrow(/reused with different input/)
+      expect(app.client.requests.filter(frame => frame.method === 'channel.action')).toHaveLength(0)
+    } finally {
+      releaseRunningWrite.resolve(undefined)
+    }
     await expect(first).resolves.toMatchObject({ status: 'confirmed' })
+    expect(app.client.requests.filter(frame => frame.method === 'channel.action')).toHaveLength(1)
+  })
+
+  it('keeps durable reservations independent for different action ids', async () => {
+    const app = await setup()
+    const release = Promise.withResolvers<undefined>()
+    app.client.onProviderRequest = async (frame) => {
+      await release.promise
+      return confirmed(frame.params as ChannelActionV1)
+    }
+    const first = app.provider.action(sendAction({ actionId: 'parallel-1', text: 'one' }))
+    const second = app.provider.action(sendAction({ actionId: 'parallel-2', text: 'two' }))
+    try {
+      await vi.waitFor(() => {
+        expect(app.client.requests.filter(request => request.method === 'channel.action')).toHaveLength(2)
+      })
+    } finally {
+      release.resolve(undefined)
+    }
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2)
+  })
+
+  it('rejects a durable running action left by an external live writer', async () => {
+    const app = await setup()
+    const action = sendAction()
+    await expect(app.provider.action(action)).resolves.toMatchObject({ status: 'confirmed' })
+    const completed = app.media.actions.get(action.actionId)
+    if (completed === undefined) throw new Error('expected completed action row')
+    app.media.actions.set(action.actionId, { ...completed, phase: 'running' })
+
+    await expect(app.provider.action(action)).rejects.toThrow(/already running/)
+    expect(app.client.requests.filter(frame => frame.method === 'channel.action')).toHaveLength(1)
   })
 
   it('fails closed if the bridge disconnects after mutation durability but before dispatch', async () => {
@@ -1009,6 +1084,75 @@ describe('DSH-to-bridge actions and receipts', () => {
       await report(receipt)
       await expect(report({ ...receipt, attempt: 2 })).rejects.toThrow(PUBLIC_HANDLER_FAILURE)
     }
+  })
+
+  it('serializes one delivery id before validating a concurrent receipt successor', async () => {
+    const app = await setup()
+    const table = Reflect.get(app.provider, 'deliveries') as {
+      put(key: string, value: { readonly receipt: { readonly status: string } }): Promise<void>
+    }
+    const persist = table.put.bind(table)
+    const enteredFirstWrite = Promise.withResolvers<undefined>()
+    const releaseFirstWrite = Promise.withResolvers<undefined>()
+    let writes = 0
+    table.put = async (key, value) => {
+      writes += 1
+      if (writes === 1) {
+        enteredFirstWrite.resolve(undefined)
+        await releaseFirstWrite.promise
+      }
+      await persist(key, value)
+    }
+    const terminal = {
+      protocolVersion: 1,
+      deliveryId: 'receipt-race',
+      subject: { kind: 'turn', turnId: 'turn-1', runId: 'run-1' },
+      attempt: 1,
+      status: 'confirmed',
+    }
+    const committed = reportDelivery(app.client, terminal)
+    await enteredFirstWrite.promise
+    const regressed = reportDelivery(app.client, { ...terminal, status: 'accepted' })
+    try {
+      await vi.waitFor(() => {
+        expect(app.client.frames.filter(frame => frame.method === 'delivery.report')).toHaveLength(2)
+      })
+      expect(writes).toBe(1)
+    } finally {
+      releaseFirstWrite.resolve(undefined)
+    }
+    await expect(committed).resolves.toEqual({})
+    await expect(regressed).rejects.toThrow(PUBLIC_HANDLER_FAILURE)
+    expect(app.media.deliveries.get('receipt-race')).toMatchObject({ receipt: { status: 'confirmed' } })
+  })
+
+  it('persists different delivery ids concurrently', async () => {
+    const app = await setup()
+    const table = Reflect.get(app.provider, 'deliveries') as {
+      put(key: string, value: unknown): Promise<void>
+    }
+    const persist = table.put.bind(table)
+    const release = Promise.withResolvers<undefined>()
+    let entered = 0
+    table.put = async (key, value) => {
+      entered += 1
+      await release.promise
+      await persist(key, value)
+    }
+    const receipt = {
+      protocolVersion: 1,
+      subject: { kind: 'turn', turnId: 'turn-1', runId: 'run-1' },
+      attempt: 1,
+      status: 'accepted',
+    }
+    const first = reportDelivery(app.client, { ...receipt, deliveryId: 'parallel-receipt-1' })
+    const second = reportDelivery(app.client, { ...receipt, deliveryId: 'parallel-receipt-2' })
+    try {
+      await vi.waitFor(() => { expect(entered).toBe(2) })
+    } finally {
+      release.resolve(undefined)
+    }
+    await expect(Promise.all([first, second])).resolves.toEqual([{}, {}])
   })
 
   it('requires retry progress and preserves a learned platform message identity', async () => {
