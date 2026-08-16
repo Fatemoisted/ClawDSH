@@ -24,6 +24,8 @@ import type {
   ClawdshActivityPageRequest,
   ClawdshActivityWriteResult,
   MemoryActivity,
+  MemoryUpdateActivity,
+  MemoryWriteActivity,
   PromptContributionActivity,
   SkillCatalogActivity,
   SkillInvokedActivity,
@@ -126,6 +128,42 @@ export class ClawdshActivity extends Service {
    */
   memoryRead(input: MemoryActivity): Promise<ClawdshActivityWriteResult> {
     return this.memory(input, 'memory.read')
+  }
+
+  /**
+   * Record one Memory write lifecycle state without content or a physical path.
+   * @param input - Durable/daily scope, Session sequence, and sanitized lifecycle state.
+   * @returns sanitized best-effort append outcome.
+   */
+  memoryWrite(input: MemoryWriteActivity): Promise<ClawdshActivityWriteResult> {
+    return this.sidecars.append('memory', createActivityRecord(
+      this.envelope(String(input.sessionId)),
+      'memory.write',
+      {
+        scope: input.scope,
+        seq: input.seq,
+        ...(input.outcome === undefined ? {} : { outcome: input.outcome }),
+      },
+      input.status,
+    ))
+  }
+
+  /**
+   * Record one durable Memory correction or forget state without either fact or a physical path.
+   * @param input - Sanitized action, Session sequence, and lifecycle state.
+   * @returns sanitized best-effort append outcome.
+   */
+  memoryUpdate(input: MemoryUpdateActivity): Promise<ClawdshActivityWriteResult> {
+    return this.sidecars.append('memory', createActivityRecord(
+      this.envelope(String(input.sessionId)),
+      'memory.update',
+      {
+        action: input.action,
+        seq: input.seq,
+        ...(input.outcome === undefined ? {} : { outcome: input.outcome }),
+      },
+      input.status,
+    ))
   }
 
   /**

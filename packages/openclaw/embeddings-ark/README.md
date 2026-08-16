@@ -26,19 +26,22 @@ The credential reference is fixed to `ARK_API_KEY`; neither literal keys nor alt
 
 The `clawdsh-embeddings-ark` namespace exposes endpoint/model/request tuning with restart semantics. Credential replacement remains next-call because the provider never caches the resolved value.
 
+The endpoint is validated at mount as an absolute HTTP(S) base without URL credentials, query, or fragment; trailing slashes are normalized before the fixed Ark path is appended. The model must be non-empty. Invalid stored settings therefore fail before any bearer credential can be sent.
+
 ## Design notes
 
 - **Resolve credentials per operation**: never cache the key (credentials seam rule); a `.env` change takes effect without a remount;
 - **Response validation**: vectors non-empty and all finite; **cross-call dimension drift fails loud** — the server silently swapping models must not break the consumer's cosine comparability (measured 2048 dims; drift errors);
 - **Secret-safe failures**: HTTP response bodies and JSON parser diagnostics are never propagated because an endpoint that received the bearer credential could echo it; failures expose only fixed provider text and the HTTP status;
-- **Cooperative cancellation**: `AbortSignal.timeout(timeoutMs)` merged with the caller's signal, so tool timeout / session cancellation reaches HTTP directly;
-- **One request per text, bounded concurrency**: the multimodal endpoint embeds the whole input array as one multimodal item, batching is impossible — `embed(N)` runs a worker pool of at most `maxConcurrentTexts` (default 4) in-flight requests; each worker claims the next index, so results return in input order, and any failure rejects the whole call (the embeddings seam contract). In-flight requests are not force-cancelled on a sibling failure.
+- **Cooperative cancellation**: one operation-wide `AbortSignal.timeout(timeoutMs)` is merged with the caller's signal, so the deadline covers every worker wave and tool timeout / Session cancellation reaches HTTP directly;
+- **One request per text, bounded concurrency**: the multimodal endpoint embeds the whole input array as one multimodal item, batching is impossible — `embed(N)` runs a worker pool of at most `maxConcurrentTexts` (default 4) in-flight requests; each worker claims the next index, so results return in input order. The first failure stops new claims, aborts sibling fetches, waits for every started worker to settle, and then rejects the whole call with the first failure.
 
 ## Changelog
 
 - 0.1.0: first release (text input + credential layering + response validation + 8 contract tests, mock fetch).
 - 0.1.0 (2026-08-14 real-e2e correction): after real-wire testing, rewrote parsing and calls around `data.embedding` single-object / one-request-per-text; removed `maxBatchTexts` (the endpoint cannot batch); 8 contract tests aligned to the new wire + tools/ark-e2e.ts real loop (2048 dims, semantic recall 0.648).
 - 0.2.0: bounded per-text request concurrency (`maxConcurrentTexts`, default 4; order-preserving worker pool, whole-batch reject on any failure; 5 concurrency contract tests).
+- 0.2.0 (2026-08-16 integration hardening): mount-time endpoint/model validation, one deadline for the complete call, and abort-and-drain sibling failure handling.
 
 ## Model Experience
 
@@ -59,6 +62,6 @@ No prompt text is produced by this provider, so the prompt prefix and its KV cac
 ## Known Limitations and Deferred Work
 
 - **Text input only**: the Ark endpoint is multimodal (image_url input type), this cycle only sends `type: "text"`; image embedding is deferred until a consumer needs it;
-- **No batching**: the endpoint cannot batch (one request per text), so large-corpus recall stays N requests; bounded concurrency (`maxConcurrentTexts`) amortizes it, and a partial-failure run leaves its in-flight siblings to settle (no force-cancel);
+- **No batching**: the endpoint cannot batch (one request per text), so large-corpus recall stays N requests; bounded concurrency (`maxConcurrentTexts`) amortizes it;
 - **No local model**: OpenClaw's local GGUF branch is not ported; offline deployment has no embedding capability (matching memory's no retrieval);
 - **Restart-applied tuning**: base URL, model, timeout, and concurrency come from the startup settings snapshot; only credential changes take effect on the next call.

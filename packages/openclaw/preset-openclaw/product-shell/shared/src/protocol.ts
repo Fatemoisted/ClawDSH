@@ -219,6 +219,8 @@ export type ClawdshActivityKind =
   | 'prompt.contribution'
   | 'memory.search'
   | 'memory.read'
+  | 'memory.write'
+  | 'memory.update'
   | 'memory.flush'
   | 'channel.received'
   | 'channel.delivery'
@@ -229,6 +231,12 @@ export type ClawdshActivityKind =
 
 /** Optional sanitized lifecycle state for one Activity record. */
 export type ClawdshActivityStatus = 'started' | 'succeeded' | 'failed' | 'sent'
+
+/** Privacy-safe result of one successful Memory write request. */
+export type ClawdshMemoryWriteOutcome = 'stored' | 'already-stored'
+
+/** Privacy-safe result of one successful durable Memory update request. */
+export type ClawdshMemoryUpdateOutcome = 'updated' | 'forgotten' | 'already-current' | 'not-found'
 
 /** Primitive-only metadata selected by the Activity package for one fixed kind. */
 export type ClawdshActivityMetadata = Record<string, string | number | boolean | null>
@@ -620,6 +628,8 @@ const ACTIVITY_KINDS = [
   'prompt.contribution',
   'memory.search',
   'memory.read',
+  'memory.write',
+  'memory.update',
   'memory.flush',
   'channel.received',
   'channel.delivery',
@@ -633,6 +643,8 @@ const ACTIVITY_CATEGORY_BY_KIND: Readonly<Record<ClawdshActivityKind, ClawdshAct
   'prompt.contribution': 'prompt',
   'memory.search': 'memory',
   'memory.read': 'memory',
+  'memory.write': 'memory',
+  'memory.update': 'memory',
   'memory.flush': 'memory',
   'channel.received': 'channel',
   'channel.delivery': 'channel',
@@ -646,6 +658,8 @@ const ACTIVITY_SUMMARY_BY_KIND: Readonly<Record<ClawdshActivityKind, string>> = 
   'prompt.contribution': 'ClawDSH Prompt contribution recorded',
   'memory.search': 'Memory search activity recorded',
   'memory.read': 'Memory read activity recorded',
+  'memory.write': 'Memory write activity recorded',
+  'memory.update': 'Memory update activity recorded',
   'memory.flush': 'Memory flush activity recorded',
   'channel.received': 'Channel message received',
   'channel.delivery': 'Channel delivery state recorded',
@@ -707,6 +721,40 @@ function parseActivityRecord(value: unknown): void {
       workStatus(record.status, 'memory status')
       break
     }
+    case 'memory.write': {
+      const fields = activityMetadata(metadata, ['scope', 'seq', 'outcome'], ['outcome'])
+      enumField(fields.scope, ['durable', 'daily'], 'memory write scope')
+      nonNegativeInteger(fields.seq, 'memory write seq')
+      workStatus(record.status, 'memory write status')
+      if (fields.outcome !== undefined) {
+        enumField(fields.outcome, ['stored', 'already-stored'], 'memory write outcome')
+        if (record.status !== 'succeeded'
+          || (fields.outcome === 'already-stored' && fields.scope !== 'durable')) {
+          throw new TypeError('memory write Activity fields are inconsistent')
+        }
+      }
+      break
+    }
+    case 'memory.update': {
+      const fields = activityMetadata(metadata, ['action', 'seq', 'outcome'], ['outcome'])
+      enumField(fields.action, ['updated', 'forgotten'], 'memory update action')
+      nonNegativeInteger(fields.seq, 'memory update seq')
+      workStatus(record.status, 'memory update status')
+      if (fields.outcome !== undefined) {
+        enumField(
+          fields.outcome,
+          ['updated', 'forgotten', 'already-current', 'not-found'],
+          'memory update outcome',
+        )
+        if (record.status !== 'succeeded'
+          || ((fields.outcome === 'updated' || fields.outcome === 'already-current')
+            && fields.action !== 'updated')
+          || (fields.outcome === 'forgotten' && fields.action !== 'forgotten')) {
+          throw new TypeError('memory update Activity fields are inconsistent')
+        }
+      }
+      break
+    }
     case 'channel.received':
       if (record.status !== undefined) throw new TypeError('received Channel Activity must not carry a status')
       parseChannelActivityMetadata(metadata)
@@ -746,8 +794,12 @@ function parseActivityRecord(value: unknown): void {
   }
 }
 
-function activityMetadata(value: unknown, keys: readonly string[]): Record<string, unknown> {
-  return exactRecord(value, keys, 'activity metadata')
+function activityMetadata(
+  value: unknown,
+  keys: readonly string[],
+  optional: readonly string[] = [],
+): Record<string, unknown> {
+  return exactRecord(value, keys, 'activity metadata', optional)
 }
 
 function parseChannelActivityMetadata(value: unknown): void {

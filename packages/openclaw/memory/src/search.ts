@@ -5,16 +5,18 @@
  * and drops deleted ones. Chunks carry their embedding lazily: one `embed`
  * call per search covers the query plus every not-yet-embedded chunk, so a
  * cold start costs one batch request and incremental edits cost one call for
- * the changed file.
+ * the changed file. Every discovered path is rechecked for root containment;
+ * symbolic-link entries are never indexed.
  *
  * @module @clawdsh/dsh-memory/search
  */
 
 import type { Embeddings, EmbeddingVector } from '@clawdsh/dsh-embeddings'
+import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FileSystem, FsDirEntry, FsTarget, FsVersion } from '@deepseek-ai/dsh-fs'
 import { chunkMarkdown } from './chunk.ts'
 import type { MemoryChunk } from './chunk.ts'
-import { isMemoryPath } from './memory-files.ts'
+import { assertSafeMemoryRoot, isMemoryPath, resolveMemoryTarget } from './memory-files.ts'
 
 /** One indexed memory file. */
 interface IndexedFile {
@@ -130,11 +132,14 @@ export class MemoryIndex {
   ): Promise<SearchHit[]> {
     await this.sync(signal)
     const pending: IndexedChunk[] = []
+    let chunkCount = 0
     for (const file of this.files.values()) {
       for (const chunk of file.chunks) {
+        chunkCount += 1
         if (chunk.vector === undefined) pending.push(chunk)
       }
     }
+    if (chunkCount === 0) return []
     const vectors = await embeddings.embed([query, ...pending.map(chunk => chunk.text)], signal)
     const queryVector = vectors[0]
     if (queryVector === undefined) {
@@ -171,18 +176,23 @@ export class MemoryIndex {
 
   private async doSync(signal?: AbortSignal): Promise<void> {
     const seen = new Set<string>()
-    const rootEntries = await this.fs.listDir(this.root, signal)
+    const rootPathInfo = await assertSafeMemoryRoot(this.fs, this.root, signal)
+    if (rootPathInfo === undefined) {
+      this.files.clear()
+      return
+    }
+    const rootEntries = await listDirOrEmpty(this.fs, this.root, signal)
     for (const entry of rootEntries) {
       if (entry.name === 'MEMORY.md' && entry.type === 'file') {
-        seen.add('MEMORY.md')
-        await this.refresh('MEMORY.md', entry, signal)
+        if (await this.refresh('MEMORY.md', entry, signal)) seen.add('MEMORY.md')
       } else if (entry.name === 'memory' && entry.type === 'directory') {
-        const children = await this.fs.listDir(entry.target, signal)
+        const pathInfo = await this.fs.lstat(entry.target.displayPath, undefined, signal)
+        if (pathInfo?.type !== 'directory' || !this.fs.contains(this.root, entry.target)) continue
+        const children = await listDirOrEmpty(this.fs, entry.target, signal)
         for (const child of children) {
           const rel = `memory/${child.name}`
           if (child.type !== 'file' || !isMemoryPath(rel)) continue
-          seen.add(rel)
-          await this.refresh(rel, child, signal)
+          if (await this.refresh(rel, child, signal)) seen.add(rel)
         }
       }
     }
@@ -191,18 +201,40 @@ export class MemoryIndex {
     }
   }
 
-  private async refresh(rel: string, entry: FsDirEntry, signal?: AbortSignal): Promise<void> {
-    const existing = this.files.get(rel)
-    if (entry.version !== undefined && existing !== undefined
-      && existing.version === entry.version && existing.size === entry.size) {
-      return
+  private async refresh(rel: string, entry: FsDirEntry, signal?: AbortSignal): Promise<boolean> {
+    try {
+      const pathInfo = await this.fs.lstat(entry.target.displayPath, undefined, signal)
+      if (pathInfo?.type !== 'file') return false
+      const target = await resolveMemoryTarget(this.fs, this.root, rel)
+      if (target === undefined) return false
+      const info = await this.fs.stat(target, signal)
+      if (info?.type !== 'file') return false
+      const existing = this.files.get(rel)
+      if (existing !== undefined && existing.version === info.version && existing.size === info.size) {
+        return true
+      }
+      const text = await this.fs.readText(target, signal)
+      const chunks = chunkMarkdown(text, this.chunkSizeChars, this.overlapChars)
+      this.files.set(rel, {
+        version: info.version,
+        size: info.size ?? text.length,
+        chunks: chunks.map(chunk => ({ ...chunk })),
+      })
+      return true
+    } catch (error: unknown) {
+      if (error instanceof FsError
+        && (error.code === 'FS_NOT_FOUND' || error.code === 'FS_NOT_REGULAR_FILE')) return false
+      throw error
     }
-    const text = await this.fs.readText(entry.target, signal)
-    const chunks = chunkMarkdown(text, this.chunkSizeChars, this.overlapChars)
-    this.files.set(rel, {
-      version: entry.version,
-      size: entry.size ?? text.length,
-      chunks: chunks.map(chunk => ({ ...chunk })),
-    })
+  }
+}
+
+/** A missing memory directory is the valid empty-store state. */
+async function listDirOrEmpty(fs: FileSystem, target: FsTarget, signal?: AbortSignal): Promise<FsDirEntry[]> {
+  try {
+    return await fs.listDir(target, signal)
+  } catch (error: unknown) {
+    if (error instanceof FsError && error.code === 'FS_NOT_FOUND') return []
+    throw error
   }
 }

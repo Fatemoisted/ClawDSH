@@ -87,7 +87,7 @@ export interface Config {
   ownerPreset: string
   /** Restricted preset used for every other sender or group. */
   safePreset: string
-  /** Absolute workspace assigned to channel-created Sessions. */
+  /** Absolute workspace recorded when a channel Session is first created. */
   cwd: string
   /** Absolute root shared only with the authenticated local bridge. */
   stagingRoot: string
@@ -127,6 +127,22 @@ interface ChannelActivitySink {
     readonly seq: number
     readonly status?: 'started' | 'failed' | 'sent'
   }): Promise<unknown>
+}
+
+/** Optional title surface used without making the host presentation package a runtime dependency. */
+interface SessionTitlePresenter {
+  get(session: Agent['session']): unknown
+  rename(session: Agent['session'], title: string): unknown
+}
+
+/** Optional workspace entity used without making the host workspace package a runtime dependency. */
+interface WorkspacePresenter {
+  attachSession(sessionId: SessionId): Promise<void>
+}
+
+/** Optional workspace registry used only to publish channel Session membership. */
+interface WorkspaceRegistryPresenter {
+  resolveByPath(path: string): Promise<WorkspacePresenter | undefined>
 }
 
 /** Exact pre-Agent cancellation requested through `turn.cancel`. */
@@ -909,8 +925,54 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       ? await this.ctx.agents.resume({ resumeSessionId: sessionId, agentOptions, setup })
       : await this.ctx.agents.create({ sessionId, meta: { cwd: this.config.cwd, agentPreset: preset }, agentOptions, setup })
     await handle.agent.whenIdle()
+    await this.makeDiscoverable(handle, route)
     this.handles.set(sessionId, handle)
     return handle
+  }
+
+  /** Publish privacy-safe host presentation metadata without owning channel delivery success. */
+  private async makeDiscoverable(handle: AgentHandle, route: ChannelRouteV1): Promise<void> {
+    await Promise.all([
+      this.publishTitle(handle, route),
+      this.attachWorkspace(handle),
+    ])
+  }
+
+  /** Set and persist a title only while the optional title service still reports none. */
+  private async publishTitle(handle: AgentHandle, route: ChannelRouteV1): Promise<void> {
+    const titles = this.ctx.get('sessionTitle') as SessionTitlePresenter | undefined
+    if (titles === undefined) return
+    try {
+      if (titles.get(handle.agent.session) !== undefined) return
+      titles.rename(handle.agent.session, channelSessionTitle(route))
+      await this.ctx.sessions.flush(handle.agent.session)
+    } catch (_presentationFailure) {
+      this.ctx.logger.warn('channel-agent: could not publish a display title for a channel Session')
+    }
+  }
+
+  /** Attach the Session when the optional registry recognizes its immutable workspace. */
+  private async attachWorkspace(handle: AgentHandle): Promise<void> {
+    const registry = this.ctx.get('workspaceRegistry') as WorkspaceRegistryPresenter | undefined
+    if (registry === undefined) return
+    const cwd = handle.agent.session.header.cwd
+    if (cwd === undefined) {
+      this.ctx.logger.warn('channel-agent: skipped workspace attachment because the channel Session has no recorded cwd')
+      return
+    }
+    let workspace: WorkspacePresenter | undefined
+    try {
+      workspace = await registry.resolveByPath(cwd)
+    } catch (_workspaceResolutionFailure) {
+      this.ctx.logger.warn('channel-agent: could not resolve workspace membership for a channel Session')
+      return
+    }
+    if (workspace === undefined) return
+    try {
+      await workspace.attachSession(handle.agent.session.id)
+    } catch (_workspaceAttachmentFailure) {
+      this.ctx.logger.warn('channel-agent: could not attach a channel Session to its workspace')
+    }
   }
 
   private async releaseBinding(binding: ChannelSessionBindingRecord | undefined): Promise<void> {
@@ -969,6 +1031,16 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       reason: `The channel turn was cancelled before Agent execution (${reason}).`,
     }
   }
+}
+
+/** Build a bounded title from non-personal route fields only. */
+function channelSessionTitle(route: ChannelRouteV1): string {
+  const normalized = String(route.channel)
+    .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const channel = Array.from(normalized).slice(0, 24).join('')
+  return `外部消息 · ${channel || '渠道'} · ${route.kind === 'direct' ? '私聊' : '群聊'}`
 }
 
 /** Active-run map key. */

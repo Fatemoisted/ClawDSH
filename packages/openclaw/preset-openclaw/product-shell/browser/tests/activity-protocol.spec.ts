@@ -44,4 +44,81 @@ describe('ClawDSH Activity protocol', () => {
       }],
     })).toThrow('summary')
   })
+
+  it('accepts legacy Memory write records and a privacy-safe write outcome', () => {
+    const record = {
+      version: 1 as const,
+      id: 'history:memory-write',
+      timestamp: '2026-08-16T00:00:00.000Z',
+      sessionId: 'session-one',
+      category: 'memory' as const,
+      kind: 'memory.write' as const,
+      status: 'succeeded' as const,
+      summary: 'Memory write activity recorded',
+      metadata: { scope: 'durable', seq: 12 },
+    }
+    const response = {
+      ...ACTIVITY_FIXTURE,
+      records: [record],
+    }
+
+    expect(parseClawdshActivityListResponse(response)).toBe(response)
+    const withOutcome = {
+      ...response,
+      records: [{ ...record, metadata: { scope: 'durable', outcome: 'already-stored', seq: 12 } }],
+    }
+    expect(parseClawdshActivityListResponse(withOutcome)).toBe(withOutcome)
+    expect(() => parseClawdshActivityListResponse({
+      ...response,
+      records: [{ ...record, metadata: { scope: 'private/path', seq: 12 } }],
+    })).toThrow('memory write scope')
+    expect(() => parseClawdshActivityListResponse({
+      ...response,
+      records: [{ ...record, metadata: { scope: 'daily', seq: 12, content: 'secret' } }],
+    })).toThrow('unknown field')
+    expect(() => parseClawdshActivityListResponse({
+      ...response,
+      records: [{ ...record, metadata: { scope: 'daily', outcome: 'already-stored', seq: 12 } }],
+    })).toThrow('inconsistent')
+  })
+
+  it('accepts legacy Memory update records and all privacy-safe update outcomes', () => {
+    const record = {
+      version: 1 as const,
+      id: 'history:memory-update',
+      timestamp: '2026-08-16T00:00:00.000Z',
+      sessionId: 'session-one',
+      category: 'memory' as const,
+      kind: 'memory.update' as const,
+      status: 'succeeded' as const,
+      summary: 'Memory update activity recorded',
+      metadata: { action: 'forgotten', seq: 13 },
+    }
+    const response = { ...ACTIVITY_FIXTURE, records: [record] }
+
+    expect(parseClawdshActivityListResponse(response)).toBe(response)
+    for (const [action, outcome] of [
+      ['updated', 'updated'],
+      ['forgotten', 'forgotten'],
+      ['updated', 'already-current'],
+      ['forgotten', 'not-found'],
+    ] as const) {
+      expect(parseClawdshActivityListResponse({
+        ...response,
+        records: [{ ...record, metadata: { action, outcome, seq: 13 } }],
+      })).toBeTruthy()
+    }
+    expect(() => parseClawdshActivityListResponse({
+      ...response,
+      records: [{ ...record, metadata: { action: 'rewritten', seq: 13 } }],
+    })).toThrow('memory update action')
+    expect(() => parseClawdshActivityListResponse({
+      ...response,
+      records: [{ ...record, metadata: { action: 'updated', seq: 13, oldContent: 'secret' } }],
+    })).toThrow('unknown field')
+    expect(() => parseClawdshActivityListResponse({
+      ...response,
+      records: [{ ...record, metadata: { action: 'forgotten', outcome: 'already-current', seq: 13 } }],
+    })).toThrow('inconsistent')
+  })
 })

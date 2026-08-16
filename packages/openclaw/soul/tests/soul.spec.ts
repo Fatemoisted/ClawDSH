@@ -50,7 +50,7 @@ function installActivity(ctx: Context, write: (input: PromptActivityInput) => Pr
 function emitRequestHeader(ctx: Context, scope: ScopeKey, sessionId: string, system: string, seq: number): void {
   const session = { id: sessionId }
   const event = { type: 'request/header', seq, data: { header: { system }, reason: 'initial' } }
-  const emit = ctx.emit as unknown as (
+  const emit = ctx.emit.bind(ctx) as unknown as (
     target: object,
     name: 'session/event',
     subject: typeof session,
@@ -79,6 +79,33 @@ describe('the soul row', () => {
     expect(sectionText(await ctx.systemPrompt.assemble({ scope: second }), SOUL_SECTION)).toBeUndefined()
     expect(ctx.settings.describe().find(entry => entry.ns === Soul.SOUL_SETTINGS_NAMESPACE)?.base)
       .toMatchObject({ enabled: true, text: 'base identity' })
+    await ctx.fiber.dispose()
+  })
+
+  it('allows intentionally disabled Host and session rows without placeholder Soul content', async () => {
+    const ctx = await harness('deployment identity', { enabled: false })
+    const key: ScopeKey = { agent: 'disabled-soul' }
+
+    await createScope(ctx, key).ctx.plugin(Soul, { enabled: false })
+
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBeUndefined()
+    expect(ctx.settings.describe().find(entry => entry.ns === Soul.SOUL_SETTINGS_NAMESPACE)?.value)
+      .toMatchObject({ enabled: false })
+    await ctx.fiber.dispose()
+  })
+
+  it('allows Settings to disable subsequent Sessions while clearing both content fields', async () => {
+    const ctx = await harness('deployment identity', { text: 'base identity' })
+    await ctx.settings.update(Soul.SOUL_SETTINGS_NAMESPACE, {
+      enabled: false,
+      source: '',
+      text: '',
+    })
+    const key: ScopeKey = { agent: 'settings-disabled-soul' }
+
+    await createScope(ctx, key).ctx.plugin(Soul, { text: 'preset identity' })
+
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBeUndefined()
     await ctx.fiber.dispose()
   })
 
@@ -298,6 +325,17 @@ describe('the soul row', () => {
 
     await expect(createScope(ctx, key).ctx.plugin(Soul, { text: '' }))
       .rejects.toThrow(/non-empty/)
+    await expect(createScope(ctx, key).ctx.plugin(Soul, { text: ' \n\t ' }))
+      .rejects.toThrow(/non-empty/)
+  })
+
+  it('treats a whitespace-only source as absent and uses inline text', async () => {
+    const ctx = await harness('')
+    const key: ScopeKey = { agent: 'inline-fallback' }
+
+    await createScope(ctx, key).ctx.plugin(Soul, { source: '   ', text: 'Inline identity.' })
+
+    expect(sectionText(await ctx.systemPrompt.assemble({ scope: key }), SOUL_SECTION)).toBe('Inline identity.')
   })
 
   it('fails loud on an unknown mode', async () => {
@@ -308,8 +346,9 @@ describe('the soul row', () => {
     // guard remains as defense for direct apply() calls.
     await expect(createScope(ctx, key).ctx.plugin(Soul, { text: 'x', mode: 'overwrite' as 'append' }))
       .rejects.toThrow(/\$\.mode expected/)
-    expect(() => Soul.apply(createScope(ctx, key).ctx, { text: 'x', mode: 'overwrite' as 'append' }))
-      .toThrow(/unknown mode/)
+    expect(() => {
+      Soul.apply(createScope(ctx, key).ctx, { text: 'x', mode: 'overwrite' as 'append' })
+    }).toThrow(/unknown mode/)
   })
 
   it('can suppress runtime context for its scope without changing the global assembly', async () => {

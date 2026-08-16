@@ -197,11 +197,14 @@ async function harness(
     pool?: MemoryMediaPool
     seed?: (domain: Domain<typeof channelAgentDomainSpec>) => Promise<void>
     mountAgent?: boolean
+    sessionTitle?: object
+    workspaceRegistry?: object
+    cwd?: string
   } = {},
 ): Promise<Harness> {
   const base = options.root ?? await mkdtemp(join(tmpdir(), 'dsh-channel-agent-'))
   if (options.root === undefined) roots.push(base)
-  const cwd = join(base, 'workspace')
+  const cwd = options.cwd ?? join(base, 'workspace')
   const stagingRoot = join(base, 'staging')
   await mkdir(cwd, { recursive: true })
   await mkdir(stagingRoot, { recursive: true })
@@ -236,6 +239,8 @@ async function harness(
   ctx.provide('agentPresets', {
     async mount(_agentCtx: Context, preset: string): Promise<void> { mounts.push(preset) },
   } as never)
+  if (options.sessionTitle !== undefined) ctx.provide('sessionTitle', options.sessionTitle as never)
+  if (options.workspaceRegistry !== undefined) ctx.provide('workspaceRegistry', options.workspaceRegistry as never)
   const saved: ImageAttachmentRef[] = []
   ctx.provide('attachments', {
     imageLimits: {
@@ -323,6 +328,124 @@ function routeTurn(
 }
 
 describe('channel Agent turn execution', () => {
+  it('publishes a privacy-safe title and workspace membership for a new channel Session', async () => {
+    const get = vi.fn(() => undefined)
+    const rename = vi.fn()
+    const attachSession = vi.fn(async () => {})
+    const resolveByPath = vi.fn(async () => ({ attachSession }))
+    const app = await harness([textResponse('reply')], {
+      sessionTitle: { get, rename },
+      workspaceRegistry: { resolveByPath },
+    })
+
+    const result = await app.ctx.channels.runTurn(turn({
+      text: 'private message text',
+      sender: { senderId: 'private-sender', displayName: 'Private Sender', trust: 'owner' },
+    }), execution())
+
+    expect(result).toMatchObject({ status: 'completed', text: 'reply' })
+    const session = app.ctx.agents.get(sessionIdFor(turn().route))?.session
+    expect(get).toHaveBeenCalledWith(session)
+    expect(rename).toHaveBeenCalledWith(session, '外部消息 · telegram · 私聊')
+    expect(resolveByPath).toHaveBeenCalledWith(app.cwd)
+    expect(attachSession).toHaveBeenCalledWith(session?.id)
+    const presentation = String(rename.mock.calls[0]?.[1])
+    expect(presentation).not.toContain('private message text')
+    expect(presentation).not.toContain('account-1')
+    expect(presentation).not.toContain('conversation-1')
+    expect(presentation).not.toContain('Private Sender')
+    expect(presentation).not.toContain('private-sender')
+  })
+
+  it('retains an existing channel Session title while still attaching its workspace', async () => {
+    const get = vi.fn(() => ({ title: 'Pinned title' }))
+    const rename = vi.fn()
+    const attachSession = vi.fn(async () => {})
+    const app = await harness([textResponse('reply')], {
+      sessionTitle: { get, rename },
+      workspaceRegistry: { resolveByPath: async () => ({ attachSession }) },
+    })
+
+    await app.ctx.channels.runTurn(turn(), execution())
+
+    expect(get).toHaveBeenCalledOnce()
+    expect(rename).not.toHaveBeenCalled()
+    expect(attachSession).toHaveBeenCalledWith(sessionIdFor(turn().route))
+  })
+
+  it('contains optional presentation failures and logs no dependency or route details', async () => {
+    const rename = vi.fn(() => { throw new Error('title-secret-canary') })
+    const attachSession = vi.fn(async () => { throw new Error('workspace-secret-canary') })
+    const app = await harness([textResponse('reply')], {
+      sessionTitle: { get: () => undefined, rename },
+      workspaceRegistry: { resolveByPath: async () => ({ attachSession }) },
+    })
+    const warn = vi.spyOn(app.ctx.logger, 'warn').mockImplementation(() => {})
+
+    await expect(app.ctx.channels.runTurn(turn(), execution())).resolves.toMatchObject({
+      status: 'completed', text: 'reply',
+    })
+
+    expect(warn.mock.calls).toEqual([
+      ['channel-agent: could not publish a display title for a channel Session'],
+      ['channel-agent: could not attach a channel Session to its workspace'],
+    ])
+    const warnings = JSON.stringify(warn.mock.calls)
+    expect(warnings).not.toContain('secret-canary')
+    expect(warnings).not.toContain(app.cwd)
+    expect(warnings).not.toContain('account-1')
+    expect(warnings).not.toContain('conversation-1')
+    expect(warnings).not.toContain('sender-1')
+  })
+
+  it('contains workspace resolution failure without suppressing the channel turn', async () => {
+    const app = await harness([textResponse('reply')], {
+      workspaceRegistry: {
+        resolveByPath: async () => { throw new Error('resolution-secret-canary') },
+      },
+    })
+    const warn = vi.spyOn(app.ctx.logger, 'warn').mockImplementation(() => {})
+
+    await expect(app.ctx.channels.runTurn(turn(), execution())).resolves.toMatchObject({
+      status: 'completed', text: 'reply',
+    })
+    expect(warn.mock.calls).toEqual([
+      ['channel-agent: could not resolve workspace membership for a channel Session'],
+    ])
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('resolution-secret-canary')
+  })
+
+  it('keeps a legacy title but skips workspace attachment when the stored Session has no cwd', async () => {
+    const get = vi.fn(() => ({ title: 'Pinned title' }))
+    const rename = vi.fn()
+    const resolveByPath = vi.fn()
+    const app = await harness([textResponse('reply')], {
+      mountAgent: false,
+      sessionTitle: { get, rename },
+      workspaceRegistry: { resolveByPath },
+    })
+    const legacy = await app.ctx.agents.create({ sessionId: sessionIdFor(turn().route) })
+    legacy.agent.session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'legacy history' }],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    await app.ctx.sessions.flush(legacy.agent.session)
+    await legacy.dispose()
+    await app.ctx.plugin(ChannelAgent, driverConfig(app))
+    const warn = vi.spyOn(app.ctx.logger, 'warn').mockImplementation(() => {})
+
+    await expect(app.ctx.channels.runTurn(turn(), execution())).resolves.toMatchObject({
+      status: 'completed', text: 'reply',
+    })
+
+    expect(get).toHaveBeenCalledWith(app.ctx.agents.get(sessionIdFor(turn().route))?.session)
+    expect(rename).not.toHaveBeenCalled()
+    expect(resolveByPath).not.toHaveBeenCalled()
+    expect(warn.mock.calls).toEqual([
+      ['channel-agent: skipped workspace attachment because the channel Session has no recorded cwd'],
+    ])
+  })
+
   it('runs a real Agent turn, logs provenance first, emits ordered progress, and replays durably', async () => {
     const app = await harness([textResponse('reply')])
     const notifications: ChannelTurnNotificationV1[] = []
@@ -1365,13 +1488,24 @@ describe('channel session and ledger lifecycle', () => {
     })
   })
 
-  it('resumes the same durable Session and route ledger after a runtime restart', async () => {
+  it('resumes at the stored cwd after config changes and gives the new cwd only to new routes', async () => {
     const first = await harness([textResponse('first')])
     const initial = await first.ctx.channels.runTurn(turn(), execution())
+    if (initial.sessionId === undefined) throw new Error('expected the initial route to create a Session')
     await first.ctx.fiber.dispose()
     contexts.splice(contexts.indexOf(first.ctx), 1)
 
-    const second = await harness([textResponse('second')], { root: first.root, pool: first.pool })
+    const rename = vi.fn()
+    const attachSession = vi.fn(async () => {})
+    const resolveByPath = vi.fn(async () => ({ attachSession }))
+    const changedCwd = join(first.root, 'changed-workspace')
+    const second = await harness([textResponse('second'), textResponse('fresh')], {
+      root: first.root,
+      pool: first.pool,
+      cwd: changedCwd,
+      sessionTitle: { get: () => undefined, rename },
+      workspaceRegistry: { resolveByPath },
+    })
     const continued = turn({
       idempotencyKey: 'continued', turnId: 'continued', runId: 'continued',
       messageId: 'continued', text: 'continue',
@@ -1381,6 +1515,21 @@ describe('channel session and ledger lifecycle', () => {
     expect(second.adapter.requests[0]?.messages.some(message =>
       message.role === 'assistant' && message.content.some(block => block.type === 'text' && block.text === 'first')),
     JSON.stringify(result)).toBe(true)
+    expect(rename).toHaveBeenCalledWith(second.ctx.agents.get(initial.sessionId)?.session, '外部消息 · telegram · 私聊')
+    expect(attachSession).toHaveBeenCalledWith(initial.sessionId)
+    expect(second.ctx.agents.get(initial.sessionId)?.session.header.cwd).toBe(first.cwd)
+    expect(resolveByPath).toHaveBeenNthCalledWith(1, first.cwd)
+
+    const fresh = routeTurn(continued, {
+      openclawSessionKey: 'fresh-session',
+      conversation: 'fresh-conversation',
+    } as never, {
+      idempotencyKey: 'fresh', turnId: 'fresh', runId: 'fresh', messageId: 'fresh', text: 'fresh',
+    })
+    const freshResult = await second.ctx.channels.runTurn(fresh, execution())
+    expect(freshResult.status).toBe('completed')
+    expect(second.ctx.agents.get(sessionIdFor(fresh.route))?.session.header.cwd).toBe(changedCwd)
+    expect(resolveByPath).toHaveBeenNthCalledWith(2, changedCwd)
   })
 
   it('retires a persisted binding even when this runtime has not resumed its Agent handle', async () => {

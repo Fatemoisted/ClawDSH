@@ -4,6 +4,8 @@ Status: implemented
 
 English | [中文](2026-08-14-openclaw-cron-mapping.zh.md)
 
+**Superseded in part.** The scheduler ownership decision remains current; preset composition, session discoverability, `every`/`at` timing, terminal run persistence, and lifecycle failure behavior are owned by [Composed and discoverable Automation sessions](../bug-fix/2026-08-16-automation-composed-discoverable-sessions.md).
+
 ## Problem
 
 The parity matrix's Scheduling/automation row (source: OpenClaw `src/cron/`, seam: `ctx.schedule` / `ctx.jobs`) was planning. The natural dsh landing — mounting on the existing schedule seam — turns out to be inexpressible: the schedule package is session-local task scheduling for live agents, while OpenClaw cron is a global, cold-start, minute-granularity scheduler with one dedicated durable session per job. The question: which dsh seam does the cron feature category actually land on, and what is the honest increment?

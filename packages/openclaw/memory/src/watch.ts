@@ -30,42 +30,43 @@ export interface MemoryWatchConfig {
   pollIntervalMs: number
 }
 
+/** Async watcher disposer with one explicit missing-root recovery operation. */
+export interface MemoryWatchDisposer {
+  /** Stop recovery work, close the active watcher, and settle after both are quiescent. */
+  (): Promise<void>
+  /** Reopen the watcher after its initially missing root has been created. */
+  recover(): Promise<void>
+}
+
 /**
  * Watch the memory root and report every changed memory file. Resolves once the
  * watcher is ready, so the caller never races the initial scan (a file written
  * immediately after startup is reported, not swallowed by `ignoreInitial`). A
  * missing root is not an error: Chokidar suppresses `ENOENT` and watches the
- * nearest existing ancestor, and `ready` still resolves. Recovering a root that
- * is created after startup is out of scope — this simplified watcher has no
- * rewatch logic. The disposer closes the watcher and tolerates a failing close.
+ * nearest existing ancestor, and `ready` still resolves. The returned
+ * `recover()` operation closes and reopens the watcher after `memory_write`
+ * creates an initially missing root. The disposer closes the watcher and
+ * tolerates a failing close.
  * @param ctx - Cordis context, for warning logs.
  * @param rootPath - absolute host path of the memory root.
  * @param config - watch tuning (enabled plus stability and poll intervals).
  * @param onMemoryFile - receives each changed memory-root-relative path.
- * @returns a disposer that closes the watcher; a no-op when disabled.
+ * @returns a disposer/controller that closes or explicitly recovers the watcher.
  */
 export async function installMemoryWatch(
   ctx: Context,
   rootPath: string,
   config: MemoryWatchConfig,
   onMemoryFile: (rel: string) => void,
-): Promise<() => void> {
-  if (!config.enabled) return () => {}
-  const watcher = chokidar.watch(rootPath, {
-    persistent: true,
-    ignoreInitial: true,
-    depth: 1,
-    followSymlinks: true,
-    atomic: true,
-    awaitWriteFinish: {
-      stabilityThreshold: config.stabilityThresholdMs,
-      pollInterval: config.pollIntervalMs,
-    },
-  })
+): Promise<MemoryWatchDisposer> {
+  if (!config.enabled) {
+    const disabled = (() => Promise.resolve()) as MemoryWatchDisposer
+    disabled.recover = () => Promise.resolve()
+    return disabled
+  }
   const warn = (label: string) => (error: unknown): void => {
     ctx.logger.warn(`memory: ${label}: ${String(error)}`)
   }
-  watcher.on('error', warn('watcher failed'))
   const onEvent = (path: string): void => {
     const rel = relative(rootPath, path)
     // Only whitelisted memory files invalidate; `add` events for a not-yet-
@@ -73,17 +74,69 @@ export async function installMemoryWatch(
     if (!isMemoryPath(rel)) return
     onMemoryFile(rel)
   }
-  watcher.on('add', onEvent)
-  watcher.on('change', onEvent)
-  watcher.on('unlink', onEvent)
-  // Chokidar always resolves `ready` after the initial scan, including for a
-  // missing root (it watches the nearest existing ancestor), so this cannot hang.
-  await new Promise<void>((resolve) => { watcher.once('ready', () => resolve()) })
-  return () => {
+  const open = async (): Promise<ReturnType<typeof chokidar.watch>> => {
+    const next = chokidar.watch(rootPath, {
+      persistent: true,
+      ignoreInitial: true,
+      depth: 1,
+      followSymlinks: false,
+      usePolling: true,
+      interval: config.pollIntervalMs,
+      atomic: true,
+      awaitWriteFinish: {
+        stabilityThreshold: config.stabilityThresholdMs,
+        pollInterval: config.pollIntervalMs,
+      },
+    })
+    next.on('error', warn('watcher failed'))
+    next.on('add', onEvent)
+    next.on('change', onEvent)
+    next.on('unlink', onEvent)
+    // Chokidar always resolves `ready` after the initial scan, including for a
+    // missing root (it watches the nearest existing ancestor), so this cannot hang.
+    await new Promise<void>((resolve) => {
+      next.once('ready', () => { resolve() })
+    })
+    return next
+  }
+  let watcher: ReturnType<typeof chokidar.watch> | undefined = await open()
+  let transition: Promise<void> = Promise.resolve()
+  let disposed = false
+  const isDisposed = (): boolean => disposed
+  let disposal: Promise<void> | undefined
+  const close = async (target: ReturnType<typeof chokidar.watch>): Promise<void> => {
     try {
-      void watcher.close().catch(warn('failed to close watcher'))
+      await target.close()
     } catch (error) {
       warn('failed to close watcher')(error)
     }
   }
+  const dispose = (() => {
+    if (disposal !== undefined) return disposal
+    disposed = true
+    disposal = transition.then(async () => {
+      const current = watcher
+      watcher = undefined
+      if (current !== undefined) await close(current)
+    })
+    return disposal
+  }) as MemoryWatchDisposer
+  dispose.recover = () => {
+    const run = transition.then(async () => {
+      if (isDisposed()) return
+      const previous = watcher
+      watcher = undefined
+      if (previous !== undefined) await close(previous)
+      if (isDisposed()) return
+      const next = await open()
+      if (isDisposed()) {
+        await close(next)
+        return
+      }
+      watcher = next
+    })
+    transition = run.catch(() => {})
+    return run
+  }
+  return dispose
 }

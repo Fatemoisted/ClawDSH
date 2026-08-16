@@ -96,6 +96,29 @@ describe('channel-agent managed configuration', () => {
     create.mockRestore()
   })
 
+  it('rejects a relative cwd from Settings before driver creation', async () => {
+    const base = config()
+    const snapshot = config({ cwd: 'relative/workspace' })
+    const register = vi.fn((_namespace: unknown, _schema: unknown, options: {
+      validate(candidate: ChannelAgentConfig): void
+    }) => {
+      options.validate(snapshot)
+      return { get: () => snapshot }
+    })
+    const create = vi.spyOn(ChannelAgentDriver, 'create')
+    const ctx = {
+      get: vi.fn(() => ({ register })),
+      channels: { registerDriver: vi.fn() },
+      effect: vi.fn(),
+    }
+
+    await expect(apply(ctx as never, base)).rejects.toThrow(/cwd must be absolute/)
+
+    expect(create).not.toHaveBeenCalled()
+    expect(ctx.channels.registerDriver).not.toHaveBeenCalled()
+    create.mockRestore()
+  })
+
   it.each([
     ['ownerPreset', 'unmanaged-owner'],
     ['safePreset', 'unmanaged-safe'],

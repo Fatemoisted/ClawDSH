@@ -109,11 +109,11 @@ Optional business plugin 保持 mounted，并暴露自身 Config schema。经过
 
 ## 产品壳
 
-[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md)与[本地 GUI 规格](../../../docs/specs/feature-gui-web.md)定义产品壳。`/clawdsh/` 拥有对话、ClawDSH 设置、ClawDSH 活动与 Harness 高级；`/` 保留原生 dsh Web。对话复用公开 dsh client graph 与 renderer。ClawDSH Settings 把 capability health 与 allowlist schema editing、optimistic revision、managed Gateway deployment、Automation rules 以及只写 dsh credential update 组合起来。Activity 跟随当前 Session，合并 standard history 与有界 sidecar，并通过 filter 与 cursor pagination 呈现固定且隐私安全的 Prompt、Memory、Channel、Skill 与 Automation 记录。未知产品 path 会渲染明确的未找到页面，不会落入 Harness。
+[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md)与[本地 GUI 规格](../../../docs/specs/feature-gui-web.md)定义产品壳。`/clawdsh/` 渲染一棵原生 dsh 应用，不增加第二个 sidebar；`/` 保留原生 dsh Web 作为 Harness 高级。原生 Settings panel 默认首先显示 ClawDSH，每个已选 Session 则显示「对话」「轨迹」与「ClawDSH 记录」。ClawDSH Settings 按五项用户功能分组，在 section 切换后保留内存 draft，为 dirty navigation 提供保护，让 credential 保持私有且短暂，说明 Automation 是结果保存在独立对话的可选定时工作，并让 Automation 与 OpenClaw Gateway 维持安全的默认关闭状态。「ClawDSH 记录」标签跟随 Slot 提供的 Session，合并 standard history 与有界 sidecar，为身份/上下文、Memory、外部消息、Skill 与定时任务提供隐私安全的中文解释。它会合并同一次请求的上下文准备，区分 Memory 真实变更与无修改结果，在回合完成后重新读取，为稍后到达的 sidecar 事实保留手动重新读取，并使用绑定 snapshot 的 pagination；Session seq 与固定 kind 留在收起的技术详情中。未知产品 path 会渲染明确的未找到页面，不会落入 Harness；两个旧子路径会在一个兼容周期内重定向到 `/clawdsh/`。
 
 Profile 关闭原生 `dsh web:` readiness line，并挂载 `@clawdsh/dsh-product-runtime`。Loader 结算后，该 runtime 打印 `clawdsh web: http://127.0.0.1:<port>/clawdsh/`，拥有产品静态 route，同时保持 `/` 的原生 fallback 不变。Nested browser build 把 asset 写入 `product-shell/runtime/web/`；两个 nested package 都不进入根 workspace 或 Client aggregate。
 
-该组装不注册新的 Client Slot，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。Activity 不增加上游 Session event type，Raw Trajectory 留在 Harness 高级，`dsh --profile web` 保持纯 Harness 入口。[Activity 规格](../../../docs/specs/feature-activity.md)拥有其存储、隐私与降级行为。
+该组装不注册新 Client Slot，只向既有公开 `conversation.hero.agentPreset`、`sidebar.footer.action`、`settings.section` 与 `conversation.view` Slot 贡献内容。它不使用 DOM 导航桥接，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。Activity 不增加上游 Session event type，raw Trajectory 继续归 dsh 所有，`dsh --profile web` 保持纯 Harness 入口。[Activity 规格](../../../docs/specs/feature-activity.md)拥有其存储、隐私与降级行为。
 
 ## 托管 preset
 

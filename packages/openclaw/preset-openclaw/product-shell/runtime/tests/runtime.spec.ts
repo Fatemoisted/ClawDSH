@@ -14,6 +14,7 @@ import {
   CLAWDSH_RPC_ENDPOINTS,
 } from '../../shared/src/protocol.ts'
 import { apply, internals } from '../src/index.ts'
+import { SETTINGS_MANIFEST } from '../src/settings-manifest.ts'
 
 interface CapturedResponse {
   response: ServerResponse
@@ -92,6 +93,20 @@ afterEach(() => {
 })
 
 describe('ClawDSH product runtime projections', () => {
+  it('keeps durable Session workspaces managed while exposing plain-language controls', () => {
+    const channelAgent = SETTINGS_MANIFEST.find(entry => entry.namespace === 'clawdsh-channel-agent')
+    expect(channelAgent?.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: ['cwd'], access: 'managed', label: '渠道工作目录' }),
+      expect.objectContaining({ path: ['shutdownGraceMs'], access: 'editable', label: '关停等待时间' }),
+    ]))
+    const automation = SETTINGS_MANIFEST.find(entry => entry.namespace === 'clawdsh-automation')
+    expect(automation?.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: ['enabled'], access: 'editable', label: '启用自动运行' }),
+      expect.objectContaining({ path: ['cwd'], access: 'managed', label: '自动任务工作目录' }),
+      expect.objectContaining({ path: ['rules'], access: 'editable', label: '自动任务规则' }),
+    ]))
+  })
+
   it('classifies Loader rows separately from channel support evidence', () => {
     const response = internals.capabilitiesResponse([
       entry('clawdsh-communication-plane', 'cordis:group', 2, false, true),
@@ -283,7 +298,7 @@ describe('ClawDSH product routes', () => {
     }
   })
 
-  it('redirects canonically and applies Host index transforms to SPA fallbacks', async () => {
+  it('redirects canonical and legacy paths and applies Host index transforms to SPA fallbacks', async () => {
     const temporary = mkdtempSync(join(tmpdir(), 'clawdsh-product-routes-'))
     const index = join(temporary, 'index.html')
     writeFileSync(index, '<main>shell</main>')
@@ -306,9 +321,13 @@ describe('ClawDSH product routes', () => {
 
     try {
       internals.registerProductRoutes(ctx, index)
-      const redirect = routes.find(route => route.kind === 'exact')
+      const redirect = routes.find(route => route.kind === 'exact' && route.path === '/clawdsh')
+      const settingsRedirect = routes.find(route => route.kind === 'exact' && route.path === '/clawdsh/settings')
+      const activityRedirect = routes.find(route => route.kind === 'exact' && route.path === '/clawdsh/activity')
       const staticRoute = routes.find(route => route.kind === 'prefix')
       expect(redirect?.path).toBe('/clawdsh')
+      expect(settingsRedirect?.path).toBe('/clawdsh/settings')
+      expect(activityRedirect?.path).toBe('/clawdsh/activity')
       expect(staticRoute?.path).toBe('/clawdsh')
 
       const redirected = captureResponse()
@@ -316,8 +335,19 @@ describe('ClawDSH product routes', () => {
       expect(redirected.status).toBe(308)
       expect(redirected.headers).toEqual({ location: '/clawdsh/?from=test' })
 
+      const redirectedSettings = captureResponse()
+      await settingsRedirect?.handler(request('/clawdsh/settings?section=memory'), redirectedSettings.response)
+      expect(redirectedSettings.status).toBe(308)
+      expect(redirectedSettings.headers).toEqual({ location: '/clawdsh/?section=memory' })
+
+      const redirectedActivity = captureResponse()
+      await activityRedirect?.handler(request('/clawdsh/activity?kind=memory', 'HEAD'), redirectedActivity.response)
+      expect(redirectedActivity.status).toBe(308)
+      expect(redirectedActivity.headers).toEqual({ location: '/clawdsh/?kind=memory' })
+      expect(redirectedActivity.body).toBe('')
+
       const rejectedMethod = captureResponse()
-      await staticRoute?.handler(request('/clawdsh/settings', 'POST'), rejectedMethod.response)
+      await settingsRedirect?.handler(request('/clawdsh/settings', 'POST'), rejectedMethod.response)
       expect(rejectedMethod.status).toBe(405)
 
       const traversal = captureResponse()
@@ -325,7 +355,7 @@ describe('ClawDSH product routes', () => {
       expect(traversal.status).toBe(403)
 
       const spa = captureResponse()
-      await staticRoute?.handler(request('/clawdsh/settings'), spa.response)
+      await staticRoute?.handler(request('/clawdsh/unknown'), spa.response)
       expect(spa.status).toBe(200)
       expect(spa.body).toBe('<main>shell<i>boot</i></main>')
     } finally {

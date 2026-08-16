@@ -28,6 +28,15 @@
       "path": "../../core/agent-default-model"
     },
     {
+      "path": "../../preset/agent-presets"
+    },
+    {
+      "path": "../../session/session-title"
+    },
+    {
+      "path": "../../workspace/workspace"
+    },
+    {
       "path": "../../runtime-diagnostics/invariants"
     }
   ]

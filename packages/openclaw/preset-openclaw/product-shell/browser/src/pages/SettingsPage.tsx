@@ -1,93 +1,92 @@
-import {
-  getPath,
-  rehydrateSchema,
-  validateDraft,
-} from '@deepseek-ai/dsh-client-schema-form'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type {
+  ClawdshCapability,
   ClawdshCapabilitiesResponse,
-  ClawdshCredentialDescriptor,
+  ClawdshLoaderEntry,
   ClawdshSettingsFieldPermission,
-  ClawdshSettingsNamespaceDescriptor,
-  ClawdshSettingsMutation,
 } from '../../../shared/src/protocol.ts'
-import {
-  ClawdshControlError,
-  type ClawdshControlClient,
-} from '../control-client.ts'
+import type { ClawdshControlClient } from '../control-client.ts'
 import {
   EFFECT_TIME_LABEL,
   LOADER_STATE_LABEL,
   ORIGIN_LABEL,
   SUPPORT_LABEL,
 } from '../capabilities.ts'
+import {
+  presentClawdshSettings,
+  type ClawdshFeatureId,
+  type ClawdshFeaturePresentation,
+} from '../settings-presentation.ts'
+import {
+  ClawdshSettingsStore,
+  type ClawdshCredentialDraftState,
+  type ClawdshNamespaceDraftState,
+} from '../settings-store.ts'
 import { AutomationRulesEditor } from './AutomationRulesEditor.tsx'
 import { GatewayExtensionsTable } from './GatewayExtensionsTable.tsx'
 import { SettingsFields, type SettingsFieldPresentation } from './settings-fields.tsx'
 import css from './SettingsPage.module.css'
 
-interface SettingsPageProps {
-  readonly control: ClawdshControlClient
-  readonly localControlAvailable: boolean
-}
-
-interface SettingsSnapshot {
-  readonly capabilities: ClawdshCapabilitiesResponse
-  readonly namespaces: readonly ClawdshSettingsNamespaceDescriptor[]
-  readonly credentials: readonly ClawdshCredentialDescriptor[]
-}
-
-type SettingsState =
-  | { readonly status: 'loading' }
-  | { readonly status: 'failed'; readonly message: string }
-  | { readonly status: 'ready'; readonly snapshot: SettingsSnapshot }
-
-type SaveState =
-  | { readonly status: 'idle' }
-  | { readonly status: 'saving' | 'resetting' | 'reloading' }
-  | { readonly status: 'failed'; readonly message: string }
-  | { readonly status: 'conflict'; readonly message: string }
-
-function errorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : String(reason)
-}
-
-function plainRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
-  return structuredClone(value as Record<string, unknown>)
-}
-
-function equalJson(left: unknown, right: unknown): boolean {
-  if (left === right) return true
-  if (typeof left !== 'object' || typeof right !== 'object' || left === null || right === null) return false
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left)
-      && Array.isArray(right)
-      && left.length === right.length
-      && left.every((item, index) => equalJson(item, right[index]))
+type SettingsPageProps =
+  | { readonly store: ClawdshSettingsStore; readonly control?: never; readonly localControlAvailable?: never }
+  | {
+    readonly store?: never
+    readonly control: ClawdshControlClient
+    readonly localControlAvailable: boolean
   }
-  const leftRecord = left as Record<string, unknown>
-  const rightRecord = right as Record<string, unknown>
-  const keys = Object.keys(leftRecord)
-  return keys.length === Object.keys(rightRecord).length
-    && keys.every(key => Object.hasOwn(rightRecord, key) && equalJson(leftRecord[key], rightRecord[key]))
+
+interface ResolvedStore {
+  readonly store: ClawdshSettingsStore
+  readonly owned: boolean
 }
 
-function operationsFor(
-  descriptor: ClawdshSettingsNamespaceDescriptor,
-  draft: Record<string, unknown>,
-): ClawdshSettingsMutation[] {
-  return descriptor.fields
-    .filter(field => field.access === 'editable')
-    .flatMap((field): ClawdshSettingsMutation[] => {
-      const before = getPath(descriptor.value, field.path)
-      const after = getPath(draft, field.path)
-      if (equalJson(before, after)) return []
-      return after === undefined
-        ? [{ op: 'unset', path: field.path }]
-        : [{ op: 'set', path: field.path, value: after }]
-    })
+interface FeatureConfig {
+  readonly id: ClawdshFeatureId
+  readonly label: string
+  readonly description: string
+  readonly namespaces: readonly { readonly id: string; readonly subsection?: string }[]
+  readonly credentialId?: string
 }
+
+const FEATURE_CONFIGS: readonly FeatureConfig[] = [
+  {
+    id: 'soul',
+    label: 'Soul',
+    description: '控制新会话中的身份和行为规则。',
+    namespaces: [{ id: 'clawdsh-soul' }],
+  },
+  {
+    id: 'memory',
+    label: 'Memory',
+    description: '持久记忆与可选的语义搜索配置在同一功能组中。',
+    namespaces: [
+      { id: 'clawdsh-memory', subsection: 'Memory 行为' },
+      { id: 'clawdsh-embeddings-ark', subsection: '语义搜索（Ark Embeddings）' },
+    ],
+    credentialId: 'ark-api-key',
+  },
+  {
+    id: 'skills',
+    label: 'Skills Hub',
+    description: '配置本地和托管 Skill 目录及准入检查。',
+    namespaces: [{ id: 'clawdsh-skills-hub' }],
+  },
+  {
+    id: 'channels',
+    label: 'Channels',
+    description: 'Agent Bridge 与安全默认关闭的 OpenClaw Gateway。',
+    namespaces: [
+      { id: 'clawdsh-channel-agent', subsection: 'Agent Bridge' },
+      { id: 'clawdsh-channel-openclaw', subsection: 'OpenClaw Gateway' },
+    ],
+  },
+  {
+    id: 'automation',
+    label: '自动任务（Automation）',
+    description: '让 ClawDSH 在你设定的时间自动执行一条任务，例如每天整理待办或每周生成研究回顾。默认关闭，不影响正常对话。',
+    namespaces: [{ id: 'clawdsh-automation' }],
+  },
+]
 
 function fieldPresentation(field: ClawdshSettingsFieldPermission): SettingsFieldPresentation {
   return {
@@ -98,86 +97,26 @@ function fieldPresentation(field: ClawdshSettingsFieldPermission): SettingsField
   }
 }
 
-interface NamespaceCardProps {
-  readonly descriptor: ClawdshSettingsNamespaceDescriptor
-  readonly control: ClawdshControlClient
-  readonly onUpdated: (descriptor: ClawdshSettingsNamespaceDescriptor) => void
-  readonly onCommitted: () => void
+function busy(state: ClawdshNamespaceDraftState): boolean {
+  return state.save.status === 'saving'
+    || state.save.status === 'resetting'
+    || state.save.status === 'reloading'
 }
 
-function NamespaceCard({ descriptor, control, onUpdated, onCommitted }: NamespaceCardProps): ReactNode {
-  const [draft, setDraft] = useState<Record<string, unknown>>(() => plainRecord(descriptor.value))
-  const [save, setSave] = useState<SaveState>({ status: 'idle' })
-  const operations = operationsFor(descriptor, draft)
-  const validation = useMemo(
-    () => validateDraft(rehydrateSchema(descriptor.schema), draft),
-    [descriptor.schema, draft],
-  )
-  const busy = save.status === 'saving' || save.status === 'resetting' || save.status === 'reloading'
-  const conflicted = save.status === 'conflict'
-
-  useEffect(() => {
-    setDraft(plainRecord(descriptor.value))
-    setSave({ status: 'idle' })
-  }, [descriptor.desiredRevision, descriptor.value])
-
-  const accept = (next: ClawdshSettingsNamespaceDescriptor): void => {
-    onUpdated(next)
-    setDraft(plainRecord(next.value))
-    setSave({ status: 'idle' })
-    onCommitted()
-  }
-
-  const saveDraft = async (): Promise<void> => {
-    if (validation !== undefined || operations.length === 0 || busy || conflicted) return
-    setSave({ status: 'saving' })
-    try {
-      const response = await control.mutateSetting({
-        version: 1,
-        namespace: descriptor.namespace,
-        expectedRevision: descriptor.desiredRevision,
-        operations,
-      })
-      accept(response.namespace)
-    } catch (reason) {
-      if (reason instanceof ClawdshControlError && reason.code === 'settings-conflict') {
-        setSave({ status: 'conflict', message: '设置已在其他页面或外部编辑器中更新。当前草稿未丢失；重新加载后才能继续保存。' })
-      } else {
-        setSave({ status: 'failed', message: errorMessage(reason) })
-      }
-    }
-  }
-
-  const reset = async (): Promise<void> => {
-    if (busy || conflicted) return
-    setSave({ status: 'resetting' })
-    try {
-      const response = await control.resetSettings({
-        version: 1,
-        namespace: descriptor.namespace,
-        expectedRevision: descriptor.desiredRevision,
-      })
-      accept(response.namespace)
-    } catch (reason) {
-      if (reason instanceof ClawdshControlError && reason.code === 'settings-conflict') {
-        setSave({ status: 'conflict', message: '设置已发生变化；重新加载后才能重置。' })
-      } else {
-        setSave({ status: 'failed', message: errorMessage(reason) })
-      }
-    }
-  }
-
-  const reload = async (): Promise<void> => {
-    setSave({ status: 'reloading' })
-    try {
-      const response = await control.loadSettings()
-      const next = response.namespaces.find(item => item.namespace === descriptor.namespace)
-      if (next === undefined) throw new Error(`设置 namespace ${descriptor.namespace} 已不可用`)
-      accept(next)
-    } catch (reason) {
-      setSave({ status: 'conflict', message: `重新加载失败：${errorMessage(reason)}` })
-    }
-  }
+function NamespaceEditor({
+  state,
+  store,
+  subsection,
+}: {
+  readonly state: ClawdshNamespaceDraftState
+  readonly store: ClawdshSettingsStore
+  readonly subsection?: string
+}): ReactNode {
+  const descriptor = state.descriptor
+  const isBusy = busy(state)
+  const conflicted = state.save.status === 'conflict'
+  const dirty = store.namespaceDirty(descriptor.namespace)
+  const validation = store.validation(descriptor.namespace)
 
   const renderSpecial = (
     field: SettingsFieldPresentation,
@@ -185,12 +124,12 @@ function NamespaceCard({ descriptor, control, onUpdated, onCommitted }: Namespac
     onChange: (value: unknown) => void,
   ): ReactNode | undefined => {
     const path = field.path.join('.')
-    if (descriptor.editor === 'automation-rules' && path === 'rules') {
+    if (descriptor.editor === 'automation-rules' && path === 'rules' && field.editable) {
       return (
         <AutomationRulesEditor
           id={`clawdsh-setting-${descriptor.namespace}-rules`}
           value={value}
-          disabled={busy || conflicted}
+          disabled={isBusy || conflicted}
           onChange={onChange}
         />
       )
@@ -202,339 +141,401 @@ function NamespaceCard({ descriptor, control, onUpdated, onCommitted }: Namespac
   }
 
   return (
-    <article className={css.namespaceCard} data-settings-namespace={descriptor.namespace}>
-      <div className={css.namespaceHeading}>
-        <div>
-          <h3>{descriptor.label}</h3>
+    <div className={css.namespaceEditor} data-settings-namespace={descriptor.namespace}>
+      {subsection === undefined ? null : (
+        <div className={css.subsectionHeading}>
+          <h4>{subsection}</h4>
           <p>{descriptor.description}</p>
         </div>
-        {descriptor.restartRequired ? <span className={css.restartBadge}>需要重启</span> : null}
-      </div>
+      )}
       <div className={css.revisionLine}>
         <span>生效：{EFFECT_TIME_LABEL[descriptor.effectTime]}</span>
         <span>期望版本：{descriptor.desiredRevision}</span>
         <span>运行版本：{descriptor.runtimeRevision}</span>
+        {dirty ? <span className={css.dirtyBadge}>未保存</span> : null}
+        {descriptor.restartRequired ? (
+          <span className={css.restartBadge}>重启后应用修改</span>
+        ) : null}
       </div>
       <SettingsFields
         idPrefix={`clawdsh-setting-${descriptor.namespace}`}
         serializedSchema={descriptor.schema}
-        draft={draft}
+        draft={state.draft}
         fields={descriptor.fields.map(fieldPresentation)}
-        disabled={busy || conflicted}
-        onChange={setDraft}
+        disabled={isBusy || conflicted}
+        onChange={(draft) => { store.setNamespaceDraft(descriptor.namespace, draft) }}
         renderSpecial={renderSpecial}
       />
-      {validation === undefined ? null : <div className={css.saveError} role="alert">{validation}</div>}
-      {save.status === 'failed' ? <div className={css.saveError} role="alert">{save.message}</div> : null}
-      {save.status === 'conflict' ? (
+      {validation === undefined || validation === '设置结构不可用'
+        ? null
+        : <div className={css.saveError} role="alert">{validation}</div>}
+      {state.save.status === 'failed' ? <div className={css.saveError} role="alert">{state.save.message}</div> : null}
+      {state.save.status === 'conflict' ? (
         <div className={css.conflict} role="alert">
-          <span>{save.message}</span>
-          <button type="button" className={css.secondaryButton} onClick={() => { void reload() }}>重新加载</button>
+          <span>{state.save.message}</span>
+          <button type="button" className={css.secondaryButton} onClick={() => { void store.reloadNamespace(descriptor.namespace) }}>
+            重新加载
+          </button>
         </div>
       ) : null}
       <div className={css.namespaceActions}>
+        {dirty ? (
+          <button type="button" className={css.secondaryButton} disabled={isBusy || conflicted} onClick={() => { store.clearNamespaceDraft(descriptor.namespace) }}>
+            放弃草稿
+          </button>
+        ) : null}
         <button
           type="button"
           className={css.secondaryButton}
-          disabled={busy || conflicted}
-          onClick={() => { void reset() }}
+          disabled={isBusy || conflicted}
+          onClick={() => { void store.resetNamespace(descriptor.namespace) }}
         >
-          {save.status === 'resetting' ? '重置中…' : '重置用户设置'}
+          {state.save.status === 'resetting' ? '重置中…' : '重置用户设置'}
         </button>
         <button
           type="button"
           className={css.primaryButton}
-          disabled={busy || conflicted || validation !== undefined || operations.length === 0}
-          onClick={() => { void saveDraft() }}
+          disabled={isBusy || conflicted || validation !== undefined || !dirty}
+          onClick={() => { void store.saveNamespace(descriptor.namespace) }}
         >
-          {save.status === 'saving' ? '保存中…' : '保存'}
+          {state.save.status === 'saving' ? '保存中…' : '保存'}
         </button>
       </div>
-    </article>
+    </div>
   )
 }
 
-interface CredentialCardProps {
-  readonly credential: ClawdshCredentialDescriptor
-  readonly control: ClawdshControlClient
-  readonly onUpdated: (credential: ClawdshCredentialDescriptor) => void
-}
-
-function CredentialCard({ credential, control, onUpdated }: CredentialCardProps): ReactNode {
-  const [secret, setSecret] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string>()
-
-  const store = async (): Promise<void> => {
-    if (secret === '' || busy || !credential.writable) return
-    const value = secret
-    setBusy(true)
-    setError(undefined)
-    try {
-      onUpdated((await control.setCredential(credential.id, value)).credential)
-    } catch (reason) {
-      setError(errorMessage(reason))
-    } finally {
-      setSecret('')
-      setBusy(false)
-    }
-  }
-
-  const unset = async (): Promise<void> => {
-    if (busy || !credential.writable) return
-    setBusy(true)
-    setError(undefined)
-    try {
-      onUpdated((await control.unsetCredential(credential.id)).credential)
-    } catch (reason) {
-      setError(errorMessage(reason))
-    } finally {
-      setSecret('')
-      setBusy(false)
-    }
-  }
-
+function CredentialEditor({
+  state,
+  store,
+}: {
+  readonly state: ClawdshCredentialDraftState
+  readonly store: ClawdshSettingsStore
+}): ReactNode {
+  const credential = state.descriptor
+  const secret = store.credentialSecret(credential.id)
   return (
-    <article className={css.credentialCard} data-credential={credential.id}>
+    <div className={css.credentialEditor} data-credential={credential.id}>
       <div className={css.credentialHeading}>
         <div>
-          <h3>{credential.label}</h3>
-          <p>{credential.id} · {EFFECT_TIME_LABEL[credential.effectTime]}</p>
+          <h4>{credential.label}</h4>
+          <p>{credential.configured
+            ? '已配置，语义搜索会在首次调用时验证'
+            : '未配置；基础长期记忆工具仍会加载，本地存储在首次使用时验证'}</p>
         </div>
         <span className={css.configuredBadge} data-configured={String(credential.configured)}>
           {credential.configured ? '已配置' : '未配置'}
         </span>
       </div>
-      <label>
-        <span className={css.emptyValue}>新凭据（不会回显）</span>
+      <label className={css.credentialLabel}>
+        <span>新凭据（不会回显）</span>
         <input
           className={css.credentialInput}
           type="password"
           autoComplete="new-password"
           value={secret}
-          disabled={busy || !credential.writable}
-          onChange={(event) => { setSecret(event.target.value) }}
+          disabled={state.busy || !credential.writable}
+          onChange={(event) => { store.setCredentialSecret(credential.id, event.target.value) }}
         />
       </label>
-      {credential.source === undefined ? null : <span className={css.emptyValue}>当前来源：{credential.source}</span>}
-      {error === undefined ? null : <div className={css.saveError} role="alert">{error}</div>}
+      {credential.source === undefined ? null : <span className={css.muted}>当前来源：{credential.source}</span>}
+      {state.error === undefined ? null : <div className={css.saveError} role="alert">{state.error}</div>}
       <div className={css.credentialActions}>
-        <button type="button" className={css.dangerButton} disabled={busy || !credential.writable || !credential.configured} onClick={() => { void unset() }}>移除</button>
-        <button type="button" className={css.primaryButton} disabled={busy || !credential.writable || secret === ''} onClick={() => { void store() }}>{busy ? '处理中…' : '保存凭据'}</button>
+        {secret === '' ? null : (
+          <button type="button" className={css.secondaryButton} disabled={state.busy} onClick={() => { store.clearCredentialSecret(credential.id) }}>
+            清空
+          </button>
+        )}
+        <button
+          type="button"
+          className={css.dangerButton}
+          disabled={state.busy || !credential.writable || !credential.configured}
+          onClick={() => { void store.unsetCredential(credential.id) }}
+        >
+          移除
+        </button>
+        <button
+          type="button"
+          className={css.primaryButton}
+          disabled={state.busy || !credential.writable || secret === ''}
+          onClick={() => { void store.saveCredential(credential.id) }}
+        >
+          {state.busy ? '处理中…' : '保存凭据'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function FeatureStatusCard({ feature }: { readonly feature: ClawdshFeaturePresentation }): ReactNode {
+  return (
+    <li className={css.featureStatus} data-feature={feature.id} data-tone={feature.tone}>
+      <div className={css.featureStatusTopline}>
+        <strong>{feature.label}</strong>
+        <span className={css.featureState} data-tone={feature.tone}>{feature.primary}</span>
+      </div>
+      <p>{feature.detail}</p>
+      {feature.restartNotice === undefined ? null : <span className={css.restartNotice}>{feature.restartNotice}</span>}
+    </li>
+  )
+}
+
+function FeatureConfiguration({
+  config,
+  namespaces,
+  credentials,
+  store,
+}: {
+  readonly config: FeatureConfig
+  readonly namespaces: readonly ClawdshNamespaceDraftState[]
+  readonly credentials: readonly ClawdshCredentialDraftState[]
+  readonly store: ClawdshSettingsStore
+}): ReactNode {
+  const key = `feature:${config.id}`
+  const expanded = store.getSnapshot().expanded.has(key)
+  const bodyId = `clawdsh-feature-config-${config.id}`
+  const rows = config.namespaces.map(entry => ({
+    ...entry,
+    state: namespaces.find(candidate => candidate.descriptor.namespace === entry.id),
+  }))
+  const credential = config.credentialId === undefined
+    ? undefined
+    : credentials.find(candidate => candidate.descriptor.id === config.credentialId)
+  return (
+    <article className={css.featureConfig} data-feature-config={config.id}>
+      <div className={css.featureConfigHeading}>
+        <div>
+          <h3>{config.label}</h3>
+          <p>{config.description}</p>
+        </div>
+        <button
+          type="button"
+          className={css.sectionToggle}
+          aria-expanded={expanded}
+          aria-controls={bodyId}
+          aria-label={`${expanded ? '收起' : '展开'} ${config.label}`}
+          onClick={() => { store.setExpanded(key, !expanded) }}
+        >
+          {expanded ? '收起' : '展开'}
+        </button>
+      </div>
+      <div id={bodyId} className={css.featureConfigBody} hidden={!expanded}>
+        {rows.map(row => row.state === undefined ? (
+          <div className={css.unknownSetting} key={row.id}>这项配置暂时不可用。</div>
+        ) : (
+          <NamespaceEditor
+            key={row.id}
+            state={row.state}
+            store={store}
+            {...row.subsection === undefined ? {} : { subsection: row.subsection }}
+          />
+        ))}
+        {config.credentialId !== undefined && credential === undefined
+          ? <div className={css.unknownSetting}>Ark API Key 状态未知。</div>
+          : credential === undefined ? null : <CredentialEditor state={credential} store={store} />}
       </div>
     </article>
   )
 }
 
-function CapabilityOverview({ snapshot }: { readonly snapshot: ClawdshCapabilitiesResponse }): ReactNode {
+function CapabilityImplementation({ capability }: { readonly capability: ClawdshCapability }): ReactNode {
+  const components: ClawdshCapability['components'] = Array.isArray(capability.components)
+    ? capability.components
+    : []
+  const channels: ClawdshCapability['channels'] = Array.isArray(capability.channels)
+    ? capability.channels
+    : undefined
   return (
-    <section className={css.section} aria-labelledby="clawdsh-overview-title">
-      <div className={css.sectionHeading}>
-        <div>
-          <h2 id="clawdsh-overview-title">ClawDSH 总览</h2>
-          <p>能力健康度、依赖和渠道支持证据独立于设置值展示。</p>
-        </div>
-        <span className={css.count}>
-          {snapshot.capabilities.filter(item => item.state === 'active').length}/{snapshot.capabilities.length} 运行中
-        </span>
+    <div className={css.implementationCapability} data-implementation-capability={capability.id}>
+      <div className={css.implementationTopline}>
+        <strong>{capability.label}</strong>
+        <span className={css.loaderState} data-state={capability.state}>{LOADER_STATE_LABEL[capability.state]}</span>
       </div>
-      <ul className={css.capabilities}>
-        {snapshot.capabilities.map(capability => (
-          <li className={css.capability} key={capability.id} data-capability={capability.id}>
-            <div className={css.capabilityTopline}>
-              <strong>{capability.label}</strong>
-              <span
-                className={css.state}
-                data-state={capability.state}
-                role="status"
-                aria-label={`${capability.label} ${LOADER_STATE_LABEL[capability.state]}`}
-              >
-                {LOADER_STATE_LABEL[capability.state]}
-              </span>
-            </div>
-            <p>{capability.description}</p>
-            <dl>
-              <div><dt>生效</dt><dd>{EFFECT_TIME_LABEL[capability.effectTime]}</dd></div>
-              <div><dt>依赖</dt><dd>{capability.dependencies.length === 0 ? '无' : capability.dependencies.join(' · ')}</dd></div>
-            </dl>
-            <ul className={css.components} aria-label={`${capability.label} 组件`}>
-              {capability.components.map(component => (
-                <li key={component.id}>
-                  <span>
-                    <strong>{component.label}</strong>
-                    <small>{component.packages.join(' · ')}</small>
-                    <small>状态来源：{component.stateSource === 'preset' ? 'Preset' : 'Loader'}</small>
-                  </span>
-                  <span className={css.state} data-state={component.state}>{LOADER_STATE_LABEL[component.state]}</span>
-                </li>
-              ))}
-            </ul>
-            {capability.channels === undefined ? null : (
-              <div className={css.channels}>
-                <strong>渠道目录</strong>
-                <ul>
-                  {capability.channels.map(channel => (
-                    <li key={channel.id}>
-                      <span>{channel.label}</span>
-                      <span data-support={channel.support}>{SUPPORT_LABEL[channel.support]}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+      <ul>
+        {components.map(component => (
+          <li key={component.id}>
+            <span><strong>{component.label}</strong><small>{component.packages.join(' · ')}</small></span>
+            <span>{component.stateSource === 'preset' ? 'Preset' : 'Loader'} · {LOADER_STATE_LABEL[component.state]}</span>
           </li>
         ))}
       </ul>
-    </section>
+      {channels === undefined ? null : (
+        <ul aria-label="渠道目录">
+          {channels.map(channel => (
+            <li key={channel.id}><span>{channel.label}</span><span>{SUPPORT_LABEL[channel.support]}</span></li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 
-function LoaderInventory({ snapshot }: { readonly snapshot: ClawdshCapabilitiesResponse }): ReactNode {
+function SystemDetails({
+  capabilities,
+  store,
+}: {
+  readonly capabilities: ClawdshCapabilitiesResponse
+  readonly store: ClawdshSettingsStore
+}): ReactNode {
+  const [query, setQuery] = useState('')
+  const [limit, setLimit] = useState(25)
+  const expanded = store.getSnapshot().expanded.has('system-details')
+  const needle = query.trim().toLocaleLowerCase()
+  const loaderInventory: readonly ClawdshLoaderEntry[] = Array.isArray(capabilities.loaderInventory)
+    ? capabilities.loaderInventory
+    : []
+  const filtered = loaderInventory.filter(entry => needle === '' || [
+    entry.entryId,
+    entry.moduleName,
+    entry.fiberPhase ?? '未观测',
+    ORIGIN_LABEL[entry.source],
+    entry.enabled ? '启用' : '关闭',
+  ].some(value => value.toLocaleLowerCase().includes(needle)))
+  const visible = filtered.slice(0, limit)
+  const bodyId = 'clawdsh-system-details-body'
+  const implementationCapabilities: ClawdshCapabilitiesResponse['capabilities'] = Array.isArray(capabilities.capabilities)
+    ? capabilities.capabilities
+    : []
   return (
-    <section className={css.section} aria-labelledby="loader-inventory-title">
+    <section className={css.section} aria-labelledby="clawdsh-system-details-title">
       <div className={css.sectionHeading}>
-        <div><h2 id="loader-inventory-title">Loader 清单</h2><p>高级只读诊断；普通设置不会任意启停 Loader entry。</p></div>
-        <span className={css.count}>{snapshot.loaderInventory.length} 项</span>
+        <div>
+          <h2 id="clawdsh-system-details-title">系统与实现详情</h2>
+          <p>Activity、package、Loader 和渠道目录仅用于诊断，不计入用户功能状态。</p>
+        </div>
+        <button
+          type="button"
+          className={css.sectionToggle}
+          aria-expanded={expanded}
+          aria-controls={bodyId}
+          onClick={() => { store.setExpanded('system-details', !expanded) }}
+        >
+          {expanded ? '收起' : '展开'}
+        </button>
       </div>
-      <div className={css.tableWrap}>
-        <table>
-          <thead><tr><th>来源</th><th>模块</th><th>配置</th><th>Fiber</th></tr></thead>
-          <tbody>
-            {snapshot.loaderInventory.map(entry => (
-              <tr key={entry.entryId}>
-                <td><span className={css.origin} data-origin={ORIGIN_LABEL[entry.source]}>{ORIGIN_LABEL[entry.source]}</span></td>
-                <td><code title={entry.entryId}>{entry.moduleName}</code></td>
-                <td>{entry.enabled ? '启用' : '关闭'}</td>
-                <td>{entry.fiberPhase ?? '未观测'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div id={bodyId} className={css.systemDetailsBody} hidden={!expanded}>
+        <div className={css.implementationGrid}>
+          {implementationCapabilities.map(capability => <CapabilityImplementation key={capability.id} capability={capability} />)}
+        </div>
+        <div className={css.loaderHeading}>
+          <div><h3>Loader 清单</h3><span>{String(loaderInventory.length)} 项</span></div>
+          <label>筛选 Loader<input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setLimit(25) }} /></label>
+        </div>
+        <div className={css.tableWrap}>
+          <table>
+            <thead><tr><th>来源</th><th>模块</th><th>配置</th><th>Fiber</th></tr></thead>
+            <tbody>
+              {visible.map(entry => (
+                <tr key={entry.entryId}>
+                  <td>{ORIGIN_LABEL[entry.source]}</td>
+                  <td><code title={entry.entryId}>{entry.moduleName}</code></td>
+                  <td>{entry.enabled ? '启用' : '关闭'}</td>
+                  <td>{entry.fiberPhase ?? '未观测'}</td>
+                </tr>
+              ))}
+              {visible.length === 0 ? <tr><td colSpan={4} className={css.emptyTable}>没有匹配项。</td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+        {visible.length < filtered.length ? (
+          <button type="button" className={css.secondaryButton} onClick={() => { setLimit(value => value + 25) }}>
+            显示更多（{visible.length}/{filtered.length}）
+          </button>
+        ) : null}
       </div>
     </section>
   )
 }
 
-/** Complete ClawDSH settings, credentials, capability health, and advanced inventory. */
-export function SettingsPage({ control, localControlAvailable }: SettingsPageProps): ReactNode {
-  const [request, setRequest] = useState(0)
-  const [state, setState] = useState<SettingsState>({ status: 'loading' })
+/** Native ClawDSH settings section backed by a plugin-lifetime memory store. */
+export function SettingsPage(props: SettingsPageProps): ReactNode {
+  const [resolved] = useState<ResolvedStore>(() => props.store === undefined
+    ? { store: new ClawdshSettingsStore(props.control, props.localControlAvailable), owned: true }
+    : { store: props.store, owned: false })
+  const store = resolved.store
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
 
   useEffect(() => {
-    if (!localControlAvailable) return
-    let current = true
-    void Promise.all([
-      control.loadCapabilities(),
-      control.loadSettings(),
-      control.loadCredentials(),
-    ]).then(
-      ([capabilities, settings, credentials]) => {
-        if (current) setState({
-          status: 'ready',
-          snapshot: {
-            capabilities,
-            namespaces: settings.namespaces,
-            credentials: credentials.credentials,
-          },
-        })
-      },
-      (reason: unknown) => {
-        if (current) setState({ status: 'failed', message: errorMessage(reason) })
-      },
-    )
-    return () => { current = false }
-  }, [control, localControlAvailable, request])
+    void store.ensureLoaded()
+    return resolved.owned ? () => { store.dispose() } : undefined
+  }, [resolved.owned, store])
 
-  const updateNamespace = (descriptor: ClawdshSettingsNamespaceDescriptor): void => {
-    setState(previous => previous.status !== 'ready' ? previous : {
-      status: 'ready',
-      snapshot: {
-        ...previous.snapshot,
-        namespaces: previous.snapshot.namespaces.map(item => (
-          item.namespace === descriptor.namespace ? descriptor : item
-        )),
-      },
+  const presentation = useMemo(() => {
+    if (snapshot.status !== 'ready' || snapshot.capabilities === undefined) return undefined
+    return presentClawdshSettings({
+      capabilities: snapshot.capabilities,
+      namespaces: snapshot.namespaces.map(item => item.descriptor),
+      credentials: snapshot.credentials.map(item => item.descriptor),
     })
-  }
-
-  const updateCredential = (credential: ClawdshCredentialDescriptor): void => {
-    setState(previous => previous.status !== 'ready' ? previous : {
-      status: 'ready',
-      snapshot: {
-        ...previous.snapshot,
-        credentials: previous.snapshot.credentials.map(item => item.id === credential.id ? credential : item),
-      },
-    })
-  }
-
-  const refreshCapabilities = (): void => {
-    void control.loadCapabilities().then((capabilities) => {
-      setState(previous => previous.status !== 'ready' ? previous : {
-        status: 'ready',
-        snapshot: { ...previous.snapshot, capabilities },
-      })
-    }, () => {
-      // The committed settings descriptor remains authoritative when a health refresh is unavailable.
-    })
-  }
+  }, [snapshot])
 
   return (
     <div className={css.page}>
       <header className={css.header}>
-        <p className={css.eyebrow}>本地产品控制面</p>
-        <h1>ClawDSH 设置</h1>
-        <p>配置 ClawDSH 自有能力。DeepSeek Harness 原生设置与 raw Trajectory 继续留在 Harness 高级界面。</p>
+        <h1>ClawDSH</h1>
+        <p>个人助手功能、凭据和安全默认值。运行证据与配置状态分开显示。</p>
       </header>
 
-      {!localControlAvailable ? (
-        <div className={css.failure} role="status">
-          <strong>ClawDSH 设置仅本机可用</strong>
-          <span>远程页面仍可使用对话；请在运行 ClawDSH 的本机打开此页面管理产品能力。</span>
-        </div>
-      ) : null}
-      {localControlAvailable && state.status === 'loading' ? <p className={css.status}>正在读取设置与运行状态…</p> : null}
-      {localControlAvailable && state.status === 'failed' ? (
-        <div className={css.failure} role="alert">
-          <strong>暂时无法读取 ClawDSH 设置</strong>
-          <span>{state.message}</span>
-          <button type="button" onClick={() => { setState({ status: 'loading' }); setRequest(value => value + 1) }}>重试</button>
+      {snapshot.dirtyCount > 0 ? (
+        <div className={css.dirtyNotice} role="status">
+          有 {snapshot.dirtyCount} 项修改尚未保存；关闭或切换设置分区不会丢失草稿，刷新页面前浏览器会提醒。
         </div>
       ) : null}
 
-      {localControlAvailable && state.status === 'ready' ? (
+      {snapshot.status === 'ready' && snapshot.message !== undefined ? (
+        <div className={css.partialWarning} role="status">{snapshot.message}</div>
+      ) : null}
+
+      {snapshot.status === 'remote' ? (
+        <div className={css.failure} role="status">
+          <strong>ClawDSH 设置仅本机可用</strong>
+          <span>远程页面仍可使用对话；请在运行 ClawDSH 的本机管理这些功能。</span>
+        </div>
+      ) : null}
+      {snapshot.status === 'idle' || snapshot.status === 'loading' ? <p className={css.status}>正在读取设置与运行状态…</p> : null}
+      {snapshot.status === 'failed' ? (
+        <div className={css.failure} role="alert">
+          <strong>暂时无法读取 ClawDSH 设置</strong>
+          <span>{snapshot.message}</span>
+          <button type="button" onClick={() => { void store.retry() }}>重试</button>
+        </div>
+      ) : null}
+
+      {snapshot.status === 'ready' && presentation !== undefined && snapshot.capabilities !== undefined ? (
         <>
-          <section className={css.section} aria-labelledby="settings-namespaces-title">
+          <section className={css.section} aria-labelledby="clawdsh-feature-status-title">
             <div className={css.sectionHeading}>
-              <div><h2 id="settings-namespaces-title">产品能力设置</h2><p>每个能力保存自己的草稿和 revision；需要重启的修改会明确标记。</p></div>
-              <span className={css.count}>{state.snapshot.namespaces.length} 个 namespace</span>
+              <div><h2 id="clawdsh-feature-status-title">功能状态</h2><p>“已启用”表示组件已装载且运行开关生效，不代表每次实际调用已验证；不主动执行远端探针。</p></div>
+              <span className={css.summaryCount}>
+                {presentation.counts.enabled} 项已启用 · {presentation.counts.disabled} 项未启用
+                {presentation.counts.unknown === 0 ? '' : ` · ${String(presentation.counts.unknown)} 项状态未知`}
+                {presentation.counts.reminders === 0 ? '' : ` · ${String(presentation.counts.reminders)} 个配置提醒`}
+              </span>
             </div>
-            <div className={css.namespaceList}>
-              {state.snapshot.namespaces.map(descriptor => (
-                <NamespaceCard
-                  key={descriptor.namespace}
-                  descriptor={descriptor}
-                  control={control}
-                  onUpdated={updateNamespace}
-                  onCommitted={refreshCapabilities}
+            <ul className={css.featureStatuses}>
+              {presentation.features.map(feature => <FeatureStatusCard key={feature.id} feature={feature} />)}
+            </ul>
+          </section>
+
+          <section className={css.section} aria-labelledby="clawdsh-feature-config-title">
+            <div className={css.sectionHeading}>
+              <div><h2 id="clawdsh-feature-config-title">功能配置</h2><p>设置按用户功能组织；保存仍以 namespace revision 原子提交。</p></div>
+              <span className={css.summaryCount}>5 项功能配置</span>
+            </div>
+            <div className={css.featureConfigList}>
+              {FEATURE_CONFIGS.map(config => (
+                <FeatureConfiguration
+                  key={config.id}
+                  config={config}
+                  namespaces={snapshot.namespaces}
+                  credentials={snapshot.credentials}
+                  store={store}
                 />
               ))}
             </div>
           </section>
 
-          <section className={css.section} aria-labelledby="credentials-title">
-            <div className={css.sectionHeading}>
-              <div><h2 id="credentials-title">ClawDSH 凭据</h2><p>这里只管理 DSH 自有凭据；飞书、Telegram 等平台凭据始终由 OpenClaw Gateway 独占。</p></div>
-              <span className={css.count}>{state.snapshot.credentials.length} 项</span>
-            </div>
-            <div className={css.credentialList}>
-              {state.snapshot.credentials.map(credential => (
-                <CredentialCard key={credential.id} credential={credential} control={control} onUpdated={updateCredential} />
-              ))}
-            </div>
-          </section>
-
-          <CapabilityOverview snapshot={state.snapshot.capabilities} />
-          <LoaderInventory snapshot={state.snapshot.capabilities} />
+          <SystemDetails capabilities={snapshot.capabilities} store={store} />
         </>
       ) : null}
     </div>

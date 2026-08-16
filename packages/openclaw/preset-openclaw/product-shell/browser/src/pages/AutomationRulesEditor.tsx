@@ -43,12 +43,26 @@ function scheduleKind(schedule: Record<string, unknown>): 'cron' | 'at' | 'every
   return schedule.kind === 'cron' || schedule.kind === 'at' ? schedule.kind : 'every'
 }
 
+function newRuleId(): string {
+  return `rule-${crypto.randomUUID()}`
+}
+
 /** Structured Automation rules editor; rules never pass through an arbitrary JSON control. */
 export function AutomationRulesEditor({ id, value, disabled, onChange }: AutomationRulesEditorProps): ReactNode {
   const rules = rulesOf(value)
   return (
     <div className={css.ruleEditor} id={id}>
-      {rules.length === 0 ? <p className={css.emptyValue}>尚未配置自动化规则。</p> : null}
+      <p className={css.emptyValue}>
+        每个自动任务由“什么时候运行”和“让 ClawDSH 做什么”组成。保存后还需要开启自动运行并重启 ClawDSH 才会生效。
+      </p>
+      <p className={css.emptyValue}>
+        它不是普通对话的必选项。任务完成后，结果保存在以“自动任务 · 任务名”命名的独立对话中，不会插入你当前的对话。
+      </p>
+      {rules.length === 0 ? (
+        <p className={css.emptyValue}>
+          还没有自动任务。你可以设置每天 9 点整理待办、每周生成研究回顾，或在指定时间执行一次提醒。
+        </p>
+      ) : null}
       {rules.map((rule, index) => {
         const kind = scheduleKind(rule.schedule)
         const update = (patch: Partial<RuleRecord>): void => { onChange(replaceRule(rules, index, patch)) }
@@ -57,15 +71,18 @@ export function AutomationRulesEditor({ id, value, disabled, onChange }: Automat
         }
         return (
           <fieldset className={css.rule} key={`${rule.id}:${String(index)}`} disabled={disabled}>
-            <legend>规则 {String(index + 1)}</legend>
-            <label>规则 ID<input value={rule.id} onChange={(event) => { update({ id: event.target.value }) }} /></label>
-            <label>名称<input value={rule.name} onChange={(event) => { update({ name: event.target.value }) }} /></label>
+            <legend>自动任务 {String(index + 1)}</legend>
+            <div className={css.fieldCopy}>
+              <span className={css.fieldLabel}>任务标识</span>
+              <code>{rule.id}</code>
+            </div>
+            <label>任务名称<input value={rule.name} onChange={(event) => { update({ name: event.target.value }) }} /></label>
             <label className={css.checkboxLabel}>
               <input type="checkbox" checked={rule.enabled} onChange={(event) => { update({ enabled: event.target.checked }) }} />
-              启用此规则
+              启用此任务
             </label>
             <label>
-              调度方式
+              运行方式
               <select
                 value={kind}
                 onChange={(event) => {
@@ -86,7 +103,7 @@ export function AutomationRulesEditor({ id, value, disabled, onChange }: Automat
             </label>
             {kind === 'every' ? (
               <label>
-                间隔秒数
+                每隔多少秒
                 <input
                   type="number"
                   min={1}
@@ -106,14 +123,14 @@ export function AutomationRulesEditor({ id, value, disabled, onChange }: Automat
               <label>执行时间（ISO 8601）<input value={String(rule.schedule.at ?? '')} onChange={(event) => { updateSchedule({ at: event.target.value }) }} /></label>
             ) : null}
             <label className={css.messageField}>
-              任务消息
+              让 ClawDSH 做什么
               <textarea
                 rows={4}
                 value={rule.message}
                 onChange={(event) => { update({ message: event.target.value }) }}
               />
             </label>
-            <button type="button" className={css.secondaryButton} onClick={() => { onChange(rules.filter((_, position) => position !== index)) }}>删除规则</button>
+            <button type="button" className={css.secondaryButton} onClick={() => { onChange(rules.filter((_, position) => position !== index)) }}>删除任务</button>
           </fieldset>
         )
       })}
@@ -123,7 +140,7 @@ export function AutomationRulesEditor({ id, value, disabled, onChange }: Automat
         disabled={disabled}
         onClick={() => {
           onChange([...rules, {
-            id: `rule-${String(rules.length + 1)}`,
+            id: newRuleId(),
             name: '',
             enabled: true,
             schedule: { kind: 'every', seconds: 3600 },
@@ -131,7 +148,7 @@ export function AutomationRulesEditor({ id, value, disabled, onChange }: Automat
           }])
         }}
       >
-        添加规则
+        添加自动任务
       </button>
     </div>
   )

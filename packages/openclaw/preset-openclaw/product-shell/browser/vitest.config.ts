@@ -9,6 +9,9 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['tests/**/*.spec.ts', 'tests/**/*.spec.tsx'],
     restoreMocks: true,
+    server: {
+      deps: { inline: ['@deepseek-ai/dsh-client-ui-primitives'] },
+    },
   },
   define: {
     'process.versions.node': '"0.0.0"',

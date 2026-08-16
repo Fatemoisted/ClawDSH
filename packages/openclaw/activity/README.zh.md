@@ -16,15 +16,15 @@ schema 只接受 `true`。Activity 是 ClawDSH 产品的必需能力，但生产
 
 ## 生产者 API
 
-服务为每个固定 kind 提供一个类型化方法：`promptContribution`、`memorySearch`、`memoryRead`、`memoryFlush`、`channelReceived`、`channelDelivery`、`skillCatalog`、`skillLoaded`、`skillInvoked` 和 `automationRun`。每个方法返回 `{ written, degraded }` 并在内部消化文件系统失败；生产者不得把 Activity 成功当成自身操作的提交点。
+服务为每个固定 sidecar kind 提供一个类型化方法：`promptContribution`、`memorySearch`、`memoryRead`、`memoryWrite`、`memoryUpdate`、`memoryFlush`、`channelReceived`、`channelDelivery`、`skillCatalog`、`skillLoaded`、`skillInvoked` 和 `automationRun`。每个方法返回 `{ written, degraded }` 并在内部消化文件系统失败；生产者不得把 Activity 成功当成自身操作的提交点。
 
-Prompt 记录只保留固定 section 身份、append/replace 模式、字符数、SHA-256、生产者和 Session seq。Memory 记录只保留 kind、生命周期状态和 seq。Channel 记录只保留 adapter、direct/group 分类、mention 事实、生命周期状态和 seq。Skill 记录只保留 skill 身份或目录数量、生命周期状态和 seq。Automation 记录只保留 rule 身份、计划时间、生命周期状态和 seq。
+Prompt 记录只保留固定 section 身份、append/replace 模式、字符数、SHA-256、生产者和 Session seq。Memory 记录只保留 kind、生命周期状态、seq、写入 scope、更新 action 和可选的封闭 outcome。Channel 记录只保留 adapter、direct/group 分类、mention 事实、生命周期状态和 seq。Skill 记录只保留 skill 身份或目录数量、生命周期状态和 seq。Automation 记录只保留 rule 身份、计划时间、生命周期状态和 seq。
 
 `list({ sessionId, producers? })` 会等待当前服务实例已经接收的写入，按选定 Session 和生产者文件校验每一行 JSONL，并且只返回规范记录以及 `availability`、`degraded` 和稳定的 `activity-data-incomplete` warning。它绝不返回物理路径或文件系统错误。
 
-`page(request, { live?, inspect? })` 会投影标准 Session history，优先使用传入的 live log，并在其缺失时回退到已经校验的 `sessionPersistence.inspect()` events，然后把投影与 sidecar 合并。projector 识别 Memory 工具调用/结果和 flush 消息、channel 来源的用户消息、skill 工具/目录/调用记录以及 `automation/run`；它绝不复制消息正文、工具参数/结果、平台身份、provider 路径或错误正文。语义重复项优先保留标准 history 记录，冲突的重复 id 会把页面标记为 degraded。
+`page(request, { live?, inspect? })` 会投影标准 Session history，优先使用传入的 live log，并在其缺失时回退到已经校验的 `sessionPersistence.inspect()` events，然后把投影与 sidecar 合并。Projector 用 `(turn, step, callId)` 匹配支持的工具调用与结果。它识别 Memory 搜索、读取、写入、更新和 flush；channel 来源的用户消息；skill 工具、目录和调用记录；以及 `automation/run`。它只读取 Memory 包自有的精确成功文案，派生 `stored`、`already-stored`、`updated`、`forgotten`、`already-current` 或 `not-found`；无法识别的旧结果会省略 outcome，不会猜测。它绝不保留消息正文、任意工具参数或结果、平台身份、provider 路径或错误正文。语义重复项优先保留标准 history 记录，冲突的重复 id 会把页面标记为 degraded，每次 Automation 执行在排序前折叠为一条最终已知 lifecycle 记录。
 
-页面默认返回最新 50 条，最多接受 100 条。version-1 base64url cursor 绑定 Session hash、规范化 category filter、order、timestamp 和 id；来自其他查询的 cursor 会失败，不会静默改变含义。history 或 sidecar 任一不可用时，页面仍会返回另一来源，并提供明确的 availability 和稳定 warning。
+页面默认返回最新 50 条，最多接受 100 条。Version-1 base64url cursor 绑定 Session hash、规范化 category filter、order、完整筛选结果的 snapshot digest、timestamp 和 id。来自其他查询或结果 snapshot 已变化的 cursor 会失败，不会静默跳过、重复或重排记录。History 或 sidecar 任一不可用时，页面仍会返回另一来源，并提供明确的 availability 和稳定 warning。
 
 ## Sidecar 存储
 

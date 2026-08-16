@@ -31,14 +31,16 @@ The `clawdsh-skills-hub` settings namespace is restart-applied. A disabled start
 
 - **Why a thin provider, not a reimplementation**: the skill registry already owns layered merging, within-layer rank ordering, registration disposal, catalog caching, and the model-facing catalog/load tools. skills-hub contributes only the OpenClaw source conventions and gating (see the [skills-domain mapping Agent Note](../../../.agents/notes/implemented/architecture/2026-08-14-openclaw-skills-domain-mapping.md));
 - **Rank contract**: workspace `<cwd>/skills` = 300 (the custom slot: below dsh-native project dirs, above user dirs), extra dirs = 350, managed `~/.clawdbot/skills` = 450 (below dsh-native user dirs: the native dir outranks the legacy clawdbot dir); same-rank ties resolve by provider registration order;
-- **Gating at list time**: `requires.bins` (all on PATH), `requires.anyBins` (at least one), `requires.env` (env var set); gated-out skills are excluded from the catalog; bins are probed on PATH without child processes;
-- **Directory + SKILL.md only**: matches OpenClaw's convention; a directory without `SKILL.md` is not a skill, a missing root yields no skills (OpenClaw-style silent skip), invalid files warn and are skipped;
+- **Gating at list time**: `requires.bins` (all on PATH), `requires.anyBins` (at least one), `requires.env` (non-empty environment value); gated-out skills are excluded from the catalog; malformed metadata or gating fails closed, and bins are probed on PATH without child processes;
+- **Directory + SKILL.md only**: matches OpenClaw's convention; frontmatter must start at the first line (an optional UTF-8 BOM is accepted), a directory without `SKILL.md` is not a skill, a missing root yields no skills, and invalid files warn without quoting their contents;
 - **No install execution, no remote registry**: the OpenClaw baseline distributes ClawHub skills through an external CLI; this package loads what is already on disk.
 - **Provider-level disable**: `enabled: false` registers no provider, so no ClawHub root participates in catalog collection.
+- **Registration-scoped cancellation**: disposal aborts this provider's pending discovery and body reads; no new root or PATH probe starts after the registration ends.
 
 ## Changelog
 
 - 0.1.0: first release (workspace/managed/extra roots, `metadata.clawdbot` gating, JSON-string metadata normalization; 10 contract tests, keyless).
+- 0.1.0 (2026-08-16 integration hardening): anchored frontmatter, fail-closed metadata and gating, non-empty env gates and extra paths, and registration-scoped cancellation.
 
 ## Model Experience
 

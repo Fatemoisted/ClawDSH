@@ -1,5 +1,6 @@
 /** Merge, deduplication, filtering, ordering, and opaque cursor pagination for Activity. */
 
+import { createHash } from 'node:crypto'
 import { TextDecoder } from 'node:util'
 import { projectSessionHistory } from './projector.ts'
 import { sessionDigest } from './storage.ts'
@@ -52,6 +53,7 @@ interface CursorV1 {
   readonly session: string
   readonly categories: readonly ClawdshActivityCategory[]
   readonly order: ClawdshActivityOrder
+  readonly snapshot: string
   readonly timestamp: string
   readonly id: string
 }
@@ -88,21 +90,23 @@ export function createActivityPage(
     ? { records: [] as readonly ClawdshActivityRecord[], degraded: false }
     : projectSessionHistory(sessionId, selected.events)
   const merged = mergeRecords(sessionId, projected.records, sidecars.records)
-  const filtered = merged.records
+  const collapsed = collapseAutomationRuns(merged.records)
+  const filtered = collapsed.records
     .filter(record => categories.includes(record.category))
     .sort((left, right) => compareRecord(left, right, order))
+  const snapshot = snapshotDigest(filtered)
   const cursor = request.cursor === undefined
     ? undefined
-    : decodeCursor(request.cursor, sessionId, categories, order)
+    : decodeCursor(request.cursor, sessionId, categories, order, snapshot)
   const remaining = cursor === undefined
     ? filtered
     : filtered.filter(record => compareAnchor(record, cursor, order) > 0)
   const records = remaining.slice(0, limit)
   const last = records.at(-1)
   const nextCursor = remaining.length > limit && last !== undefined
-    ? encodeCursor(sessionId, categories, order, last)
+    ? encodeCursor(sessionId, categories, order, snapshot, last)
     : undefined
-  const degraded = projected.degraded || sidecars.degraded || merged.degraded
+  const degraded = projected.degraded || sidecars.degraded || merged.degraded || collapsed.degraded
   const warnings = warningsFor(selected.availability, sidecars, degraded)
   return Object.freeze({
     records: Object.freeze(records),
@@ -114,6 +118,36 @@ export function createActivityPage(
     degraded,
     warnings: Object.freeze(warnings),
   })
+}
+
+function collapseAutomationRuns(records: readonly ClawdshActivityRecord[]): MergeResult {
+  const collapsed: ClawdshActivityRecord[] = []
+  const runs = new Map<string, number>()
+  let degraded = false
+  for (const record of records) {
+    if (record.kind !== 'automation.run') {
+      collapsed.push(record)
+      continue
+    }
+    const key = `${record.sessionId}\u0000${String(record.metadata.ruleId)}\u0000${String(record.metadata.scheduledAt)}`
+    const existingIndex = runs.get(key)
+    if (existingIndex === undefined) {
+      runs.set(key, collapsed.length)
+      collapsed.push(record)
+      continue
+    }
+    const existing = collapsed[existingIndex]
+    if (existing === undefined) throw new Error('automation run index must reference a collapsed record')
+    const existingTerminal = existing.status !== 'started'
+    const candidateTerminal = record.status !== 'started'
+    if (existingTerminal !== candidateTerminal) {
+      if (candidateTerminal) collapsed[existingIndex] = record
+      continue
+    }
+    degraded = true
+    if (compareRecord(existing, record, 'asc') < 0) collapsed[existingIndex] = record
+  }
+  return { records: collapsed, degraded }
 }
 
 function selectHistory(history: ClawdshActivityHistorySources): {
@@ -214,6 +248,7 @@ function encodeCursor(
   sessionId: string,
   categories: readonly ClawdshActivityCategory[],
   order: ClawdshActivityOrder,
+  snapshot: string,
   record: Pick<ClawdshActivityRecord, 'timestamp' | 'id'>,
 ): string {
   const payload: CursorV1 = {
@@ -221,6 +256,7 @@ function encodeCursor(
     session: sessionDigest(sessionId),
     categories,
     order,
+    snapshot,
     timestamp: record.timestamp,
     id: record.id,
   }
@@ -232,6 +268,7 @@ function decodeCursor(
   sessionId: string,
   categories: readonly ClawdshActivityCategory[],
   order: ClawdshActivityOrder,
+  snapshot: string,
 ): CursorV1 {
   if (token.length === 0 || token.length > MAX_CURSOR_CHARS || !CURSOR_PATTERN.test(token)) {
     throw new ClawdshActivityQueryError('invalid-cursor', 'activity cursor is malformed')
@@ -247,12 +284,14 @@ function decodeCursor(
   }
   const record = asRecord(value)
   if (record === undefined
-    || !hasExactKeys(record, ['version', 'session', 'categories', 'order', 'timestamp', 'id'])
+    || !hasExactKeys(record, ['version', 'session', 'categories', 'order', 'snapshot', 'timestamp', 'id'])
     || record.version !== 1
     || typeof record.session !== 'string'
     || !Array.isArray(record.categories)
     || !record.categories.every(isActivityCategory)
     || (record.order !== 'asc' && record.order !== 'desc')
+    || typeof record.snapshot !== 'string'
+    || !/^[a-f0-9]{64}$/.test(record.snapshot)
     || typeof record.timestamp !== 'string'
     || !isCanonicalTimestamp(record.timestamp)
     || !isCursorId(record.id)) {
@@ -261,17 +300,42 @@ function decodeCursor(
   const cursorCategories = canonicalCategories(record.categories)
   if (record.session !== sessionDigest(sessionId)
     || record.order !== order
-    || !equalCategories(cursorCategories, categories)) {
-    throw new ClawdshActivityQueryError('cursor-mismatch', 'activity cursor does not match this Session, filter, or order')
+    || !equalCategories(cursorCategories, categories)
+    || record.snapshot !== snapshot) {
+    throw new ClawdshActivityQueryError(
+      'cursor-mismatch',
+      'activity cursor does not match this Session, filter, order, or result snapshot',
+    )
   }
   return {
     version: 1,
     session: record.session,
     categories: cursorCategories,
     order: record.order,
+    snapshot: record.snapshot,
     timestamp: record.timestamp,
     id: record.id,
   }
+}
+
+function snapshotDigest(records: readonly ClawdshActivityRecord[]): string {
+  const hash = createHash('sha256')
+  for (const record of records) {
+    const metadata = Object.keys(record.metadata).sort().map(key => [key, record.metadata[key]])
+    hash.update(JSON.stringify([
+      record.version,
+      record.id,
+      record.timestamp,
+      record.sessionId,
+      record.category,
+      record.kind,
+      record.status ?? null,
+      record.summary,
+      metadata,
+    ]))
+    hash.update('\n')
+  }
+  return hash.digest('hex')
 }
 
 function warningsFor(

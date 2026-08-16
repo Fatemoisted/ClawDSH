@@ -33,7 +33,7 @@ export const DEFAULT_FLUSH_RESERVE_TOKENS_FLOOR = 20_000
 /** Default soft band below the reserve where the flush becomes due (OpenClaw `softThresholdTokens`). */
 export const DEFAULT_FLUSH_SOFT_THRESHOLD_TOKENS = 4_000
 /** Default flush prompt, OpenClaw's semantics verbatim. */
-export const DEFAULT_FLUSH_PROMPT = 'Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). If nothing to store, reply with NO_REPLY.'
+export const DEFAULT_FLUSH_PROMPT = 'Store durable memories now with memory_write. If nothing to store, reply with NO_REPLY.'
 
 /** Flush sub-config of the memory row. */
 export interface FlushConfig {

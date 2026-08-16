@@ -140,10 +140,7 @@ export class SoulSettingsHost extends Service {
    */
   forSession(entry: Config): Config {
     const user = this.settings?.describe().find(descriptor => descriptor.ns === SOUL_SETTINGS_NAMESPACE)?.user
-    return Config({
-      ...entry,
-      ...(isRecord(user) ? user : {}),
-    })
+    return Config(Object.assign({}, entry, isRecord(user) ? user : {}))
   }
 }
 
@@ -152,9 +149,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function validateSoulConfig(config: Config): void {
-  if ((config.source ?? '') === '' && (config.text ?? '') === '') {
+  if (config.enabled === false) return
+  if (!hasContent(config.source) && !hasContent(config.text)) {
     throw new Error('soul: settings require a non-empty "source" file path or inline "text"')
   }
+}
+
+function hasContent(value: string | undefined): boolean {
+  return value !== undefined && value.trim().length > 0
 }
 
 /**
@@ -166,18 +168,14 @@ export function apply(ctx: Context, config: Config): void {
   if (scopeOf(ctx) === undefined) {
     throw new Error('soul: mounts only inside an agent scope (an unscoped mount would publish a process-global soul)')
   }
-  if (config.mode !== undefined && config.mode !== 'replace' && config.mode !== 'append') {
-    throw new Error(`soul: unknown mode ${JSON.stringify(config.mode)}; expected "replace" or "append"`)
-  }
+  resolveMode(config.mode)
   const resolved = ctx.get('clawdshSoulSettings')?.forSession(config) ?? Config(config)
   if (!(resolved.enabled ?? true)) return
-  const mode = resolved.mode ?? 'append'
-  if (mode !== 'replace' && mode !== 'append') {
-    throw new Error(`soul: unknown mode ${JSON.stringify(mode)}; expected "replace" or "append"`)
-  }
+  const mode = resolveMode(resolved.mode)
   const base = ctx.baseUrl === undefined ? undefined : fileURLToPath(ctx.baseUrl)
-  const text = resolved.source ? readFileSync(resolve(base ?? '.', resolved.source), 'utf8') : (resolved.text ?? '')
-  if (text === '') {
+  const source = resolved.source?.trim() ?? ''
+  const text = source === '' ? (resolved.text ?? '') : readFileSync(resolve(base ?? '.', source), 'utf8')
+  if (!hasContent(text)) {
     throw new Error('soul: config requires a non-empty "source" file path or inline "text"')
   }
   ctx.effect(() => ctx.systemPrompt.section({
@@ -188,6 +186,12 @@ export function apply(ctx: Context, config: Config): void {
   }), 'soul.section()')
   installPromptActivity(ctx, mode, text)
   if (!(resolved.includeRuntimeContext ?? true)) ctx.systemPrompt.suppressRuntimeContext()
+}
+
+function resolveMode(value: unknown): 'replace' | 'append' {
+  if (value === undefined || value === 'append') return 'append'
+  if (value === 'replace') return 'replace'
+  throw new Error(`soul: unknown mode ${JSON.stringify(value)}; expected "replace" or "append"`)
 }
 
 /** Attribute a Soul section only after its rendered assembly matches the committed request header. */
