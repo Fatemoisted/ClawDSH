@@ -42,6 +42,7 @@ vi.mock('chokidar', () => ({
       }
       harness.watchers.push(control)
       queueMicrotask(() => {
+        if (options.ignoreInitial === false) emitter.emit('add', `${String(path)}/MEMORY.md`)
         emitter.emit('ready')
         harness.readyHook?.(control)
       })
@@ -102,7 +103,7 @@ describe('installMemoryWatch', () => {
     expect(harness.watchers).toHaveLength(2)
     const recovered = harness.watchers[1]
     if (recovered === undefined) throw new Error('expected the recovered watcher')
-    recovered.emitter.emit('add', '/root/MEMORY.md')
+    expect(recovered.options.ignoreInitial).toBe(false)
     expect(seen).toEqual(['MEMORY.md'])
     await dispose()
   })

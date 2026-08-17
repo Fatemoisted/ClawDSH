@@ -34,19 +34,18 @@ export interface MemoryWatchConfig {
 export interface MemoryWatchDisposer {
   /** Stop recovery work, close the active watcher, and settle after both are quiescent. */
   (): Promise<void>
-  /** Reopen the watcher after its initially missing root has been created. */
+  /** Reopen after the missing root is created and report its existing memory files before resolving. */
   recover(): Promise<void>
 }
 
 /**
- * Watch the memory root and report every changed memory file. Resolves once the
- * watcher is ready, so the caller never races the initial scan (a file written
- * immediately after startup is reported, not swallowed by `ignoreInitial`). A
- * missing root is not an error: Chokidar suppresses `ENOENT` and watches the
- * nearest existing ancestor, and `ready` still resolves. The returned
- * `recover()` operation closes and reopens the watcher after `memory_write`
- * creates an initially missing root. The disposer closes the watcher and
- * tolerates a failing close.
+ * Watch the memory root and report every changed memory file. A missing root is
+ * not an error: Chokidar suppresses `ENOENT` and `ready` still resolves. The
+ * returned `recover()` operation closes the incomplete ancestor observation and
+ * reopens after `memory_write` creates the root. Recovery includes the created
+ * root's initial memory files before it resolves, so correctness does not depend
+ * on a later polling notification for files written while the root was absent.
+ * The disposer closes the watcher and tolerates a failing close.
  * @param ctx - Cordis context, for warning logs.
  * @param rootPath - absolute host path of the memory root.
  * @param config - watch tuning (enabled plus stability and poll intervals).
@@ -76,10 +75,10 @@ export async function installMemoryWatch(
     if (!isMemoryPath(rel)) return
     onMemoryFile(rel)
   }
-  const open = async (): Promise<ReturnType<typeof chokidar.watch>> => {
+  const open = async (reportInitial: boolean): Promise<ReturnType<typeof chokidar.watch>> => {
     const next = chokidar.watch(rootPath, {
       persistent: true,
-      ignoreInitial: true,
+      ignoreInitial: !reportInitial,
       depth: 1,
       followSymlinks: false,
       usePolling: true,
@@ -94,14 +93,15 @@ export async function installMemoryWatch(
     next.on('add', onEvent)
     next.on('change', onEvent)
     next.on('unlink', onEvent)
-    // Chokidar always resolves `ready` after the initial scan, including for a
-    // missing root (it watches the nearest existing ancestor), so this cannot hang.
+    // Chokidar resolves `ready` after its initial scan even when the root is
+    // absent. When reportInitial is true, every initial add is emitted before
+    // ready, making recovery's filesystem reconciliation part of this promise.
     await new Promise<void>((resolve) => {
       next.once('ready', () => { resolve() })
     })
     return next
   }
-  let watcher: ReturnType<typeof chokidar.watch> | undefined = await open()
+  let watcher: ReturnType<typeof chokidar.watch> | undefined = await open(false)
   let transition: Promise<void> = Promise.resolve()
   let disposed = false
   const isDisposed = (): boolean => disposed
@@ -130,7 +130,7 @@ export async function installMemoryWatch(
       watcher = undefined
       if (previous !== undefined) await close(previous)
       if (isDisposed()) return
-      const next = await open()
+      const next = await open(true)
       if (isDisposed()) {
         await close(next)
         return
