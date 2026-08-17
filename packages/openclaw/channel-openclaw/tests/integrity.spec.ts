@@ -681,6 +681,19 @@ describe('fail-closed OpenClaw config', () => {
     await symlink(outside, linked)
     await expect(verifyFailClosedConfig(linked, bridgeRoot, stateDir)).rejects.toThrow(/non-symlink file/)
     await expect(verifyFailClosedConfig(outside, bridgeRoot, stateDir)).rejects.toThrow(/inside stateDir/)
+
+    const stateFile = join(root, 'state-file')
+    await writeFile(stateFile, 'not a directory')
+    await expect(verifyFailClosedConfig(outside, bridgeRoot, stateFile)).rejects.toThrow(/ordinary directory/)
+
+    const escapedRoot = join(root, 'escaped')
+    await mkdir(escapedRoot)
+    const escapedConfig = join(escapedRoot, 'openclaw.json')
+    await writeFile(escapedConfig, JSON.stringify(validConfig(bridgeRoot)))
+    const nestedLink = join(stateDir, 'nested')
+    await symlink(escapedRoot, nestedLink)
+    await expect(verifyFailClosedConfig(join(nestedLink, 'openclaw.json'), bridgeRoot, stateDir))
+      .rejects.toThrow(/escapes stateDir/)
   })
 
   it('rejects model provider and default-route escape hatches', async () => {
@@ -841,6 +854,9 @@ describe('fail-closed OpenClaw config', () => {
     const guilds = (unsafeDiscord.channels.discord as Record<string, unknown>).guilds as Record<string, Record<string, unknown>>
     Reflect.deleteProperty(guilds['*']!, 'requireMention')
     await expect(checkConfig(root, bridgeRoot, unsafeDiscord, extensions)).rejects.toThrow(/requireMention/)
+    const unsafeFeishu = clone(supported)
+    ;(unsafeFeishu.channels.feishu as Record<string, unknown>).requireMention = false
+    await expect(checkConfig(root, bridgeRoot, unsafeFeishu, extensions)).rejects.toThrow(/requireMention/)
     const cases: Array<[string, (value: FailClosedConfigFixture) => void]> = [
       ['missing channels object', (value) => { Reflect.deleteProperty(value, 'channels') }],
       ['channels object', (value) => { Reflect.set(value, 'channels', []) }],

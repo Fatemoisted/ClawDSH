@@ -46,6 +46,8 @@ Bootstrap tests reproduce all thirteen archives byte-for-byte, inspect their com
 
 The exact-baseline verifier has dependency-free positive and negative tests for a clean upstream check, the closed known failure, and drift in every accepted identity, count, path, duplicate, exit, or diagnostic field. The workflow static assertion pins all remaining hygiene commands and the package-owned Playwright invocation.
 
+The root per-file coverage gate exercises every ClawDSH source file on Linux and Windows. Behavior-level cases cover filesystem failures, lifecycle cancellation, pagination and scheduling, Channel integrity and protocol state, and memory refresh races; narrow V8 exclusions remain only where validated configuration, typed same-process calls, lifecycle ordering, or peer-platform path semantics make a branch unreachable on the executing host. A two-search version-refresh regression proves that memory ranking skips newly indexed chunks until their vectors have been embedded, so one search cannot consume another search's incomplete cache.
+
 ## Alternatives considered
 
 **Extend the development linker.** Rejected because symlinks, repository paths, and destructive repair assumptions are unsuitable for a public package install.

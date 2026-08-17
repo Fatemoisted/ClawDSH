@@ -26,6 +26,12 @@ import { SAFE_TURN_EFFECTS, turn } from './fixtures.ts'
 const NOW = 1_776_000_000_000
 
 describe('channel-agent durable schemas', () => {
+  it('rejects non-record ledger values without attempting legacy normalization', () => {
+    for (const value of [null, 'ledger', []]) {
+      expect(channelLedgerRecordSchema.safeParse(value).success).toBe(false)
+    }
+  })
+
   it('parses complete binding and generation records while restoring brands', () => {
     const route = turn({ route: { ...turn().route, thread: 'thread-1' } }).route
     const sessionId = sessionIdFor(route)

@@ -212,8 +212,10 @@ function resolveRule(rule: AutomationRule): ResolvedRule {
     if (!Number.isFinite(atMs)) {
       throw new Error(`automation: rule "${rule.id}" has an invalid "at" time ${JSON.stringify(rule.schedule.at)}`)
     }
+    /* v8 ignore next -- Config materializes the rule-level name and enabled defaults before resolveRules dispatches here. */
     return { ...rule, name: rule.name ?? '', enabled: rule.enabled ?? true, atMs }
   }
+  /* v8 ignore next -- Config materializes the rule-level name and enabled defaults before resolveRules dispatches here. */
   return { ...rule, name: rule.name ?? '', enabled: rule.enabled ?? true, atMs: 0 }
 }
 
@@ -290,17 +292,19 @@ class AutomationCoordinator {
       await this.runtime?.dispose()
       this.runtime = undefined
       const rules = resolveConfig(next)
+      /* v8 ignore next -- Config materializes the top-level enabled default before this operation is queued. */
       const enabled = next.enabled ?? false
       if (!enabled) return
       const candidate = new AutomationRuntime(
         this.ctx,
         rules,
+        /* v8 ignore next -- Config materializes the preset default before this operation is queued. */
         next.preset ?? 'clawdsh',
+        /* v8 ignore next -- Config materializes the cwd default before this operation is queued. */
         next.cwd ?? process.cwd(),
       )
       await candidate.initialize()
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- dispose() can run while candidate.initialize() is awaited.
-      if (this.disposed) {
+      if (this.isDisposed()) {
         await candidate.dispose()
         return
       }
@@ -325,6 +329,11 @@ class AutomationCoordinator {
   /** Current resolved Settings plus per-rule scheduler state. */
   snapshot(): { config: Config; states: ReadonlyMap<string, AutomationRuleStatus> } {
     return { config: this.scope.get(), states: this.runtime?.snapshot() ?? new Map() }
+  }
+
+  /** Re-read disposal after an awaited operation that may let lifecycle teardown run. */
+  private isDisposed(): boolean {
+    return this.disposed
   }
 
   /** Stop accepting mutations, drain reconciliation, and release the active runtime. */
@@ -372,26 +381,31 @@ function registerAutomationTool(ctx: Context, coordinator: AutomationCoordinator
         const schedule = scheduleFromTool(args, true)
         const message = requiredText(args.message, 'message')
         const id = `rule-${randomUUID()}`
-        await coordinator.mutate(current => ({
-          enabled: true,
-          rules: [
-            ...(current.rules ?? []),
-            {
-              id,
-              name: args.name?.trim() ?? '',
-              message,
-              schedule: schedule as CronSchedule | AtSchedule | EverySchedule,
-              enabled: true,
-              ...(origin.delivery === undefined ? {} : { delivery: origin.delivery }),
-            },
-          ],
-        }))
+        await coordinator.mutate((current) => {
+          /* v8 ignore next -- SettingsScope.get returns the Config-resolved rules array, including its empty default. */
+          const rules = current.rules ?? []
+          return {
+            enabled: true,
+            rules: [
+              ...rules,
+              {
+                id,
+                name: args.name?.trim() ?? '',
+                message,
+                schedule: schedule as CronSchedule | AtSchedule | EverySchedule,
+                enabled: true,
+                ...(origin.delivery === undefined ? {} : { delivery: origin.delivery }),
+              },
+            ],
+          }
+        })
         return automationToolValue(coordinator, id)
       }
       const id = requiredText(args.id, 'id')
       if (args.action === 'remove') {
         assertNoScheduleArgs(args)
         await coordinator.mutate((current) => {
+          /* v8 ignore next -- SettingsScope.get returns the Config-resolved rules array, including its empty default. */
           const rules = current.rules ?? []
           if (!rules.some(rule => rule.id === id)) throw new Error(`automation: unknown task id "${id}"`)
           const next = rules.filter(rule => rule.id !== id)
@@ -401,6 +415,7 @@ function registerAutomationTool(ctx: Context, coordinator: AutomationCoordinator
       }
       const schedule = scheduleFromTool(args, false)
       await coordinator.mutate((current) => {
+        /* v8 ignore next -- SettingsScope.get returns the Config-resolved rules array, including its empty default. */
         const rules = current.rules ?? []
         if (!rules.some(rule => rule.id === id)) throw new Error(`automation: unknown task id "${id}"`)
         const next = rules.map(rule => rule.id !== id ? rule : {
@@ -438,6 +453,7 @@ function requireHumanOrigin(agent: Agent | undefined): HumanOrigin {
     throw new Error('automation: task mutation requires direct human input in the active turn')
   }
   const source: unknown = input.data.source
+  /* v8 ignore next -- isDirectHumanInput accepted this same immutable Session event only after proving its source is a record. */
   if (!isRecord(source)) throw new Error('automation: task mutation requires direct human input in the active turn')
   if (source.kind === 'user') return {}
   if (source.kind !== 'channel' || source.trust !== 'owner') {
@@ -516,13 +532,17 @@ function requiredText(value: string | undefined, field: string): string {
 function automationToolValue(coordinator: AutomationCoordinator, selectedId?: string): Record<string, JsonValue> {
   const { config, states } = coordinator.snapshot()
   return {
+    /* v8 ignore next -- SettingsScope.get returns Config-resolved enabled with its false default materialized. */
     enabled: config.enabled ?? false,
+    /* v8 ignore next -- SettingsScope.get returns Config-resolved rules with its empty-array default materialized. */
     tasks: (config.rules ?? []).map((rule) => {
       const status = states.get(rule.id)
       return {
         id: rule.id,
+        /* v8 ignore next -- Config materializes every rule name before SettingsScope.get returns it. */
         name: rule.name ?? '',
         message: rule.message,
+        /* v8 ignore next -- Config materializes every rule enabled flag before SettingsScope.get returns it. */
         enabled: rule.enabled ?? true,
         schedule: scheduleJson(rule.schedule),
         delivery: rule.delivery?.kind === 'channel' ? 'origin-channel' : 'session',
@@ -540,6 +560,7 @@ function scheduleJson(schedule: AutomationRule['schedule']): Record<string, Json
     return {
       kind: 'cron',
       expr: schedule.expr,
+      /* v8 ignore next -- Config materializes an omitted cron timezone as the empty string before this formatter receives it. */
       ...(schedule.timeZone === undefined ? {} : { timeZone: schedule.timeZone }),
     }
   }
@@ -552,12 +573,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function resolveConfig(config: Config): ResolvedRule[] {
+  /* v8 ignore next -- Config materializes cwd before Settings validation and reconciliation call this defensive host check. */
   const cwd = config.cwd ?? process.cwd()
+  /* v8 ignore next -- Windows accepts every Config-permitted path spelling; the POSIX runIf test owns this peer-platform rejection. */
   if (!isAbsolute(cwd)) throw new TypeError('automation: cwd must be an absolute path')
   return resolveRules(config)
 }
 
 function resolveRules(config: Config): ResolvedRule[] {
+  /* v8 ignore next -- Config materializes rules as an empty array before Settings validation and reconciliation call this parser. */
   const rules = (config.rules ?? []).map(rule => resolveRule(rule))
   const ids = new Set<string>()
   for (const rule of rules) {
@@ -613,6 +637,7 @@ class AutomationRuntime {
     try {
       for (const state of this.states) {
         const handle = await this.acquireAgent(state)
+        /* v8 ignore next 4 -- the Coordinator does not publish or dispose this runtime until initialize() has fulfilled. */
         if (this.disposed) {
           await handle.dispose()
           return
@@ -644,6 +669,7 @@ class AutomationRuntime {
     this.lifetime.abort(new Error('automation runtime disposed'))
     if (this.timer !== undefined) clearTimeout(this.timer)
     this.timer = undefined
+    /* v8 ignore next -- a runtime becomes disposable only after the Coordinator has awaited its successful initialization. */
     await this.initialization?.catch(() => undefined)
     for (const state of this.states) {
       state.handle?.agent.cancel({ kind: 'disposed' })
@@ -767,6 +793,7 @@ class AutomationRuntime {
   private startTick(): void {
     const tick = this.tick()
     this.ticks.add(tick)
+    /* v8 ignore next 3 -- tick contains rule failures and arm uses validated state; rejection is a future-change backstop. */
     void tick.then(undefined, (error: unknown) => {
       this.ctx.logger.warn(`automation: scheduler tick failed: ${errorMessage(error)}`)
     }).finally(() => {
@@ -776,12 +803,12 @@ class AutomationRuntime {
 
   /** Run all due occurrences sequentially (OpenClaw's wake shape), then re-arm. */
   private async tick(): Promise<void> {
+    /* v8 ignore next -- dispose clears the timer; a started tick runs this synchronous check before disposal can interleave. */
     if (this.disposed) return
     for (const state of this.states) {
       // A prior rule can yield while disposal cancels the runtime. Re-check at
       // each rule boundary so this tick cannot start new work after teardown.
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- disposed can change while the prior runRule() is awaited.
-      if (this.disposed) return
+      if (this.lifetime.signal.aborted) return
       if (state.completed || state.running || state.nextRunAt > Date.now()) continue
       await this.runRule(state)
     }
@@ -790,6 +817,7 @@ class AutomationRuntime {
 
   /** Drive one occurrence: `started` record, framed turn, flush, `ok`/`error` record. */
   private async runRule(state: RuleState): Promise<void> {
+    /* v8 ignore next 4 -- arm() is called only after initializeAll has assigned a handle to every scheduled state. */
     if (state.handle === undefined) {
       state.nextRunAt = Number.POSITIVE_INFINITY
       return
@@ -836,6 +864,7 @@ class AutomationRuntime {
     const channels = this.ctx.get('channels')
     if (channels === undefined) throw new Error('channel delivery is unavailable')
     const delivery = rule.delivery
+    /* v8 ignore next -- runRule calls this method only inside its rule.delivery !== undefined branch. */
     if (delivery === undefined) return
     const target = {
       gatewayInstanceId: delivery.gatewayInstanceId,
@@ -876,6 +905,7 @@ class AutomationRuntime {
 
 /** Interpret one exact scheduled turn end; absence or non-completion is a failed run. */
 function terminalStatus(event: SessionEvent | undefined): { status: 'ok' } | { status: 'error'; error: string } {
+  /* v8 ignore next -- Agent.whenIdle resolves only after followup's turn() finally appends its matching turn/end. */
   if (event?.type !== 'turn/end') return { status: 'error', error: 'scheduled turn ended without a turn/end record' }
   const { reason } = event.data
   if (reason.kind === 'completed') return { status: 'ok' }

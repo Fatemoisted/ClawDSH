@@ -176,6 +176,22 @@ describe('ClawdshActivity service', () => {
       degraded: false,
     })
   })
+
+  it('keeps outcome-free Memory states and pages with default history sources', async () => {
+    const { ctx } = await boot()
+    const sessionId = SessionId('legacy-service-session')
+
+    await ctx.clawdshActivity.memoryWrite({ sessionId, scope: 'daily', status: 'started', seq: 1 })
+    await ctx.clawdshActivity.memoryUpdate({ sessionId, action: 'forgotten', status: 'failed', seq: 2 })
+
+    const page = await ctx.clawdshActivity.page({ sessionId })
+    expect(page.records).toHaveLength(2)
+    expect(page.records.map(record => record.metadata)).toEqual(expect.arrayContaining([
+      { scope: 'daily', seq: 1 },
+      { action: 'forgotten', seq: 2 },
+    ]))
+    expect(page.availability).toEqual({ history: 'unavailable', sidecar: 'available' })
+  })
 })
 
 describe('Activity invariant companion', () => {

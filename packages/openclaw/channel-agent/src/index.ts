@@ -520,7 +520,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
       mention: record.envelope.wasMentioned ?? null,
       ...status === undefined ? {} : { status },
     }
-    void this.deliverySessionSeq(record).then((seq) => {
+    void this.deliverySessionSeq(record.sessionId, record.envelope).then((seq) => {
       if (seq === undefined) return
       try {
         void activity.channelDelivery({ ...safe, seq }).catch((_activityWriteFailed: unknown) => {
@@ -535,15 +535,17 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
   }
 
   /** Resolve the stable inbound-event sequence for this exact turn without projecting its route or message identity. */
-  private async deliverySessionSeq(record: ChannelLedgerRecord): Promise<number | undefined> {
-    if (record.sessionId === undefined) return undefined
-    const live = this.ctx.sessions.get(record.sessionId)
-    const events = live?.events ?? (await this.ctx.sessionPersistence.inspect(record.sessionId)).events
+  private async deliverySessionSeq(
+    sessionId: SessionId,
+    envelope: ChannelTurnEnvelopeV1,
+  ): Promise<number | undefined> {
+    const live = this.ctx.sessions.get(sessionId)
+    const events = live?.events ?? (await this.ctx.sessionPersistence.inspect(sessionId)).events
     for (let index = events.length - 1; index >= 0; index -= 1) {
       const event = events[index]
       if (event?.type !== 'user/message' || event.data.source.kind !== 'channel') continue
-      if (event.data.source.turnId === record.envelope.turnId
-        && event.data.source.runId === record.envelope.runId) return event.seq
+      if (event.data.source.turnId === envelope.turnId
+        && event.data.source.runId === envelope.runId) return event.seq
     }
     return undefined
   }
@@ -600,8 +602,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
     let record = acceptedRecord
     let notificationSequence = 1
     const nextSequence = (): number => notificationSequence++
-    let agentMayHaveStarted = false
-    let userMessageId: string | undefined
+    let started: { readonly agent: Agent; readonly userMessageId: string } | undefined
     let sessionId: SessionId | undefined
     let acquiredHandle: AgentHandle | undefined
     try {
@@ -672,12 +673,11 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
           ...refs.map(attachment => ({ type: 'image' as const, attachment })),
         ]
         const message = createUserMessage({ content, source })
-        userMessageId = message.id
         this.assertAvailable()
         this.assertCurrentGeneration(turn.route, epoch)
         execution.signal.throwIfAborted()
         this.assertNotCancelled(turn)
-        agentMayHaveStarted = true
+        started = { agent: handle.agent, userMessageId: message.id }
         handle.agent.followup(message)
         await handle.agent.whenIdle()
         await this.ctx.sessions.flush(handle.agent.session)
@@ -694,7 +694,7 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
         this.active.delete(activeKey(turn.turnId, turn.runId))
       }
     } catch (error) {
-      if (error instanceof ChannelTurnCancelledError && !agentMayHaveStarted) {
+      if (error instanceof ChannelTurnCancelledError && started === undefined) {
         const cancelledSessionId = sessionId ?? sessionIdFor(turn.route)
         const result = this.cancelled(turn, error.reason, cancelledSessionId)
         await this.ledger.put(key, {
@@ -709,18 +709,18 @@ export class ChannelAgentDriver implements ChannelDriverV1 {
         }
         return result
       }
-      const effects = agentMayHaveStarted
-        ? recoverableEffects(turn.route, acquiredHandle?.agent, userMessageId)
-        : SAFE_TURN_EFFECTS
+      const effects = started === undefined
+        ? SAFE_TURN_EFFECTS
+        : recoverableEffects(turn.route, started.agent, started.userMessageId)
       const failure = this.failed(
         turn,
         'CHANNEL_TURN_FAILED',
         publicTurnFailureMessage(error),
-        !agentMayHaveStarted,
+        started === undefined,
         effects,
         sessionId,
       )
-      if (agentMayHaveStarted) {
+      if (started !== undefined) {
         /* v8 ignore next -- Agent work can start only after sessionId is bound and the running row is durable. */
         if (sessionId === undefined) throw new Error('channel-agent: running turn lost its durable Session identity')
         await this.ledger.put(key, {
@@ -1219,10 +1219,9 @@ function eventsForUserMessage(agent: Agent, userMessageId: string): SessionEvent
 /** Recover side-effect evidence after a post-Agent bridge failure, failing closed while a turn is open. */
 function recoverableEffects(
   route: ChannelRouteV1,
-  agent: Agent | undefined,
-  userMessageId: string | undefined,
+  agent: Agent,
+  userMessageId: string,
 ): ChannelTurnEffectsV1 {
-  if (agent === undefined || userMessageId === undefined) return UNKNOWN_TURN_EFFECTS
   const events = eventsForUserMessage(agent, userMessageId)
   if (events === undefined) return UNKNOWN_TURN_EFFECTS
   const effects = effectsForTurn(route, events)

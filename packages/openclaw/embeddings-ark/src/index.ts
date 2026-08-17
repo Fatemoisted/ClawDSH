@@ -71,16 +71,10 @@ function isHttpBaseURL(value: string): boolean {
 const HTTP_BASE_URL_PATTERN = /^https?:\/\/[^/?#@\s]+(?:\/[^?#\s]*)?$/u
 const MODEL_PATTERN = /^\S(?:.*\S)?$/u
 
-function resolveEndpoint(config: Config): { baseURL: string; model: string } {
-  const configuredBaseURL: unknown = Reflect.get(config, 'baseURL')
-  const baseURL = configuredBaseURL ?? ARK_DEFAULT_BASE_URL
-  if (typeof baseURL !== 'string' || baseURL.trim() !== baseURL || !isHttpBaseURL(baseURL)) {
+function resolveEndpoint(config: ResolvedConfig): { baseURL: string; model: string } {
+  const { baseURL, model } = config
+  if (!isHttpBaseURL(baseURL)) {
     throw new TypeError('embeddings-ark: baseURL must be an absolute HTTP(S) URL without credentials, query, or fragment')
-  }
-  const configuredModel: unknown = Reflect.get(config, 'model')
-  const model = configuredModel ?? ARK_DEFAULT_MODEL
-  if (typeof model !== 'string' || model.trim() !== model || model.length === 0) {
-    throw new TypeError('embeddings-ark: model must be a non-empty string without surrounding whitespace')
   }
   return { baseURL: baseURL.replace(/\/+$/u, ''), model }
 }
@@ -127,12 +121,11 @@ export class ArkEmbeddings extends Embeddings {
 
   constructor(ctx: Context, config: Config) {
     super(ctx)
-    const settings = ctx.get('settings')
-    const runtimeConfig = settings?.register(ARK_SETTINGS_NAMESPACE, Config, {
+    const runtimeConfig = ctx.settings.register(ARK_SETTINGS_NAMESPACE, Config, {
       base: config,
       applies: 'restart',
       validate: value => void resolveConfig(value),
-    }).get() ?? Config(config)
+    }).get()
     const resolved = resolveConfig(runtimeConfig)
     this.baseURL = resolved.baseURL
     this.model = resolved.model
@@ -143,11 +136,6 @@ export class ArkEmbeddings extends Embeddings {
   override async embed(texts: readonly string[], signal?: AbortSignal): Promise<EmbeddingVector[]> {
     if (texts.length === 0) return []
     signal?.throwIfAborted()
-    for (let index = 0; index < texts.length; index += 1) {
-      if (typeof texts[index] !== 'string') {
-        throw new TypeError(`@clawdsh/dsh-embeddings-ark: texts[${index}] must be a string`)
-      }
-    }
     const apiKey = await this.resolveApiKey()
     signal?.throwIfAborted()
     if (apiKey === undefined) {
@@ -174,11 +162,10 @@ export class ArkEmbeddings extends Embeddings {
       while (true) {
         try {
           operationSignal.throwIfAborted()
-          if (state.failure !== undefined) return
           const index = next
           next += 1
           if (index >= texts.length) return
-          // The dense runtime validation above makes this indexed access safe.
+          // The Embeddings.embed typed contract and the bounds check above make this indexed access safe.
           const text = texts[index] as string
           results[index] = await this.embedOne(text, apiKey, operationSignal)
         } catch (error: unknown) {
@@ -251,15 +238,9 @@ export class ArkEmbeddings extends Embeddings {
 }
 
 function resolveConfig(config: Config): ResolvedConfig {
-  const { baseURL, model } = resolveEndpoint(config)
-  const timeoutMs = config.timeoutMs ?? ARK_DEFAULT_TIMEOUT_MS
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMER_DELAY_MS) {
-    throw new TypeError('@clawdsh/dsh-embeddings-ark: config "timeoutMs" must be a supported positive integer')
-  }
-  const maxConcurrentTexts = config.maxConcurrentTexts ?? ARK_DEFAULT_MAX_CONCURRENT_TEXTS
-  if (!Number.isInteger(maxConcurrentTexts) || maxConcurrentTexts < 1 || maxConcurrentTexts > MAX_TIMER_DELAY_MS) {
-    throw new TypeError('@clawdsh/dsh-embeddings-ark: config "maxConcurrentTexts" must be a supported positive integer')
-  }
+  const parsed = Config(config) as ResolvedConfig
+  const { baseURL, model } = resolveEndpoint(parsed)
+  const { timeoutMs, maxConcurrentTexts } = parsed
   return { baseURL, model, timeoutMs, maxConcurrentTexts }
 }
 

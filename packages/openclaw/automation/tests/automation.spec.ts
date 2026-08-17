@@ -383,6 +383,173 @@ describe('automation row', () => {
       ?.value as Automation.Config).rules).toEqual([])
   })
 
+  it('rejects task mutations without direct human authority or a complete owner route', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    await ctx.plugin(Automation, { enabled: false, rules: [] })
+    const args = { action: 'add', message: 'work later', every_seconds: 600 }
+
+    const withoutAgent = await callAutomation(ctx, args, undefined as never)
+    expect(withoutAgent.isError).toBe(true)
+    expect(JSON.stringify(withoutAgent.content)).toContain('owning Agent')
+
+    const noTurnSession = Session.create(SessionId('owner-no-turn'))
+    const noTurn = await callAutomation(ctx, args, { id: noTurnSession.id, session: noTurnSession } as Agent)
+    expect(noTurn.isError).toBe(true)
+    expect(JSON.stringify(noTurn.content)).toContain('active turn')
+
+    const malformedSession = Session.create(SessionId('owner-malformed-source'))
+    malformedSession.append('turn/start', { turn: 1 })
+    malformedSession.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'mutate' }],
+      source: null as never,
+    }), { surfaceOp: 'append' })
+    const malformed = await callAutomation(ctx, args, {
+      id: malformedSession.id,
+      session: malformedSession,
+    } as Agent)
+    expect(malformed.isError).toBe(true)
+    expect(JSON.stringify(malformed.content)).toContain('direct human input')
+
+    const untrusted = await callAutomation(ctx, args, ownerAgent({
+      kind: 'channel',
+      trust: 'member',
+      gatewayInstanceId: 'gateway',
+      channel: 'feishu',
+      account: 'account',
+      conversation: 'chat',
+    }))
+    expect(untrusted.isError).toBe(true)
+    expect(JSON.stringify(untrusted.content)).toContain('owner-authenticated')
+
+    for (const field of ['gatewayInstanceId', 'channel', 'account', 'conversation'] as const) {
+      const source: Record<string, unknown> = {
+        kind: 'channel',
+        trust: 'owner',
+        gatewayInstanceId: 'gateway',
+        channel: 'feishu',
+        account: 'account',
+        conversation: 'chat',
+      }
+      source[field] = ''
+      const result = await callAutomation(ctx, args, ownerAgent(source))
+      expect(result.isError).toBe(true)
+      expect(JSON.stringify(result.content)).toContain('durable delivery route')
+    }
+
+    const withTrailingAssistant = ownerAgent()
+    withTrailingAssistant.session.append('assistant/message', {
+      message: { role: 'assistant', content: [{ type: 'text', text: 'context' }] },
+    } as never, { surfaceOp: 'append' })
+    const accepted = await callAutomation(ctx, args, withTrailingAssistant)
+    expect(accepted.isError).toBe(false)
+  })
+
+  it('rejects invalid model-authored schedules and task fields without changing Settings', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    await ctx.plugin(Automation, { enabled: false, rules: [] })
+    const agent = ownerAgent()
+    const invalid = [
+      { action: 'add', message: 'x' },
+      { action: 'add', message: 'x', time_zone: 'UTC' },
+      { action: 'add', message: 'x', after_seconds: 1, every_seconds: 2 },
+      { action: 'add', message: 'x', after_seconds: 0 },
+      { action: 'add', message: 'x', after_seconds: 1.5 },
+      { action: 'add', message: 'x', after_seconds: 1, time_zone: 'UTC' },
+      { action: 'add', message: 'x', at: '   ' },
+      { action: 'add', message: 'x', at: NOW, time_zone: 'UTC' },
+      { action: 'add', message: 'x', every_seconds: 0 },
+      { action: 'add', message: 'x', every_seconds: 60, time_zone: 'UTC' },
+      { action: 'add', message: 'x', cron: '   ' },
+      { action: 'add', message: '   ', every_seconds: 60 },
+      { action: 'remove', id: 'missing', every_seconds: 60 },
+    ]
+    for (const args of invalid) {
+      const result = await callAutomation(ctx, args, agent)
+      expect(result.isError).toBe(true)
+    }
+    expect((ctx.settings.describe().find(entry => entry.ns === Automation.AUTOMATION_SETTINGS_NAMESPACE)
+      ?.value as Automation.Config).rules).toEqual([])
+  })
+
+  it('reports unknown ids and updates one selected rule among multiple tasks', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    await ctx.plugin(Automation, {
+      enabled: false,
+      rules: [
+        { id: 'first', name: 'First', schedule: { kind: 'every', seconds: 600 }, message: 'first', enabled: false },
+        { id: 'second', schedule: { kind: 'cron', expr: '0 9 * * *' }, message: 'second', enabled: false },
+        { id: 'third', schedule: { kind: 'at', at: '2027-08-05T09:00:00.000Z' }, message: 'third', enabled: false },
+      ],
+    })
+    const agent = ownerAgent()
+
+    const listed = await callAutomation(ctx, { action: 'list' }, agent)
+    expect(listed.value).toMatchObject({
+      enabled: false,
+      tasks: [
+        { schedule: { kind: 'every', seconds: 600 }, selected: false },
+        { schedule: { kind: 'cron', expr: '0 9 * * *' }, selected: false },
+        { schedule: { kind: 'at', at: '2027-08-05T09:00:00.000Z' }, selected: false },
+      ],
+    })
+
+    for (const action of ['update', 'remove'] as const) {
+      const result = await callAutomation(ctx, { action, id: 'unknown' }, agent)
+      expect(result.isError).toBe(true)
+      expect(JSON.stringify(result.content)).toContain('unknown task id')
+    }
+
+    const updated = await callAutomation(ctx, {
+      action: 'update',
+      id: 'second',
+      name: ' Updated ',
+      message: ' changed ',
+      enabled: true,
+      cron: '30 9 * * *',
+      time_zone: ' UTC ',
+    }, agent)
+    expect(updated.isError).toBe(false)
+    expect(updated.value).toMatchObject({
+      enabled: true,
+      tasks: [
+        { id: 'first', selected: false },
+        {
+          id: 'second',
+          name: 'Updated',
+          message: 'changed',
+          enabled: true,
+          schedule: { kind: 'cron', expr: '30 9 * * *', timeZone: 'UTC' },
+          selected: true,
+        },
+        { id: 'third', selected: false },
+      ],
+    })
+
+    const removed = await callAutomation(ctx, { action: 'remove', id: 'first' }, agent)
+    expect(removed.isError).toBe(false)
+    expect(removed.value).toMatchObject({ enabled: true })
+
+    const nameOnly = await callAutomation(ctx, { action: 'update', id: 'second', name: 'Renamed' }, agent)
+    expect(nameOnly.isError).toBe(false)
+    expect(JSON.stringify(nameOnly.value)).toContain('"name":"Renamed","message":"changed","enabled":true')
+  })
+
+  it('creates a cron task without an optional timezone', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    await ctx.plugin(Automation, { enabled: false, rules: [] })
+
+    const added = await callAutomation(ctx, {
+      action: 'add', message: 'daily work', cron: '0 9 * * *',
+    }, ownerAgent())
+
+    expect(added.isError).toBe(false)
+    expect(added.value).toMatchObject({ tasks: [{ schedule: { kind: 'cron', expr: '0 9 * * *' } }] })
+  })
+
   it('fails mount loudly on invalid rules, naming the rule', async () => {
     const ctx = await harness(new ScriptedAdapter([]))
     contexts.push(ctx)
@@ -428,6 +595,35 @@ describe('automation row', () => {
     expect(String(failure)).toContain('automation: cwd must be an absolute path')
     expect(String(failure)).not.toContain(privateRelativePath)
     expect(agentFor(ctx, 'relative-cwd')).toBeUndefined()
+  })
+
+  it.runIf(process.platform !== 'win32')('rejects a Windows absolute spelling at the POSIX host boundary', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    const windowsPath = 'C:\\clawdsh'
+    const config: Automation.Config = {
+      enabled: true,
+      cwd: windowsPath,
+      rules: [{ id: 'foreign-cwd', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    }
+
+    expect(Automation.Config(config).cwd).toBe(windowsPath)
+    await expect(ctx.plugin(Automation, config)).rejects.toThrow('automation: cwd must be an absolute path')
+    expect(agentFor(ctx, 'foreign-cwd')).toBeUndefined()
+  })
+
+  it('uses the rule id when publishing a title for an unnamed task', async () => {
+    const rename = vi.fn()
+    const ctx = await harness(new ScriptedAdapter([]), undefined, {}, {
+      sessionTitle: { get: () => undefined, rename },
+    })
+    contexts.push(ctx)
+    await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'unnamed-title', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+
+    expect(rename).toHaveBeenCalledWith(expect.anything(), '自动任务 · unnamed-title')
   })
 
   it('fires a cron rule at the minute boundary with the framed turn and run records', async () => {
@@ -729,6 +925,93 @@ describe('automation row', () => {
     expect(adapter.requests).toHaveLength(2)
   })
 
+  it('turns channel delivery preconditions and dead letters into terminal run errors', async () => {
+    const delivery: Automation.AutomationChannelDelivery = {
+      kind: 'channel',
+      gatewayInstanceId: 'gateway',
+      channel: 'feishu',
+      account: 'account',
+      conversation: 'chat',
+    }
+    const cases = [
+      { id: 'empty-answer', reply: '   ', channels: { action: vi.fn(async () => ({ status: 'accepted' })) } },
+      { id: 'missing-channel', reply: 'answer', channels: undefined },
+      {
+        id: 'dead-letter',
+        reply: 'answer',
+        channels: { action: vi.fn(async () => ({ status: 'dead-letter', error: { message: 'offline' } })) },
+      },
+      { id: 'without-thread', reply: 'answer', channels: { action: vi.fn(async () => ({ status: 'accepted' })) } },
+    ]
+
+    for (const item of cases) {
+      const ctx = await harness(new ScriptedAdapter([textReply(item.reply)]))
+      contexts.push(ctx)
+      if (item.channels !== undefined) ctx.provide('channels', item.channels as never)
+      await ctx.plugin(Automation, {
+        enabled: true,
+        rules: [{ id: item.id, schedule: { kind: 'at', at: NOW }, message: 'work', delivery }],
+      })
+      await settle()
+      expect(runRecords(ctx, item.id)).toEqual(['started', item.id === 'without-thread' ? 'ok' : 'error'])
+      if (item.id === 'without-thread') {
+        expect(item.channels?.action).toHaveBeenCalledOnce()
+      }
+    }
+  })
+
+  it('records an error when the started marker cannot flush', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'started-flush', schedule: { kind: 'at', at: NOW }, message: 'work' }],
+    })
+    const originalFlush = ctx.sessions.flush.bind(ctx.sessions)
+    let rejected = false
+    vi.spyOn(ctx.sessions, 'flush').mockImplementation(async (session) => {
+      const last = session.events.at(-1)
+      if (!rejected && last?.type === 'automation/run' && last.data.status === 'started') {
+        rejected = true
+        throw new Error('started marker unavailable')
+      }
+      return await originalFlush(session)
+    })
+
+    await settle()
+
+    expect(runRecords(ctx, 'started-flush')).toEqual(['started', 'error'])
+  })
+
+  it('skips a later not-yet-due rule after completing the current occurrence', async () => {
+    const ctx = await harness(new ScriptedAdapter([textReply('done')]))
+    contexts.push(ctx)
+    await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [
+        { id: 'no-turn-end', schedule: { kind: 'at', at: '2026-08-05T09:00:01.000Z' }, message: 'work' },
+        { id: 'later', schedule: { kind: 'at', at: '2026-08-05T09:00:02.000Z' }, message: 'later' },
+      ],
+    })
+    await vi.advanceTimersByTimeAsync(1_000)
+    await settle()
+
+    expect(runRecords(ctx, 'no-turn-end')).toEqual(['started', 'ok'])
+    expect(runRecords(ctx, 'later')).toEqual([])
+  })
+
+  it('leaves an impossible cron occurrence unarmed', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'never', schedule: { kind: 'cron', expr: '0 0 31 2 *' }, message: 'work' }],
+    })
+
+    const listed = await callAutomation(ctx, { action: 'list' }, ownerAgent())
+    expect(listed.value).toMatchObject({ tasks: [{ id: 'never', next_run_at: null }] })
+  })
+
   it('records one failed at attempt without a zero-delay retry loop', async () => {
     const adapter = new ScriptedAdapter(['fail'])
     const ctx = await harness(adapter)
@@ -827,6 +1110,150 @@ describe('automation row', () => {
     await vi.advanceTimersByTimeAsync(120_000)
     await settle()
     expect(adapter.requests).toHaveLength(0)
+  })
+
+  it('reports both startup and candidate-cleanup failures', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    const realCreate = ctx.agents.create.bind(ctx.agents)
+    vi.spyOn(ctx.agents, 'create').mockImplementation(async (options) => {
+      const handle = await realCreate(options)
+      vi.spyOn(handle.agent, 'whenIdle').mockRejectedValueOnce(new Error('startup unavailable'))
+      return {
+        agent: handle.agent,
+        async dispose(): Promise<void> {
+          await handle.dispose()
+          throw new Error('cleanup unavailable')
+        },
+      }
+    })
+
+    await expect(ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'aggregate-startup', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })).rejects.toThrow(/startup failed.*cleanup was incomplete/)
+    expect(agentFor(ctx, 'aggregate-startup')).toBeUndefined()
+  })
+
+  it('logs a handle disposal rejection after the underlying agent is removed', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    const realCreate = ctx.agents.create.bind(ctx.agents)
+    vi.spyOn(ctx.agents, 'create').mockImplementation(async (options) => {
+      const handle = await realCreate(options)
+      return {
+        agent: handle.agent,
+        async dispose(): Promise<void> {
+          await handle.dispose()
+          throw new Error('wrapper dispose failed')
+        },
+      }
+    })
+    const warning = vi.spyOn(ctx.logger, 'warn')
+    const fiber = await ctx.plugin(Automation, {
+      enabled: true,
+      rules: [{ id: 'dispose-warning', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+
+    await fiber.dispose()
+
+    expect(agentFor(ctx, 'dispose-warning')).toBeUndefined()
+    expect(warning).toHaveBeenCalledWith(expect.stringContaining('cannot dispose agent'))
+  })
+
+  it('recovers a later live reconciliation after one candidate acquisition fails', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    const fiber = await ctx.plugin(Automation, { enabled: false, rules: [] })
+    const realCreate = ctx.agents.create.bind(ctx.agents)
+    vi.spyOn(ctx.agents, 'create')
+      .mockRejectedValueOnce(new Error('transient create failure'))
+      .mockImplementation(options => realCreate(options))
+
+    await ctx.settings.update(Automation.AUTOMATION_SETTINGS_NAMESPACE, {
+      enabled: true,
+      rules: [{ id: 'first-fails', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+    await settle()
+    expect(agentFor(ctx, 'first-fails')).toBeUndefined()
+
+    await ctx.settings.update(Automation.AUTOMATION_SETTINGS_NAMESPACE, {
+      rules: [{ id: 'recovered', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+    await settle()
+    expect(agentFor(ctx, 'recovered')).toBeDefined()
+    await fiber.dispose()
+  })
+
+  it('disposes a late candidate and skips a queued reconciliation after its coordinator owner', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    const fiber = await ctx.plugin(Automation, { enabled: false, rules: [] })
+    const realCreate = ctx.agents.create.bind(ctx.agents)
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const create = vi.spyOn(ctx.agents, 'create').mockImplementation(async (options) => {
+      const handle = await realCreate(options)
+      entered.resolve(undefined)
+      await release.promise
+      return handle
+    })
+
+    await ctx.settings.update(Automation.AUTOMATION_SETTINGS_NAMESPACE, {
+      enabled: true,
+      rules: [{ id: 'late-coordinator', schedule: { kind: 'every', seconds: 60 }, message: 'work' }],
+    })
+    await entered.promise
+    const queued = callAutomation(ctx, {
+      action: 'add', message: 'queued after the first reconciliation', every_seconds: 60,
+    }, ownerAgent())
+    await settle()
+    const pending = await callAutomation(ctx, { action: 'list' }, ownerAgent())
+    expect(pending.value).toMatchObject({ tasks: [{ id: 'late-coordinator' }, { message: 'queued after the first reconciliation' }] })
+    const disposal = fiber.dispose()
+    release.resolve(undefined)
+    const queuedResult = await queued
+    await disposal
+
+    expect(queuedResult.isError).toBe(false)
+    const queuedTask = (queuedResult.value as { tasks: Array<{ id: string; selected: boolean }> }).tasks
+      .find(task => task.selected)
+    if (queuedTask === undefined) throw new Error('expected the queued task to remain selected')
+    expect(agentFor(ctx, 'late-coordinator')).toBeUndefined()
+    expect(agentFor(ctx, queuedTask.id)).toBeUndefined()
+    expect(create).toHaveBeenCalledOnce()
+  })
+
+  it('rejects a queued mutation after disposal and drains its rejected tail', async () => {
+    const ctx = await harness(new ScriptedAdapter([]))
+    contexts.push(ctx)
+    const fiber = await ctx.plugin(Automation, { enabled: false, rules: [] })
+    const realUpdate = ctx.settings.update.bind(ctx.settings)
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    let blocked = false
+    vi.spyOn(ctx.settings, 'update').mockImplementation(async (ns, patch) => {
+      if (!blocked) {
+        blocked = true
+        await realUpdate(ns, patch)
+        entered.resolve(undefined)
+        await release.promise
+        return
+      }
+      await realUpdate(ns, patch)
+    })
+    const agent = ownerAgent()
+    const first = callAutomation(ctx, { action: 'add', message: 'first', every_seconds: 60 }, agent)
+    await entered.promise
+    const second = callAutomation(ctx, { action: 'add', message: 'second', every_seconds: 60 }, agent)
+    const disposal = fiber.dispose()
+    release.resolve(undefined)
+
+    const [firstResult, secondResult] = await Promise.all([first, second])
+    await disposal
+    expect(firstResult.isError).toBe(true)
+    expect(secondResult.isError).toBe(true)
+    expect(JSON.stringify(secondResult.content)).toContain('runtime is disposed')
   })
 
   it('fails initialization, disposes a resumed candidate, and does not create a replacement', { timeout: 15_000 }, async () => {

@@ -6,6 +6,8 @@ import { projectSessionHistory } from '../src/projector.ts'
 import { createActivityRecord } from '../src/records.ts'
 import type { ClawdshActivityReadResult, ClawdshActivityRecord } from '../src/types.ts'
 
+const timestamp = '2026-08-16T00:00:00.000Z'
+
 function event(type: string, seq: number, data: unknown, time = 1_800_000_000_000 + seq): SessionEvent {
   const located = (type === 'tool/call' || type === 'tool/result')
     && typeof data === 'object'
@@ -312,6 +314,131 @@ describe('projectSessionHistory', () => {
       }, beyondDateRange),
     ])).toEqual({ records: [], degraded: true })
   })
+
+  it('degrades malformed tool lifecycle events without retaining untrusted values', () => {
+    const calls = [
+      event('tool/call', 1, null),
+      event('tool/call', 2, { callId: 2, name: 'memory_search' }),
+      event('tool/call', 3, { callId: 'missing-name' }),
+      event('tool/call', 4, { callId: 'write-non-string', name: 'memory_write', arguments: {} }),
+      event('tool/call', 5, { callId: 'update-bad-json', name: 'memory_update', arguments: '{' }),
+      event('tool/call', 5, { callId: 'update-non-string', name: 'memory_update', arguments: {} }),
+      event('tool/call', 6, { callId: 'update-non-record', name: 'memory_update', arguments: '[]' }),
+      event('tool/call', 7, { callId: 'update-old', name: 'memory_update', arguments: JSON.stringify({ oldContent: 1, newContent: 'x' }) }),
+      event('tool/call', 8, { callId: 'update-new', name: 'memory_update', arguments: JSON.stringify({ oldContent: 'x', newContent: 1 }) }),
+      event('tool/call', 9, { callId: 'skill-bad-json', name: 'skill', arguments: '{' }),
+      event('tool/call', 9, { callId: 'skill-non-string', name: 'skill', arguments: {} }),
+      event('tool/call', 10, { callId: 'skill-non-record', name: 'skill', arguments: '[]' }),
+      event('tool/call', 11, { callId: 'skill-empty', name: 'skill', arguments: JSON.stringify({ name: '' }) }),
+      event('tool/call', 12, { callId: 'unknown', name: 'not-tracked', arguments: '{}' }),
+      event('tool/call', 13, { turn: -1, callId: 'bad-turn', name: 'memory_search' }),
+      event('tool/call', 14, { step: -1, callId: 'bad-step', name: 'memory_search' }),
+    ]
+
+    const projected = projectSessionHistory('malformed-tools', calls)
+
+    expect(projected.records).toEqual([])
+    expect(projected.degraded).toBe(true)
+  })
+
+  it('handles duplicate, unmatched, malformed, and failing tool results', () => {
+    const projected = projectSessionHistory('result-edges', [
+      event('tool/call', 1, { callId: 'duplicate', name: 'memory_search' }),
+      event('tool/call', 2, { callId: 'duplicate', name: 'memory_get' }),
+      event('tool/result', 3, null),
+      event('tool/result', 4, { message: null }),
+      event('tool/result', 5, { message: { source: { callId: 5 } } }),
+      event('tool/result', 6, { turn: -1, message: { source: { callId: 'duplicate' } } }),
+      event('tool/result', 6, { turn: -1, message: { source: { callId: 'never-tracked' } } }),
+      event('tool/result', 7, { turn: 9, step: 9, message: { source: { callId: 'unknown' } } }),
+      event('tool/result', -1, {
+        message: { source: { callId: 'duplicate' }, content: 'not-blocks' },
+      }),
+      event('tool/call', 9, { callId: 'tool-error', name: 'memory_get' }),
+      event('tool/result', 10, {
+        message: { source: { callId: 'tool-error' }, content: [{ type: 'tool-result', isError: true }] },
+      }),
+    ])
+
+    expect(projected.degraded).toBe(true)
+    expect(projected.records).toEqual([
+      expect.objectContaining({ kind: 'memory.read', status: 'failed', metadata: { seq: 10 } }),
+    ])
+  })
+
+  it('projects safe fallbacks for result content and unsupported Memory outcome text', () => {
+    const cases = [
+      ['write-unknown', 'memory_write', { scope: 'daily' }, { content: [] }],
+      ['write-durable-mismatch', 'memory_write', { scope: 'daily' }, {
+        content: [{ type: 'tool-result', content: [{ type: 'text', text: 'Durable memory already stored.' }] }],
+      }],
+      ['update-mismatch', 'memory_update', { oldContent: 'a', newContent: 'b' }, {
+        content: [{ type: 'tool-result', content: [{ type: 'text', text: 'Forgot durable memory.' }] }],
+      }],
+      ['update-no-content', 'memory_update', { oldContent: 'a', newContent: 'b' }, { content: 'bad' }],
+      ['update-many-results', 'memory_update', { oldContent: 'a', newContent: 'b' }, {
+        content: [{ type: 'tool-result', content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] }],
+      }],
+      ['update-non-text', 'memory_update', { oldContent: 'a', newContent: 'b' }, {
+        content: [{ type: 'tool-result', content: [{ type: 'image', data: 'x' }] }],
+      }],
+    ] as const
+    const events: SessionEvent[] = []
+    let seq = 0
+    for (const [callId, name, args, message] of cases) {
+      events.push(event('tool/call', ++seq, { callId, name, arguments: JSON.stringify(args) }))
+      events.push(event('tool/result', ++seq, { message: { source: { callId }, ...message } }))
+    }
+
+    const projected = projectSessionHistory('outcome-fallbacks', events)
+
+    expect(projected.degraded).toBe(false)
+    expect(projected.records).toHaveLength(cases.length)
+    expect(projected.records.every(record => !Object.hasOwn(record.metadata, 'outcome'))).toBe(true)
+  })
+
+  it('degrades malformed user and Automation events while ignoring unknown history', () => {
+    const malformed = [
+      event('user/message', 1, null),
+      event('user/message', 2, { source: null }),
+      event('user/message', 3, { source: { kind: 3 } }),
+      event('user/message', 3, { source: { kind: 'other' } }),
+      event('user/message', -1, { source: { kind: 'plugin', plugin: 'memory-flush' } }),
+      event('user/message', 5, { source: { kind: 'channel', channel: '', isGroup: false } }),
+      event('user/message', 6, { source: { kind: 'channel', channel: 'feishu', isGroup: false, wasMentioned: 'yes' } }),
+      event('user/message', 7, { source: { kind: 'skill-catalog', entries: null } }),
+      event('user/message', -1, { source: { kind: 'skill-catalog', entries: [] } }),
+      event('user/message', 9, { source: { kind: 'skill-invocation', name: '' } }),
+      event('user/message', -1, { source: { kind: 'skill-invocation', name: 'calendar' } }),
+      event('automation/run', 11, null),
+      event('automation/run', 12, { ruleId: '', scheduledAt: timestamp, status: 'ok' }),
+      event('automation/run', 13, { ruleId: 'daily', scheduledAt: 1, status: 'ok' }),
+      event('automation/run', 14, { ruleId: 'daily', scheduledAt: 'bad', status: 'ok' }),
+      event('automation/run', 15, { ruleId: 'daily', scheduledAt: timestamp, status: 'other' }),
+      event('automation/run', 1.5, { ruleId: 'daily', scheduledAt: timestamp, status: 'started' }),
+      event('unknown/event', 17, { private: 'ignored' }),
+    ]
+
+    const projected = projectSessionHistory('malformed-history', malformed)
+
+    expect(projected).toEqual({ records: [], degraded: true })
+  })
+
+  it('defaults absent channel mentions and degrades an invalid pending event timestamp', () => {
+    const projected = projectSessionHistory('channel-default', [
+      event('user/message', 1, { source: { kind: 'channel', channel: 'telegram', isGroup: false } }),
+      event('automation/run', 2, { ruleId: 'daily', scheduledAt: timestamp, status: 'started' }),
+      event('automation/run', 3, { ruleId: 'daily', scheduledAt: timestamp, status: 'error' }),
+      event('tool/call', -1, { callId: 'pending', name: 'memory_search' }),
+    ])
+
+    expect(projected.degraded).toBe(true)
+    expect(projected.records.map(record => [record.kind, record.status, record.metadata])).toEqual([
+      ['channel.received', undefined, { adapter: 'telegram', conversation: 'direct', mention: null, seq: 1 }],
+      ['automation.run', 'started', { ruleId: 'daily', scheduledAt: timestamp, seq: 2 }],
+      ['automation.run', 'failed', { ruleId: 'daily', scheduledAt: timestamp, seq: 3 }],
+    ])
+  })
 })
 
 describe('createActivityPage', () => {
@@ -562,5 +689,152 @@ describe('createActivityPage', () => {
     expect(createActivityPage({ sessionId, limit: 100 }, {}, sidecars(records)).records).toHaveLength(100)
     expect(() => createActivityPage({ sessionId, limit: 101 }, {}, sidecars(records)))
       .toThrow(expect.objectContaining<Partial<ClawdshActivityQueryError>>({ code: 'invalid-request' }))
+  })
+
+  it('rejects unsupported filters and every invalid limit class', () => {
+    const sessionId = SessionId('invalid-page-request')
+    expect(() => createActivityPage({ sessionId, categories: ['other' as 'memory'] }, {}, sidecars([])))
+      .toThrow(expect.objectContaining<Partial<ClawdshActivityQueryError>>({ code: 'invalid-request' }))
+    for (const limit of [0, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => createActivityPage({ sessionId, limit }, {}, sidecars([])))
+        .toThrow(expect.objectContaining<Partial<ClawdshActivityQueryError>>({ code: 'invalid-request' }))
+    }
+    expect(createActivityPage({ sessionId, categories: [] }, {}, sidecars([])).records).toEqual([])
+  })
+
+  it('reports wrong-session rows, id collisions, and duplicate lifecycle terminals as degraded', () => {
+    const sessionId = SessionId('merge-degradation')
+    const sharedId = randomUUID()
+    const wrongSession = createActivityRecord(
+      { id: randomUUID(), timestamp, sessionId: 'other-session' },
+      'memory.search',
+      { seq: 1 },
+      'succeeded',
+    )
+    const first = createActivityRecord(
+      { id: sharedId, timestamp: new Date(1_000).toISOString(), sessionId },
+      'memory.search',
+      { seq: 2 },
+      'succeeded',
+    )
+    const collision = createActivityRecord(
+      { id: sharedId, timestamp: new Date(2_000).toISOString(), sessionId },
+      'memory.read',
+      { seq: 3 },
+      'failed',
+    )
+    const metadata = { adapter: 'feishu', conversation: 'direct' as const, mention: null, seq: 4 }
+    const earlierTerminal = createActivityRecord(
+      { id: randomUUID(), timestamp: new Date(3_000).toISOString(), sessionId },
+      'channel.delivery',
+      metadata,
+      'failed',
+    )
+    const laterTerminal = createActivityRecord(
+      { id: randomUUID(), timestamp: new Date(4_000).toISOString(), sessionId },
+      'channel.delivery',
+      metadata,
+      'sent',
+    )
+
+    const page = createActivityPage(
+      { sessionId, order: 'asc' },
+      {},
+      sidecars([wrongSession, first, collision, earlierTerminal, laterTerminal]),
+    )
+
+    expect(page.degraded).toBe(true)
+    expect(page.warnings).toContain('activity-data-incomplete')
+    expect(page.records).toEqual([first, laterTerminal])
+  })
+
+  it('keeps the later duplicate start and earlier duplicate terminal by canonical ordering', () => {
+    const sessionId = SessionId('lifecycle-duplicates')
+    const startedMetadata = { ruleId: 'daily', scheduledAt: timestamp, seq: 1 }
+    const startedEarly = createActivityRecord(
+      { id: randomUUID(), timestamp: new Date(1_000).toISOString(), sessionId },
+      'automation.run',
+      { ...startedMetadata, seq: 2 },
+      'started',
+    )
+    const startedLate = createActivityRecord(
+      { id: randomUUID(), timestamp: new Date(2_000).toISOString(), sessionId },
+      'automation.run',
+      startedMetadata,
+      'started',
+    )
+    const terminalMetadata = { ruleId: 'nightly', scheduledAt: timestamp, seq: 3 }
+    const terminalLate = createActivityRecord(
+      { id: randomUUID(), timestamp: new Date(4_000).toISOString(), sessionId },
+      'automation.run',
+      { ...terminalMetadata, seq: 4 },
+      'failed',
+    )
+    const terminalEarly = createActivityRecord(
+      { id: randomUUID(), timestamp: new Date(3_000).toISOString(), sessionId },
+      'automation.run',
+      terminalMetadata,
+      'succeeded',
+    )
+
+    const page = createActivityPage(
+      { sessionId, order: 'asc' },
+      {},
+      sidecars([startedEarly, startedLate, terminalLate, terminalEarly]),
+    )
+
+    expect(page.degraded).toBe(true)
+    expect(page.records).toEqual([startedLate, terminalLate])
+  })
+
+  it('rejects malformed cursor encodings and payload fields', () => {
+    const sessionId = SessionId('cursor-validation')
+    const records = [0, 1].map(seq => createActivityRecord(
+      { id: randomUUID(), timestamp: new Date(1_000 + seq).toISOString(), sessionId },
+      'memory.search',
+      { seq },
+      'succeeded',
+    ))
+    const first = createActivityPage({ sessionId, order: 'asc', limit: 1 }, {}, sidecars(records))
+    const valid = first.nextCursor
+    if (valid === undefined) throw new Error('expected a cursor')
+    const payload = JSON.parse(Buffer.from(valid, 'base64url').toString('utf8')) as Record<string, unknown>
+    const token = (value: unknown) => Buffer.from(JSON.stringify(value), 'utf8').toString('base64url')
+    const malformed: string[] = [
+      '',
+      'a'.repeat(2049),
+      'A',
+      Buffer.from('{', 'utf8').toString('base64url'),
+      Buffer.from(Uint8Array.of(0xff)).toString('base64url'),
+      token(null),
+      token([]),
+      token({ ...payload, extra: true }),
+      token({ ...payload, version: 2 }),
+      token({ ...payload, session: 1 }),
+      token({ ...payload, categories: 'memory' }),
+      token({ ...payload, categories: ['other'] }),
+      token({ ...payload, order: 'sideways' }),
+      token({ ...payload, snapshot: 1 }),
+      token({ ...payload, snapshot: 'A'.repeat(64) }),
+      token({ ...payload, timestamp: 1 }),
+      token({ ...payload, timestamp: '2026-08-16T00:00:00Z' }),
+      token({ ...payload, id: 1 }),
+      token({ ...payload, id: '' }),
+      token({ ...payload, id: 'x'.repeat(129) }),
+      token({ ...payload, id: 'bad\nid' }),
+    ]
+    for (const cursor of malformed) {
+      expect(() => createActivityPage({ sessionId, order: 'asc', limit: 1, cursor }, {}, sidecars(records)))
+        .toThrow(expect.objectContaining<Partial<ClawdshActivityQueryError>>({ code: 'invalid-cursor' }))
+    }
+  })
+
+  it('warns when both history and sidecars are absent', () => {
+    const page = createActivityPage(
+      { sessionId: SessionId('absent-sources') },
+      {},
+      sidecars([], 'missing'),
+    )
+    expect(page.warnings).toEqual(['activity-history-unavailable', 'activity-sidecar-missing'])
   })
 })

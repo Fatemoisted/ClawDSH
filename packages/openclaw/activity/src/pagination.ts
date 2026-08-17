@@ -138,6 +138,7 @@ function collapseLifecycleRecords(records: readonly ClawdshActivityRecord[]): Me
       continue
     }
     const existing = collapsed[existingIndex]
+    /* v8 ignore next -- lifecycle indices are recorded from collapsed.length immediately before the same record is pushed. */
     if (existing === undefined) throw new Error('activity lifecycle index must reference a collapsed record')
     const existingTerminal = existing.status !== 'started'
     const candidateTerminal = record.status !== 'started'
@@ -195,6 +196,7 @@ function mergeRecords(
     if (semantics.has(semantic)) continue
     const existing = ids.get(record.id)
     if (existing !== undefined) {
+      /* v8 ignore else -- equal semantic keys continued above, so any id hit here is necessarily a collision. */
       if (existing !== semantic) degraded = true
       continue
     }

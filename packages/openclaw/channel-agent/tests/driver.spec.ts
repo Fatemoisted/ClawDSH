@@ -136,9 +136,9 @@ function textWithoutUsage(text: string): StreamChunk[] {
   ]
 }
 
-function toolCallResponse(name: string, args: object): StreamChunk[] {
+function toolCallResponse(name: string, args: object | string): StreamChunk[] {
   const callId = CallId('tool-call-1')
-  const argumentsJson = JSON.stringify(args)
+  const argumentsJson = typeof args === 'string' ? args : JSON.stringify(args)
   return [
     { type: 'block-start', index: 0, blockType: 'tool-call' },
     { type: 'tool-call-delta', index: 0, id: callId, name, argumentsDelta: argumentsJson },
@@ -360,6 +360,34 @@ describe('channel Agent turn execution', () => {
     expect(presentation).not.toContain('private-sender')
   })
 
+  it('uses a bounded fallback title for a control-only group channel identity', async () => {
+    const rename = vi.fn()
+    const app = await harness([textResponse('reply')], {
+      sessionTitle: { get: () => undefined, rename },
+    })
+    const base = turn()
+    const group = routeTurn(base, {
+      openclawSessionKey: 'control-title',
+      channel: '\u202e',
+      conversation: 'group-title',
+      kind: 'group',
+    } as never, {
+      idempotencyKey: 'control-title',
+      turnId: 'control-title',
+      runId: 'control-title',
+      messageId: 'control-title',
+      sender: { senderId: 'member', trust: 'group-allowlisted' },
+      wasMentioned: true,
+    })
+
+    await expect(app.ctx.channels.runTurn(group, execution())).resolves.toMatchObject({ status: 'completed' })
+
+    expect(rename).toHaveBeenCalledWith(
+      app.ctx.agents.get(sessionIdFor(group.route))?.session,
+      '外部消息 · 渠道 · 群聊',
+    )
+  })
+
   it('retains an existing channel Session title while still attaching its workspace', async () => {
     const get = vi.fn(() => ({ title: 'Pinned title' }))
     const rename = vi.fn()
@@ -416,6 +444,19 @@ describe('channel Agent turn execution', () => {
       ['channel-agent: could not resolve workspace membership for a channel Session'],
     ])
     expect(JSON.stringify(warn.mock.calls)).not.toContain('resolution-secret-canary')
+  })
+
+  it('skips workspace publication when no registered workspace owns the Session cwd', async () => {
+    const resolveByPath = vi.fn(async () => undefined)
+    const app = await harness([textResponse('reply')], {
+      workspaceRegistry: { resolveByPath },
+    })
+
+    await expect(app.ctx.channels.runTurn(turn(), execution())).resolves.toMatchObject({
+      status: 'completed', text: 'reply',
+    })
+
+    expect(resolveByPath).toHaveBeenCalledWith(app.cwd)
   })
 
   it('keeps a legacy title but skips workspace attachment when the stored Session has no cwd', async () => {
@@ -759,6 +800,81 @@ describe('channel Agent turn execution', () => {
       didSendViaMessagingTool: false,
     })
     expect(invalidArguments.actions).toEqual([])
+  })
+
+  it('marks inherited non-message tools and non-send message mutations as side effects', async () => {
+    const danger = await harness([
+      toolCallResponse('danger', {}),
+      textResponse('danger handled'),
+    ])
+    const dangerResult = await danger.ctx.channels.runTurn(turn(), execution())
+    expect(dangerResult.effects).toEqual({
+      hadPotentialSideEffects: true,
+      replaySafe: false,
+      didSendViaMessagingTool: false,
+      messagingToolSentTexts: [],
+      messagingToolSentMediaUrls: [],
+      messagingToolSentTargets: [],
+    })
+
+    const edit = await harness([
+      toolCallResponse('message', { action: 'edit', messageId: 'platform-message', text: 'edited' }),
+      textResponse('edit handled'),
+    ])
+    const editResult = await edit.ctx.channels.runTurn(turn(), execution())
+    expect(editResult.effects).toEqual({
+      hadPotentialSideEffects: true,
+      replaySafe: false,
+      didSendViaMessagingTool: false,
+      messagingToolSentTexts: [],
+      messagingToolSentMediaUrls: [],
+      messagingToolSentTargets: [],
+    })
+    expect(edit.actions).toEqual([])
+  })
+
+  it('records a confirmed message target with its exact thread identity', async () => {
+    const app = await harness([
+      toolCallResponse('message', { action: 'send', text: 'thread reply' }),
+      textResponse('done'),
+    ])
+    const inbound = turn({ route: { ...turn().route, thread: 'thread-1' } })
+
+    const result = await app.ctx.channels.runTurn(inbound, execution())
+
+    expect(result.effects.messagingToolSentTargets).toEqual([{
+      tool: 'message',
+      provider: 'telegram',
+      accountId: 'account-1',
+      to: 'conversation-1',
+      threadId: 'thread-1',
+      text: 'thread reply',
+    }])
+  })
+
+  it('fails closed for scalar and malformed message-tool argument JSON', async () => {
+    const app = await harness([
+      toolCallResponse('message', 'null'), textResponse('null handled'),
+      toolCallResponse('message', '1'), textResponse('number handled'),
+      toolCallResponse('message', '[]'), textResponse('array handled'),
+      toolCallResponse('message', '{'), textResponse('malformed handled'),
+    ])
+    const inputs = [
+      turn(),
+      turn({ idempotencyKey: 'raw-2', turnId: 'raw-2', runId: 'raw-2', messageId: 'raw-2' }),
+      turn({ idempotencyKey: 'raw-3', turnId: 'raw-3', runId: 'raw-3', messageId: 'raw-3' }),
+      turn({ idempotencyKey: 'raw-4', turnId: 'raw-4', runId: 'raw-4', messageId: 'raw-4' }),
+    ]
+
+    for (const inbound of inputs) {
+      const result = await app.ctx.channels.runTurn(inbound, execution())
+      expect(result.effects).toMatchObject({
+        hadPotentialSideEffects: true,
+        replaySafe: false,
+        didSendViaMessagingTool: false,
+      })
+    }
+    expect(app.actions).toEqual([])
   })
 
   it('attaches equal concurrent retries, rejects conflicting reuse, and cancels only an exact run', async () => {
@@ -1769,6 +1885,64 @@ describe('channel session and ledger lifecycle', () => {
     })
   })
 
+  it('fails closed when followup rejects before the exact user message enters a turn', async () => {
+    const app = await harness([], { mountAgent: false })
+    const originalCreate = app.ctx.agents.create.bind(app.ctx.agents)
+    vi.spyOn(app.ctx.agents, 'create').mockImplementationOnce(async (options) => {
+      const handle = await originalCreate(options)
+      vi.spyOn(handle.agent, 'followup').mockImplementationOnce(() => {
+        throw new Error('followup rejected before admission')
+      })
+      return handle
+    })
+    const driver = await ChannelAgent.ChannelAgentDriver.create(app.ctx, driverConfig(app))
+
+    const result = await driver.runTurn(turn(), execution())
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      effects: UNKNOWN_TURN_EFFECTS,
+    })
+    await driver.dispose()
+  })
+
+  it('fails closed for an open Agent turn while preserving an observed send attempt', async () => {
+    const app = await harness([], { mountAgent: false })
+    const originalCreate = app.ctx.agents.create.bind(app.ctx.agents)
+    vi.spyOn(app.ctx.agents, 'create').mockImplementationOnce(async (options) => {
+      const handle = await originalCreate(options)
+      vi.spyOn(handle.agent, 'followup').mockImplementationOnce((message) => {
+        handle.agent.session.append('turn/start', { turn: 1 })
+        handle.agent.session.append('user/message', message, { surfaceOp: 'append' })
+        handle.agent.session.append('step/start', { turn: 1, step: 1 })
+        handle.agent.session.append('tool/call', {
+          turn: 1,
+          step: 1,
+          callId: CallId('unresolved-send'),
+          name: 'message',
+          arguments: JSON.stringify({ action: 'send', text: 'possibly sent' }),
+        })
+        throw new Error('Agent loop interrupted before terminal evidence')
+      })
+      return handle
+    })
+    const driver = await ChannelAgent.ChannelAgentDriver.create(app.ctx, driverConfig(app))
+
+    const result = await driver.runTurn(turn(), execution())
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      effects: {
+        hadPotentialSideEffects: true,
+        replaySafe: false,
+        didSendViaMessagingTool: true,
+        messagingToolSentTexts: [],
+        messagingToolSentTargets: [],
+      },
+    })
+    await driver.dispose()
+  })
+
   it('quarantines a persisted running turn and never reruns its possible side effects', async () => {
     const inbound = turn()
     const app = await harness([], {
@@ -2077,6 +2251,43 @@ describe('channel admission and media failures', () => {
       shutdownGraceMs: 100,
     })).rejects.toBe(recoveryFailure)
     expect(close).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves startup recovery and storage cleanup failures together', async () => {
+    const recoveryFailure = new Error('recovery write failed')
+    const cleanupFailure = new Error('storage cleanup failed')
+    const ledger = {
+      entries: () => [[
+        'running',
+        { phase: 'running', updatedAt: 1 },
+      ]] as const,
+      put: vi.fn(async () => { throw recoveryFailure }),
+    }
+    const domain = {
+      table: vi.fn(() => ledger),
+      close: vi.fn(async () => { throw cleanupFailure }),
+    }
+    const ctx = {
+      storageDomain: { open: vi.fn(async () => domain) },
+    }
+
+    let failure: unknown
+    try {
+      await ChannelAgent.ChannelAgentDriver.create(ctx as never, {
+        ownerPreset: 'owner',
+        safePreset: 'safe',
+        cwd: '/tmp/workspace',
+        stagingRoot: '/tmp/staging',
+        maxMediaBytes: 1,
+        shutdownGraceMs: 100,
+      })
+    } catch (error: unknown) {
+      failure = error
+    }
+
+    expect(failure).toBeInstanceOf(AggregateError)
+    expect((failure as AggregateError).errors).toEqual([recoveryFailure, cleanupFailure])
+    expect(domain.close).toHaveBeenCalledTimes(1)
   })
 
   it('shares one successful teardown promise, cancels active work, and closes storage after quiescence', async () => {

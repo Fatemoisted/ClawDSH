@@ -222,6 +222,28 @@ describe('channel-openclaw plugin', () => {
     expect(ctx.channels.registerProvider).not.toHaveBeenCalled()
   })
 
+  it('reports every installer-managed field changed by one Settings snapshot', async () => {
+    const base = config({ enabled: false })
+    const snapshot = config({ enabled: false, artifactPath: '/unmanaged/openclaw.tgz', stateDir: '/unmanaged/state' })
+    const ctx = context({
+      settings: {
+        register: vi.fn((_namespace: unknown, _schema: unknown, options: {
+          validate(candidate: PluginConfig): void
+        }) => {
+          options.validate(snapshot)
+          return { get: () => snapshot }
+        }),
+      },
+      channels: { registerProvider: vi.fn() },
+      effect: vi.fn(),
+    })
+
+    await expect(apply(ctx as never, base)).rejects.toThrow(
+      /artifactPath, stateDir are installer-managed/,
+    )
+    expect(mocks.start).not.toHaveBeenCalled()
+  })
+
   it('fails loudly before registration when an enabled managed runtime is unavailable', async () => {
     mocks.start.mockRejectedValueOnce(new Error('managed runtime is unavailable'))
     const ctx = context({ channels: { registerProvider: vi.fn() }, effect: vi.fn() })
@@ -326,6 +348,46 @@ describe('channel-openclaw plugin', () => {
 
     await apply(ctx as never, config())
     terminal.resolve('failed')
+
+    await vi.waitFor(() => {
+      expect(ctx.clawdshOpenClawControl.snapshot()).toEqual({ enabled: true, state: 'failed' })
+    })
+  })
+
+  it('retains active state after an orderly supervisor stop', async () => {
+    const terminal = Promise.withResolvers<'stopped' | 'failed'>()
+    mocks.start.mockResolvedValueOnce({
+      provider: {},
+      done: terminal.promise,
+      dispose: vi.fn(async () => {}),
+    })
+    const ctx = context({
+      channels: { registerProvider: vi.fn(() => vi.fn()) },
+      effect: vi.fn(),
+    })
+
+    await apply(ctx as never, config())
+    terminal.resolve('stopped')
+    await terminal.promise
+    await Promise.resolve()
+
+    expect(ctx.clawdshOpenClawControl.snapshot()).toEqual({ enabled: true, state: 'active' })
+  })
+
+  it('publishes a sanitized failed state when the supervisor completion rejects', async () => {
+    const terminal = Promise.withResolvers<'stopped' | 'failed'>()
+    mocks.start.mockResolvedValueOnce({
+      provider: {},
+      done: terminal.promise,
+      dispose: vi.fn(async () => {}),
+    })
+    const ctx = context({
+      channels: { registerProvider: vi.fn(() => vi.fn()) },
+      effect: vi.fn(),
+    })
+
+    await apply(ctx as never, config())
+    terminal.reject(new Error('private supervisor diagnostic'))
 
     await vi.waitFor(() => {
       expect(ctx.clawdshOpenClawControl.snapshot()).toEqual({ enabled: true, state: 'failed' })

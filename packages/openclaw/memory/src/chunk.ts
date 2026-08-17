@@ -144,6 +144,7 @@ function countNewlines(text: string): number[] {
 
 /** 1-based line number of the character at `offset`. */
 function lineOf(newlines: number[], offset: number): number {
+  /* v8 ignore next -- countNewlines fills every input offset and Slice offsets never exceed that same input. */
   return offset <= 0 ? 1 : (newlines[offset - 1] ?? 0) + 1
 }
 

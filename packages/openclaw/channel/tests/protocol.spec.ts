@@ -476,6 +476,46 @@ describe('channel protocol rejection', () => {
         }],
       },
     }).success).toBe(true)
+    expect(channelTurnResultV1Schema.safeParse({
+      ...RAW_RESULT,
+      effects: {
+        hadPotentialSideEffects: true,
+        replaySafe: false,
+        didSendViaMessagingTool: true,
+        messagingToolSentTexts: [],
+        messagingToolSentMediaUrls: [],
+        messagingToolSentTargets: [{
+          tool: 'message', provider: 'telegram', accountId: 'primary', to: 'chat-1',
+        }],
+      },
+    }).success).toBe(false)
+    expect(channelTurnResultV1Schema.safeParse({
+      ...RAW_RESULT,
+      effects: {
+        hadPotentialSideEffects: true,
+        replaySafe: false,
+        didSendViaMessagingTool: true,
+        messagingToolSentTexts: [],
+        messagingToolSentMediaUrls: ['https://media.example/one'],
+        messagingToolSentTargets: [{
+          tool: 'message', provider: 'telegram', accountId: 'primary', to: 'chat-1', mediaUrls: [],
+        }],
+      },
+    }).success).toBe(false)
+    expect(channelTurnResultV1Schema.safeParse({
+      ...RAW_RESULT,
+      effects: {
+        hadPotentialSideEffects: true,
+        replaySafe: false,
+        didSendViaMessagingTool: true,
+        messagingToolSentTexts: [],
+        messagingToolSentMediaUrls: ['https://media.example/one'],
+        messagingToolSentTargets: [{
+          tool: 'message', provider: 'telegram', accountId: 'primary', to: 'chat-1',
+          mediaUrls: ['https://media.example/one'],
+        }],
+      },
+    }).success).toBe(true)
   })
 
   it('rejects stale reset generations and malformed controls', () => {

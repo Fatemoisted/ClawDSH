@@ -49,6 +49,20 @@ function nodeOps(overrides: Partial<ActivityFileOps> = {}): ActivityFileOps {
 }
 
 describe('ActivitySidecarStore writes', () => {
+  it('rejects impossible byte limits at construction', async () => {
+    const root = await tempRoot()
+
+    for (const maxFileBytes of [MAX_ACTIVITY_RECORD_BYTES - 1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => new ActivitySidecarStore(root, { maxFileBytes })).toThrow(/maxFileBytes/)
+    }
+    for (const maxRecordBytes of [0, 1.5, MAX_ACTIVITY_RECORD_BYTES + 1]) {
+      expect(() => new ActivitySidecarStore(root, {
+        maxFileBytes: MAX_ACTIVITY_RECORD_BYTES,
+        maxRecordBytes,
+      })).toThrow(/maxRecordBytes/)
+    }
+  })
+
   it.skipIf(process.platform === 'win32')('uses hashed Session directories with 0700/0600 permissions', async () => {
     const root = await tempRoot()
     const store = new ActivitySidecarStore(root)
@@ -177,6 +191,98 @@ describe('ActivitySidecarStore writes', () => {
     expect((await stat(producerPath(rotationRoot, sessionId))).size).toBeLessThanOrEqual(8192)
   })
 
+  it('sanitizes invalid records, file metadata, and append-handle failures', async () => {
+    const invalidRoot = await tempRoot()
+    const invalidStore = new ActivitySidecarStore(invalidRoot)
+    const invalid = { ...channelRecord('invalid-record'), id: 'caller-id' }
+    await expect(invalidStore.append('channels', invalid)).resolves.toEqual({ written: false, degraded: true })
+    await expect(invalidStore.append('channels', channelRecord('invalid-record', 2))).resolves.toEqual({
+      written: true,
+      degraded: true,
+    })
+
+    const nonFileRoot = await tempRoot()
+    const nonFileStore = new ActivitySidecarStore(nonFileRoot, {
+      fileOps: nodeOps({ async stat() { return { size: 0, isFile: () => false } } }),
+    })
+    await expect(nonFileStore.append('channels', channelRecord('non-file'))).resolves.toEqual({
+      written: false,
+      degraded: true,
+    })
+
+    const statRoot = await tempRoot()
+    const statStore = new ActivitySidecarStore(statRoot, {
+      fileOps: nodeOps({ async stat() { throw Object.assign(new Error('denied'), { code: 'EACCES' }) } }),
+    })
+    await expect(statStore.append('channels', channelRecord('stat-failure'))).resolves.toEqual({
+      written: false,
+      degraded: true,
+    })
+
+    for (const failure of ['chmod', 'write', 'close', 'write-and-close'] as const) {
+      const root = await tempRoot()
+      const base = nodeOps()
+      const store = new ActivitySidecarStore(root, {
+        fileOps: nodeOps({
+          async open(path, flags, mode) {
+            const handle = await base.open(path, flags, mode)
+            return {
+              chmod: async (value: number) => {
+                if (failure === 'chmod') throw new Error('chmod failed')
+                await handle.chmod(value)
+              },
+              close: async () => {
+                if (failure === 'close' || failure === 'write-and-close') {
+                  await handle.close()
+                  throw new Error('close failed')
+                }
+                await handle.close()
+              },
+              read: (buffer: Uint8Array, offset: number, length: number, position: number) =>
+                handle.read(buffer, offset, length, position),
+              stat: () => handle.stat(),
+              writeFile: async (data: string) => {
+                if (failure === 'write' || failure === 'write-and-close') throw new Error('write failed')
+                await handle.writeFile(data)
+              },
+            }
+          },
+        }),
+      })
+      await expect(store.append('channels', channelRecord(`handle-${failure}`))).resolves.toEqual({
+        written: false,
+        degraded: true,
+      })
+    }
+  })
+
+  it('ignores absent rotation generations but rejects other rotation chmod failures', async () => {
+    const root = await tempRoot()
+    const base = nodeOps()
+    let activePath = ''
+    const store = new ActivitySidecarStore(root, {
+      maxFileBytes: 8192,
+      maxRecordBytes: 8192,
+      fileOps: nodeOps({
+        async chmod(path, mode) {
+          if (path.endsWith('.1')) throw Object.assign(new Error('rotation chmod denied'), { code: 'EACCES' })
+          await base.chmod(path, mode)
+        },
+        async rename(source, target) {
+          activePath ||= source
+          await base.rename(source, target)
+        },
+      }),
+    })
+    const sessionId = 'q'.repeat(4000)
+    expect((await store.append('channels', channelRecord(sessionId))).written).toBe(true)
+    await expect(store.append('channels', channelRecord(sessionId, 2))).resolves.toEqual({
+      written: false,
+      degraded: true,
+    })
+    expect(activePath).toContain('channels.jsonl')
+  })
+
   it('waits for entered appends during dispose and refuses later writes', async () => {
     const root = await tempRoot()
     let release!: () => void
@@ -302,5 +408,112 @@ describe('ActivitySidecarStore reads', () => {
     })
     expect(JSON.stringify(read)).not.toContain(root)
     expect(JSON.stringify(read)).not.toContain('cannot read')
+  })
+
+  it('degrades invalid file metadata, short reads, read failures, and close failures', async () => {
+    async function readWith(
+      name: string,
+      handle: {
+        stat(): Promise<{ size: number; isFile(): boolean }>
+        read(buffer: Uint8Array, offset: number, length: number, position: number): Promise<{ bytesRead: number }>
+        close(): Promise<void>
+      },
+      maxFileBytes = MAX_ACTIVITY_RECORD_BYTES,
+    ) {
+      const root = await tempRoot()
+      const ops = nodeOps({
+        async open(_path, flags) {
+          if (flags === 'r') return { ...handle, chmod: async () => {}, writeFile: async () => {} }
+          throw Object.assign(new Error('append unused'), { code: 'ENOENT' })
+        },
+      })
+      const result = await new ActivitySidecarStore(root, {
+        fileOps: ops,
+        maxFileBytes,
+        maxRecordBytes: maxFileBytes,
+      }).read(name, ['channels'])
+      expect(result).toMatchObject({ availability: 'available', degraded: true, records: [] })
+    }
+
+    for (const info of [
+      { size: 0, isFile: () => false },
+      { size: 0.5, isFile: () => true },
+      { size: -1, isFile: () => true },
+      { size: MAX_ACTIVITY_RECORD_BYTES + 1, isFile: () => true },
+    ]) {
+      await readWith('invalid-stat', {
+        async stat() { return info },
+        async read() { return { bytesRead: 0 } },
+        async close() {},
+      })
+    }
+
+    await readWith('short-read', {
+      async stat() { return { size: 4, isFile: () => true } },
+      async read() { return { bytesRead: 0 } },
+      async close() {},
+    })
+    await readWith('read-error', {
+      async stat() { return { size: 4, isFile: () => true } },
+      async read() { throw new Error('read failed') },
+      async close() {},
+    })
+    await readWith('close-error', {
+      async stat() { return { size: 0, isFile: () => true } },
+      async read() { return { bytesRead: 0 } },
+      async close() { throw new Error('close failed') },
+    })
+  })
+
+  it('degrades invalid UTF-8, malformed and oversized lines, and a tail without any newline', async () => {
+    async function readBytes(name: string, bytes: Uint8Array, maxRecordBytes = MAX_ACTIVITY_RECORD_BYTES) {
+      const root = await tempRoot()
+      const store = new ActivitySidecarStore(root, {
+        fileOps: nodeOps({
+          async open(_path, flags) {
+            if (flags !== 'r') throw Object.assign(new Error('append unused'), { code: 'ENOENT' })
+            let offset = 0
+            return {
+              async chmod() {},
+              async close() {},
+              async stat() { return { size: bytes.byteLength, isFile: () => true } },
+              async writeFile() {},
+              async read(buffer: Uint8Array, targetOffset: number, length: number) {
+                const count = Math.min(length, bytes.byteLength - offset)
+                buffer.set(bytes.subarray(offset, offset + count), targetOffset)
+                offset += count
+                return { bytesRead: count }
+              },
+            }
+          },
+        }),
+        maxFileBytes: MAX_ACTIVITY_RECORD_BYTES,
+        maxRecordBytes,
+      })
+      await expect(store.read(name, ['channels'])).resolves.toMatchObject({
+        availability: 'available',
+        degraded: true,
+        records: [],
+      })
+    }
+
+    await readBytes('invalid-utf8', Uint8Array.of(0xff, 0x0a))
+    await readBytes('no-newline', Buffer.from('{"partial":true}', 'utf8'))
+    await readBytes('bad-lines', Buffer.from(`\n{bad json}\n${'x'.repeat(300)}\n`, 'utf8'), 256)
+  })
+
+  it('deduplicates requested producers and sorts equal timestamps by record id', async () => {
+    const root = await tempRoot()
+    const store = new ActivitySidecarStore(root)
+    const sessionId = 'sorted-session'
+    const sameTimestamp = '2026-08-16T00:00:00.000Z'
+    const second = { ...channelRecord(sessionId, 2), id: 'ffffffff-ffff-4fff-8fff-ffffffffffff', timestamp: sameTimestamp }
+    const first = { ...channelRecord(sessionId, 1), id: '00000000-0000-4000-8000-000000000000', timestamp: sameTimestamp }
+    await store.append('channels', second)
+    await store.append('channels', first)
+
+    const read = await store.read(sessionId, ['channels', 'channels'])
+
+    expect(read.records.map(record => record.id)).toEqual([first.id, second.id])
   })
 })
