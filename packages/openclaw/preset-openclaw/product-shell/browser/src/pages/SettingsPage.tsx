@@ -22,6 +22,7 @@ import {
   type ClawdshCredentialDraftState,
   type ClawdshNamespaceDraftState,
 } from '../settings-store.ts'
+import { ClawdshMark } from '../clawdsh-brand.tsx'
 import { AutomationRulesEditor } from './AutomationRulesEditor.tsx'
 import { GatewayExtensionsTable } from './GatewayExtensionsTable.tsx'
 import { SettingsFields, type SettingsFieldPresentation } from './settings-fields.tsx'
@@ -46,6 +47,68 @@ interface FeatureConfig {
   readonly description: string
   readonly namespaces: readonly { readonly id: string; readonly subsection?: string }[]
   readonly credentialId?: string
+}
+
+const CONFIGURATION_LOCATIONS = [
+  {
+    title: '非密钥业务设置',
+    location: '$DSH_HOME/settings.yaml',
+    entry: 'Settings → ClawDSH（当前页面）',
+    timing: '字段旁会标明立即、新会话或重启生效。',
+  },
+  {
+    title: '模型与 Ark 密钥',
+    location: '$DSH_HOME/.credentials.yaml；启动环境；.env',
+    entry: 'Settings → Models；Memory → Ark API Key',
+    timing: '.credentials.yaml 在下一次调用生效；环境变量与 .env 变更后须重启。',
+  },
+  {
+    title: '部署组合与高级覆盖',
+    location: '安装 bundle；profile/root cordis.patch.yml',
+    entry: '安装器；高级用户 patch',
+    timing: '重新启动对应进程后生效；patch 中不得填写明文密钥。',
+  },
+  {
+    title: 'OpenClaw 平台账号与策略',
+    location: '$DSH_HOME/clawdsh/channel/openclaw/state/openclaw.json',
+    entry: 'clawdsh channel install 后由 OpenClaw 管理',
+    timing: '遵循 OpenClaw 的保存和加载生命周期。',
+  },
+] as const
+
+function ConfigurationLocations(): ReactNode {
+  return (
+    <section className={css.section} aria-labelledby="clawdsh-configuration-locations-title">
+      <div className={css.sectionHeading}>
+        <div>
+          <h2 id="clawdsh-configuration-locations-title">配置与数据位置</h2>
+          <p>ClawDSH 按所有权分开存放设置、密钥、部署覆盖和平台状态；这里是统一入口，不会把密钥写入 settings.yaml。</p>
+        </div>
+      </div>
+      <ul className={css.locationGrid}>
+        {CONFIGURATION_LOCATIONS.map(item => (
+          <li className={css.locationCard} key={item.title}>
+            <strong>{item.title}</strong>
+            <dl>
+              <div><dt>权威位置</dt><dd><code>{item.location}</code></dd></div>
+              <div><dt>用户入口</dt><dd>{item.entry}</dd></div>
+              <div><dt>生效时间</dt><dd>{item.timing}</dd></div>
+            </dl>
+          </li>
+        ))}
+      </ul>
+      <aside className={css.locationNotice} aria-label="数据与密钥安全提示">
+        <p>
+          Sessions、Memory、Activity 与 OpenClaw state 都保留在 <code>$DSH_HOME</code>；Skills Hub 默认目录
+          {' '}<code>~/.clawdbot/skills</code> 位于其外，可通过 <code>managedDir</code> 主动修改。
+        </p>
+        <p>
+          <code>.credentials.yaml</code> 的 <code>0600</code> 权限只能隔离其他操作系统用户，不能阻止同一 UID 下的
+          Agent 工具主动读取。请只在可信主机运行 ClawDSH。
+        </p>
+      </aside>
+    </section>
+  )
 }
 
 const FEATURE_CONFIGS: readonly FeatureConfig[] = [
@@ -472,9 +535,14 @@ export function SettingsPage(props: SettingsPageProps): ReactNode {
   return (
     <div className={css.page}>
       <header className={css.header}>
-        <h1>ClawDSH</h1>
-        <p>个人助手功能、凭据和安全默认值。运行证据与配置状态分开显示。</p>
+        <ClawdshMark className={css.headerMark} />
+        <div>
+          <h1>ClawDSH</h1>
+          <p>个人助手功能、凭据和安全默认值。运行证据与配置状态分开显示。</p>
+        </div>
       </header>
+
+      <ConfigurationLocations />
 
       {snapshot.dirtyCount > 0 ? (
         <div className={css.dirtyNotice} role="status">

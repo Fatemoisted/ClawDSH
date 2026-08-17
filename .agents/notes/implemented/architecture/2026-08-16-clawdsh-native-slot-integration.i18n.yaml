@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-16-clawdsh-native-slot-integration.md
-2026-08-16-clawdsh-native-slot-integration.md: e41c53d69cae62c90e650ff87916ffe0d4be8091
-2026-08-16-clawdsh-native-slot-integration.zh.md: f123b134a05acaa743c9d23aa123e56210ca3561
+2026-08-16-clawdsh-native-slot-integration.md: e7efacd3088035e083df0ea1363e5b02e7e5f741
+2026-08-16-clawdsh-native-slot-integration.zh.md: 999a92a4b7f2d7c2b20d785af0a0682b8c6856b1

@@ -8,10 +8,10 @@
 
 **上游纪律（最高优先级）**：
 - 本仓库跟踪上游 `deepseek-ai/deepseek-harness`（远程 `upstream`）。上游 `vendor/`、`packages/*`（`openclaw/` 除外）、`apps/`、`website/` 及其 `docs/` 中的上游文件一律只读。
-- 上游文件仅允许两类改动：① 置顶本品牌段（README/CLAUDE/AGENTS）；② 通过 profile/bundle/patch 覆盖配置。
+- 上游文件仅允许三类可重放改动：① 置顶 ClawDSH 品牌段（README/CONTRIBUTING/CLAUDE/AGENTS）；② 根 LICENSE 的 ClawDSH contributors notice 与根 package metadata；③ 通过 profile/bundle/patch 覆盖配置。
 - 缺接缝（seam）时：先写 ADR → 向上游提 PR → 本地用 profile patch 过渡。见 [docs/standards/upstream-sync.md](docs/standards/upstream-sync.md)。
 
-**自有代码只允许出现在**：`packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal,upstream-proposal}/`、`tools/`、`.github/workflows/clawdsh-*`。
+**自有内容只允许出现在**：`packages/openclaw/`、`docs/{adr,specs,matrix,standards,journal,upstream-proposal}/`、`tools/`、`.github/workflows/clawdsh-*` 与仅追加的 `.agents/notes/`。
 
 **上下文纪律**：聚焦上面自有面；上游代码只读、不必重读——dsh 架构已浓缩进 [docs/specs/context-map.md](docs/specs/context-map.md)（一次读完 Cordis/seam/profile/session-log，含 54 个 seam 的权威目录与「读什么/跳什么」策略）。仅实现新 seam 时才读对应上游 Service Definition。
 

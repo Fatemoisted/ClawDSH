@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,7 +14,7 @@ import {
   CLAWDSH_RPC_ENDPOINTS,
 } from '../../shared/src/protocol.ts'
 import { apply, internals } from '../src/index.ts'
-import { SETTINGS_MANIFEST } from '../src/settings-manifest.ts'
+import { CREDENTIAL_MANIFEST, SETTINGS_MANIFEST } from '../src/settings-manifest.ts'
 
 interface CapturedResponse {
   response: ServerResponse
@@ -93,6 +93,25 @@ afterEach(() => {
 })
 
 describe('ClawDSH product runtime projections', () => {
+  it('freezes the eight product settings namespaces and sole Ark credential reference', () => {
+    expect(SETTINGS_MANIFEST.map(entry => entry.namespace)).toEqual([
+      'clawdsh-soul',
+      'clawdsh-channel-agent',
+      'clawdsh-channel-openclaw',
+      'clawdsh-memory',
+      'clawdsh-embeddings-ark',
+      'clawdsh-skills-hub',
+      'clawdsh-automation',
+      'clawdsh-activity',
+    ])
+    expect(CREDENTIAL_MANIFEST).toEqual([{
+      id: 'ark-api-key',
+      ref: 'ARK_API_KEY',
+      label: 'Ark API Key',
+      effectTime: 'next-call',
+    }])
+  })
+
   it('keeps durable Session workspaces managed while exposing plain-language controls', () => {
     const channelAgent = SETTINGS_MANIFEST.find(entry => entry.namespace === 'clawdsh-channel-agent')
     expect(channelAgent?.fields).toEqual(expect.arrayContaining([
@@ -345,6 +364,8 @@ describe('ClawDSH product routes', () => {
     const temporary = mkdtempSync(join(tmpdir(), 'clawdsh-product-routes-'))
     const index = join(temporary, 'index.html')
     writeFileSync(index, '<main>shell</main>')
+    mkdirSync(join(temporary, 'brand'))
+    writeFileSync(join(temporary, 'brand/clawdsh-mark-192.png'), 'PNG fixture')
     const routes: WebRoute[] = []
     const ctx = {
       webServer: {
@@ -369,12 +390,16 @@ describe('ClawDSH product routes', () => {
       const settingsSlashRedirect = routes.find(route => route.kind === 'exact' && route.path === '/clawdsh/settings/')
       const activityRedirect = routes.find(route => route.kind === 'exact' && route.path === '/clawdsh/activity')
       const activitySlashRedirect = routes.find(route => route.kind === 'exact' && route.path === '/clawdsh/activity/')
+      const pngAsset = routes.find(route => (
+        route.kind === 'exact' && route.path === '/clawdsh/brand/clawdsh-mark-192.png'
+      ))
       const staticRoute = routes.find(route => route.kind === 'prefix')
       expect(redirect?.path).toBe('/clawdsh')
       expect(settingsRedirect?.path).toBe('/clawdsh/settings')
       expect(settingsSlashRedirect?.path).toBe('/clawdsh/settings/')
       expect(activityRedirect?.path).toBe('/clawdsh/activity')
       expect(activitySlashRedirect?.path).toBe('/clawdsh/activity/')
+      expect(pngAsset?.path).toBe('/clawdsh/brand/clawdsh-mark-192.png')
       expect(staticRoute?.path).toBe('/clawdsh')
 
       const redirected = captureResponse()
@@ -406,6 +431,17 @@ describe('ClawDSH product routes', () => {
       const rejectedMethod = captureResponse()
       await settingsRedirect?.handler(request('/clawdsh/settings', 'POST'), rejectedMethod.response)
       expect(rejectedMethod.status).toBe(405)
+
+      const png = captureResponse()
+      await pngAsset?.handler(request('/clawdsh/brand/clawdsh-mark-192.png'), png.response)
+      expect(png.status).toBe(200)
+      expect(png.headers).toEqual({ 'content-type': 'image/png', 'content-length': '11' })
+      expect(png.body).toBe('PNG fixture')
+
+      const pngHead = captureResponse()
+      await pngAsset?.handler(request('/clawdsh/brand/clawdsh-mark-192.png', 'HEAD'), pngHead.response)
+      expect(pngHead.status).toBe(200)
+      expect(pngHead.body).toBe('')
 
       const traversal = captureResponse()
       await staticRoute?.handler(request('/clawdsh/%2e%2e%2fsecret'), traversal.response)

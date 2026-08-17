@@ -1,3 +1,26 @@
+<!-- ══════════════════════════════════════════════════════════════
+     ClawDSH contribution prelude; keep the upstream text below unchanged.
+     ══════════════════════════════════════════════════════════════ -->
+# Contributing to ClawDSH
+
+English | [中文](CONTRIBUTING.zh.md)
+
+ClawDSH welcomes focused issues, proposals, documentation improvements, bug fixes, and feature pull requests. The project rebuilds OpenClaw personal-assistant capabilities as plugins on DeepSeek Harness; contributions must preserve that plugin boundary and the repository's upstream-sync discipline.
+
+Before opening code:
+
+1. Search the [feature matrix](docs/matrix/parity.md) and existing issues, then open or reference one repository issue that states the user-visible problem.
+2. For a new feature, write or update its `docs/specs/feature-*.md` specification or the owning ADR before implementation.
+3. Keep ClawDSH implementation in the owned surfaces listed by [AGENTS.md](AGENTS.md). A missing upstream seam starts with an ADR and upstream proposal, not a private import or direct upstream-core edit.
+4. Follow the [plugin contract](docs/standards/plugin-contract.md) and [PR policy](docs/standards/pr-policy.md); update the parity matrix, affected documentation, tests, and required Agent Note in the same change.
+5. In the pull request, identify every upstream file touched and list the exact checks run. Do not commit credentials, generated local state, registry tokens, or `.env` files.
+
+Contributions are submitted under this repository's MIT License. The section below is the retained upstream DeepSeek Harness contribution text; its temporary restriction on upstream external pull requests does not describe ClawDSH's contribution policy.
+
+---
+
+<!-- ⬇ Upstream CONTRIBUTING text (kept unchanged for attribution and rebases) -->
+
 # Contributing
 
 English | [中文](CONTRIBUTING.zh.md)

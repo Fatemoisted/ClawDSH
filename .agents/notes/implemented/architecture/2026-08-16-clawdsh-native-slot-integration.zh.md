@@ -14,9 +14,15 @@ Status: implemented
 
 ## Decision
 
-`/clawdsh/` 会在最小 root 容器内渲染一棵完整 `buildRenderApp()` tree。ClawDSH 删除外层导航，只向四个既有公开 Slot 贡献内容：`conversation.hero.agentPreset`、`sidebar.footer.action`、`settings.section` 与 `conversation.view`。这些 contribution 会固定产品 identity、添加全页 Harness 高级链接、把 ClawDSH 放在原生 Settings 首位，并在 Trajectory 后添加「ClawDSH 记录」。任何 contribution 都不 import 上游 `src/*` path、不注册新 Slot、不搜索本地化 DOM 文本，也不模拟 click。
+`/clawdsh/` 会在最小 root 容器内渲染一棵完整 `buildRenderApp()` tree。ClawDSH 删除外层导航，只向五个既有公开 Slot 贡献内容：`conversation.hero.agentPreset`、`sidebar.footer.action`、`settings.section`、`conversation.view` 与 `conversation.chat.node`。这些 contribution 会固定产品 identity、添加全页 Harness 高级链接、把 ClawDSH 放在原生 Settings 首位、在 Trajectory 后添加「ClawDSH 记录」，并通过标准 Chat node 呈现 Channel context。任何 contribution 都不 import 上游 `src/*` path、不注册新 Slot、不搜索本地化 DOM 文本，也不模拟 click。
 
 产品 root 保留稳定的 `[data-variant='think']` 呈现规则，Harness 则拥有 AppFrame、sidebar、Session history、Chat、Settings chrome、Trajectory、composer 与所有关联 React state。打开或关闭 Settings 不会 remount 该原生应用。`/clawdsh/settings` 与 `/clawdsh/activity` 在一个兼容周期内通过 HTTP 308 跳转到 `/clawdsh/`；protocol-v1 route field 保持不变，直到后续单独进行版本化移除。
+
+最小 entry chunk 会异步加载完整 Client entry。加载该 chunk、具现化公开 Client kernel 或解析 boot manifest 期间失败时，浏览器会 dispose 所有部分 entry，并把 mount 替换为无依赖的品牌 alert。Kernel signal 创建后的失败继续使用常规品牌 loading gate。两条路径都只暴露稳定的 ClawDSH error code；未知 exception、stack、path 与可能的 credential text 绝不进入 DOM 或 browser console。打包产品的 browser smoke 必须执行这条路径，不能把收到 HTML response 当作启动成功。
+
+rc.6 static fallback 不会为 PNG 分配媒体类型。因此，产品 Host 为 Web manifest 指定的三个 raster icon 拥有精确 GET／HEAD route，并以 `image/png` response 返回；其他产品资产继续使用共享 static server。这些固定 route 是发行兼容层，已发布 static server 负责 PNG MIME 后即可删除。
+
+已发布 Settings shell 目前没有暴露 responsive-layout seam。在 600 px 以下，一条 product-scoped compatibility rule 会使用 shell 的语义 `role="dialog"`、`aria-modal` 与直接 `nav` 结构，把导航堆叠到内容上方，并且只在该 dialog 存在时解除 collapsed sidebar 的裁剪。这项狭窄例外不改变上游源码、不隐藏或替换 Harness identity，并由 real-profile mobile journey 覆盖；上游提供响应式 Settings seam 后必须删除它。其他原生 DOM 结构仍不属于产品接口。
 
 ### Settings 生命周期与证据
 
@@ -44,12 +50,14 @@ Soul、Memory、Skills Hub、Channels 与 Automation 是五项用户功能。Act
 
 ## Verification
 
-Focused browser test 固定四项 Slot registration、单一原生 root、wide 与 rail footer action、Settings 首位顺序、store 生命周期、unload protection、credential cleanup 与 dispose、状态矩阵、保守 fallback、第三个 tab 的 Session binding、cancellation、pagination、按来源区分的 availability 与按类别细分的空状态文案。Runtime test 固定 legacy redirect、query preservation、method rejection 与未知产品 path。Static assertion 会拒绝 private import 与 DOM navigation bridge。
+Focused browser test 固定五项 Slot registration、单一原生 root、wide 与 rail footer action、Settings 首位顺序、store 生命周期、unload protection、credential cleanup 与 dispose、状态矩阵、保守 fallback、第三个 tab 的 Session binding、cancellation、pagination、按来源区分的 availability 与按类别细分的空状态文案。Runtime test 固定 legacy redirect、query preservation、method rejection 与未知产品 path。Static assertion 会拒绝 private import 与 DOM navigation bridge。
 
 Browser 会在 desktop、rail 与 narrow 宽度下操作正常 `clawdsh` profile。验证覆盖单一 sidebar、原生 ClawDSH Settings section、五项 clean-install 状态、相邻的「对话」「轨迹」「ClawDSH 记录」tab、真实 Session 产生的记录、legacy redirect、产品 404 与 browser console output。
 
+Bootstrap test 会注入 entry-chunk 与 boot-manifest failure，并要求在部分状态 dispose 后呈现品牌 alert。Sentinel credential 与本地 path 会证明 bootstrap、dispose 与普通 plugin failure 在 DOM 和 console 中只披露稳定 code。打包产品 smoke 会启动 Chromium，等待原生 root 与 footer 完成呈现，并拒绝 page exception、console error、产品请求失败与错误 response。
+
 ## Consequences
 
-ClawDSH 获得更小的信息架构，并让 Session 与 modal state 保持单一 owner。产品功能依赖四个 published Slot contract 与完整 root renderer 的稳定性，而不依赖原生 DOM 结构。
+ClawDSH 获得更小的信息架构，并让 Session 与 modal state 保持单一 owner。产品功能依赖五个 published Slot contract 与完整 root renderer 的稳定性。只有临时窄屏 Settings compatibility rule 依赖语义原生 dialog 结构。
 
 未保存 draft 只在当前 browser process 与 plugin 生命周期内保留。该选择有意放弃 reload 后恢复，以换取 credential text 不进入 durable storage。Sequence label 可以把记录与 Session 顺序关联起来，但不提供进入 Trajectory 的 deep link。

@@ -13,7 +13,7 @@ import {
   verifyRuntimeInstallation,
 } from '../src/integrity.ts'
 import type { OpenClawExtensionLock } from '../src/extensions.ts'
-import { installedProjectTreeDigest } from '../src/file-integrity.ts'
+import { installedProjectTreeDigest, ordinaryFileTreeDigest } from '../src/file-integrity.ts'
 import { CANARY_OPENCLAW_LOCK, PRODUCTION_OPENCLAW_LOCK, type OpenClawRuntimeLock } from '../src/locks.ts'
 
 const roots: string[] = []
@@ -30,6 +30,55 @@ async function temporaryRoot(): Promise<string> {
 
 function sha512(value: string): string {
   return createHash('sha512').update(value).digest('hex')
+}
+
+type FileIntegrityOps = NonNullable<Parameters<typeof installedProjectTreeDigest>[2]>
+type FileIntegrityInfo = Awaited<ReturnType<FileIntegrityOps['lstat']>>
+type FileIntegrityEntry = Awaited<ReturnType<FileIntegrityOps['readdir']>>[number]
+type VirtualEntryKind = 'directory' | 'file' | 'link' | 'other'
+
+function virtualInfo(kind: 'directory' | 'file', size = 0): FileIntegrityInfo {
+  return {
+    size,
+    isDirectory: () => kind === 'directory',
+    isFile: () => kind === 'file',
+  }
+}
+
+function virtualEntry(name: string, kind: VirtualEntryKind): FileIntegrityEntry {
+  return {
+    name,
+    isSymbolicLink: () => kind === 'link',
+    isDirectory: () => kind === 'directory',
+    isFile: () => kind === 'file',
+  }
+}
+
+function virtualFileOps(options: {
+  readonly directories: ReadonlyMap<string, readonly FileIntegrityEntry[]>
+  readonly infos: ReadonlyMap<string, FileIntegrityInfo>
+  readonly links?: ReadonlyMap<string, string>
+  readonly digests?: ReadonlyMap<string, string>
+}): FileIntegrityOps {
+  return {
+    lstat: async (path) => {
+      const info = options.infos.get(path)
+      if (info === undefined) throw new Error(`missing virtual file info for ${path}`)
+      return info
+    },
+    readlink: async (path) => {
+      const target = options.links?.get(path)
+      if (target === undefined) throw new Error(`missing virtual link target for ${path}`)
+      return target
+    },
+    readdir: async (path) => {
+      const entries = options.directories.get(path)
+      if (entries === undefined) throw new Error(`missing virtual directory for ${path}`)
+      return entries
+    },
+    realpath: async path => path,
+    sha512File: async path => options.digests?.get(path) ?? sha512(path),
+  }
 }
 
 async function hostFixture(): Promise<{
@@ -72,6 +121,7 @@ interface RuntimeFixture {
   readonly runtimeRoot: string
   readonly hostRoot: string
   readonly checkedLock: ParsedRuntimeLock
+  readonly installedPackages: Record<string, RuntimeLockEntry>
   readonly hiddenLockPath: string
   readonly lock: OpenClawRuntimeLock
 }
@@ -135,7 +185,7 @@ function packageName(path: string): string {
   return parts[0]?.startsWith('@') === true ? parts.slice(0, 2).join('/') : parts[0] ?? 'missing'
 }
 
-async function runtimeFixture(): Promise<RuntimeFixture> {
+async function runtimeFixture(contents: 'complete' | 'host-only' = 'complete'): Promise<RuntimeFixture> {
   const root = await temporaryRoot()
   const runtimeRoot = join(root, 'runtime')
   const templateRoot = join(import.meta.dirname, '..', 'runtime')
@@ -146,9 +196,9 @@ async function runtimeFixture(): Promise<RuntimeFixture> {
   await writeFile(join(runtimeRoot, 'package-lock.json'), lockBytes)
   const checkedLock = JSON.parse(lockBytes.toString('utf8')) as unknown as ParsedRuntimeLock
   const checkedPackages = checkedLock.packages
-  const installedPackages: Record<string, unknown> = {}
+  const installedPackages: Record<string, RuntimeLockEntry> = {}
   for (const [path, entry] of Object.entries(checkedPackages)) {
-    if (path === '') continue
+    if (path === '' || (contents === 'host-only' && path !== 'node_modules/openclaw')) continue
     const directory = join(runtimeRoot, ...path.split('/'))
     await mkdir(directory, { recursive: true })
     await writeFile(join(directory, 'package.json'), JSON.stringify({
@@ -170,6 +220,7 @@ async function runtimeFixture(): Promise<RuntimeFixture> {
     runtimeRoot,
     hostRoot: join(runtimeRoot, 'node_modules', 'openclaw'),
     checkedLock,
+    installedPackages,
     hiddenLockPath,
     lock: {
       ...PRODUCTION_OPENCLAW_LOCK,
@@ -279,6 +330,68 @@ describe('locked host integrity', () => {
     expect(await sha512File(join(root, 'z.txt'))).toBe(sha512('z'))
     expect(await hostTreeDigest(root)).toEqual(await hostTreeDigest(root))
     expect((await hostTreeDigest(root)).fileCount).toBe(2)
+  })
+
+  it('locks internal file links through platform-independent filesystem operations', async () => {
+    const root = join(tmpdir(), 'channel-openclaw-virtual-links')
+    const firstTarget = join(root, 'first.js')
+    const secondTarget = join(root, 'second.js')
+    const link = join(root, 'executable')
+    const directories = new Map([
+      [root, [
+        virtualEntry('first.js', 'file'),
+        virtualEntry('second.js', 'file'),
+        virtualEntry('executable', 'link'),
+      ]],
+    ])
+    const infos = new Map([
+      [root, virtualInfo('directory')],
+      [firstTarget, virtualInfo('file', 7)],
+      [secondTarget, virtualInfo('file', 7)],
+    ])
+    const digests = new Map([
+      [firstTarget, sha512('content')],
+      [secondTarget, sha512('content')],
+    ])
+    const operationsFor = (target: string): FileIntegrityOps => virtualFileOps({
+      directories,
+      infos,
+      links: new Map([[link, target]]),
+      digests,
+    })
+
+    const first = await installedProjectTreeDigest(root, [], operationsFor('first.js'))
+    const second = await installedProjectTreeDigest(root, [], operationsFor('second.js'))
+
+    expect(first.fileCount).toBe(2)
+    expect(second.fileCount).toBe(2)
+    expect(first.sha512).not.toBe(second.sha512)
+  })
+
+  it('rejects virtual link targets and special entries without host filesystem features', async () => {
+    const linkedRoot = join(tmpdir(), 'channel-openclaw-virtual-link-target')
+    const link = join(linkedRoot, 'link')
+    const target = join(linkedRoot, 'target')
+    const linkedOperations = virtualFileOps({
+      directories: new Map([[linkedRoot, [virtualEntry('link', 'link')]]]),
+      infos: new Map([
+        [linkedRoot, virtualInfo('directory')],
+        [target, virtualInfo('directory')],
+      ]),
+      links: new Map([[link, 'target']]),
+    })
+    await expect(installedProjectTreeDigest(linkedRoot, [], linkedOperations))
+      .rejects.toThrow(/does not target an ordinary file/)
+
+    const specialRoot = join(tmpdir(), 'channel-openclaw-virtual-special-entry')
+    const specialOperations = virtualFileOps({
+      directories: new Map([[specialRoot, [virtualEntry('socket', 'other')]]]),
+      infos: new Map([[specialRoot, virtualInfo('directory')]]),
+    })
+    await expect(installedProjectTreeDigest(specialRoot, [], specialOperations))
+      .rejects.toThrow(/installed project tree contains a non-file entry socket/)
+    await expect(ordinaryFileTreeDigest(specialRoot, specialOperations))
+      .rejects.toThrow(/package tree contains a non-file entry socket/)
   })
 
   it('rejects symbolic links and non-file directory entries', async () => {
@@ -467,77 +580,87 @@ describe('checked runtime dependency installation', () => {
   })
 
   it('rejects deployed assembly-input changes and an internally inconsistent packaged lock', async () => {
-    const packageFixture = await runtimeFixture()
-    await writeFile(join(packageFixture.runtimeRoot, 'package.json'), '{}')
-    await expect(verifyRuntimeInstallation(packageFixture.lock, packageFixture.runtimeRoot, packageFixture.hostRoot))
+    const fixture = await runtimeFixture('host-only')
+    const packagePath = join(fixture.runtimeRoot, 'package.json')
+    const packageBytes = await readFile(packagePath)
+    const lockPath = join(fixture.runtimeRoot, 'package-lock.json')
+    const lockBytes = await readFile(lockPath)
+
+    await writeFile(packagePath, '{}')
+    await expect(verifyRuntimeInstallation(fixture.lock, fixture.runtimeRoot, fixture.hostRoot))
       .rejects.toThrow(/package.json differs/)
+    await writeFile(packagePath, packageBytes)
 
-    const lockFixture = await runtimeFixture()
-    await writeFile(join(lockFixture.runtimeRoot, 'package-lock.json'), '{}')
-    await expect(verifyRuntimeInstallation(lockFixture.lock, lockFixture.runtimeRoot, lockFixture.hostRoot))
+    await writeFile(lockPath, '{}')
+    await expect(verifyRuntimeInstallation(fixture.lock, fixture.runtimeRoot, fixture.hostRoot))
       .rejects.toThrow(/deployed runtime dependency lock differs/)
+    await writeFile(lockPath, lockBytes)
 
-    const digestFixture = await runtimeFixture()
     await expect(verifyRuntimeInstallation(
-      { ...digestFixture.lock, runtimePackageLockSha512: '0'.repeat(128) },
-      digestFixture.runtimeRoot,
-      digestFixture.hostRoot,
+      { ...fixture.lock, runtimePackageLockSha512: '0'.repeat(128) },
+      fixture.runtimeRoot,
+      fixture.hostRoot,
     )).rejects.toThrow(/packaged runtime dependency lock/)
   })
 
   it('rejects malformed and identity-changing installed locks', async () => {
-    const malformed = await runtimeFixture()
-    await writeFile(malformed.hiddenLockPath, '{')
-    await expect(verifyRuntimeInstallation(malformed.lock, malformed.runtimeRoot, malformed.hostRoot))
+    const fixture = await runtimeFixture('host-only')
+    await writeFile(fixture.hiddenLockPath, '{')
+    await expect(verifyRuntimeInstallation(fixture.lock, fixture.runtimeRoot, fixture.hostRoot))
       .rejects.toThrow(/not strict JSON/)
 
-    const wrongFormat = await runtimeFixture()
-    await writeFile(wrongFormat.hiddenLockPath, JSON.stringify({ name: 'other', lockfileVersion: 2, packages: {} }))
-    await expect(verifyRuntimeInstallation(wrongFormat.lock, wrongFormat.runtimeRoot, wrongFormat.hostRoot))
+    await writeFile(fixture.hiddenLockPath, JSON.stringify({ name: 'other', lockfileVersion: 2, packages: {} }))
+    await expect(verifyRuntimeInstallation(fixture.lock, fixture.runtimeRoot, fixture.hostRoot))
       .rejects.toThrow(/unexpected identity or format/)
 
-    const missingPackages = await runtimeFixture()
-    await writeFile(missingPackages.hiddenLockPath, JSON.stringify({
+    await writeFile(fixture.hiddenLockPath, JSON.stringify({
       name: 'clawdsh-openclaw-runtime', lockfileVersion: 3, packages: [],
     }))
-    await expect(verifyRuntimeInstallation(missingPackages.lock, missingPackages.runtimeRoot, missingPackages.hostRoot))
+    await expect(verifyRuntimeInstallation(fixture.lock, fixture.runtimeRoot, fixture.hostRoot))
       .rejects.toThrow(/packages must be an object/)
   })
 
   it('rejects invalid paths, identity drift, absent directories, and package metadata drift', async () => {
-    const fixture = await runtimeFixture()
-    const packages = clone(fixture.checkedLock.packages)
-    delete packages['']
-    packages.invalid = { version: '1.0.0' }
-    await writeFile(fixture.hiddenLockPath, JSON.stringify({ name: fixture.checkedLock.name, lockfileVersion: 3, packages }))
+    const fixture = await runtimeFixture('host-only')
+    const validPackages = clone(fixture.installedPackages)
+    const invalidPackages = { invalid: { version: '1.0.0' }, ...validPackages }
+    await writeFile(fixture.hiddenLockPath, JSON.stringify({
+      name: fixture.checkedLock.name, lockfileVersion: 3, packages: invalidPackages,
+    }))
     await expect(verifyRuntimeInstallation(fixture.lock, fixture.runtimeRoot, fixture.hostRoot))
       .rejects.toThrow(/invalid package path/)
 
-    const identity = await runtimeFixture()
-    const identityPackages = clone(identity.checkedLock.packages)
-    delete identityPackages['']
+    const identityPackages = clone(validPackages)
     ;(identityPackages['node_modules/openclaw'] as Record<string, unknown>).version = '0.0.0'
-    await writeFile(identity.hiddenLockPath, JSON.stringify({
-      name: identity.checkedLock.name,
+    await writeFile(fixture.hiddenLockPath, JSON.stringify({
+      name: fixture.checkedLock.name,
       lockfileVersion: 3,
       packages: identityPackages,
     }))
-    await expect(verifyRuntimeInstallation(identity.lock, identity.runtimeRoot, identity.hostRoot))
+    await expect(verifyRuntimeInstallation(fixture.lock, fixture.runtimeRoot, fixture.hostRoot))
       .rejects.toThrow(/differs from the checked dependency lock/)
 
-    const absent = await runtimeFixture()
-    const absentPackages = clone(absent.checkedLock.packages)
-    delete absentPackages['']
-    const absentPath = Object.keys(absentPackages).find(path => path !== 'node_modules/openclaw') as string
-    await rm(join(absent.runtimeRoot, ...absentPath.split('/')), { recursive: true })
-    await writeFile(absent.hiddenLockPath, JSON.stringify({ name: absent.checkedLock.name, lockfileVersion: 3, packages: absentPackages }))
-    await expect(verifyRuntimeInstallation(absent.lock, absent.runtimeRoot, absent.hostRoot))
-      .rejects.toThrow(/absent or not an ordinary directory/)
-
-    const metadata = await runtimeFixture()
-    await writeFile(join(metadata.hostRoot, 'package.json'), JSON.stringify({ name: 'openclaw', version: 'wrong' }))
-    await expect(verifyRuntimeInstallation(metadata.lock, metadata.runtimeRoot, metadata.hostRoot))
+    await writeFile(fixture.hiddenLockPath, JSON.stringify({
+      name: fixture.checkedLock.name, lockfileVersion: 3, packages: validPackages,
+    }))
+    const hostPackagePath = join(fixture.hostRoot, 'package.json')
+    const hostPackageBytes = await readFile(hostPackagePath)
+    await writeFile(hostPackagePath, JSON.stringify({ name: 'openclaw', version: 'wrong' }))
+    await expect(verifyRuntimeInstallation(fixture.lock, fixture.runtimeRoot, fixture.hostRoot))
       .rejects.toThrow(/metadata differs/)
+    await writeFile(hostPackagePath, hostPackageBytes)
+
+    const absentPath = Object.keys(fixture.checkedLock.packages)
+      .find(path => path !== '' && path !== 'node_modules/openclaw')
+    const absentEntry = absentPath === undefined ? undefined : fixture.checkedLock.packages[absentPath]
+    if (absentPath === undefined || absentEntry === undefined) throw new Error('runtime fixture has no dependency package')
+    await writeFile(fixture.hiddenLockPath, JSON.stringify({
+      name: fixture.checkedLock.name,
+      lockfileVersion: 3,
+      packages: { [absentPath]: absentEntry },
+    }))
+    await expect(verifyRuntimeInstallation(fixture.lock, fixture.runtimeRoot, fixture.hostRoot))
+      .rejects.toThrow(/absent or not an ordinary directory/)
   })
 
   it.each([
@@ -681,6 +804,19 @@ describe('fail-closed OpenClaw config', () => {
     await symlink(outside, linked)
     await expect(verifyFailClosedConfig(linked, bridgeRoot, stateDir)).rejects.toThrow(/non-symlink file/)
     await expect(verifyFailClosedConfig(outside, bridgeRoot, stateDir)).rejects.toThrow(/inside stateDir/)
+
+    const stateFile = join(root, 'state-file')
+    await writeFile(stateFile, 'not a directory')
+    await expect(verifyFailClosedConfig(outside, bridgeRoot, stateFile)).rejects.toThrow(/ordinary directory/)
+
+    const escapedRoot = join(root, 'escaped')
+    await mkdir(escapedRoot)
+    const escapedConfig = join(escapedRoot, 'openclaw.json')
+    await writeFile(escapedConfig, JSON.stringify(validConfig(bridgeRoot)))
+    const nestedLink = join(stateDir, 'nested')
+    await symlink(escapedRoot, nestedLink)
+    await expect(verifyFailClosedConfig(join(nestedLink, 'openclaw.json'), bridgeRoot, stateDir))
+      .rejects.toThrow(/escapes stateDir/)
   })
 
   it('rejects model provider and default-route escape hatches', async () => {
@@ -841,6 +977,9 @@ describe('fail-closed OpenClaw config', () => {
     const guilds = (unsafeDiscord.channels.discord as Record<string, unknown>).guilds as Record<string, Record<string, unknown>>
     Reflect.deleteProperty(guilds['*']!, 'requireMention')
     await expect(checkConfig(root, bridgeRoot, unsafeDiscord, extensions)).rejects.toThrow(/requireMention/)
+    const unsafeFeishu = clone(supported)
+    ;(unsafeFeishu.channels.feishu as Record<string, unknown>).requireMention = false
+    await expect(checkConfig(root, bridgeRoot, unsafeFeishu, extensions)).rejects.toThrow(/requireMention/)
     const cases: Array<[string, (value: FailClosedConfigFixture) => void]> = [
       ['missing channels object', (value) => { Reflect.deleteProperty(value, 'channels') }],
       ['channels object', (value) => { Reflect.set(value, 'channels', []) }],

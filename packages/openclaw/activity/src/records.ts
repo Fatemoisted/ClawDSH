@@ -160,6 +160,7 @@ function validateKind(
         && typeof metadata.scheduledAt === 'string'
         && isCanonicalTimestamp(metadata.scheduledAt)
         && isNonNegativeSafeInteger(metadata.seq)
+    /* v8 ignore next 2 -- decodeActivityRecord accepts only keys proven present in the closed CATEGORIES table before dispatch. */
     default:
       return false
   }

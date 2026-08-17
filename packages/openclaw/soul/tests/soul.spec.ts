@@ -7,7 +7,7 @@ import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { createScope, scopeTarget, type ScopeKey } from '@deepseek-ai/dsh-scope'
 import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import * as Soul from '@clawdsh/dsh-soul'
 import { PERSONA_SECTION, SOUL_SECTION } from '@clawdsh/dsh-soul'
 
@@ -371,5 +371,154 @@ describe('the soul row', () => {
     expect((await ctx.systemPrompt.assemble({ scope: key })).contexts).toEqual([
       { name: 'policy', text: 'global policy' },
     ])
+  })
+
+  it('validates every persisted Soul field before merging a new-session snapshot', async () => {
+    const ctx = await harness('deployment identity', { text: 'base identity' })
+    const describe = vi.spyOn(ctx.settings, 'describe')
+    const user = (value: Record<string, unknown>) => {
+      describe.mockReturnValue([{ ns: Soul.SOUL_SETTINGS_NAMESPACE, user: value }] as never)
+    }
+
+    user({ enabled: 'yes' })
+    expect(() => ctx.clawdshSoulSettings.forSession({ text: 'entry' })).toThrow(/enabled.*boolean/)
+    user({ source: 1 })
+    expect(() => ctx.clawdshSoulSettings.forSession({ text: 'entry' })).toThrow(/source.*string/)
+    user({ text: 1 })
+    expect(() => ctx.clawdshSoulSettings.forSession({ text: 'entry' })).toThrow(/text.*string/)
+    user({ mode: 'overwrite' })
+    expect(() => ctx.clawdshSoulSettings.forSession({ text: 'entry' })).toThrow(/mode.*replace.*append/)
+    user({ includeRuntimeContext: 'no' })
+    expect(() => ctx.clawdshSoulSettings.forSession({ text: 'entry' })).toThrow(/includeRuntimeContext.*boolean/)
+
+    user({
+      enabled: true,
+      source: 'soul.md',
+      text: 'user identity',
+      mode: 'replace',
+      includeRuntimeContext: false,
+    })
+    expect(ctx.clawdshSoulSettings.forSession({ text: 'entry' })).toMatchObject({
+      enabled: true,
+      source: 'soul.md',
+      text: 'user identity',
+      mode: 'replace',
+      includeRuntimeContext: false,
+    })
+    await ctx.fiber.dispose()
+  })
+
+  it('rejects an enabled persisted snapshot that clears both Soul sources', async () => {
+    const ctx = await harness('deployment identity', { text: 'base identity' })
+
+    await expect(ctx.settings.update(Soul.SOUL_SETTINGS_NAMESPACE, {
+      enabled: true,
+      source: '',
+      text: '',
+    })).rejects.toThrow(/non-empty/)
+    await ctx.fiber.dispose()
+  })
+
+  it('supports a direct scoped apply call without a settings host', async () => {
+    const withoutHost = new Context()
+    await withoutHost.plugin(SystemPrompt)
+    const first = { id: 'direct-without-host' }
+    await createScope(withoutHost, first).ctx.plugin(Object.assign((pluginCtx: Context) => {
+      Soul.apply(pluginCtx, { text: 'direct identity' })
+    }, { inject: ['systemPrompt'] }))
+    expect(sectionText(await withoutHost.systemPrompt.assemble({ scope: first }), SOUL_SECTION)).toBe('direct identity')
+    await withoutHost.fiber.dispose()
+  })
+
+  it('drops stale, mismatched, and unrenderable Activity candidates', async () => {
+    const ctx = await harness('deployment identity')
+    const records: PromptActivityInput[] = []
+    installActivity(ctx, async (input) => { records.push(input) })
+    const agent = { id: 'soul-candidate-session' }
+    const scope = createScope(ctx, agent)
+    await scope.ctx.plugin(Soul, { text: 'candidate identity' })
+
+    const emitOtherEvent = ctx.emit.bind(ctx) as unknown as (
+      target: object,
+      name: 'session/event',
+      session: { id: string },
+      event: { type: string },
+    ) => void
+    emitOtherEvent(scopeTarget({ id: agent.id }, agent), 'session/event', { id: agent.id }, { type: 'turn/start' })
+
+    let assembly = await ctx.systemPrompt.assemble({
+      scope: agent,
+      signal: new AbortController().signal,
+      agent,
+    } as never)
+    emitRequestHeader(ctx, agent, 'another-session', renderPrompt(assembly), 31)
+
+    assembly = await ctx.systemPrompt.assemble({
+      scope: agent,
+      signal: new AbortController().signal,
+      agent,
+    } as never)
+    emitRequestHeader(ctx, agent, agent.id, 'different system prompt', 32)
+    expect(records).toEqual([])
+
+    const disposeMalformed = ctx.systemPrompt.section({
+      name: 'soul-malformed-variable',
+      order: 0,
+      text: '{{missing}}',
+    })
+    await expect(ctx.systemPrompt.assemble({
+      scope: agent,
+      signal: new AbortController().signal,
+      agent,
+    } as never)).resolves.toBeDefined()
+    disposeMalformed()
+
+    scope.ctx.on('system-prompt/assemble', async (nextAssembly, _context, next) => {
+      const transformed = await next()
+      const section = nextAssembly.sections.find(item => item.name === SOUL_SECTION)
+      if (section !== undefined) section.text = 'changed downstream'
+      return transformed
+    })
+    assembly = await ctx.systemPrompt.assemble({
+      scope: agent,
+      signal: new AbortController().signal,
+      agent,
+    } as never)
+    emitRequestHeader(ctx, agent, agent.id, renderPrompt(assembly), 33)
+    expect(records).toEqual([])
+    await ctx.fiber.dispose()
+  })
+
+  it('contains a synchronous Activity failure', async () => {
+    const clean = await harness('deployment identity')
+    clean.provide('clawdshActivity', {
+      promptContribution(): Promise<unknown> {
+        throw new Error('synchronous activity failure')
+      },
+    } as never)
+    const cleanAgent = { id: 'soul-sync-activity-session' }
+    await createScope(clean, cleanAgent).ctx.plugin(Soul, { text: 'candidate identity' })
+    const assembly = await clean.systemPrompt.assemble({
+      scope: cleanAgent,
+      signal: new AbortController().signal,
+      agent: cleanAgent,
+    } as never)
+    expect(() => { emitRequestHeader(clean, cleanAgent, cleanAgent.id, renderPrompt(assembly), 34) }).not.toThrow()
+
+    await clean.fiber.dispose()
+  })
+
+  it('commits a rendered Soul prompt when Activity is not mounted', async () => {
+    const ctx = await harness('deployment identity')
+    const agent = { id: 'soul-without-activity-session' }
+    await createScope(ctx, agent).ctx.plugin(Soul, { text: 'standalone identity' })
+    const assembly = await ctx.systemPrompt.assemble({
+      scope: agent,
+      signal: new AbortController().signal,
+      agent,
+    } as never)
+
+    expect(() => { emitRequestHeader(ctx, agent, agent.id, renderPrompt(assembly), 41) }).not.toThrow()
+    await ctx.fiber.dispose()
   })
 })

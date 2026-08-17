@@ -31,6 +31,7 @@ test('packs a closed public CLI with exact runtime dependencies', () => {
     assert.ok(files.includes('LICENSE'))
     assert.ok(files.includes('lib/bin.mjs'))
     assert.ok(files.includes('lib/index.mjs'))
+    assert.ok(files.includes('lib/source-migration.mjs'))
     assert.ok(files.includes('package.json'))
     assert.ok(files.every(path => !path.startsWith('tests/') && !path.endsWith('.map')))
     const packedManifest = spawnSync('tar', ['-xOzf', tarball, 'package/package.json'], { encoding: 'utf8' })

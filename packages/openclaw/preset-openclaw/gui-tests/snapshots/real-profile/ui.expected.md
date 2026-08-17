@@ -1,9 +1,9 @@
 # Native sidebar footer
 
-- link "Harness 高级":
+- link "ClawDSH · Harness 高级":
   - /url: /
+  - text: ClawDSH Powered by DeepSeek Harness
   - img
-  - text: Harness 高级
 
 # Native settings default section
 

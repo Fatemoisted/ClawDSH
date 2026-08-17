@@ -195,12 +195,12 @@ export function apply(ctx: Context, config: Config): void {
     throw new Error('soul: mounts only inside an agent scope (an unscoped mount would publish a process-global soul)')
   }
   resolveMode(Reflect.get(config, 'mode'))
-  const resolved = ctx.get('clawdshSoulSettings')?.forSession(config) ?? Config(config)
-  if (!(resolved.enabled ?? true)) return
+  const resolved = (ctx.get('clawdshSoulSettings')?.forSession(config) ?? Config(config)) as Required<Config>
+  if (!resolved.enabled) return
   const mode = resolveMode(Reflect.get(resolved, 'mode'))
   const base = ctx.baseUrl === undefined ? undefined : fileURLToPath(ctx.baseUrl)
-  const source = resolved.source?.trim() ?? ''
-  const text = source === '' ? (resolved.text ?? '') : readFileSync(resolve(base ?? '.', source), 'utf8')
+  const source = resolved.source.trim()
+  const text = source === '' ? resolved.text : readFileSync(resolve(base ?? '.', source), 'utf8')
   if (!hasContent(text)) {
     throw new Error('soul: config requires a non-empty "source" file path or inline "text"')
   }
@@ -211,7 +211,7 @@ export function apply(ctx: Context, config: Config): void {
     ...(mode === 'replace' ? { complete: true } : {}),
   }), 'soul.section()')
   installPromptActivity(ctx, mode, text)
-  if (!(resolved.includeRuntimeContext ?? true)) ctx.systemPrompt.suppressRuntimeContext()
+  if (!resolved.includeRuntimeContext) ctx.systemPrompt.suppressRuntimeContext()
 }
 
 function resolveMode(value: unknown): 'replace' | 'append' {

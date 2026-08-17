@@ -1,0 +1,33 @@
+{
+  "name": "@clawdsh/dsh-dev-bundle",
+  "description": "Private ClawDSH source-development profile layer",
+  "version": "0.1.0-rc.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@clawdsh/dsh-activity": "0.1.0-rc.1",
+    "@clawdsh/dsh-automation": "0.1.0-rc.1",
+    "@clawdsh/dsh-channel": "0.1.0-rc.1",
+    "@clawdsh/dsh-channel-agent": "0.1.0-rc.1",
+    "@clawdsh/dsh-channel-openclaw": "0.1.0-rc.1",
+    "@clawdsh/dsh-embeddings": "0.1.0-rc.1",
+    "@clawdsh/dsh-embeddings-ark": "0.1.0-rc.1",
+    "@clawdsh/dsh-memory": "0.1.0-rc.1",
+    "@clawdsh/dsh-product-runtime": "0.1.0-rc.1",
+    "@clawdsh/dsh-skills-hub": "0.1.0-rc.1",
+    "@clawdsh/dsh-soul": "0.1.0-rc.1",
+    "@deepseek-ai/dsh-invariants": "0.1.0-rc.6"
+  }
+}

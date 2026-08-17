@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { IconRightUpOutline16, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
+import { ClawdshMark } from './clawdsh-brand.tsx'
 import css from './ProductShell.module.css'
 
 /**
@@ -11,15 +12,21 @@ import css from './ProductShell.module.css'
  */
 export function HarnessAdvancedAction({ wide }: SidebarFooterActionOwnerProps): ReactNode {
   return (
-    <Tooltip label="Harness 高级" delayMs={500} disabled={wide}>
+    <Tooltip label="ClawDSH · Powered by DeepSeek Harness" delayMs={500} disabled={wide}>
       <a
         className={wide ? css.advancedAction : `${css.advancedAction} ${css.advancedActionRail}`}
         href="/"
-        aria-label="Harness 高级"
+        aria-label="ClawDSH · Harness 高级"
         data-clawdsh-harness-advanced
       >
-        <IconRightUpOutline16 size={wide ? 14 : 18} />
-        {wide && <span className={css.advancedActionLabel}>Harness 高级</span>}
+        <ClawdshMark className={css.advancedActionMark} />
+        {wide ? (
+          <span className={css.advancedActionCopy}>
+            <span className={css.advancedActionLabel}>ClawDSH</span>
+            <small>Powered by DeepSeek Harness</small>
+          </span>
+        ) : null}
+        {wide ? <IconRightUpOutline16 className={css.advancedActionExternal} size={14} /> : null}
       </a>
     </Tooltip>
   )
@@ -35,6 +42,6 @@ export function registerHarnessAdvancedAction(ctx: ClientContext): void {
     name: 'sidebar.footer.action',
     id: 'clawdsh-harness-advanced',
     order: 100,
-    label: 'Harness 高级',
+    label: 'ClawDSH · Harness 高级',
   }, HarnessAdvancedAction))
 }

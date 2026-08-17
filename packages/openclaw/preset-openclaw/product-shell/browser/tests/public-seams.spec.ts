@@ -59,15 +59,27 @@ describe('ClawDSH browser public seams', () => {
     const shell = readFileSync(join(SOURCE_ROOT, 'ProductShell.module.css'), 'utf8')
     const activity = readFileSync(join(SOURCE_ROOT, 'pages/ActivityPage.module.css'), 'utf8')
     const settings = readFileSync(join(SOURCE_ROOT, 'pages/SettingsPage.module.css'), 'utf8')
+    const boot = readFileSync(join(SOURCE_ROOT, 'ClawdshBootRoot.module.css'), 'utf8')
 
     expect(shell).toContain(":global([data-variant='think'])")
     expect(shell).not.toContain('grid-template-columns')
     expect(shell).toContain('.advancedActionRail')
     expect(shell).toContain('.advancedAction:focus-visible')
+    expect(shell).toContain('[data-sidebar-collapsed]:has([role=\'dialog\'][aria-modal=\'true\'])')
     expect(activity).toContain('@media (max-width: 720px)')
     expect(activity).toContain('.controls { align-items: stretch; flex-direction: column; }')
     expect(settings).toContain('@media (max-width: 720px)')
     expect(settings).toContain('color: var(--dsw-alias-bg-base)')
     expect(settings).not.toContain('var(--dsw-alias-brand-primary-invert)')
+    expect(boot).toContain('@media (prefers-reduced-motion: reduce)')
+  })
+
+  it('declares product metadata and public brand assets below the ClawDSH base path', () => {
+    const html = readFileSync(join(BROWSER_ROOT, 'index.html'), 'utf8')
+
+    expect(html).toContain('href="/clawdsh/favicon.svg"')
+    expect(html).toContain('href="/clawdsh/manifest.webmanifest"')
+    expect(html).toContain('<div id="root"><div id="clawdsh-root"></div></div>')
+    expect(html).toContain('OpenClaw capabilities, rebuilt as composable dsh plugins.')
   })
 })

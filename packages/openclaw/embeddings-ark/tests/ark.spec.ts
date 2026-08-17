@@ -124,6 +124,12 @@ describe('ark embeddings provider', () => {
     ['an empty model', { model: '' }],
     ['a whitespace-only model', { model: '   ' }],
     ['a model with surrounding whitespace', { model: ' model-name ' }],
+    ['a fractional timeout', { timeoutMs: 1.5 }],
+    ['a zero timeout', { timeoutMs: 0 }],
+    ['an excessive timeout', { timeoutMs: Number.MAX_SAFE_INTEGER }],
+    ['fractional concurrency', { maxConcurrentTexts: 1.5 }],
+    ['zero concurrency', { maxConcurrentTexts: 0 }],
+    ['excessive concurrency', { maxConcurrentTexts: Number.MAX_SAFE_INTEGER }],
   ])('rejects %s at the settings schema boundary', (_label, config) => {
     expect(() => { ArkConfig(config) }).toThrow()
   })
@@ -133,6 +139,35 @@ describe('ark embeddings provider', () => {
       baseURL: 'http://127.0.0.1:8080/api/v3',
       model: 'model-name',
     })
+  })
+
+  it('accepts an HTTP runtime endpoint after semantic URL validation', async () => {
+    const fetchMock = okFetch(responseBody([0.1]))
+    vi.stubGlobal('fetch', fetchMock)
+    const ctx = await testContext({
+      [ARK_SETTINGS_NAMESPACE]: {
+        baseURL: 'http://127.0.0.1:8080/api/v3',
+        model: 'runtime-model',
+        timeoutMs: 1_000,
+        maxConcurrentTexts: 1,
+      },
+    })
+    await ctx.plugin(ArkEmbeddings, {})
+
+    await ctx.embeddings.embed(['runtime'])
+
+    expect(String(fetchMock.mock.calls[0]?.[0]))
+      .toBe('http://127.0.0.1:8080/api/v3/embeddings/multimodal')
+    await ctx.fiber.dispose()
+  })
+
+  it('rejects a syntactically accepted URL that the platform URL parser cannot resolve', async () => {
+    const ctx = await testContext({
+      [ARK_SETTINGS_NAMESPACE]: { baseURL: 'https://[' },
+    })
+
+    await expect(ctx.plugin(ArkEmbeddings, {})).rejects.toThrow(/baseURL/)
+    await ctx.fiber.dispose()
   })
 
   it('uses endpoint settings from the startup snapshot while credentials stay next-call', async () => {
@@ -206,11 +241,35 @@ describe('ark embeddings provider', () => {
     })
   })
 
-  it('throws on a response without a data.embedding vector', async () => {
-    vi.stubGlobal('fetch', okFetch(JSON.stringify({ data: { object: 'embedding' } })))
+  it('supports an empty operation and honors a caller signal', async () => {
+    const fetchMock = okFetch(responseBody([0.1]))
+    vi.stubGlobal('fetch', fetchMock)
     const ctx = await testContext()
     await ctx.plugin(ArkEmbeddings, {})
-    await expect(ctx.embeddings.embed(['a'])).rejects.toThrow(/data\.embedding/)
+
+    await expect(ctx.embeddings.embed([])).resolves.toEqual([])
+    const caller = new AbortController()
+    await expect(ctx.embeddings.embed(['signalled'], caller.signal)).resolves.toEqual([[0.1]])
+    expect(requestSignal(firstFetchInit(fetchMock))).toBeInstanceOf(AbortSignal)
+    const cancelled = new AbortController()
+    cancelled.abort(new Error('caller cancelled'))
+    await expect(ctx.embeddings.embed(['cancelled'], cancelled.signal)).rejects.toThrow(/caller cancelled/)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await ctx.fiber.dispose()
+  })
+
+  it.each([
+    ['a null document', 'null', /no data field/],
+    ['a primitive document', '1', /no data field/],
+    ['a missing data field', '{}', /no data field/],
+    ['a missing embedding field', JSON.stringify({ data: { object: 'embedding' } }), /data\.embedding/],
+    ['a non-array embedding', JSON.stringify({ data: { embedding: {} } }), /data\.embedding/],
+    ['an empty embedding', JSON.stringify({ data: { embedding: [] } }), /invalid embedding vector/],
+  ] as const)('throws on %s', async (_label, body, message) => {
+    vi.stubGlobal('fetch', okFetch(body))
+    const ctx = await testContext()
+    await ctx.plugin(ArkEmbeddings, {})
+    await expect(ctx.embeddings.embed(['a'])).rejects.toThrow(message)
   })
 
   it('throws on an empty or non-finite embedding vector', async () => {

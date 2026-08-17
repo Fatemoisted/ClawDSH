@@ -1,9 +1,11 @@
 /** Immutable package identity and publication order for the ClawDSH release. */
 
 export const RELEASE_VERSION = '0.1.0-rc.1'
+export const BOOTSTRAP_VERSION = '0.1.0-rc.0'
 export const DSH_VERSION = '0.1.0-rc.6'
 export const PUBLIC_NPM_REGISTRY = 'https://registry.npmjs.org/'
 export const PUBLIC_TAG = 'next'
+export const BOOTSTRAP_TAG = 'bootstrap'
 
 export const RELEASE_PACKAGES = Object.freeze([
   Object.freeze({ name: '@clawdsh/dsh-activity', directory: 'packages/openclaw/activity' }),

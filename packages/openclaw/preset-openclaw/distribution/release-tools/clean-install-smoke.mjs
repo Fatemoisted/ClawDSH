@@ -3,6 +3,7 @@
 
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
 import {
   chmodSync,
   existsSync,
@@ -20,11 +21,14 @@ import { verifyReleaseIndex } from './release-verify.mjs'
 const READY_URL = /https?:\/\/(?:127\.0\.0\.1|localhost):[0-9]+\/clawdsh\//
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024
 const MAX_PRODUCT_PAGE_BYTES = 1024 * 1024
+const MAX_PRODUCT_ASSET_BYTES = 16 * 1024 * 1024
 const PAGE_PROBE_ATTEMPTS = 20
 const PAGE_PROBE_INTERVAL_MS = 100
 const PAGE_REQUEST_TIMEOUT_MS = 1_000
+const BROWSER_READY_TIMEOUT_MS = 30_000
 const STOP_GRACE_MS = 5_000
 const INIT_HARNESS = fileURLToPath(new URL('./clean-install-smoke-init.mjs', import.meta.url))
+const PLAYWRIGHT_REQUIRE = createRequire(new URL('../../../../../apps/web/package.json', import.meta.url))
 
 const INHERITED_ENVIRONMENT_KEYS = Object.freeze([
   'PATH',
@@ -76,6 +80,159 @@ function productUrl(value) {
   return url.href
 }
 
+function htmlAttribute(tag, name) {
+  const match = new RegExp(`\\b${name}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(tag)
+  return match?.[2]
+}
+
+function productAssetUrl(base, reference, label) {
+  if (typeof reference !== 'string' || reference === '') throw new TypeError(`${label} has no URL`)
+  const url = new URL(reference, base)
+  const root = new URL(base)
+  if (url.origin !== root.origin || !url.pathname.startsWith('/clawdsh/')
+    || url.username || url.password || url.search || url.hash) {
+    throw new TypeError(`${label} must stay inside the loopback /clawdsh/ origin`)
+  }
+  return url
+}
+
+function pageAssets(html) {
+  const assets = []
+  for (const tag of html.match(/<script\b[^>]*>/gi) ?? []) {
+    const source = htmlAttribute(tag, 'src')
+    if (source !== undefined) assets.push({ reference: source, kind: 'script' })
+  }
+  for (const tag of html.match(/<link\b[^>]*>/gi) ?? []) {
+    const relation = htmlAttribute(tag, 'rel')?.toLowerCase().split(/\s+/) ?? []
+    const reference = htmlAttribute(tag, 'href')
+    if (reference === undefined) continue
+    if (relation.includes('stylesheet')) assets.push({ reference, kind: 'stylesheet' })
+    else if (relation.includes('modulepreload')) assets.push({ reference, kind: 'script' })
+    else if (relation.includes('manifest')) assets.push({ reference, kind: 'manifest' })
+    else if (relation.includes('icon')) assets.push({ reference, kind: 'icon' })
+  }
+  for (const kind of ['script', 'stylesheet', 'manifest', 'icon']) {
+    if (!assets.some(asset => asset.kind === kind)) throw new TypeError(`ClawDSH product page has no ${kind} asset`)
+  }
+  return assets
+}
+
+function expectedContentType(kind, url) {
+  if (kind === 'script') return /^(?:text|application)\/javascript(?:;|$)/i
+  if (kind === 'stylesheet') return /^text\/css(?:;|$)/i
+  if (kind === 'manifest') return /^application\/(?:manifest\+json|json)(?:;|$)/i
+  if (url.pathname.endsWith('.svg')) return /^image\/svg\+xml(?:;|$)/i
+  if (url.pathname.endsWith('.png')) return /^image\/png(?:;|$)/i
+  return /^image\//i
+}
+
+async function responseBytes(response, label) {
+  const bytes = typeof response.arrayBuffer === 'function'
+    ? Buffer.from(await response.arrayBuffer())
+    : Buffer.from(await response.text())
+  if (bytes.byteLength > MAX_PRODUCT_ASSET_BYTES) throw new TypeError(`${label} exceeds the smoke-test response limit`)
+  return bytes
+}
+
+async function requireProductAsset(base, asset, request) {
+  const url = productAssetUrl(base, asset.reference, `ClawDSH ${asset.kind}`)
+  const response = await request(url.href, {
+    redirect: 'error',
+    signal: AbortSignal.timeout(PAGE_REQUEST_TIMEOUT_MS),
+  })
+  if (response.status !== 200) throw new Error(`ClawDSH ${asset.kind} returned HTTP ${String(response.status)}`)
+  const contentType = response.headers?.get?.('content-type') ?? ''
+  if (!expectedContentType(asset.kind, url).test(contentType)) {
+    throw new TypeError(`ClawDSH ${asset.kind} has invalid content-type ${JSON.stringify(contentType)}`)
+  }
+  return { url, bytes: await responseBytes(response, `ClawDSH ${asset.kind}`) }
+}
+
+async function verifyProductAssets(base, html, request) {
+  const checked = new Map()
+  let manifest
+  for (const asset of pageAssets(html)) {
+    const result = await requireProductAsset(base, asset, request)
+    checked.set(result.url.href, asset.kind)
+    if (asset.kind === 'manifest') manifest = JSON.parse(result.bytes.toString('utf8'))
+  }
+  if (manifest === null || typeof manifest !== 'object' || Array.isArray(manifest)
+    || manifest.name !== 'ClawDSH' || manifest.start_url !== '/clawdsh/' || manifest.scope !== '/clawdsh/'
+    || !Array.isArray(manifest.icons) || manifest.icons.length === 0) {
+    throw new TypeError('ClawDSH web manifest identity is invalid')
+  }
+  for (const icon of manifest.icons) {
+    if (icon === null || typeof icon !== 'object' || Array.isArray(icon) || typeof icon.src !== 'string') {
+      throw new TypeError('ClawDSH web manifest icon is invalid')
+    }
+    const url = productAssetUrl(base, icon.src, 'ClawDSH manifest icon')
+    if (!checked.has(url.href)) await requireProductAsset(base, { reference: icon.src, kind: 'icon' }, request)
+  }
+}
+
+function sameProductOrigin(value, origin) {
+  try {
+    const url = new URL(value)
+    return url.origin === origin && url.pathname.startsWith('/clawdsh/')
+  } catch {
+    return false
+  }
+}
+
+function browserProblem(kind, value) {
+  try {
+    const url = new URL(String(value))
+    return `${kind}: ${url.pathname}${url.hash}`
+  } catch {
+    // Page exceptions and console records may contain application data; the
+    // event kind is enough to reject the release without echoing that data.
+    return kind
+  }
+}
+
+/** Execute the installed browser bundle and require its settled native product shell. */
+export async function verifyClawdshBrowser(value, {
+  loadPlaywright = () => PLAYWRIGHT_REQUIRE('playwright'),
+  timeoutMs = BROWSER_READY_TIMEOUT_MS,
+} = {}) {
+  const url = new URL(productUrl(value))
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+    throw new TypeError('browser probe timeout must be a positive integer')
+  }
+  const playwright = loadPlaywright()
+  if (typeof playwright?.chromium?.launch !== 'function') {
+    throw new TypeError('clean-install browser probe requires Playwright Chromium')
+  }
+  const browser = await playwright.chromium.launch({ headless: true })
+  const problems = []
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+    page.on('pageerror', error => { problems.push(browserProblem('pageerror', error.message)) })
+    page.on('console', message => {
+      if (message.type() === 'error') problems.push(browserProblem('console.error', message.text()))
+    })
+    page.on('requestfailed', request => {
+      if (sameProductOrigin(request.url(), url.origin)) {
+        problems.push(browserProblem('request failed', request.url()))
+      }
+    })
+    page.on('response', response => {
+      if (response.status() >= 400 && sameProductOrigin(response.url(), url.origin)) {
+        problems.push(browserProblem(`HTTP ${String(response.status())}`, response.url()))
+      }
+    })
+    await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: timeoutMs })
+    await page.locator('[data-clawdsh-shell] [data-native-app]').waitFor({ state: 'visible', timeout: timeoutMs })
+    await page.locator('[data-clawdsh-harness-advanced]').waitFor({ state: 'visible', timeout: timeoutMs })
+    await page.waitForTimeout(250)
+    if (problems.length > 0) {
+      throw new Error(`ClawDSH browser emitted ${String(problems.length)} startup problem(s): ${problems.join('; ')}`)
+    }
+  } finally {
+    await browser.close()
+  }
+}
+
 /**
  * Require the advertised product URL to serve the ClawDSH HTML entry point.
  * @param value - Loopback URL emitted by the installed CLI.
@@ -87,11 +244,13 @@ export async function verifyClawdshPage(value, {
   attempts = PAGE_PROBE_ATTEMPTS,
   intervalMs = PAGE_PROBE_INTERVAL_MS,
   sleep = wait,
+  browserProbe = verifyClawdshBrowser,
 } = {}) {
   const url = productUrl(value)
   if (!Number.isSafeInteger(attempts) || attempts < 1) throw new TypeError('page probe attempts must be a positive integer')
   if (!Number.isSafeInteger(intervalMs) || intervalMs < 0) throw new TypeError('page probe interval must be a non-negative integer')
   let lastResult = 'no response'
+  let staticAssetsVerified = false
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await request(url, {
@@ -104,7 +263,11 @@ export async function verifyClawdshPage(value, {
       }
       const productIdentity = /<title>\s*ClawDSH\s*<\/title>/i.test(body)
         && /id=["']clawdsh-root["']/i.test(body)
-      if (response.status === 200 && productIdentity) return
+      if (response.status === 200 && productIdentity) {
+        await verifyProductAssets(url, body, request)
+        staticAssetsVerified = true
+        break
+      }
       lastResult = response.status === 200
         ? 'HTTP 200 without the ClawDSH product identity markers'
         : `HTTP ${String(response.status)}`
@@ -112,11 +275,12 @@ export async function verifyClawdshPage(value, {
       if (error instanceof TypeError && error.message === 'ClawDSH product page exceeds the smoke-test response limit') {
         throw error
       }
-      lastResult = 'request failed'
+      lastResult = error instanceof Error ? error.message : 'request failed'
     }
     if (attempt + 1 < attempts) await sleep(intervalMs)
   }
-  throw new Error(`ClawDSH product page did not become ready: ${lastResult}`)
+  if (!staticAssetsVerified) throw new Error(`ClawDSH product page did not become ready: ${lastResult}`)
+  await browserProbe(url)
 }
 
 function collect(child, timeoutMs, readyPattern, readyProbe) {
@@ -352,11 +516,12 @@ export async function runCleanInstallSmoke({
 
   const indexBytes = readFileSync(join(realpathSync(releaseDirectory), 'release-index.json'))
   const attestation = {
-    version: 1,
+    version: 2,
     releaseVersion: RELEASE_VERSION,
     dshVersion: DSH_VERSION,
     cliStarted: true,
     productPageVerified: true,
+    browserRuntimeVerified: true,
     releaseIndexIntegrity: `sha512-${createHash('sha512').update(indexBytes).digest('base64')}`,
     packageCount: release.packages.length,
   }

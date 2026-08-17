@@ -1,0 +1,50 @@
+.root {
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--dsw-alias-label-primary, #17191d);
+  background: var(--dsw-alias-bg-base, #f4faff);
+}
+
+.card {
+  width: min(520px, 100%);
+  padding: 24px;
+  border: 1px solid var(--dsw-alias-state-error-primary, #d64141);
+  border-radius: 16px;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+  background: var(--dsw-alias-bg-layer-1, white);
+  box-shadow: var(--dsw-shadow-lv2, 0 12px 32px rgb(7 26 43 / 12%));
+}
+
+.mark {
+  width: 64px;
+  height: 64px;
+}
+
+.title,
+.message,
+.detail {
+  margin: 0;
+}
+
+.message,
+.detail {
+  color: var(--dsw-alias-label-secondary, #62666d);
+}
+
+.message {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.detail {
+  width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 18px;
+}

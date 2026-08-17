@@ -4,7 +4,7 @@ import { PROFILE_ID } from './constants.mjs'
 
 const FORWARD_VALUE_FLAGS = new Set(['--host', '--port', '--trusted-host'])
 
-/** @typedef {{mode: 'help'} | {mode: 'version'} | {mode: 'init', resetPreset: boolean} | {mode: 'doctor'} | {mode: 'channel-install'} | {mode: 'channel-doctor'} | {mode: 'start', profile: string, forwarded: string[]} | {mode: 'init-start', profile: string, forwarded: string[]}} CliInvocation */
+/** @typedef {{mode: 'help'} | {mode: 'version'} | {mode: 'init', resetPreset: boolean} | {mode: 'doctor'} | {mode: 'migrate-source', apply: boolean, backupModified: boolean} | {mode: 'channel-install'} | {mode: 'channel-doctor'} | {mode: 'start', profile: string, forwarded: string[]} | {mode: 'init-start', profile: string, forwarded: string[]}} CliInvocation */
 
 /** @param {readonly string[]} argv @param {number} index @param {string} option @returns {string} */
 function requireValue(argv, index, option) {
@@ -64,6 +64,18 @@ export function parseArgs(argv) {
     if (argv.length !== 1) throw new TypeError('usage: clawdsh doctor')
     return { mode: 'doctor' }
   }
+  if (command === 'migrate') {
+    if (argv[1] !== 'source') throw new TypeError('usage: clawdsh migrate source [--apply [--backup-modified]]')
+    let apply = false
+    let backupModified = false
+    for (const option of argv.slice(2)) {
+      if (option === '--apply' && !apply) apply = true
+      else if (option === '--backup-modified' && !backupModified) backupModified = true
+      else throw new TypeError('usage: clawdsh migrate source [--apply [--backup-modified]]')
+    }
+    if (backupModified && !apply) throw new TypeError('--backup-modified requires --apply')
+    return { mode: 'migrate-source', apply, backupModified }
+  }
   if (command === 'channel') {
     if (argv.length !== 2 || (argv[1] !== 'install' && argv[1] !== 'doctor')) {
       throw new TypeError('usage: clawdsh channel (install|doctor)')
@@ -87,6 +99,7 @@ Usage:
   clawdsh init [--reset-preset]
   clawdsh start [--profile <name>] [--host <host>] [--port <port>] [--trusted-host <host>]
   clawdsh doctor
+  clawdsh migrate source [--apply [--backup-modified]]
   clawdsh channel install
   clawdsh channel doctor
 `

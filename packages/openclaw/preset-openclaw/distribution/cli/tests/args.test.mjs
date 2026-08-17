@@ -3,7 +3,7 @@ import { rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { parseArgs } from '../lib/args.mjs'
+import { HELP, parseArgs } from '../lib/args.mjs'
 import { resolveHome, runCli } from '../lib/index.mjs'
 import { createBundleFixture, fakeProfileNpmRunner, temporary } from './fixtures.mjs'
 
@@ -15,11 +15,23 @@ test('parses the fixed command surface and forwards only web bind flags verbatim
     forwarded: ['--host=127.0.0.1', '--port', '8080', '--trusted-host', 'x'],
   })
   assert.deepEqual(parseArgs(['init', '--reset-preset']), { mode: 'init', resetPreset: true })
+  assert.deepEqual(parseArgs(['migrate', 'source']), {
+    mode: 'migrate-source', apply: false, backupModified: false,
+  })
+  assert.deepEqual(parseArgs(['migrate', 'source', '--apply']), {
+    mode: 'migrate-source', apply: true, backupModified: false,
+  })
+  assert.deepEqual(parseArgs(['migrate', 'source', '--backup-modified', '--apply']), {
+    mode: 'migrate-source', apply: true, backupModified: true,
+  })
   assert.deepEqual(parseArgs(['channel', 'install']), { mode: 'channel-install' })
   assert.deepEqual(parseArgs(['channel', 'doctor']), { mode: 'channel-doctor' })
   assert.throws(() => parseArgs(['start', '--patch', 'escape.yml']), /unknown ClawDSH option/)
   assert.throws(() => parseArgs(['start', '--profile', '../escape']), /invalid name/)
   assert.throws(() => parseArgs(['--port', '1', '--port', '2']), /only once/)
+  assert.throws(() => parseArgs(['migrate', 'source', '--backup-modified']), /requires --apply/)
+  assert.throws(() => parseArgs(['migrate', 'source', '--apply', '--apply']), /usage: clawdsh migrate source/)
+  assert.match(HELP, /clawdsh migrate source \[--apply \[--backup-modified\]\]/)
 })
 
 test('resolves DSH_HOME with the same blank and tilde semantics as dsh', () => {

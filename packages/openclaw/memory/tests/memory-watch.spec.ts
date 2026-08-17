@@ -78,8 +78,8 @@ describe('memory watcher (real chokidar)', () => {
   it('does not crash on a missing root', async () => {
     const missing = join(dir, 'nested', 'memory')
     const seen: string[] = []
-    // Chokidar suppresses ENOENT, watches the nearest existing ancestor, and
-    // still resolves `ready`, so startup neither throws nor hangs.
+    // Chokidar suppresses ENOENT and still resolves `ready`, so startup neither
+    // throws nor hangs; recover() performs the explicit existing-root handoff.
     await watch(seen, missing)
     await new Promise(resolve => setTimeout(resolve, 30))
     expect(seen).toEqual([])
@@ -90,9 +90,12 @@ describe('memory watcher (real chokidar)', () => {
     const seen: string[] = []
     await watch(seen, root)
     await mkdir(root, { recursive: true })
-    await disposeWatch?.recover()
     await writeFile(join(root, 'MEMORY.md'), 'A recovered fact.\n')
+    await disposeWatch?.recover()
 
-    await vi.waitFor(() => { expect(seen).toContain('MEMORY.md') }, { timeout: 3_000 })
+    // memory_write creates the file before asking the missing-root watcher to
+    // recover. Recovery's initial scan is the deterministic observation point;
+    // no later polling tick is required to discover that first file.
+    expect(seen).toContain('MEMORY.md')
   })
 })

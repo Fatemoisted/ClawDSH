@@ -30,6 +30,10 @@ ClawDSH 产品壳能够识别能力归属与 Loader 健康状态，但只读清�
 | Automation | `clawdsh-automation` | 默认关闭；rules 作为一个原子字段保存 |
 | Activity | `clawdsh-activity` | 必需 package namespace，仅包含受管字段 |
 
+Settings 页面从统一的配置与数据所有权指南开始，而不是创建另一套持久化层。非密钥产品设置位于 `$DSH_HOME/settings.yaml`；DeepSeek 与 Ark 值位于 dsh credential source；部署组合位于已安装 bundle 加 profile／home patch；平台账号与策略位于归 OpenClaw 所有的 `$DSH_HOME/clawdsh/channel/openclaw/state/openclaw.json`。Skills Hub 的兼容受管目录默认仍是 `$DSH_HOME` 之外的 `~/.clawdbot/skills`，只有通过可编辑 `managedDir` 字段才会移动。
+
+`SETTINGS_MANIFEST` 精确包含表中的 8 个 namespace，并且必须把每个已注册 Config schema 的全部 leaf 分类为 editable、installer-managed 或 explicitly hidden。浏览器不能推断或增加 setting path。`CREDENTIAL_MANIFEST` 在 ClawDSH section 中只暴露 `ARK_API_KEY`；DeepSeek 模型凭据继续属于原生 Models settings，OpenClaw 平台凭据则保持在 RPC 之外。
+
 每个 namespace 都向 dsh Settings service 注册自身已有 Config schema。解析顺序是 `schema default → profile base → user settings`；`reset` 会移除该 namespace 的完整 user layer，绝不改写 profile base 配置。Host 返回 resolved value、schema、存在时的 base 与 user layer、字段权限、生效时间，以及相互独立的 `desiredRevision` 与 `runtimeRevision` 值。
 
 每次 mutation 都携带 `expectedRevision` 与数量受限、非空且 path 不重复的 `{ op: 'set' | 'unset', path, value? }` operation 集合。Server 校验完整 candidate 并原子持久化整组 operation，因此跨字段约束不会观察到只保存一半的 draft。过期 revision 以 `settings-conflict` 失败；server 不 merge，也不 retry。`restartRequired` 比较 desired value 与 runtime value，而不是比较 revision number，因此修改后又 reset 到已应用值会清除 restart marker。生效时间为 `live`、`new-session`、`next-call` 或 `restart` 之一。
@@ -38,15 +42,17 @@ ClawDSH capability plugin 保留在 Loader 组装中，让 schema 与健康状�
 
 OpenClaw Gateway 以 `enabled=false` 保持 mounted，此时不校验 artifact、不绑定 socket、不启动 Gateway，也不注册 Provider。尝试启用时，会在持久化前运行完整 managed-deployment preflight；失败会让存储值与 revision 都保持不变。受管 track、deployment identity、artifact/runtime/config/state/staging/socket path、锁定 extension 与 media limit 可见但只读。Gateway 正在运行不表示任何 platform account 已 ready、certified 或 enabled。
 
-Ark Embeddings 使用固定 `ARK_API_KEY` credential reference，并在每次调用时解析它。它不接受 literal API key setting。Credential RPC allowlist 只暴露 dsh 自有 credential，只报告 configured 与 writable 状态而不返回值，也绝不包含飞书、Telegram 或其他 OpenClaw platform credential。那些 platform secret、account 与 state 只归 OpenClaw 所有；它们不会进入 dsh credentials、Settings RPC、浏览器状态、日志、Session file 或 Activity storage。
+Ark Embeddings 使用固定 `ARK_API_KEY` credential reference，并在每次调用时解析它。它不接受 literal API key setting。修改 `$DSH_HOME/.credentials.yaml` 会对下一次 credential resolution 可见；继承环境与两个 `.env` 层是 launch snapshot，需要重启。Credential RPC allowlist 只暴露 dsh 自有 credential，只报告 configured 与 writable 状态而不返回值，也绝不包含飞书、Telegram 或其他 OpenClaw platform credential。那些 platform secret、account 与 state 只归 OpenClaw 所有；它们不会进入 dsh credentials、Settings RPC、浏览器状态、日志、Session file 或 Activity storage。
+
+受管凭据文档使用仅属主可访问的目录与文件权限。`0600` 模式能隔离其他操作系统用户，却无法阻止 Agent 工具以同一 UID 主动读取文件。产品绝不向模型提供解析后的路径或值，但这项较窄保证不是抵御同一用户工具的操作系统沙箱。
 
 Settings 页面为每个 namespace 保存独立 draft 与 revision。Schema metadata 驱动通用 string、number、boolean、enum、nested-object 与 string-array 字段；product manifest 选择专用 Automation rules 与 Gateway deployment editor。发生冲突时会保留 draft，并阻止再次保存，直到用户显式重新加载该 namespace。Credential value 只存在于 password field 与发出的 set request 中；无论成功或失败，浏览器都会在 `finally` 中清空该字段，response 与保留的 component state 只包含不含 secret 的 descriptor。
 
 ## Verification
 
-Protocol 与 runtime test 固定了严格 object parsing、静态 allowlist、污染 path 拒绝、过期 revision 冲突、reset layering、desired/runtime value 比较、preflight-before-persist 顺序，以及不含 secret 的 credential response。Capability test 固定了关闭的 plugin 仍可被描述而业务 effect 不存在，并且 Ark 只解析固定 reference。
+Protocol 与 runtime test 固定了严格 object parsing、精确 8-namespace manifest coverage、完整 schema-leaf classification、唯一 Ark credential entry、静态 allowlist、污染 path 拒绝、过期 revision 冲突、reset layering、desired/runtime value 比较、preflight-before-persist 顺序，以及不含 secret 的 credential response。Capability test 固定了关闭的 plugin 仍可被描述而业务 effect 不存在、Ark 只解析固定 reference，以及 managed-file change 与 launch snapshot 具有不同 effect timing。
 
-Browser test 固定了独立 draft、schema control、原子 Automation editor、受管 Gateway 字段、冲突后重新加载行为，以及成功和失败 request 后的 credential cleanup。Keyless real-profile journey 在没有 OpenClaw artifact 或外部 credential 时启动，发现所有已挂载的能力 namespace，确认 Gateway 处于关闭状态，并确认 platform credential 不在产品控制面中。Focused Host test 覆盖 mutation、reset、restart state 与 stale-write rejection。
+Browser test 固定了配置与数据所有权指南、独立 draft、schema control、原子 Automation editor、受管 Gateway 字段、冲突后重新加载行为，以及成功和失败 request 后的 credential cleanup。Keyless real-profile journey 在没有 OpenClaw artifact 或外部 credential 时启动，发现所有已挂载的能力 namespace，确认 Gateway 处于关闭状态，并确认 platform credential 不在产品控制面中。Focused Host test 覆盖 mutation、reset、restart state、stale-write rejection，以及 secret value 不出现在 RPC、rendered DOM、日志、Activity 与 profile dump 中。
 
 必需 Activity package 注册受管 Activity namespace。其 Session-history projection、sidecar record、pagination 与 UI 由独立 Activity 规格管理，不属于 Settings mutation model。
 

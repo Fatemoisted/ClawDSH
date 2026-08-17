@@ -1,3 +1,26 @@
+<!-- ══════════════════════════════════════════════════════════════
+     ClawDSH 贡献前言；下方上游原文保持不变。
+     ══════════════════════════════════════════════════════════════ -->
+# 为 ClawDSH 作出贡献
+
+[English](CONTRIBUTING.md) | 中文
+
+ClawDSH 欢迎范围明确的 Issue、提案、文档改进、Bug 修复与功能 PR。本项目把 OpenClaw 的个人助手能力重建为 DeepSeek Harness 上的插件；贡献必须保持这一插件边界和仓库的上游同步纪律。
+
+提交代码前：
+
+1. 搜索[功能矩阵](docs/matrix/parity.md)与既有 Issue，再新建或引用一个清楚描述用户可见问题的本仓库 Issue。
+2. 新功能应先编写或更新对应的 `docs/specs/feature-*.md` 规格或 owning ADR，再进入实现。
+3. ClawDSH 实现只能位于 [AGENTS.md](AGENTS.md) 列出的自有面。若缺少上游 seam，应先写 ADR 与上游 proposal，而不是使用私有 import 或直接修改上游核心。
+4. 遵守[插件契约](docs/standards/plugin-contract.md)和 [PR 政策](docs/standards/pr-policy.md)；在同一变更中更新对齐矩阵、受影响文档、测试和必需的 Agent Note。
+5. 在 PR 中列出改动过的全部上游文件和实际运行的精确检查。不得提交凭据、本地生成状态、registry token 或 `.env` 文件。
+
+贡献按本仓库的 MIT License 提交。下方保留 DeepSeek Harness 的上游贡献原文；其中暂不接受上游外部 PR 的限制不代表 ClawDSH 的贡献政策。
+
+---
+
+<!-- ⬇ 上游 CONTRIBUTING 原文（为署名与 rebase 保持不变） -->
+
 # 贡献
 
 [English](CONTRIBUTING.md) | 中文

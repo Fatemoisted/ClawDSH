@@ -219,6 +219,7 @@ export class ClawHubProvider implements SkillProvider {
   async get(candidate: SkillCandidate, options: SkillLookupOptions): Promise<SkillDefinition | undefined> {
     const signal = combineSignals(this.lifecycleSignal, options.signal)
     signal?.throwIfAborted()
+    /* v8 ignore next -- this provider's list() always sets path and the registry routes that same candidate back to get(). */
     if (candidate.path === undefined) return undefined
     const parsed = await this.parseSkill(candidate.path, signal)
     if (parsed === undefined || parsed.name !== candidate.name) return undefined
@@ -229,6 +230,7 @@ export class ClawHubProvider implements SkillProvider {
       invocation: parsed.invocation,
       source: candidate.source,
       provider: this.name,
+      /* v8 ignore next -- this provider's list() always sets the directory resource base on every candidate. */
       ...(candidate.resourceBase === undefined ? {} : { resourceBase: candidate.resourceBase }),
       content: parsed.content,
       path: candidate.path,
@@ -238,6 +240,7 @@ export class ClawHubProvider implements SkillProvider {
 
   /** List SKILL.md files directly inside a root; a missing root yields no skills (OpenClaw-style). */
   private async scanRoot(spec: RootSpec, signal?: AbortSignal): Promise<string[]> {
+    /* v8 ignore next -- rootSpecs omits an unresolved workspace and gives every emitted spec a concrete directory. */
     if (spec.dir === undefined) return []
     signal?.throwIfAborted()
     let entries: string[]

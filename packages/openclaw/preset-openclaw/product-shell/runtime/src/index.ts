@@ -2,7 +2,7 @@
 
 import { accessSync, constants } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context, FiberState } from '@deepseek-ai/cordis'
 import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
@@ -47,6 +47,11 @@ const LEGACY_PRODUCT_PATHS = [
   '/clawdsh/settings/',
   '/clawdsh/activity',
   '/clawdsh/activity/',
+] as const
+const PRODUCT_PNG_ASSETS = [
+  'brand/clawdsh-mark-192.png',
+  'brand/clawdsh-mark-512.png',
+  'brand/clawdsh-maskable-512.png',
 ] as const
 const LOOPBACK_HOST = '127.0.0.1'
 const COMMUNICATION_PLANE_ID = 'clawdsh-communication-plane'
@@ -643,6 +648,27 @@ function registerProductRoutes(ctx: Context, distIndex: string): void {
         res.end()
       },
     }), `clawdsh-product-runtime: ${path} redirect`)
+  }
+  for (const relativePath of PRODUCT_PNG_ASSETS) {
+    const routePath = `${PRODUCT_ROOT}${relativePath}`
+    const filePath = join(distRoot, ...relativePath.split('/'))
+    ctx.effect(() => ctx.webServer.register({
+      kind: 'exact',
+      path: routePath,
+      handler: async (req, res) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          res.writeHead(405)
+          res.end()
+          return
+        }
+        const body = await readFile(filePath)
+        res.writeHead(200, {
+          'content-type': 'image/png',
+          'content-length': String(body.byteLength),
+        })
+        res.end(req.method === 'HEAD' ? undefined : body)
+      },
+    }), `clawdsh-product-runtime: ${routePath} PNG asset`)
   }
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',

@@ -2,10 +2,11 @@
 
 [English](0009-public-npm-distribution.md) | 中文
 
-- **状态**：已接受（2026-08-15）；需要 bootstrap，且尚未授权真实发布
+- **状态**：已接受（2026-08-15）；ADR-0010 已规定惰性 bootstrap，且尚未授权真实发布
 - **日期**：2026-08-15
 - **取代**：ADR-0004；ADR-0006 决策 5 及其相关 registry 表述
 - **依赖**：ADR-0006、ADR-0007、ADR-0008
+- **Bootstrap 由其细化**：ADR-0010（2026-08-17）
 
 ## 上下文
 
@@ -55,7 +56,7 @@ Bundle 从真实且当前的构建产物装配到全新的 stage 目录。闭合
 
 ClawDSH 工作流固定公共 registry、软件包 allowlist、拓扑顺序、Node 24、4 GiB heap、候选版本和 `next` tag。它不接受 registry 输入，使用 npm trusted publishing、`id-token: write` 和 provenance；禁止长期 npm 写 token。任何远端写入前，先构建和测试产品、stage bundle、创建全部 13 个真实 tarball、校验不可变 release manifest，并通过隔离的临时 registry 与 DSH home 安装它们。
 
-首次创建 package 是该 workflow 之外的一次性 bootstrap。它需要用户另行授权精确 archive 集合、版本、公共仓库转换与 registry 写入，然后由启用 2FA 的 npm 账号通过交互式会话直接发布。Staged publishing 不能替代此步骤，因为 npm 不允许 stage 全新 package。Bootstrap 版本必须显式选择：交互式发布 `0.1.0-rc.1` 会消耗这个不可变版本，使后续 OIDC workflow 无法再次发布它。本次实现既不选择 bootstrap artifact，也不执行 bootstrap。
+首次创建 package 使用 ADR-0010 的独立一次性流程。它以 `bootstrap` tag 使用确定性的纯 metadata `0.1.0-rc.0` archive，需要用户另行授权精确 archive 集合、public repository 转换与 registry 写入，再由受 2FA 保护的交互式 npm 账号逐包执行。只读远端检查只会在每个既有 integrity 都匹配闭合 bootstrap index 且 `latest` 继续不存在时恢复中断流程。该流程不消耗 `0.1.0-rc.1`；后者继续专供本 OIDC workflow。本次实现生成并校验 bootstrap artifact，但不发布它们。
 
 全部 13 个 package object 存在后，maintainer 为每个 package 配置并校验一条 trusted-publisher 记录。每条记录必须指向相同 GitHub repository、workflow 文件名 `clawdsh-publish.yml`、environment `npm` 和 `npm publish` 权限。GitHub `npm` environment 必须只允许 canonical `clawdsh` branch 部署，workflow 还会独立要求精确 ref `refs/heads/clawdsh`；tag 与其他 branch 都不是发布权限来源。只有这套状态完整时才是 `OIDC-ready`。
 

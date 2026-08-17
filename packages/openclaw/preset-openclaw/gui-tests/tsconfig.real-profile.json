@@ -9,6 +9,7 @@
     "sourceMap": false
   },
   "include": [
+    "brand-assets.spec.ts",
     "identity.spec.ts",
     "real-profile.e2e.ts",
     "vitest.gui.config.ts"

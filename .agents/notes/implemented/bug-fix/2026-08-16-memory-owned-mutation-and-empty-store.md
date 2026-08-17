@@ -18,7 +18,7 @@ A missing configured root is the valid empty-store state. Search returns no matc
 
 Mutation uses the filesystem seam with capability-owned `workspace-write` authority restricted to the configured Memory root. The operation rejects symbolic-link roots, daily directories, and target files. Per-target in-process serialization and filesystem revision compare-and-swap preserve concurrent host changes; a stale observation retries against the newest contents. Errors returned to the model retain only the stable filesystem code and never disclose the physical root.
 
-The watcher treats an initially absent root as recoverable. After the first write, it closes the ancestor watch and reopens on the created root; disposal waits for recovery and watcher shutdown to settle.
+The watcher treats an initially absent root as recoverable. After the first write, it closes the incomplete ancestor observation and reopens on the created root. Recovery enables Chokidar's initial events for that handoff and resolves only after the scan reports existing memory files, rather than waiting for a later directory polling notification to rediscover the first write. Disposal waits for recovery and watcher shutdown to settle.
 
 ## Alternatives considered
 
@@ -40,4 +40,4 @@ Ark Embeddings remains optional for product startup. Without a configured or wor
 
 ## Verification
 
-Focused tests cover an absent root, cross-call write and recall, exact deduplication, daily append, correction and forget outcomes, concurrent host mutation, symlink rejection, sanitized failures, watcher recovery, disposal races, and the fixed prompt guidance. The final product acceptance also creates Memory in the normal ClawDSH profile and recalls it from a separate Web Session.
+Focused tests cover an absent root, cross-call write and recall, exact deduplication, daily append, correction and forget outcomes, concurrent host mutation, symlink rejection, sanitized failures, recovery-time initial-file observation, disposal races, and the fixed prompt guidance. The final product acceptance also creates Memory in the normal ClawDSH profile and recalls it from a separate Web Session.

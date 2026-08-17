@@ -1091,6 +1091,7 @@ describe('DSH-to-bridge actions and receipts', () => {
     const table = Reflect.get(app.provider, 'deliveries') as {
       put(key: string, value: { readonly receipt: { readonly status: string } }): Promise<void>
     }
+    const operations = Reflect.get(app.provider, 'deliveryOperations') as Map<string, Promise<void>>
     const persist = table.put.bind(table)
     const enteredFirstWrite = Promise.withResolvers<undefined>()
     const releaseFirstWrite = Promise.withResolvers<undefined>()
@@ -1112,10 +1113,14 @@ describe('DSH-to-bridge actions and receipts', () => {
     }
     const committed = reportDelivery(app.client, terminal)
     await enteredFirstWrite.promise
+    const firstTail = operations.get('receipt-race')
+    expect(firstTail).toBeDefined()
     const regressed = reportDelivery(app.client, { ...terminal, status: 'accepted' })
     try {
       await vi.waitFor(() => {
-        expect(app.client.frames.filter(frame => frame.method === 'delivery.report')).toHaveLength(2)
+        const successorTail = operations.get('receipt-race')
+        expect(successorTail).toBeDefined()
+        expect(successorTail).not.toBe(firstTail)
       })
       expect(writes).toBe(1)
     } finally {

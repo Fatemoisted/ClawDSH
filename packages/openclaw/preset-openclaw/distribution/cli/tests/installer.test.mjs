@@ -94,6 +94,42 @@ test('refuses modified presets, then backs them up before explicit reset', () =>
   }
 })
 
+test('refuses a preset edit that arrives after reset backup while the candidate is prepared', () => {
+  const root = temporary()
+  try {
+    const home = join(root, 'home')
+    const bundle = createBundleFixture(root)
+    const initialRunner = fakeProfileNpmRunner(bundle, [])
+    createInstaller({ home, bundleRoot: bundle, npmRunner: initialRunner }).init()
+    const preset = join(home, '.agent-presets/clawdsh/preset.yml')
+    writeFileSync(preset, 'name: Edit before backup\n')
+    const warnings = []
+    const populateCandidate = fakeProfileNpmRunner(bundle, [])
+    const installer = createInstaller({
+      home,
+      bundleRoot: bundle,
+      npmRunner(profile) {
+        populateCandidate(profile)
+        writeFileSync(preset, 'name: Edit while npm prepares the candidate\n')
+      },
+      now: () => new Date('2026-08-17T12:34:56Z'),
+      warn: message => warnings.push(message),
+    })
+
+    assert.throws(
+      () => installer.init({ resetPreset: true }),
+      /changed after its backup or mutation check/,
+    )
+    assert.equal(readFileSync(preset, 'utf8'), 'name: Edit while npm prepares the candidate\n')
+    assert.equal(existsSync(join(home, '.clawdsh.json')), true)
+    const backupMessage = warnings.find(message => message.includes('clawdsh.backup-'))
+    const backupPath = backupMessage.match(/to (.+)\.$/)[1]
+    assert.equal(readFileSync(join(backupPath, 'preset.yml'), 'utf8'), 'name: Edit before backup\n')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('refuses an unmarked same-name preset until explicit backup and reset', () => {
   const root = temporary()
   try {
@@ -127,7 +163,7 @@ test('refuses takeover of an unmarked same-name profile and only warns for legac
     mkdirSync(join(home, 'profiles/clawdsh'), { recursive: true })
     write(home, 'profiles/clawdsh/package.json', '{}\n')
     const installer = createInstaller({ home, bundleRoot: bundle, npmRunner: () => {} })
-    assert.throws(() => installer.init(), /refusing to take over unmarked profile/)
+    assert.throws(() => installer.init(), /refusing to take over unmarked ClawDSH source assets/)
 
     rmSync(join(home, 'profiles/clawdsh'), { recursive: true })
     mkdirSync(join(home, 'profiles/openclaw'), { recursive: true })

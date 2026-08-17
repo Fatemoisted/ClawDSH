@@ -197,8 +197,11 @@ function validateManifest(manifest, expectedName) {
     throw new TypeError(`${expectedName} must be a public MIT package`)
   }
   const publishConfig = object(manifest.publishConfig, `${expectedName} publishConfig`)
-  if (publishConfig.access !== 'public' || Object.hasOwn(publishConfig, 'registry')) {
-    throw new TypeError(`${expectedName} publishConfig must declare only public access, not a registry`)
+  const publishConfigKeys = Object.keys(publishConfig)
+  if (publishConfig.access !== 'public'
+    || publishConfigKeys.length !== 1
+    || publishConfigKeys[0] !== 'access') {
+    throw new TypeError(`${expectedName} publishConfig must declare exactly public access`)
   }
   if (!Array.isArray(manifest.files) || manifest.files.length === 0) {
     throw new TypeError(`${expectedName} must declare a non-empty files allowlist`)

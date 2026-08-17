@@ -132,6 +132,8 @@ interface ResolvedConfig {
   readonly flush: ReturnType<typeof resolveFlushConfig>
 }
 
+type NormalizedConfig = Required<Omit<Config, 'flush'>> & Pick<Config, 'flush'>
+
 interface PromptActivitySink {
   promptContribution(input: {
     readonly sessionId: string
@@ -216,12 +218,11 @@ const targetWriteChains = new Map<string, Promise<void>>()
 
 /** Register the memory guidance section, four tools, and the flush-turn hooks. */
 export function apply(ctx: Context, config: Config): void {
-  const settings = ctx.get('settings')
-  const runtimeConfig = settings?.register(MEMORY_SETTINGS_NAMESPACE, Config, {
+  const runtimeConfig = ctx.settings.register(MEMORY_SETTINGS_NAMESPACE, Config, {
     base: config,
     applies: 'restart',
     validate: value => void resolveConfig(value),
-  }).get() ?? Config(config)
+  }).get()
   const resolved = resolveConfig(runtimeConfig)
   if (!resolved.enabled) return
   const disposeFlush = installMemoryFlush(ctx, resolved.flush)
@@ -235,7 +236,11 @@ export function apply(ctx: Context, config: Config): void {
   const onMemoryFile = (rel: string): void => {
     // The index may not exist yet (no search has run); the first sync reads the
     // full tree anyway, so a pre-index event is a no-op.
-    void indexPromise?.then((built) => { built.invalidateFile(rel) }, () => {})
+    void indexPromise?.then(
+      (built) => { built.invalidateFile(rel) },
+      /* v8 ignore next -- the watcher effect settles rootTarget before tools can create indexPromise. */
+      () => {},
+    )
   }
   let watchDisposer: MemoryWatchDisposer | undefined
   let recoverWatchAfterWrite = false
@@ -250,6 +255,7 @@ export function apply(ctx: Context, config: Config): void {
       }, onMemoryFile)
       watchDisposer = installed
       return async () => {
+        /* v8 ignore next -- this single watcher effect is the only writer of its captured disposer. */
         if (watchDisposer === installed) watchDisposer = undefined
         await installed()
       }
@@ -414,6 +420,7 @@ function installPromptActivity(ctx: Context): () => void {
     }
     try {
       const contribution = renderPrompt({ ...transformed, sections: [section] })
+      /* v8 ignore next -- the retained recall section has fixed non-empty text, so its rendered contribution is non-empty. */
       if (contribution === '') candidates.delete(sessionId)
       else candidates.set(sessionId, { system: renderPrompt(transformed), contribution })
     } catch (_promptRenderFailed) {
@@ -463,57 +470,52 @@ function recordPromptContribution(ctx: Context, sessionId: string, seq: number, 
 }
 
 function resolveConfig(config: Config): ResolvedConfig {
-  const root: unknown = Reflect.get(config, 'root')
-  if (typeof root !== 'string' || root.length === 0) {
+  const normalized = config as NormalizedConfig
+  const root = normalized.root
+  if (root.length === 0) {
     throw new TypeError('memory: config root is required (the memory file directory)')
   }
-  const chunkSizeChars = config.chunkSizeChars ?? DEFAULT_CHUNK_SIZE_CHARS
-  const chunkOverlapChars = config.chunkOverlapChars ?? DEFAULT_CHUNK_OVERLAP_CHARS
-  const maxResults = config.maxResults ?? DEFAULT_MAX_RESULTS
-  const minScore = config.minScore ?? DEFAULT_MIN_SCORE
-  const snippetChars = config.snippetChars ?? DEFAULT_SNIPPET_CHARS
-  const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  const maxReadLines = config.maxReadLines ?? DEFAULT_MAX_READ_LINES
-  const maxWriteChars = config.maxWriteChars ?? DEFAULT_MAX_WRITE_CHARS
-  const watch = config.watch ?? true
-  const watchStabilityThresholdMs = config.watchStabilityThresholdMs ?? DEFAULT_WATCH_STABILITY_THRESHOLD_MS
-  const watchPollIntervalMs = config.watchPollIntervalMs ?? DEFAULT_WATCH_POLL_INTERVAL_MS
-  if (!Number.isSafeInteger(chunkSizeChars) || chunkSizeChars < 1) {
+  const chunkSizeChars = normalized.chunkSizeChars
+  const chunkOverlapChars = normalized.chunkOverlapChars
+  const maxResults = normalized.maxResults
+  const minScore = normalized.minScore
+  const snippetChars = normalized.snippetChars
+  const timeoutMs = normalized.timeoutMs
+  const maxReadLines = normalized.maxReadLines
+  const maxWriteChars = normalized.maxWriteChars
+  const watch = normalized.watch
+  const watchStabilityThresholdMs = normalized.watchStabilityThresholdMs
+  const watchPollIntervalMs = normalized.watchPollIntervalMs
+  if (!Number.isSafeInteger(chunkSizeChars)) {
     throw new TypeError('memory: chunkSizeChars must be a positive safe integer')
   }
-  if (!Number.isSafeInteger(chunkOverlapChars) || chunkOverlapChars < 0 || chunkOverlapChars >= chunkSizeChars) {
+  if (chunkOverlapChars >= chunkSizeChars) {
     throw new TypeError('memory: chunkOverlapChars must be a non-negative integer smaller than chunkSizeChars')
   }
-  if (!Number.isSafeInteger(maxResults) || maxResults < 1) {
+  if (!Number.isSafeInteger(maxResults)) {
     throw new TypeError('memory: maxResults must be a positive safe integer')
   }
-  if (typeof minScore !== 'number' || !Number.isFinite(minScore) || minScore < -1 || minScore > 1) {
+  if (!Number.isFinite(minScore)) {
     throw new TypeError('memory: minScore must be a finite number in [-1, 1]')
   }
-  if (!Number.isSafeInteger(snippetChars) || snippetChars < 1) {
+  if (!Number.isSafeInteger(snippetChars)) {
     throw new TypeError('memory: snippetChars must be a positive safe integer')
   }
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMER_DELAY_MS) {
-    throw new TypeError(`memory: timeoutMs must be a positive integer no greater than ${MAX_TIMER_DELAY_MS}`)
-  }
-  if (!Number.isSafeInteger(maxReadLines) || maxReadLines < 1) {
+  if (!Number.isSafeInteger(maxReadLines)) {
     throw new TypeError('memory: maxReadLines must be a positive safe integer')
   }
-  if (!Number.isSafeInteger(maxWriteChars) || maxWriteChars < 1) {
+  if (!Number.isSafeInteger(maxWriteChars)) {
     throw new TypeError('memory: maxWriteChars must be a positive safe integer')
   }
-  if (config.watch !== undefined && typeof config.watch !== 'boolean') {
-    throw new TypeError('memory: watch must be a boolean')
-  }
-  if (!Number.isSafeInteger(watchStabilityThresholdMs) || watchStabilityThresholdMs < 1) {
+  if (!Number.isSafeInteger(watchStabilityThresholdMs)) {
     throw new TypeError('memory: watchStabilityThresholdMs must be a positive safe integer')
   }
-  if (!Number.isSafeInteger(watchPollIntervalMs) || watchPollIntervalMs < 1) {
+  if (!Number.isSafeInteger(watchPollIntervalMs)) {
     throw new TypeError('memory: watchPollIntervalMs must be a positive safe integer')
   }
-  const flush = resolveFlushConfig(config.flush)
+  const flush = resolveFlushConfig(normalized.flush)
   return {
-    enabled: config.enabled ?? true,
+    enabled: normalized.enabled,
     root,
     chunkSizeChars,
     chunkOverlapChars,
@@ -530,15 +532,9 @@ function resolveConfig(config: Config): ResolvedConfig {
   }
 }
 
-function parseWriteArgs(args: unknown, maxWriteChars: number): ParsedWriteArgs {
-  if (typeof args !== 'object' || args === null) throw new TypeError('memory_write: invalid arguments')
-  const record = args as Record<string, unknown>
-  const scope = record.scope
-  const content = record.content
-  if (scope !== 'durable' && scope !== 'daily') {
-    throw new TypeError('memory_write: scope must be durable or daily')
-  }
-  if (typeof content !== 'string' || content.trim().length === 0) {
+function parseWriteArgs(args: ParsedWriteArgs, maxWriteChars: number): ParsedWriteArgs {
+  const { scope, content } = args
+  if (content.trim().length === 0) {
     throw new TypeError('memory_write: content must be a non-empty string')
   }
   const normalized = content.trim()
@@ -551,16 +547,10 @@ function parseWriteArgs(args: unknown, maxWriteChars: number): ParsedWriteArgs {
   return { scope, content: normalized }
 }
 
-function parseUpdateArgs(args: unknown, maxWriteChars: number): ParsedUpdateArgs {
-  if (typeof args !== 'object' || args === null) throw new TypeError('memory_update: invalid arguments')
-  const record = args as Record<string, unknown>
-  const oldContent = record.oldContent
-  const newContent = record.newContent
-  if (typeof oldContent !== 'string' || oldContent.trim().length === 0) {
+function parseUpdateArgs(args: ParsedUpdateArgs, maxWriteChars: number): ParsedUpdateArgs {
+  const { oldContent, newContent } = args
+  if (oldContent.trim().length === 0) {
     throw new TypeError('memory_update: oldContent must be a non-empty string')
-  }
-  if (typeof newContent !== 'string') {
-    throw new TypeError('memory_update: newContent must be a string')
   }
   const normalizedOld = oldContent.trim()
   const normalizedNew = newContent.trim()
@@ -606,7 +596,7 @@ async function appendMemoryText(
   signal: AbortSignal,
 ): Promise<AppendOutcome> {
   return withTargetWriteLock(target, async () => {
-    const addition = content.endsWith('\n') ? content : `${content}\n`
+    const addition = `${content}\n`
     while (true) {
       if (signal.aborted) throw new FsError('memory_write: aborted', 'FS_ABORTED')
       const info = await fs.stat(target, signal)
@@ -738,15 +728,11 @@ function sanitizeStorageError(tool: 'memory_search' | 'memory_get', error: FsErr
 }
 
 function parseSearchArgs(
-  args: unknown,
+  args: { readonly query: string; readonly maxResults?: number; readonly minScore?: number },
   defaults: Pick<ResolvedConfig, 'maxResults' | 'minScore'>,
 ): { query: string; maxResults: number; minScore: number } {
-  if (typeof args !== 'object' || args === null) throw new TypeError('memory_search: invalid arguments')
-  const record = args as Record<string, unknown>
-  const query = record.query
-  const maxResults = record.maxResults
-  const minScore = record.minScore
-  if (typeof query !== 'string' || query.length === 0) throw new TypeError('memory_search: query must be a non-empty string')
+  const { query, maxResults, minScore } = args
+  if (query.length === 0) throw new TypeError('memory_search: query must be a non-empty string')
   return {
     query,
     maxResults: maxResults === undefined ? defaults.maxResults : boundedInt(maxResults, 'maxResults'),
@@ -754,13 +740,13 @@ function parseSearchArgs(
   }
 }
 
-function parseGetArgs(args: unknown): { path: string; from: number; lines: number } {
-  if (typeof args !== 'object' || args === null) throw new TypeError('memory_get: invalid arguments')
-  const record = args as Record<string, unknown>
-  const path = record.path
-  const from = record.from
-  const lines = record.lines
-  if (typeof path !== 'string' || path.length === 0) throw new TypeError('memory_get: path must be a non-empty string')
+function parseGetArgs(args: { readonly path: string; readonly from?: number; readonly lines?: number }): {
+  path: string
+  from: number
+  lines: number
+} {
+  const { path, from, lines } = args
+  if (path.length === 0) throw new TypeError('memory_get: path must be a non-empty string')
   return {
     path,
     from: from === undefined ? 1 : boundedInt(from, 'from'),

@@ -42,7 +42,7 @@ describe('OpenClaw channel migration inventory', () => {
 
   it('mounts the sidecar and its invariant companions while the Gateway remains disabled', async () => {
     const profile = await readFile(fileURLToPath(new URL(
-      '../packages/openclaw/preset-openclaw/profile/cordis.patch.yml',
+      '../packages/openclaw/preset-openclaw/profile/dev-bundle/cordis.patch.yml',
       import.meta.url,
     )), 'utf8')
     expect(profile).toContain("- id: clawdsh-communication-plane")

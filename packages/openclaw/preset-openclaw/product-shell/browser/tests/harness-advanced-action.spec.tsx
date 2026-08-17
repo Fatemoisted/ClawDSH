@@ -11,22 +11,24 @@ describe('Harness Advanced sidebar action', () => {
   it('renders an ordinary document link with a visible label in the wide sidebar', () => {
     render(<HarnessAdvancedAction wide />)
 
-    const link = screen.getByRole('link', { name: 'Harness 高级' })
+    const link = screen.getByRole('link', { name: 'ClawDSH · Harness 高级' })
     expect(link.getAttribute('href')).toBe('/')
-    expect(link.textContent).toBe('Harness 高级')
+    expect(link.textContent).toContain('ClawDSH')
+    expect(link.textContent).toContain('Powered by DeepSeek Harness')
     expect(link.querySelector('svg')).toBeTruthy()
+    expect(link.querySelector('img')?.getAttribute('src')).toBe('/clawdsh/brand/clawdsh-mark.svg')
     expect(screen.queryByRole('tooltip')).toBeNull()
   })
 
   it('keeps an accessible icon link and Tooltip in the collapsed rail', () => {
     render(<HarnessAdvancedAction wide={false} />)
 
-    const link = screen.getByRole('link', { name: 'Harness 高级' })
+    const link = screen.getByRole('link', { name: 'ClawDSH · Harness 高级' })
     expect(link.getAttribute('href')).toBe('/')
     expect(link.textContent).toBe('')
-    expect(link.querySelector('svg')).toBeTruthy()
+    expect(link.querySelector('img')).toBeTruthy()
     fireEvent.focus(link)
-    expect(screen.getByRole('tooltip').textContent).toBe('Harness 高级')
+    expect(screen.getByRole('tooltip').textContent).toBe('ClawDSH · Powered by DeepSeek Harness')
   })
 
   it('registers through the public sidebar footer Slot', () => {
@@ -40,7 +42,7 @@ describe('Harness Advanced sidebar action', () => {
       name: 'sidebar.footer.action',
       id: 'clawdsh-harness-advanced',
       order: 100,
-      label: 'Harness 高级',
+      label: 'ClawDSH · Harness 高级',
     }, HarnessAdvancedAction)
   })
 })

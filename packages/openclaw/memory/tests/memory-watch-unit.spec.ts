@@ -19,11 +19,17 @@ const harness = vi.hoisted(() => ({
   watchers: [] as FakeWatcher[],
   closeErrors: 0,
   closeGate: undefined as Promise<void> | undefined,
+  openErrors: 0,
+  readyHook: undefined as ((watcher: FakeWatcher) => void) | undefined,
 }))
 
 vi.mock('chokidar', () => ({
   default: {
     watch(path: unknown, options: Record<string, unknown>) {
+      if (harness.openErrors > 0) {
+        harness.openErrors -= 1
+        throw new Error('open failed')
+      }
       const emitter = new EventEmitter() as EventEmitter & { close(): Promise<void> }
       const control: FakeWatcher = { emitter, closeCalls: 0, options, path: String(path) }
       emitter.close = async () => {
@@ -35,7 +41,11 @@ vi.mock('chokidar', () => ({
         }
       }
       harness.watchers.push(control)
-      queueMicrotask(() => emitter.emit('ready'))
+      queueMicrotask(() => {
+        if (options.ignoreInitial === false) emitter.emit('add', `${String(path)}/MEMORY.md`)
+        emitter.emit('ready')
+        harness.readyHook?.(control)
+      })
       return emitter
     },
   },
@@ -49,6 +59,8 @@ beforeEach(() => {
   harness.watchers.length = 0
   harness.closeErrors = 0
   harness.closeGate = undefined
+  harness.openErrors = 0
+  harness.readyHook = undefined
 })
 
 describe('installMemoryWatch', () => {
@@ -56,6 +68,7 @@ describe('installMemoryWatch', () => {
     const ctx = new Context()
     const dispose = await installMemoryWatch(ctx, '/root', { ...CONFIG, enabled: false }, () => {})
     expect(harness.watchers).toHaveLength(0)
+    await dispose.recover()
     await dispose()
   })
 
@@ -90,7 +103,7 @@ describe('installMemoryWatch', () => {
     expect(harness.watchers).toHaveLength(2)
     const recovered = harness.watchers[1]
     if (recovered === undefined) throw new Error('expected the recovered watcher')
-    recovered.emitter.emit('add', '/root/MEMORY.md')
+    expect(recovered.options.ignoreInitial).toBe(false)
     expect(seen).toEqual(['MEMORY.md'])
     await dispose()
   })
@@ -127,6 +140,8 @@ describe('installMemoryWatch', () => {
     await dispose()
     expect(watcher.closeCalls).toBe(1)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('failed to close watcher'))
+    await expect(dispose()).resolves.toBeUndefined()
+    await expect(dispose.recover()).resolves.toBeUndefined()
   })
 
   it('warns on a watcher error event and stays usable', async () => {
@@ -165,5 +180,27 @@ describe('installMemoryWatch', () => {
     await Promise.all([recovering, closing])
     expect(settled).toBe(true)
     expect(harness.watchers).toHaveLength(1)
+  })
+
+  it('closes a recovered watcher when disposal wins immediately after ready', async () => {
+    const ctx = new Context()
+    const dispose = await installMemoryWatch(ctx, '/root', CONFIG, () => {})
+    harness.readyHook = () => { void dispose() }
+
+    await dispose.recover()
+
+    expect(harness.watchers).toHaveLength(2)
+    expect(harness.watchers[1]?.closeCalls).toBe(1)
+    await dispose()
+  })
+
+  it('keeps its transition chain disposable after reopening fails', async () => {
+    const ctx = new Context()
+    const dispose = await installMemoryWatch(ctx, '/root', CONFIG, () => {})
+    harness.openErrors = 1
+
+    await expect(dispose.recover()).rejects.toThrow(/open failed/)
+    await expect(dispose.recover()).resolves.toBeUndefined()
+    await expect(dispose()).resolves.toBeUndefined()
   })
 })

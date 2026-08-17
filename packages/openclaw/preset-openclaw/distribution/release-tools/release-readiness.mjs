@@ -4,6 +4,7 @@
 import { createHash } from 'node:crypto'
 import { readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { verifyBootstrapAttestation } from './bootstrap-publication.mjs'
 import { DSH_VERSION, RELEASE_VERSION } from './release-contract.mjs'
 
 const REQUIRED_CONFIRMATIONS = Object.freeze([
@@ -17,12 +18,14 @@ function yes(value) {
   return value === true || value === 'true'
 }
 
-/** Check both manual release authority and the clean-install smoke attestation. */
+/** Check manual authority, inert-bootstrap integrity, and clean-install smoke evidence. */
 export function assertReleaseReadiness({
   publishRequested,
   githubRef,
   repositoryPrivate,
   confirmations,
+  bootstrapIndex,
+  bootstrapAttestation,
   releaseIndex,
   smokeAttestation,
 }) {
@@ -34,20 +37,26 @@ export function assertReleaseReadiness({
   for (const name of REQUIRED_CONFIRMATIONS) {
     if (!yes(confirmations[name])) throw new TypeError(`public npm publishing requires ${name}`)
   }
+  const bootstrap = verifyBootstrapAttestation(bootstrapIndex, bootstrapAttestation)
   const indexBytes = readFileSync(releaseIndex)
   const attestation = JSON.parse(readFileSync(smokeAttestation, 'utf8'))
-  if (attestation.version !== 1
+  if (attestation.version !== 2
     || attestation.releaseVersion !== RELEASE_VERSION
     || attestation.dshVersion !== DSH_VERSION
     || attestation.cliStarted !== true
-    || attestation.productPageVerified !== true) {
+    || attestation.productPageVerified !== true
+    || attestation.browserRuntimeVerified !== true) {
     throw new TypeError('clean-install smoke attestation does not prove the locked CLI/DSH product page')
   }
   const digest = `sha512-${createHash('sha512').update(indexBytes).digest('base64')}`
   if (attestation.releaseIndexIntegrity !== digest) {
     throw new TypeError('clean-install smoke attestation does not match release-index.json')
   }
-  return Object.freeze({ publish: true, releaseIndexIntegrity: digest })
+  return Object.freeze({
+    publish: true,
+    releaseIndexIntegrity: digest,
+    bootstrapIndexIntegrity: bootstrap.bootstrapIndexIntegrity,
+  })
 }
 
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
@@ -61,6 +70,8 @@ if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToP
       publicRepositoryApproved: process.env.CLAWDSH_PUBLIC_REPOSITORY_APPROVED,
       rc6CompatibilityConfirmed: process.env.CLAWDSH_RC6_COMPATIBILITY_CONFIRMED,
     },
+    bootstrapIndex: process.env.CLAWDSH_BOOTSTRAP_INDEX,
+    bootstrapAttestation: process.env.CLAWDSH_BOOTSTRAP_ATTESTATION,
     releaseIndex: process.env.CLAWDSH_RELEASE_INDEX,
     smokeAttestation: process.env.CLAWDSH_SMOKE_ATTESTATION,
   })

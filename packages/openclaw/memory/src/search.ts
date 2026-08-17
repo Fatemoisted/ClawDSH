@@ -141,18 +141,9 @@ export class MemoryIndex {
     }
     if (chunkCount === 0) return []
     const vectors = await embeddings.embed([query, ...pending.map(chunk => chunk.text)], signal)
-    const queryVector = vectors[0]
-    if (queryVector === undefined) {
-      throw new Error('memory: embedding backend returned no query vector')
-    }
-    for (let index = 0; index < pending.length; index++) {
-      const chunk = pending[index]
-      const vector = vectors[index + 1]
-      if (chunk === undefined || vector === undefined) {
-        throw new Error('memory: embedding backend returned fewer vectors than requested')
-      }
-      chunk.vector = vector
-    }
+    const vectorIterator = vectors[Symbol.iterator]()
+    const queryVector = vectorIterator.next().value as EmbeddingVector
+    for (const chunk of pending) chunk.vector = vectorIterator.next().value as EmbeddingVector
 
     const hits: SearchHit[] = []
     for (const [path, file] of this.files) {

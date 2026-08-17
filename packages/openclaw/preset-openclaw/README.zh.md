@@ -1,97 +1,88 @@
-# ClawDSH 组装层
+# ClawDSH 源码组装层
 
 [English](README.md) | 中文
 
-本目录是 ClawDSH 的应用组装层。它通过 profile、bundle、preset、patch 与 nested-build mechanism 组合公开 dsh 能力和自有 package，且不修改上游源码。物理 `preset-openclaw` 目录名仍是窄仓库例外；安装 id 与产品文案使用 `clawdsh`。
+本目录是 ClawDSH 应用的源码开发组装层。它组合公开 dsh bundle、私有开发 bundle、自有功能包、两个 Agent preset、嵌套产品 browser／runtime 与可选 OpenClaw 通信平面，且不修改上游源码。物理 `preset-openclaw` 名称是仓库内部例外；安装 id 与产品文案使用 `clawdsh`。
 
-本目录不是 Cordis plugin。它提供：
+终端用户的 npm 安装、升级、迁移与恢复归 [`@clawdsh/cli` 参考](distribution/cli/README.md)所有。产品配置与凭据归[根用户指南](../../../README.md#configuration-and-data)所有。本页只覆盖干净源码 checkout 与高级 Gateway 组装。
 
-1. `clawdsh` Agent preset（`preset.yml`、`agent.cordis.yml` 与 `souls/assistant.md`），显示为 `ClawDSH 模式`；
-2. `clawdsh` profile template（`profile/`），把 dsh base 与 Web bundle 和 ClawDSH Host plugin 组合；
-3. nested ClawDSH browser shell 与 `@clawdsh/dsh-product-runtime`，包含能力总览、可编辑 Settings 控制面与跟随当前 Session 的语义 Activity；
-4. 供 `tools/link-clawdsh.sh` 消费的开发安装源；
-5. `@clawdsh/dsh-bundle`、`@clawdsh/cli` 与 fail-closed 发行验证的 nested 公共发行源码。
+## 干净 checkout
 
-OpenClaw Gateway 是产品内的外部通信平面 provider。它不定义产品、profile 或 Agent preset identity。
+使用 Node.js `22.19.x` 或 `>=24.0.0`，以及仓库指定的 pnpm 版本：
 
-## 本地开发
-
-安装或刷新 profile、自有 package link 与两个 Agent preset：
-
-```bash
+```sh
+git clone https://github.com/Fatemoisted/ClawDSH.git
+cd ClawDSH
+pnpm install
+pnpm run build
 pnpm --dir packages/openclaw/preset-openclaw/product-shell install --frozen-lockfile
 pnpm --dir packages/openclaw/preset-openclaw/product-shell run build
-tools/link-clawdsh.sh
-pnpm dsh --profile clawdsh
+tools/run-clawdsh-dev.sh
 ```
 
-新 Web Session 默认使用显示为 `ClawDSH 模式` 的 `clawdsh` preset。受限渠道 preset 安装为 `clawdsh-messaging-safe`。只有对话发起模型请求时才需要模型凭证；Web Host 本身无需外部凭证即可启动。
+嵌套产品壳保持在根 workspace 与 Client aggregate 之外，因此拥有自己的 lockfile。`tools/link-clawdsh.sh` 要求 `product-shell/runtime/lib/index.mjs` 与 `product-shell/runtime/web/index.html` 同时存在；任一文件缺失时，脚本会退出并打印精确的产品壳构建命令。
 
-产品壳保持在根 workspace 和 Client aggregate 之外，因此拥有独立 lockfile；构建前先安装这个 nested workspace。开发安装器要求 `product-shell/runtime/lib/index.mjs` 与 `product-shell/runtime/web/index.html` 已存在；任一产物缺失时，它会失败并给出精确 build 命令。安装器把 nested runtime 链接为 `@clawdsh/dsh-product-runtime`，检测到旧 `openclaw` profile 或 preset asset 时会警告，并保持其不变。它不创建 compatibility alias，也不删除、移动、改写或接管用户数据。移除保存的 Session 可能仍引用的旧 preset 前，先检查旧 `agent-presets.default` override。
+包装脚本会刷新 source profile，把开发 home 导出为 `DSH_HOME`，再启动 `pnpm dsh --profile clawdsh`。新 Web Session 使用显示为 `ClawDSH 模式` 的 `clawdsh` preset；`clawdsh-messaging-safe` 继续作为受限 Channel preset。Web Host 无需模型、Ark 或平台凭据即可启动。只有对话发起依赖模型的请求时才需要模型密钥。
 
-## 托管安装 CLI
+如需使用另一个隔离开发目录或 Web 端口：
 
-`@clawdsh/cli@0.1.0-rc.1` 精确依赖 `@clawdsh/dsh-bundle@0.1.0-rc.1` 与 `@deepseek-ai/dsh@0.1.0-rc.6`。
-
-发布条件通过后，npm 入口是：
-
-```bash
-npx --yes @clawdsh/cli@0.1.0-rc.1
+```sh
+CLAWDSH_DEV_HOME=/absolute/path/to/clawdsh-dev tools/run-clawdsh-dev.sh --port 3090
 ```
 
-安装后的命令集合是：
+`CLAWDSH_DEV_HOME` 默认为 `~/.clawdsh-dev`。源码工具绝不 fallback 到 `DSH_HOME`，因此默认位于 `~/.dsh` 的普通公开 home 可以和源码开发并存。
 
-```text
-clawdsh
-clawdsh init
-clawdsh init --reset-preset
-clawdsh start
-clawdsh start --profile <name>
-clawdsh doctor
-clawdsh channel install
-clawdsh channel doctor
+## 开发 home 所有权
+
+源码安装器写入 `.clawdsh-dev.json` schema v1，并且只拥有其中记录的开发 profile、package symlink 与两个 presets。Marker 记录 repository root、profile 与私有 bundle 完整性、精确的 home-relative link target，以及 preset digest。所选开发 home 中存在公共 `.clawdsh.json` marker 时会立即拒绝；无标记的同名资产、未知 schema 或未知 inventory 也会被拒绝。
+
+Profile 按顺序包含 3 层 bundle：
+
+1. `@deepseek-ai/dsh-base`；
+2. `@deepseek-ai/dsh-web-app`；
+3. 私有 `@clawdsh/dsh-dev-bundle`。
+
+私有 bundle 携带 ClawDSH 产品组合与源码包依赖。`$CLAWDSH_DEV_HOME/profiles/clawdsh/cordis.patch.yml` 是用户层：首次安装创建检入的空文件，后续刷新保留其字节。源码安装器绝不把产品组合写进该用户 patch。
+
+`$CLAWDSH_DEV_HOME/profiles/node_modules/@clawdsh/` 下的 package entry 是指向同一 checkout 的 symlink。两个 presets 是受管副本。刷新会更新未修改的 presets 与 link，但拒绝用户修改过的 preset、profile manifest 或受管 link。刷新前显式保留修改过的开发自有资产：
+
+```sh
+tools/link-clawdsh.sh --backup-modified
+tools/run-clawdsh-dev.sh
 ```
 
-没有子命令时，CLI 幂等地初始化或升级托管 profile，再通过自身精确 dsh 依赖启动 ClawDSH GUI。`start` 原样传递 `--host`、`--port` 与 `--trusted-host`；具名 custom profile 只会启动，不会被接管或修改。安装过程构建完整 staging candidate，验证 bundle 顺序 `@deepseek-ai/dsh-base → @deepseek-ai/dsh-web-app → @clawdsh/dsh-bundle`，随后以 `.clawdsh.json` manifest 原子发布托管 profile、presets 与 runtime asset。它保留 Settings、Credentials、Memory、Skills、OpenClaw state 与 custom profile patch。没有 marker 或被修改的 preset 会阻止静默替换；`--reset-preset` 在恢复托管副本前创建带时间戳和 integrity 的备份。同名且没有 marker 的 profile 绝不会被接管，旧 `openclaw` asset 只产生警告，不会被删除。
+第一条命令会先把当前开发 profile、两个 presets 与 link 证据复制到仅属主可访问的 `$CLAWDSH_DEV_HOME/.clawdsh-dev-backups/source-<timestamp>-<digest>/` 目录，再执行替换。它不复制 Settings、凭据、Sessions、Memory、Skills、Activity 或 OpenClaw state。Source refresh 与 public source-to-managed migration 是独立生命周期；只有在公开 `$DSH_HOME` 中发现历史 source-linked 布局时，才使用 [`clawdsh migrate source`](distribution/cli/README.md#source-installation-migration)。
 
-Channel 获取与 `init` 分离。`clawdsh channel install` 要求当前 Node 可执行文件满足已锁定 Gateway engine，只接受 checked production track，下载精确 OpenClaw artifact，校验 SHA-512 与每个 archive member，在禁用 lifecycle script 的情况下组装 checked runtime，并且只在配置不存在时创建不含凭证且 fail-closed 的配置。既有 OpenClaw 配置与 state 保持不变，canary 只用于审计。`clawdsh channel doctor` 校验托管 identity，并把完整 fail-closed 配置检查委托给已安装 Provider，而不选择、返回或打印 platform credential。因此普通产品安装保持轻量；即使没有 OpenClaw artifact，也能在 Gateway 关闭时启动。
+## 组装内容
 
-## 通信平面
+源码组装层提供：
 
-Profile 始终按以下顺序挂载完整 communication seam：
+- `clawdsh` Agent preset（`preset.yml`、`agent.cordis.yml` 与 `souls/assistant.md`）；
+- `clawdsh` profile template 与私有开发 bundle；
+- 提供 `/clawdsh/` 且在 `/` 保留原生 Harness 的嵌套 browser shell 与 `@clawdsh/dsh-product-runtime`；
+- 始终挂载的 Soul、Memory、Skills、Activity、Automation、Channel Service Definition、Agent Bridge 与 OpenClaw Gateway 插件；
+- 供显式 Gateway 设置使用的锁定 OpenClaw Host、runtime、bridge、support catalog 与 governance 输入。
 
-1. `@clawdsh/dsh-channel`，platform-independent Service Definition；
-2. `@clawdsh/dsh-channel-agent`，durable Agent Driver 与 route-scoped `message` tool；
-3. `@clawdsh/dsh-channel-openclaw`，authenticated IPC Provider 与 locked Gateway supervisor。
+Memory、Skills Hub 与 Activity 默认启用。Automation 与 OpenClaw Gateway 默认关闭。Ark 只在 embedding 调用时解析 `ARK_API_KEY`。Gateway 关闭时不会校验 artifact、绑定 socket、启动进程或注册 Provider。平台账号、凭据、策略与 state 继续只归 OpenClaw 所有。
 
-同一个始终挂载的通信组包含按包过滤的 invariant registry，以及 Service Definition、Agent 和 Provider 的 invariant companion。因此，启用后的部署会校验恢复的 Channel 来源信息和每个 seam 角色拥有的运行时关系。
+已检查的 Channel catalog 采用保守语义。Telegram、飞书、Discord 等平台出现在 catalog 中，不表示它们 installable、certified、enabled 或获得支持；源码组装层也不交付直连平台适配器。
 
-Channel Protocol 始终提供 Service Definition，Agent Bridge 始终注册自身 network-inert Driver。OpenClaw Gateway 保持 mounted，其经过校验的 `enabled` setting 默认为 false，因此不执行 artifact check、socket binding、process launch 或 Provider registration。ClawDSH 不交付直连 platform adapter 实现；Telegram、飞书、Discord 及其他平台只能经这条 OpenClaw 通信平面运行。External extension selection 默认为空，安装器从 `channels: {}` 开始。OpenClaw 仍是 platform credential 的唯一 owner；本 profile 不读取或复制这些凭证。
+## 高级 Gateway 组装
 
-已准入 Channel 输入仍是持久 `user/message`，并使用 `source.kind: channel`。ClawDSH product renderer 会在 WebUI 中把这条记录显示为普通 human message，同时保留完整、已净化的 Channel provenance；其他 non-user source 继续使用标准的折叠 context 展示。
+受管用户路径是先运行 `clawdsh channel install`，再运行 `clawdsh channel doctor`。源码部署也可以显式准备同一组不可变输入。启用 Gateway 前，先把以下内容准备为普通文件与目录：
 
-Provider 配置、artifact check、admission default 与 runtime limitation 见 [channel-openclaw README](../channel-openclaw/README.md)。受检支持 catalog 采用保守语义：存在于 OpenClaw catalog 不表示渠道 installable、certified 或 enabled。[ADR-0008](../../../docs/adr/0008-openclaw-channel-plane.md)拥有架构与替换条件。
+- 兼容的 Node 可执行文件；
+- SHA-512 与锁定值一致的已检查 production OpenClaw tarball；
+- 禁用生命周期脚本后得到的精确 npm runtime tree；
+- stable ClawDSH bridge；
+- 隔离 state 目录与 fail-closed OpenClaw 配置。
 
-### Managed Gateway deployment
+Provider 绝不在 runtime 下载、安装或更新这些资产。启动 source profile 前配置对应路径：
 
-WebUI 不依赖 Gateway 即可运行。启用 Gateway 前，必须准备兼容的 Node 运行时、受检 OpenClaw release artifact、checked npm runtime tree、隔离 state 目录与 fail-closed OpenClaw 配置。Provider 绝不在运行时下载、安装或更新这些资产。
-
-WebUI 与 Gateway 可以共用 Homebrew Node `24.19.0`；默认 profile 会让二者使用 WebUI 进程的同一个可执行文件。托管安装器只把 npm `10.9.7` 作为可复现 runtime assembly 工具调用，因此无需维护第二套 Node。先准备并校验托管资产，再在 Settings 中启用 Gateway：
-
-```bash
-clawdsh init
-clawdsh channel install
-clawdsh channel doctor
-```
-
-`channel install` 会创建受检 artifact、runtime、隔离 state 目录和不含凭证的 OpenClaw 配置。只把平台账号与凭证加入该 OpenClaw 配置，然后启用 Gateway 并重启 ClawDSH。源码部署必须在下列路径准备同等资产；只有在明确选择另一份兼容 Node 可执行文件时才设置 `CLAWDSH_OPENCLAW_NODE_PATH`。
-
-DM pairing 只授予入站权限，不授予 owner preset。托管配置会禁用运行时配置写入，因此需要在 `commands.ownerAllowFrom` 中显式声明每位 human operator，并使用 `feishu:<open_id>` 这类带 Channel 前缀的原生 id。新增或修改 owner 后，重启 ClawDSH，并在对应会话发送 `/new`，让新的 route generation 选择具有完整 dsh 工具（包括 Web search）的 owner `clawdsh` preset。不在该列表中的已配对 sender 会按设计继续使用 `clawdsh-messaging-safe`。
-
-```bash
+```sh
 export CLAWDSH_OPENCLAW_TRACK=production
 export CLAWDSH_OPENCLAW_GATEWAY_INSTANCE_ID=personal-gateway
-export CLAWDSH_OPENCLAW_ARTIFACT_PATH=/srv/clawdsh/openclaw/openclaw-2026.7.1-2.tgz
+export CLAWDSH_OPENCLAW_ARTIFACT_PATH=/srv/clawdsh/openclaw/openclaw.tgz
 export CLAWDSH_OPENCLAW_RUNTIME_ROOT=/srv/clawdsh/openclaw/runtime
 export CLAWDSH_OPENCLAW_HOST_ROOT=/srv/clawdsh/openclaw/runtime/node_modules/openclaw
 export CLAWDSH_OPENCLAW_STATE_DIR=/srv/clawdsh/openclaw/state
@@ -99,47 +90,29 @@ export CLAWDSH_OPENCLAW_CONFIG_PATH=/srv/clawdsh/openclaw/state/openclaw.json
 export CLAWDSH_OPENCLAW_STAGING_ROOT=/srv/clawdsh/openclaw/state/staging
 export CLAWDSH_OPENCLAW_ENDPOINT=/srv/clawdsh/openclaw/state/clawdsh.sock
 export CLAWDSH_CHANNEL_CWD=/srv/clawdsh/workspace
-export DEEPSEEK_API_KEY=sk-xxx
 
-pnpm dsh --profile clawdsh
+tools/run-clawdsh-dev.sh
 ```
 
-Platform credential 保留在 OpenClaw 隔离 state 与 account setup 中。Model 与 tool credential 保留在 dsh credential source 中。IPC bearer token 与 startup nonce 每次启动时生成，不是 operator config。
+默认 profile 使用 WebUI 进程的 Node 可执行文件运行 Gateway。只有要选择另一份经过独立验证的兼容 executable 时，才设置 `CLAWDSH_OPENCLAW_NODE_PATH`。npm `10.9.7` pin 是确定性的 runtime assembly 工具，不是第二套 Node runtime。
 
-源码部署若使用单独受检的外部 Channel plugin，需要通过 `CLAWDSH_OPENCLAW_EXTENSIONS_JSON` 传入精确 lock 列表；未设置时仍为空列表，并拒绝所有外部插件。对应的隔离 NPM 项目与 OpenClaw installed-plugin index 记录必须在启动前与该 lock 完全一致。
+平台账号与凭据保留在 OpenClaw 账号设置和隔离 state 中。DeepSeek 与 Ark key 保留在 dsh credential source 中。IPC bearer token 与 startup nonce 每次启动时生成，不是 operator config。
 
-要在不复制 secret value 的情况下盘点 legacy adapter reference 与 credential name，请运行：
+外部 OpenClaw Channel plugin 默认全部被拒绝。源码部署若单独验证了某个插件，需要通过 `CLAWDSH_OPENCLAW_EXTENSIONS_JSON` 传入精确 lock 数组；隔离 npm project 与 OpenClaw installed-plugin index 必须在启动前匹配每个 lock entry。变量缺失表示 `[]`，不会准入任何外部 extension。
 
-```bash
-pnpm exec tsx tools/openclaw-channel-migration.ts --input /absolute/path/to/old-profile-or-env
+DM pairing 只授予 ingress，不授予 owner preset。受管 OpenClaw 配置会禁用 runtime config write，因此需要在 `commands.ownerAllowFrom` 中列出每位 human operator，并使用 `feishu:<open_id>` 这类带 Channel 前缀的原生 id。修改 owner 列表后重启 ClawDSH，并在对话中发送 `/new`。Owner direct message 随后选择 `clawdsh`；non-owner 与 group conversation 继续使用 `clawdsh-messaging-safe`。
+
+只有部署身份通过 preflight 后，才能从 ClawDSH Settings 启用 Gateway。Preflight 失败会让已保存设置与 revision 保持不变。认证、installability 与真实平台行为需要健康的本地 Gateway–Bridge handshake 之外的独立证据。
+
+## 源码验证
+
+修改 browser、runtime、profile 或品牌后，运行嵌套产品检查：
+
+```sh
+pnpm --dir packages/openclaw/preset-openclaw/product-shell run typecheck
+pnpm --dir packages/openclaw/preset-openclaw/product-shell run test
+pnpm --dir packages/openclaw/preset-openclaw/product-shell run build
+tools/link-clawdsh.sh
 ```
 
-检入的 deployment path 组成 installer-managed profile base，并在 ClawDSH Settings 中保持只读。Runtime 组装完成后，从 Settings 页面启用 OpenClaw Gateway；Host 会在持久化修改前完成 deployment preflight。Preflight 失败会让 setting 与 revision 保持不变。启用后，已准入 owner direct message 使用 `clawdsh`；每个 non-owner 或 group conversation 使用 `clawdsh-messaging-safe`。
-
-## Clean-install 默认值
-
-Memory、Skills Hub 与 Activity 保持启用。Activity 是必需能力，并且只记录限制隐私的产品语义；它的失败不能阻断业务能力。Ark Embeddings 只在 embedding call 需要时解析固定 `ARK_API_KEY` credential reference。Automation 与 OpenClaw Gateway 保持关闭。Disabled capability 可以缺少 credential；enabled capability 缺少所需配置时在最早 validation point 失败。
-
-Optional business plugin 保持 mounted，并暴露自身 Config schema。经过校验的 `enabled` setting 控制 runtime effect，ClawDSH Settings 则显示 desired/runtime revision、restart requirement、field ownership 与不含 secret 的 credential state。Reset 只移除 user layer，并恢复 profile base 加 schema default。
-
-## 产品壳
-
-[ADR-0007](../../../docs/adr/0007-clawdsh-local-gui-product.md)与[本地 GUI 规格](../../../docs/specs/feature-gui-web.md)定义产品壳。`/clawdsh/` 渲染一棵原生 dsh 应用，不增加第二个 sidebar；`/` 保留原生 dsh Web 作为 Harness 高级。原生 Settings panel 默认首先显示 ClawDSH，每个已选 Session 则显示「对话」「轨迹」与「ClawDSH 记录」。ClawDSH Settings 按五项用户功能分组，在 section 切换后保留内存 draft，为 dirty navigation 提供保护，让 credential 保持私有且短暂，说明 Automation 是结果保存在独立对话、适用时返回 owner-authenticated 原 Channel 的可选定时工作，并让 Automation 与 OpenClaw Gateway 维持安全的默认关闭状态。Automation 变更即时生效，Channel 状态会报告 authenticated Gateway–Bridge handshake，而不会虚构隐藏的逐账号状态。「ClawDSH 记录」标签跟随 Slot 提供的 Session，合并 standard history 与有界 sidecar，为身份/上下文、Memory、外部消息、Skill 与定时任务提供隐私安全的中文解释。它会合并同一次请求的上下文准备，区分 Memory 真实变更与无修改结果，在回合完成后重新读取，为稍后到达的 sidecar 事实保留手动重新读取，并使用绑定 snapshot 的 pagination；Session seq 与固定 kind 留在收起的技术详情中。未知产品 path 会渲染明确的未找到页面，不会落入 Harness；两个旧子路径会在一个兼容周期内重定向到 `/clawdsh/`。
-
-Profile 关闭原生 `dsh web:` readiness line，并挂载 `@clawdsh/dsh-product-runtime`。Loader 结算后，该 runtime 打印 `clawdsh web: http://127.0.0.1:<port>/clawdsh/`，拥有产品静态 route，同时保持 `/` 的原生 fallback 不变。Nested browser build 把 asset 写入 `product-shell/runtime/web/`；两个 nested package 都不进入根 workspace 或 Client aggregate。
-
-该组装不注册新 Client Slot，只向既有公开 `conversation.hero.agentPreset`、`sidebar.footer.action`、`settings.section` 与 `conversation.view` Slot 贡献内容。它不使用 DOM 导航桥接，也不修改 `api-proxy`、Client Catalog、Agent Loop、generated file 或上游 GUI source。Activity 不增加上游 Session event type，raw Trajectory 继续归 dsh 所有，`dsh --profile web` 保持纯 Harness 入口。[Activity 规格](../../../docs/specs/feature-activity.md)拥有其存储、隐私与降级行为。
-
-## 托管 preset
-
-Launcher 没有 installation-owned ClawDSH preset root，因此两个 preset 都位于 dsh user preset root。ClawDSH 产品 Settings 页面不提供 preset 删除操作，但 Harness 高级仍把它们视为 user preset。CLI 的 managed manifest、integrity check、reset 前 backup 与 `clawdsh doctor` 会把已安装资产同普通 user preset 区分开来。开发安装器仍是 source-tree convenience，会恢复已检入 preset file，但不会接管用户数据。
-
-## 公共打包
-
-公共候选版本包含精确的 [13 包发行集合](../README.md#public-release-set)，版本均为 `0.1.0-rc.1`。`@clawdsh/dsh-bundle` 携带 profile patch、主 preset、Control Runtime、构建后的 `/clawdsh/` asset、Channel lock 与 bridge notice，并精确依赖十个 runtime feature package 和受限 preset。真实 tarball 验证会拒绝 `workspace:`、`file:`、symlink、未声明 asset、私有 registry URL、意外 package，以及固定发行图之外的任何依赖版本。
-
-发行 workflow 只以公共 npm 与 `next` tag 为目标。Dry run 打包并审计全部 13 个 tarball，按依赖顺序发布到临时 loopback registry，并在隔离 dsh home 中完成干净安装。Registry 状态仍是 `bootstrap-required`：npm trust 与 staged publishing 都要求 package 已存在，但 13 个 package name 均不存在。必须先由用户另行授权交互式 2FA bootstrap 创建 package object，才能把全部 13 条 trust 记录绑定到 `clawdsh-publish.yml`、environment `npm` 与 `npm publish`。OIDC readiness 还要求 GitHub `npm` environment 只允许 `clawdsh` branch，并通过 workflow 的精确 `refs/heads/clawdsh` 检查。本次实现不选择或发布 bootstrap artifact、不配置 trust、不改变仓库可见性，也不发布候选版本；完整条件由 [ADR-0009](../../../docs/adr/0009-public-npm-distribution.md)管理。
-
-## 验证边界
-
-锁定 production host、local IPC handshake、Provider 与 Driver ledger、fail-closed model route、extension-integrity check 与 keyless protocol test 建立当前 channel foundation。Telegram 已 bundled 在锁定 host 中；飞书与 Discord 有已 cataloged 的精确 repository-official artifact，但交付的 `extensions: []` assembly 不包含它们。真实平台认证仍需完整 installability 证据、专用账号、当前凭证，以及针对这条 canonical 路径记录的 live-smoke evidence。Support catalog 当前把所有渠道都保持在 `cataloged`，profile 也没有启用任何渠道。
+最后一次刷新可以证明真实构建的 runtime 与 browser 资产存在，且所选开发 home 仍是已知 source-managed 布局。公共 tarball 与干净安装校验归 distribution release tools 所有，不属于本源码组装层。
