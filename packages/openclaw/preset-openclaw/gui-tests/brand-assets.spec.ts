@@ -7,7 +7,8 @@ import { describe, expect, it } from 'vitest'
 const repositoryRoot = resolve(import.meta.dirname, '../../../..')
 const brandRoot = join(repositoryRoot, 'packages/openclaw/preset-openclaw/brand')
 const webRoot = join(repositoryRoot, 'packages/openclaw/preset-openclaw/product-shell/browser/public')
-const builtWebRoot = join(repositoryRoot, 'packages/openclaw/preset-openclaw/product-shell/runtime/web')
+const productRuntimeRoot = join(repositoryRoot, 'packages/openclaw/preset-openclaw/product-shell/runtime')
+const builtWebRoot = join(productRuntimeRoot, 'web')
 const renderScript = join(repositoryRoot, 'tools/render-clawdsh-brand.mjs')
 
 interface RawImage {
