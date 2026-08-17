@@ -79,14 +79,14 @@ function releasePackages(releaseIndex) {
 function inspectPackage(metadata, expected, expectedRelease) {
   if (metadata === undefined) return Object.freeze({ name: expected.name, state: 'missing' })
   const tags = object(metadata['dist-tags'] ?? {}, `${expected.name} dist-tags`)
-  if (Object.hasOwn(tags, 'latest')) {
-    throw new TypeError(`${expected.name} unexpectedly has a latest dist-tag; bootstrap must not create latest`)
+  if (tags.latest !== BOOTSTRAP_VERSION) {
+    throw new TypeError(`${expected.name} latest dist-tag must remain pinned to ${BOOTSTRAP_VERSION}`)
   }
   const versions = object(metadata.versions ?? {}, `${expected.name} versions`)
   const hasRelease = Object.hasOwn(versions, RELEASE_VERSION)
   const permittedRelease = expectedRelease !== undefined && hasRelease
   const expectedVersions = permittedRelease ? [BOOTSTRAP_VERSION, RELEASE_VERSION] : [BOOTSTRAP_VERSION]
-  const expectedTags = permittedRelease ? [BOOTSTRAP_TAG, PUBLIC_TAG] : [BOOTSTRAP_TAG]
+  const expectedTags = permittedRelease ? [BOOTSTRAP_TAG, 'latest', PUBLIC_TAG] : [BOOTSTRAP_TAG, 'latest']
   if (!sameKeys(versions, expectedVersions) || !sameKeys(tags, expectedTags)) {
     throw new TypeError(`${expected.name} registry state conflicts with the exact inert bootstrap`)
   }
@@ -137,7 +137,7 @@ function bootstrapIndexIntegrity(bytes) {
   return `sha512-${createHash('sha512').update(bytes).digest('base64')}`
 }
 
-/** Return canonical remote evidence only when every inert package matches and latest is absent. */
+/** Return canonical remote evidence only when every inert package matches and latest remains pinned to bootstrap. */
 export function bootstrapAttestation(indexBytes, states) {
   const index = parseBootstrapIndex(indexBytes)
   if (states.length !== index.packages.length || states.some((state, position) => (
@@ -152,7 +152,7 @@ export function bootstrapAttestation(indexBytes, states) {
     registry: PUBLIC_NPM_REGISTRY,
     bootstrapVersion: BOOTSTRAP_VERSION,
     bootstrapTag: BOOTSTRAP_TAG,
-    latestTagsAbsent: true,
+    latestTagsPinnedToBootstrap: true,
     bootstrapIndexIntegrity: bootstrapIndexIntegrity(indexBytes),
     packages: Object.freeze(states.map(state => Object.freeze({
       name: state.name,
@@ -173,7 +173,7 @@ export function verifyBootstrapAttestation(indexPath, attestationPath) {
       'registry',
       'bootstrapVersion',
       'bootstrapTag',
-      'latestTagsAbsent',
+      'latestTagsPinnedToBootstrap',
       'bootstrapIndexIntegrity',
       'packages',
     ],
@@ -183,7 +183,7 @@ export function verifyBootstrapAttestation(indexPath, attestationPath) {
     || attestation.registry !== PUBLIC_NPM_REGISTRY
     || attestation.bootstrapVersion !== BOOTSTRAP_VERSION
     || attestation.bootstrapTag !== BOOTSTRAP_TAG
-    || attestation.latestTagsAbsent !== true
+    || attestation.latestTagsPinnedToBootstrap !== true
     || attestation.bootstrapIndexIntegrity !== bootstrapIndexIntegrity(indexBytes)
     || !Array.isArray(attestation.packages)
     || attestation.packages.length !== index.packages.length) {
@@ -200,7 +200,7 @@ export function verifyBootstrapAttestation(indexPath, attestationPath) {
     registry: PUBLIC_NPM_REGISTRY,
     bootstrapVersion: BOOTSTRAP_VERSION,
     bootstrapTag: BOOTSTRAP_TAG,
-    latestTagsAbsent: true,
+    latestTagsPinnedToBootstrap: true,
     bootstrapIndexIntegrity: attestation.bootstrapIndexIntegrity,
     packages: Object.freeze(attestation.packages.map(entry => Object.freeze({
       name: entry.name,
@@ -285,7 +285,7 @@ if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToP
     releaseIndex: values.get('--release-index'),
   })
   if (result.complete) {
-    process.stdout.write('all 13 inert bootstrap packages match npm; bootstrap is complete and latest is absent\n')
+    process.stdout.write(`all 13 inert bootstrap packages match npm; bootstrap is complete and latest is pinned to ${BOOTSTRAP_VERSION}\n`)
   } else {
     process.stdout.write(`bootstrap registry: ${String(result.verified)}/13 verified\n`)
     process.stdout.write('After separate authorization, run exactly this one command, then rerun this verifier:\n')

@@ -6,6 +6,7 @@ import { realpathSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
+  BOOTSTRAP_VERSION,
   PUBLIC_NPM_REGISTRY,
   PUBLIC_TAG,
   RELEASE_VERSION,
@@ -51,8 +52,8 @@ async function registryMetadata(name, request) {
 function inspectPackage(metadata, expected) {
   if (metadata === undefined) return Object.freeze({ name: expected.name, state: 'missing' })
   const tags = object(metadata['dist-tags'] ?? {}, `${expected.name} dist-tags`)
-  if (Object.hasOwn(tags, 'latest')) {
-    throw new TypeError(`${expected.name} unexpectedly has a latest dist-tag`)
+  if (tags.latest !== BOOTSTRAP_VERSION) {
+    throw new TypeError(`${expected.name} latest dist-tag must remain pinned to ${BOOTSTRAP_VERSION}`)
   }
   const versions = object(metadata.versions ?? {}, `${expected.name} versions`)
   const version = versions[RELEASE_VERSION]
@@ -210,7 +211,7 @@ if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToP
   const { flags, values } = argumentsFrom(process.argv.slice(2))
   if (flags.has('--verify-only')) {
     const result = await verifyPublicReleasePublication({ directory: values.get('--directory') })
-    process.stdout.write(`verified all ${String(result.verified)} ClawDSH ${RELEASE_VERSION} packages on public npm with provenance; latest is absent\n`)
+    process.stdout.write(`verified all ${String(result.verified)} ClawDSH ${RELEASE_VERSION} packages on public npm with provenance; latest is pinned to ${BOOTSTRAP_VERSION}\n`)
   } else {
     const result = await publishPublicReleasePublication({ directory: values.get('--directory') })
     process.stdout.write(`public npm release complete: ${String(result.published.length)} published, ${String(result.resumed)} exactly resumed, ${String(result.verified)} verified\n`)

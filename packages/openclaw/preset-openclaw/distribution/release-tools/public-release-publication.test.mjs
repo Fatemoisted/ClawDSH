@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  BOOTSTRAP_VERSION,
   PUBLIC_NPM_REGISTRY,
   PUBLIC_TAG,
   RELEASE_PACKAGE_NAMES,
@@ -24,7 +25,8 @@ function registryResponse(metadata) {
 
 function metadata(entry, {
   integrity = entry.integrity,
-  latest = false,
+  includeLatest = true,
+  latest = BOOTSTRAP_VERSION,
   next = RELEASE_VERSION,
   provenance = SLSA_PROVENANCE_PREDICATE,
   includeNext = true,
@@ -38,7 +40,7 @@ function metadata(entry, {
   return {
     'dist-tags': {
       ...(includeNext ? { [PUBLIC_TAG]: next } : {}),
-      ...(latest ? { latest: RELEASE_VERSION } : {}),
+      ...(includeLatest ? { latest } : {}),
     },
     versions: includeVersion ? { [RELEASE_VERSION]: { dist } } : {},
   }
@@ -126,7 +128,7 @@ test('resumes only exact provenance-bearing packages and publishes the missing s
   }
 })
 
-test('fails closed before publishing on integrity, tag, latest, or provenance conflicts', async t => {
+test('fails closed before publishing on integrity, tag, latest pin, or provenance conflicts', async t => {
   const fixture = createReleaseFixture()
   try {
     const directory = packedRelease(fixture)
@@ -136,7 +138,8 @@ test('fails closed before publishing on integrity, tag, latest, or provenance co
       ['integrity', metadata(first, { integrity: 'sha512-conflict' }), /remote integrity differs/],
       ['next tag', metadata(first, { next: '0.1.0-rc.0' }), /next dist-tag must point/],
       ['missing next tag', metadata(first, { includeNext: false }), /next dist-tag must point/],
-      ['latest tag', metadata(first, { latest: true }), /latest dist-tag/],
+      ['wrong latest tag', metadata(first, { latest: RELEASE_VERSION }), /latest dist-tag must remain pinned/],
+      ['missing latest tag', metadata(first, { includeLatest: false }), /latest dist-tag must remain pinned/],
       ['missing provenance', metadata(first, { includeProvenance: false }), /dist\.attestations/],
       ['wrong provenance', metadata(first, { provenance: 'https://example.invalid/predicate' }), /predicateType/],
       ['tag without version', metadata(first, { includeVersion: false }), /next dist-tag exists before/],

@@ -40,11 +40,11 @@ function registryResponse(metadata) {
   return { status: 200, ok: true, async text() { return JSON.stringify(metadata) } }
 }
 
-function metadata(entry, { latest = false, integrity = entry.integrity } = {}) {
+function metadata(entry, { latest = BOOTSTRAP_VERSION, integrity = entry.integrity } = {}) {
   return {
     'dist-tags': {
       [BOOTSTRAP_TAG]: BOOTSTRAP_VERSION,
-      ...(latest ? { latest: BOOTSTRAP_VERSION } : {}),
+      ...(latest === false ? {} : { latest }),
     },
     versions: {
       [BOOTSTRAP_VERSION]: { dist: { integrity } },
@@ -62,6 +62,7 @@ function metadataWithRelease(bootstrapEntry, releaseEntry, {
   return {
     'dist-tags': {
       [BOOTSTRAP_TAG]: BOOTSTRAP_VERSION,
+      latest: BOOTSTRAP_VERSION,
       [PUBLIC_TAG]: releaseTag,
       ...(extraTag === undefined ? {} : { beta: extraTag }),
     },
@@ -191,7 +192,7 @@ test('npm accepts the deterministic inert archive without running a lifecycle sc
   }
 })
 
-test('read-only publication inspector resumes by integrity and never permits latest', async () => {
+test('read-only publication inspector resumes by integrity and requires latest pinned to bootstrap', async () => {
   const temporary = temporaryDirectory()
   try {
     const directory = join(temporary, 'bootstrap')
@@ -224,12 +225,18 @@ test('read-only publication inspector resumes by integrity and never permits lat
     })
     assert.equal(complete.complete, true)
     assert.equal(complete.verified, 13)
+    assert.equal(complete.attestation.latestTagsPinnedToBootstrap, true)
     verifyBootstrapAttestation(join(directory, BOOTSTRAP_INDEX_FILENAME), attestationPath)
 
-    published.set(index.packages[0].name, metadata(index.packages[0], { latest: true }))
+    published.set(index.packages[0].name, metadata(index.packages[0], { latest: RELEASE_VERSION }))
     await assert.rejects(
       () => inspectBootstrapPublication({ directory, repositoryRoot: repository, request }),
-      /must not create latest/,
+      /latest dist-tag must remain pinned/,
+    )
+    published.set(index.packages[0].name, metadata(index.packages[0], { latest: false }))
+    await assert.rejects(
+      () => inspectBootstrapPublication({ directory, repositoryRoot: repository, request }),
+      /latest dist-tag must remain pinned/,
     )
     published.set(index.packages[0].name, metadata(index.packages[0], { integrity: 'sha512-invalid' }))
     await assert.rejects(
