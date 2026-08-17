@@ -13,7 +13,7 @@ import {
   verifyRuntimeInstallation,
 } from '../src/integrity.ts'
 import type { OpenClawExtensionLock } from '../src/extensions.ts'
-import { installedProjectTreeDigest } from '../src/file-integrity.ts'
+import { installedProjectTreeDigest, ordinaryFileTreeDigest } from '../src/file-integrity.ts'
 import { CANARY_OPENCLAW_LOCK, PRODUCTION_OPENCLAW_LOCK, type OpenClawRuntimeLock } from '../src/locks.ts'
 
 const roots: string[] = []
@@ -30,6 +30,55 @@ async function temporaryRoot(): Promise<string> {
 
 function sha512(value: string): string {
   return createHash('sha512').update(value).digest('hex')
+}
+
+type FileIntegrityOps = NonNullable<Parameters<typeof installedProjectTreeDigest>[2]>
+type FileIntegrityInfo = Awaited<ReturnType<FileIntegrityOps['lstat']>>
+type FileIntegrityEntry = Awaited<ReturnType<FileIntegrityOps['readdir']>>[number]
+type VirtualEntryKind = 'directory' | 'file' | 'link' | 'other'
+
+function virtualInfo(kind: 'directory' | 'file', size = 0): FileIntegrityInfo {
+  return {
+    size,
+    isDirectory: () => kind === 'directory',
+    isFile: () => kind === 'file',
+  }
+}
+
+function virtualEntry(name: string, kind: VirtualEntryKind): FileIntegrityEntry {
+  return {
+    name,
+    isSymbolicLink: () => kind === 'link',
+    isDirectory: () => kind === 'directory',
+    isFile: () => kind === 'file',
+  }
+}
+
+function virtualFileOps(options: {
+  readonly directories: ReadonlyMap<string, readonly FileIntegrityEntry[]>
+  readonly infos: ReadonlyMap<string, FileIntegrityInfo>
+  readonly links?: ReadonlyMap<string, string>
+  readonly digests?: ReadonlyMap<string, string>
+}): FileIntegrityOps {
+  return {
+    lstat: async (path) => {
+      const info = options.infos.get(path)
+      if (info === undefined) throw new Error(`missing virtual file info for ${path}`)
+      return info
+    },
+    readlink: async (path) => {
+      const target = options.links?.get(path)
+      if (target === undefined) throw new Error(`missing virtual link target for ${path}`)
+      return target
+    },
+    readdir: async (path) => {
+      const entries = options.directories.get(path)
+      if (entries === undefined) throw new Error(`missing virtual directory for ${path}`)
+      return entries
+    },
+    realpath: async path => path,
+    sha512File: async path => options.digests?.get(path) ?? sha512(path),
+  }
 }
 
 async function hostFixture(): Promise<{
@@ -279,6 +328,68 @@ describe('locked host integrity', () => {
     expect(await sha512File(join(root, 'z.txt'))).toBe(sha512('z'))
     expect(await hostTreeDigest(root)).toEqual(await hostTreeDigest(root))
     expect((await hostTreeDigest(root)).fileCount).toBe(2)
+  })
+
+  it('locks internal file links through platform-independent filesystem operations', async () => {
+    const root = join(tmpdir(), 'channel-openclaw-virtual-links')
+    const firstTarget = join(root, 'first.js')
+    const secondTarget = join(root, 'second.js')
+    const link = join(root, 'executable')
+    const directories = new Map([
+      [root, [
+        virtualEntry('first.js', 'file'),
+        virtualEntry('second.js', 'file'),
+        virtualEntry('executable', 'link'),
+      ]],
+    ])
+    const infos = new Map([
+      [root, virtualInfo('directory')],
+      [firstTarget, virtualInfo('file', 7)],
+      [secondTarget, virtualInfo('file', 7)],
+    ])
+    const digests = new Map([
+      [firstTarget, sha512('content')],
+      [secondTarget, sha512('content')],
+    ])
+    const operationsFor = (target: string): FileIntegrityOps => virtualFileOps({
+      directories,
+      infos,
+      links: new Map([[link, target]]),
+      digests,
+    })
+
+    const first = await installedProjectTreeDigest(root, [], operationsFor('first.js'))
+    const second = await installedProjectTreeDigest(root, [], operationsFor('second.js'))
+
+    expect(first.fileCount).toBe(2)
+    expect(second.fileCount).toBe(2)
+    expect(first.sha512).not.toBe(second.sha512)
+  })
+
+  it('rejects virtual link targets and special entries without host filesystem features', async () => {
+    const linkedRoot = join(tmpdir(), 'channel-openclaw-virtual-link-target')
+    const link = join(linkedRoot, 'link')
+    const target = join(linkedRoot, 'target')
+    const linkedOperations = virtualFileOps({
+      directories: new Map([[linkedRoot, [virtualEntry('link', 'link')]]]),
+      infos: new Map([
+        [linkedRoot, virtualInfo('directory')],
+        [target, virtualInfo('directory')],
+      ]),
+      links: new Map([[link, 'target']]),
+    })
+    await expect(installedProjectTreeDigest(linkedRoot, [], linkedOperations))
+      .rejects.toThrow(/does not target an ordinary file/)
+
+    const specialRoot = join(tmpdir(), 'channel-openclaw-virtual-special-entry')
+    const specialOperations = virtualFileOps({
+      directories: new Map([[specialRoot, [virtualEntry('socket', 'other')]]]),
+      infos: new Map([[specialRoot, virtualInfo('directory')]]),
+    })
+    await expect(installedProjectTreeDigest(specialRoot, [], specialOperations))
+      .rejects.toThrow(/installed project tree contains a non-file entry socket/)
+    await expect(ordinaryFileTreeDigest(specialRoot, specialOperations))
+      .rejects.toThrow(/package tree contains a non-file entry socket/)
   })
 
   it('rejects symbolic links and non-file directory entries', async () => {
